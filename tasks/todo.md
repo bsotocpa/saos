@@ -247,18 +247,20 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - [x] Prove it: e2e submits for all branches; module-firing rule tests
 
 ## M15 — Soto client portal (bilingual)
-- [ ] Next.js portal, i18n EN/ES from day one (toggle persists to contact,
+- [x] Next.js portal, i18n EN/ES from day one (toggle persists to contact,
       applied to outbound comms); Soto brand tokens (Forest Teal #0D3B38,
       Electric Teal #00C9BF, Inter **self-hosted** — no CDN fonts per vendor rule)
-- [ ] Empty-state 4-step checklist · Dashboard (status plain-English, doc
+- [x] Empty-state 4-step checklist · Dashboard (status plain-English, doc
       requests, unsigned docs, invoices w/ Pay Now, messages, quick actions)
-- [ ] Document Center (drag-drop/camera, categories, per-file status,
-      portal-only policy copy) · My Returns + internal return-upload UI (ATX
-      PDF → portal delivery, auto-notify in client language, stage → Client
-      Review) · Sign Documents (Docuseal embed) · Invoices & Payments ·
-      Messages thread · Request a Service (→ opportunity, 24h commitment) ·
-      Get an Estimate (range + Cal.com embed) · Resource Library EN/ES
-- [ ] Prove it: full client journey demo on mobile viewport, both languages
+- [x] Document Center (drag-drop/camera, categories, per-file status,
+      portal-only policy copy) · My Returns · Sign Documents (status list;
+      Docuseal emails signing links — inline embed when http-mode configured)
+      · Invoices & Payments · Messages thread · Request a Service (→
+      opportunity, 24h commitment) · Get an Estimate (range; Cal.com embed
+      lands with M18) · Resource Library EN/ES
+      ⛔ internal return-upload UI deferred to the internal app scaffold
+      (M19/M20) — the API flow is fully built + tested since M10
+- [x] Prove it: full client journey demo on mobile viewport, both languages
 
 ## M16 — Referral flows both directions (§7216-gated)
 - [ ] Form 3 Hilo→Soto transition: pre-filled, BR1–BR6 locked, referral-
@@ -615,3 +617,32 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
   fix-steps email; daily re-check job (90-day cadence setting, date-guarded).
 - Analytics: started/submitted per form + drop-off by screen for abandons.
 - 3 new templates (welcome_soto, welcome_hilo, sos_fix_steps). 73/73 tests.
+
+### M15 (completed 2026-07-05)
+- Next.js 15 portal (11 pages) on the Soto brand system: Forest Teal /
+  Electric Teal tokens, "SOTO." wordmark with the Electric Teal period,
+  Inter VARIABLE self-hosted (352KB woff2 in-repo — no CDN fonts).
+- Hand-rolled i18n (~120 keys EN/ES, zero deps); the toggle PATCHes the
+  contact record — proven: Spanish survived a full reload from the server.
+- API gap-fill: PATCH /portal/me (profile + language), /portal/returns,
+  /portal/resources (+3 starter guides seeded), /portal/service-requests
+  (task + Rene notification + 24h due date), /portal/estimate (guided
+  answers → price-book quote → RANGE ONLY, no itemization to clients),
+  /portal/messages (threads + composer + Rene notification).
+- Same-origin /api rewrite proxy (no CORS; mirrors the prod reverse proxy).
+  Session bearer in sessionStorage for Phase 1 dev — ⛔ M21 hardening moves
+  to an httpOnly-cookie BFF before production.
+- LIVE DEMO VERIFIED (mobile 375px, both languages): magic-link sign-in →
+  EN dashboard (checklist, plain-English return status with deadline) →
+  toggle → ES dashboard → estimate flow returning $530.00–$609.50 for
+  MFJ + Sch C + extra state — the exact golden-test value, through the
+  whole stack. Single-use link semantics confirmed live (a raced first
+  attempt burned the token, correctly).
+- Fixes en route: hydration mismatch in the shell (auth state now resolves
+  in an effect — Next dev overlay clear); sign-out button got a distinct
+  test id (a coordinate-based click in the demo hit it — tool artifact, not
+  an app bug, but the markup is better for it).
+- packages/db/seeds/demo.mjs: reusable synthetic demo client + magic link
+  (reuse-if-exists; the schema's referential integrity resists
+  delete-recreate, as it should). .claude/launch.json runs api + portal.
+- 73/73 API tests still green; full-repo typecheck + price guard green.

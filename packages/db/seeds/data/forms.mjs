@@ -348,6 +348,29 @@ export const ONBOARDING_MODULES = [
   },
 ];
 
+// Starter resource-library entries (admin replaces/extends via M20; content
+// publishing pipeline is Phase 5). Insert-if-missing by title.
+const STARTER_RESOURCES = [
+  {
+    titleEn: 'How your client portal works', titleEs: 'Cómo funciona su portal de cliente',
+    descEn: 'Uploading documents, signing, paying invoices, and getting answers — all in one place.',
+    descEs: 'Subir documentos, firmar, pagar facturas y obtener respuestas — todo en un solo lugar.',
+    type: 'guide',
+  },
+  {
+    titleEn: 'Schedule C: what we need from you', titleEs: 'Anexo C: qué necesitamos de usted',
+    descEn: 'The records that make your self-employment return smooth — income, expenses, mileage, home office.',
+    descEs: 'Los registros que agilizan su declaración — ingresos, gastos, millaje, oficina en casa.',
+    type: 'guide',
+  },
+  {
+    titleEn: 'IRS notices: don’t panic, do this', titleEs: 'Avisos del IRS: no entre en pánico, haga esto',
+    descEn: 'Most notices are routine. Upload it to your portal and we take it from there.',
+    descEs: 'La mayoría de los avisos son de rutina. Súbalo a su portal y nosotros nos encargamos.',
+    type: 'guide',
+  },
+];
+
 export async function seedForms(client) {
   let inserted = 0;
   for (const def of [SOTO_INTAKE_DEFINITION, HILO_INTAKE_DEFINITION]) {
@@ -371,5 +394,15 @@ export async function seedForms(client) {
     );
     modules += res.rowCount;
   }
-  return `${inserted} of 2 form definitions, ${modules} of ${ONBOARDING_MODULES.length} onboarding modules inserted`;
+  let resources = 0;
+  for (const [i, r] of STARTER_RESOURCES.entries()) {
+    const res = await client.query(
+      `INSERT INTO resource_library (title_en, title_es, description_en, description_es, audience, resource_type, is_published, sort_order)
+       SELECT $1, $2, $3, $4, 'soto', $5, true, $6
+       WHERE NOT EXISTS (SELECT 1 FROM resource_library WHERE title_en = $1)`,
+      [r.titleEn, r.titleEs, r.descEn, r.descEs, r.type, i * 10]
+    );
+    resources += res.rowCount;
+  }
+  return `${inserted} of 2 form definitions, ${modules} of ${ONBOARDING_MODULES.length} onboarding modules, ${resources} starter resources inserted`;
 }
