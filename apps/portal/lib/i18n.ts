@@ -167,6 +167,20 @@ const dict = {
   prof_saved: ['Saved.', 'Guardado.'],
   prof_language: ['Language / Idioma', 'Idioma / Language'],
 
+  // Transition (Form 3 — Hilo → Soto)
+  trans_title: ['You’re almost there', 'Ya casi está'],
+  trans_intro: ['Hilo already shared the basics — confirm, choose what you need, and you’re in.', 'Hilo ya compartió lo básico — confirme, elija lo que necesita, y listo.'],
+  trans_your_info: ['Your info (from Hilo)', 'Sus datos (de Hilo)'],
+  trans_services: ['What can Soto help with?', '¿Con qué puede ayudar Soto?'],
+  trans_disclosure_title: ['One thing you should know', 'Algo que debe saber'],
+  trans_disclosure_ack: ['I understand, and I choose to continue', 'Entiendo, y elijo continuar'],
+  trans_comm_consent: ['Soto Accounting may contact me about my request', 'Soto Accounting puede contactarme sobre mi solicitud'],
+  trans_esign_consent: ['I agree to sign documents electronically (ESIGN Act)', 'Acepto firmar documentos electrónicamente (Ley ESIGN)'],
+  trans_submit: ['Complete my transition', 'Completar mi transición'],
+  trans_done_title: ['Welcome to Soto Accounting', 'Bienvenido(a) a Soto Accounting'],
+  trans_done_body: ['Your portal sign-in link is on its way by email. Brian’s team already has your details.', 'Su enlace de acceso al portal va en camino por correo. El equipo de Brian ya tiene sus datos.'],
+  trans_invalid: ['This link is invalid, expired, or already used.', 'Este enlace es inválido, venció o ya fue usado.'],
+
   loading: ['Loading…', 'Cargando…'],
   error_generic: ['Something went wrong. Please try again.', 'Algo salió mal. Intente de nuevo.'],
 } satisfies Record<string, [string, string]>;

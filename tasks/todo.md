@@ -263,12 +263,13 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - [x] Prove it: full client journey demo on mobile viewport, both languages
 
 ## M16 — Referral flows both directions (§7216-gated)
-- [ ] Form 3 Hilo→Soto transition: pre-filled, BR1–BR6 locked, referral-
+- [x] Form 3 Hilo→Soto transition: pre-filled, BR1–BR6 locked, referral-
       integrity disclosure block (ack + timestamp + policy version logged),
       <60s to submit; Soto lead w/ attribution + Brian notified + warm handoff
-- [ ] Soto→Hilo referral + both approval queues (one-tap mobile approve);
+- [x] Soto→Hilo referral + both approval queues (one-tap mobile approve);
       portal CTA fires only with consent on file (automations 14–15)
-- [ ] Prove it: gating tests (no consent → no referral/CTA); disclosure audit trail
+- [x] Prove it: gating tests (no consent → no referral/CTA); disclosure audit
+      trail — PLUS live browser demo of the full ES transition journey
 
 ## M17 — Meeting intelligence
 - [ ] Whisper + Ollama containers sized for shared 16GB box (small/medium
@@ -646,3 +647,35 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
   (reuse-if-exists; the schema's referential integrity resists
   delete-recreate, as it should). .claude/launch.json runs api + portal.
 - 73/73 API tests still green; full-repo typecheck + price guard green.
+
+### M16 (completed 2026-07-05)
+- §7216 INTERPRETATION (⚠ for Brian's review, documented in
+  referrals/service.ts): soto→hilo referrals ALWAYS require signed consent
+  (tax client data crossing entities); hilo→soto requires it ONLY when the
+  contact already has Soto tax engagements — a pure Hilo entrepreneur has no
+  tax return information to protect, and their §7216 gets queued AT the Soto
+  intake the transition lands them in. Both sides tested.
+- Referral lifecycle: suggest (staff/portal CTA/session flags) →
+  pending_approval (ED/COO queue notification) → one-tap approve/decline →
+  send. hilo→soto send = warm-handoff email (EN/ES) with an HMAC transition
+  link (14-day expiry); conversion happens only when the client submits
+  Form 3 WITH the disclosure acknowledged. soto→hilo send = warm Hilo intro.
+- Form 3: token-authed prefill (contact + business + services pre-checked
+  from session-summary tax-need flags + disclosure text in the client's
+  language + policy version); submit REQUIRES the acknowledgement (400
+  without), reuses intake automation #1 with server-injected BR1–BR6
+  (BR3 from the suggester's role), stamps disclosure_shown_at + policy
+  version, notifies Brian, refuses replays (409).
+- Disclosure trail is DB-enforced: direct SQL conversion without a
+  disclosure timestamp violates the CHECK (tested). Disclosure copy is an
+  admin-editable template; policy version is an app_setting
+  ('2026-07-05.v1' — bump when the board adopts a revised policy).
+- Portal CTA (automation 15): fires on hilo_status='referral' or session
+  tax-need; §7216-aware (suppressed for consented-less tax clients, returns
+  with consent); tapping it files a referral into Jackson's queue.
+- LIVE DEMO: Rosa (ES contact) → transition link → Spanish page with her
+  data pre-filled, full disclosure block ("la Directora Ejecutiva de Hilo
+  también tiene un cargo en Soto Accounting"), submit disabled until
+  acknowledged → success screen → DB shows converted + policy version +
+  soto_status lead + br1 true. Under a minute of taps.
+- 78/78 API tests green. New: demo-transition.mjs link minter.

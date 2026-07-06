@@ -71,6 +71,12 @@ export const settings = [
     description: 'Annual report reminder to the client at T-minus days.',
   },
   {
+    key: 'referral.disclosure_policy_version',
+    value: '2026-07-05.v1',
+    description:
+      'Version stamp logged with every Hilo→Soto disclosure acknowledgement (referral-integrity audit trail). Bump when Brian adopts a revised board policy.',
+  },
+  {
     key: 'sos.recheck_days',
     value: 90,
     description: 'IL SOS good-standing re-check cadence for active clients (days since last check).',

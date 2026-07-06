@@ -257,6 +257,64 @@ export const templates = [
       'Luego le enviaremos la autorización de presentación electrónica.\n\n— Soto Accounting',
   },
   {
+    key: 'referral_disclosure',
+    name: 'Referral-integrity disclosure block (Form 3 — REQUIRED screen)',
+    channel: 'portal',
+    isPlaceholder: false,
+    variables: [],
+    bodyEn:
+      'Soto Accounting is one option — you’re free to work with any provider you choose. ' +
+      'You should know: Hilo’s Executive Director also holds a role at Soto Accounting. ' +
+      'Hilo receives no payment for this referral, and your relationship with Hilo does not ' +
+      'depend on who you choose.',
+    bodyEs:
+      'Soto Accounting es una opción — usted es libre de trabajar con cualquier proveedor que elija. ' +
+      'Debe saber: la Directora Ejecutiva de Hilo también tiene un cargo en Soto Accounting. ' +
+      'Hilo no recibe ningún pago por esta referencia, y su relación con Hilo no depende de a quién elija.',
+  },
+  {
+    key: 'referral_intro_hilo_to_soto',
+    name: 'Warm handoff — Hilo → Soto (with transition link)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'transition_link'],
+    subjectEn: 'A warm introduction to Soto Accounting',
+    subjectEs: 'Una cálida presentación a Soto Accounting',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Based on where your business is headed, we’d like to introduce you to Soto Accounting — ' +
+      'the CPA team we trust. Everything Hilo already knows is pre-filled, so this takes under a minute:\n\n' +
+      '{{transition_link}}\n\n' +
+      'You’ll see a short disclosure first — choosing them (or anyone else) is entirely up to you.\n\n— The Hilo team',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Por el rumbo que lleva su negocio, queremos presentarle a Soto Accounting — ' +
+      'el equipo de CPA en el que confiamos. Todo lo que Hilo ya sabe está pre-llenado; esto toma menos de un minuto:\n\n' +
+      '{{transition_link}}\n\n' +
+      'Primero verá una breve divulgación — elegirlos (o a cualquier otro) es totalmente su decisión.\n\n— El equipo de Hilo',
+  },
+  {
+    key: 'referral_intro_soto_to_hilo',
+    name: 'Warm intro — Soto → Hilo',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name'],
+    subjectEn: 'An introduction to Hilo — on us',
+    subjectEs: 'Una presentación a Hilo — por nuestra cuenta',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'We work alongside Hilo, a nonprofit that gives entrepreneurs like you free 1-on-1 advisory ' +
+      'sessions and workshops — operations, licensing, marketing, the works. It’s a resource we ' +
+      'genuinely recommend, and it costs you nothing.\n\n' +
+      'They’ll reach out shortly, or visit teamhilo.org whenever you like.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Trabajamos junto a Hilo, una organización sin fines de lucro que ofrece a emprendedores como ' +
+      'usted sesiones de asesoría 1 a 1 y talleres gratuitos — operaciones, licencias, marketing y más. ' +
+      'Es un recurso que recomendamos de verdad, y no le cuesta nada.\n\n' +
+      'Le contactarán pronto, o visite teamhilo.org cuando guste.\n\n— Soto Accounting',
+  },
+  {
     key: 'welcome_soto',
     name: 'Welcome — Soto Accounting (intake)',
     channel: 'email',

@@ -10,7 +10,7 @@ export const roles = [
     key: 'ceo',
     name: 'CEO / CPA',
     description: 'Brian. Full access; approval gate for pricing/scope commitments.',
-    permissions: ['*'],
+    permissions: ['*'], // '*' includes referrals.approve (Jackson too)
   },
   {
     key: 'ed_coo',
