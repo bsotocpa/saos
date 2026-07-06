@@ -202,11 +202,15 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - [x] Prove it: placeholder-block test; KBA-required test; wet-path test
 
 ## M12 — Pricing calculator (range)
-- [ ] Range calculator from live price_book (itemized per Pricing Seed Data
+- [x] Range calculator from live price_book (itemized per Pricing Seed Data
       structure); output = RANGE, never exact (MP Get an Estimate); writes
       range + version ref to engagement
-- [ ] Bundle rules applied; pass-throughs shown on quotes as non-revenue
-- [ ] Prove it: golden tests from seed values; range logic reviewed with Brian
+      (range = line minimums … banded maximums; band 15% on ONE-TIME work only
+      — recurring prices stay contractual/exact; band is an app_setting)
+- [x] Bundle rules applied; pass-throughs shown on quotes as non-revenue
+- [x] Prove it: golden tests from seed values ✓; range logic reviewed with
+      Brian ⚠ PENDING — band methodology + 15% default surfaced for his
+      confirmation (admin-tunable, no deploy)
 
 ## M13 — Stripe one-time billing
 - [ ] Invoices (from price_book items) + Stripe Checkout/PaymentIntents +
@@ -524,3 +528,22 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - ⛔ Brian decisions parked here: KBA vendor selection (M23); Docuseal API
   token + template setup when going http-mode; final legal text for letters +
   §7216 (the gate holds until then).
+
+### M12 (completed 2026-07-05)
+- computeQuote: resolves the effective price book version (asOf-able), prices
+  item×qty lines with EN/ES names, applies bundle rules (bundle_price replaces
+  ONE unit of each component; free_with zeroes component lines when the
+  condition item is present), separates software pass-throughs from revenue,
+  groups totals by recurrence (one_time / monthly / quarterly / semi_annual).
+- RANGE semantics (for Brian's review): floor = sum of line minimums;
+  top = sum of line maximums widened by pricing.estimate_band_percent
+  (seeded 15%) — applied to ONE-TIME work only; recurring is contractual and
+  stays exact. Range-priced items (CPA letters $250–500) spread before the
+  band. needs_confirmation items flag the whole quote.
+- POST /pricing/quote (compute only) + POST /tax-engagements/:id/quote:
+  locks estimated_fee_min/max (automation 8), RE-pins the parent engagement's
+  price_book_version at estimate time, full line detail into the audit trail.
+- Fix en route: price guard now permits literal 0 cents (accumulator init /
+  free-marker, never a price) — re-verified against a planted 15000 sentinel.
+- 9 golden tests, all deriving from seed values (they SHOULD break if a seed
+  price changes). 61/61 API tests green.

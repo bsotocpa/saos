@@ -19,6 +19,7 @@ import { registerNoticeRoutes } from './modules/notices/routes.ts';
 import { registerEntityRoutes } from './modules/entity/routes.ts';
 import { registerDocumentRoutes } from './modules/documents/routes.ts';
 import { registerSignatureRoutes } from './modules/signatures/routes.ts';
+import { registerPricingRoutes } from './modules/pricing/routes.ts';
 import { AppError } from './types.ts';
 
 /** True for PostgreSQL error objects (5-char SQLSTATE code). */
@@ -102,6 +103,7 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   registerEntityRoutes(app);
   registerDocumentRoutes(app);
   registerSignatureRoutes(app);
+  registerPricingRoutes(app);
 
   return app;
 }

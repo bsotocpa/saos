@@ -71,6 +71,12 @@ export const settings = [
     description: 'Annual report reminder to the client at T-minus days.',
   },
   {
+    key: 'pricing.estimate_band_percent',
+    value: 15,
+    description:
+      'Estimate range width: one-time quote maximums widen by this percent (scope uncertainty). Recurring prices stay exact. ⚠ Default awaits Brian’s confirmation — tune here, no deploy needed.',
+  },
+  {
     key: 'health.red_below',
     value: 40,
     description: 'Health score below this = Red → alert assigned staff.',

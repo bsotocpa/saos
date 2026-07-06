@@ -44,8 +44,10 @@ const PATTERNS = [
   { re: /\$\s?\d+\.\d{2}(?!\d)/g, why: 'dollar literal' },
   // $150 and larger — 3+ digit amounts (SQL params stop at $99)
   { re: /\$\s?\d{3,}(?![\d{\w])/g, why: 'dollar literal' },
-  // amount_cents = 15000 / amountCents: 15000 — numeric price assignments
-  { re: /[cC]ents\s*[:=]\s*\d/g, why: 'cents literal assignment' },
+  // amount_cents = 15000 / amountCents: 15000 — numeric price assignments.
+  // Exactly 0 is permitted: it's an accumulator initializer / "free" marker,
+  // never a price.
+  { re: /[cC]ents\s*[:=]\s*(?!0\b)\d/g, why: 'cents literal assignment' },
 ];
 
 function* walk(dir) {
