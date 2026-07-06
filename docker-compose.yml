@@ -109,6 +109,20 @@ services:
       - saos_ollama_data:/root/.ollama
     networks: [saos]
 
+  # ntfy — self-hosted push notifications (Brian + Jackson iPhones subscribe
+  # to the alerts topic; access control configured at M23). Tiny image, so it
+  # runs in the default profile.
+  ntfy:
+    # TODO(M21 hardening): pin a specific version tag.
+    image: binwiederhier/ntfy:latest
+    restart: unless-stopped
+    command: serve
+    ports:
+      - "${NTFY_PORT:-8093}:80"
+    volumes:
+      - saos_ntfy_data:/var/lib/ntfy
+    networks: [saos]
+
   # ── Scheduling (profile: booking) — Cal.com self-hosted ─────────────────────
   # book.sotoaccounting.com in production. Shares the Postgres instance via
   # its own database (created by calcom-db-init). Event types (two-lane
@@ -187,6 +201,7 @@ volumes:
   saos_docuseal_data:
   saos_whisper_cache:
   saos_ollama_data:
+  saos_ntfy_data:
 
 networks:
   saos:

@@ -25,6 +25,7 @@ import { registerFormRoutes } from './modules/forms/routes.ts';
 import { registerReferralRoutes } from './modules/referrals/routes.ts';
 import { registerMeetingRoutes } from './modules/meetings/routes.ts';
 import { registerBookingRoutes } from './modules/booking/routes.ts';
+import { registerDashboardRoutes } from './modules/dashboards/routes.ts';
 import { AppError } from './types.ts';
 
 /** True for PostgreSQL error objects (5-char SQLSTATE code). */
@@ -117,6 +118,7 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   registerReferralRoutes(app);
   registerMeetingRoutes(app);
   registerBookingRoutes(app);
+  registerDashboardRoutes(app);
 
   return app;
 }

@@ -71,6 +71,12 @@ export const settings = [
     description: 'Annual report reminder to the client at T-minus days.',
   },
   {
+    key: 'funder.pro_bono_rate_item_code',
+    value: 'IND_SPECIALIZED_HOURLY',
+    description:
+      'Price-book item whose rate values pro bono hours for funder reports (hours × standard rate — MP Time Tracking). Never a hardcoded dollar figure.',
+  },
+  {
     key: 'booking.deposit_items',
     value: { 'new-client-discovery': 'DEPOSIT_1040', 'business-discovery': 'DEPOSIT_BUSINESS_TAX' },
     description:

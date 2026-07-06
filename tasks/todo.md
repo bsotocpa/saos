@@ -308,14 +308,24 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       keys, same as M13; identical code path)
 
 ## M19 — Dashboards + alerts (Phase 1 set)
-- [ ] Executive (Brian): open returns by stage+value, revenue MTD/YTD, A/R,
+- [x] Executive (Brian): open returns by stage+value, revenue MTD/YTD, A/R,
       alerts, capacity, health distribution, deadline-countdown widget
-- [ ] Hilo Ops (Jackson): entrepreneurs by status, sessions, referral queues,
+      (MRR shows an explicit Phase 3 note — never an invented number;
+      capacity is the open-work proxy until Phase 4)
+- [x] Hilo Ops (Jackson): entrepreneurs by status, sessions, referral queues,
       summaries 7-day, milestones 30-day, live funder metrics
-- [ ] ntfy push (Brian+Jackson) + Phase-1 alert set (IRS 48h, SLA, non-response
-      7d, scope creep, health Red, magic-link bounce, unsigned 8879 near
-      deadline, extension at-risk…)
-- [ ] Prove it: dashboards over seeded demo data; test push received on iPhone
+      (milestones/grants/workshops carry explicit Phase 2/3 notes; pro bono
+      value = hours × price-book rate via funder.pro_bono_rate_item_code)
+- [x] ntfy push (Brian+Jackson) + Phase-1 alert set — every module's
+      notifications already flow here; warning/critical to leadership pushes
+      within 60s via the fast sweep, stamped once
+- [x] Prove it: dashboards over seeded demo data ✓ (live browser run) +
+      ntfy round-trip verified server-side; ⛔ literal iPhone subscription =
+      Brian installs the ntfy app → server + topic saos-alerts (M23 sets up
+      auth + the public hostname)
+- [x] BONUS: internal app scaffold shipped with the two deferred pages —
+      Deliver Return (M10/M15 deferral) + Session Recorder (M17 deferral) —
+      plus Alert Center and the staff MFA-enrollment login flow
 
 ## M20 — Admin interface core
 - [ ] Price-book editor (new-version-on-edit semantics + needs_confirmation
@@ -745,3 +755,24 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
   to staff; non-Zoom discovery bookings flagged (Zoom-only rule lives in the
   Cal.com event-type config).
 - 7 booking tests; 90/90 API tests green.
+
+### M19 (completed 2026-07-06)
+- Dashboard endpoints (leadership-only RBAC — preparer 403 tested): every
+  figure traces to module tables; deferred sources carry EXPLICIT notes
+  (MRR → Phase 3, milestones → Phase 2, grants/workshops → Phase 3) — no
+  invented numbers. Pro bono valued from the price book (2.5h × $150 = $375
+  asserted in tests).
+- Alert Center endpoints (own notifications, mark-read, foreign 404) + ntfy
+  push: self-hosted container (default profile), 60-second sweep pushes
+  leadership warning/critical once (info never pushes; non-leadership stays
+  in-app; re-sweep pushes zero — all tested).
+- Internal app (apps/internal, :3005): staff login WITH the full MFA
+  enrollment flow (password → setup secret → verify → session), Executive +
+  Hilo dashboards, Alert Center, Deliver Return (ATX PDF → client portal +
+  stage move), Session Recorder (MediaRecorder → meeting pipeline).
+- LIVE VERIFICATION: demo staff account created via CLI → first-login MFA
+  enrollment completed in the browser (secret → computed code → session) →
+  Executive + Hilo dashboards rendered over dev data → critical test alert
+  was pushed by the AUTOMATIC 60s sweep before the manual trigger could run
+  → polled ntfy: message present at priority urgent, title+body intact.
+- 93/93 API tests green.

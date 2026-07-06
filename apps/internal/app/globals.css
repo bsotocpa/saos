@@ -1,0 +1,103 @@
+/* Internal staff app — Soto brand tokens, denser layout than the portal. */
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --forest: #0d3b38;
+  --forest-deep: #092a28;
+  --electric: #00c9bf;
+  --electric-soft: #e0f9f7;
+  --ink: #14211f;
+  --muted: #5b6f6c;
+  --line: #dbe5e3;
+  --paper: #f6f9f8;
+  --card: #ffffff;
+  --warn: #b45309;
+  --warn-soft: #fef3e2;
+  --danger: #b3261e;
+  --danger-soft: #fdecea;
+  --ok: #0f7b6c;
+  --ok-soft: #e2f5f0;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.wordmark { font-weight: 800; font-size: 18px; color: #fff; text-decoration: none; }
+.wordmark .dot { color: var(--electric); }
+.wordmark .sub { font-weight: 500; font-size: 11px; opacity: 0.7; margin-left: 8px; }
+
+.topbar {
+  background: var(--forest); color: #fff; padding: 8px 16px;
+  display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10;
+}
+.topbar .spacer { flex: 1; }
+.topbar button {
+  background: transparent; border: 1px solid rgba(255,255,255,0.35); color: #fff;
+  border-radius: 999px; padding: 3px 12px; font: inherit; font-size: 12px; cursor: pointer;
+}
+
+.nav { display: flex; gap: 4px; overflow-x: auto; background: var(--forest-deep); padding: 5px 12px; }
+.nav a {
+  color: rgba(255,255,255,0.82); text-decoration: none; font-size: 12.5px;
+  padding: 5px 10px; border-radius: 8px; white-space: nowrap;
+}
+.nav a.active, .nav a:hover { background: rgba(0,201,191,0.16); color: #fff; }
+
+main { max-width: 1080px; margin: 0 auto; padding: 18px 16px 60px; }
+h1 { font-size: 20px; font-weight: 700; margin: 6px 0 14px; }
+h2 { font-size: 14px; font-weight: 700; margin: 0 0 8px; color: var(--forest); }
+.muted { color: var(--muted); }
+.small { font-size: 12.5px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.card.span { grid-column: 1 / -1; }
+
+.stat { font-size: 24px; font-weight: 800; color: var(--forest); }
+.stat-row { display: flex; gap: 20px; flex-wrap: wrap; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); }
+td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: none; }
+
+.badge { display: inline-block; font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 2px 9px; background: var(--electric-soft); color: var(--forest); }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.danger { background: var(--danger-soft); color: var(--danger); }
+.badge.ok { background: var(--ok-soft); color: var(--ok); }
+
+.btn {
+  display: inline-block; background: var(--forest); color: #fff; border: none; border-radius: 9px;
+  padding: 8px 14px; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: none;
+}
+.btn.accent { background: var(--electric); color: var(--forest-deep); }
+.btn.ghost { background: transparent; color: var(--forest); border: 1px solid var(--line); }
+.btn.danger { background: var(--danger); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+label.field { display: block; margin-bottom: 10px; font-size: 12.5px; font-weight: 600; color: var(--forest); }
+input, select, textarea {
+  display: block; width: 100%; margin-top: 3px; padding: 8px 10px; font: inherit; font-weight: 400;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+}
+input:focus, select:focus { outline: 2px solid var(--electric); border-color: var(--electric); }
+
+.alert { border-radius: 9px; padding: 9px 12px; font-size: 13px; margin-bottom: 10px; }
+.alert.info { background: var(--electric-soft); color: var(--forest); }
+.alert.error { background: var(--danger-soft); color: var(--danger); }
+
+.rec-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--danger); animation: pulse 1s infinite; margin-right: 8px; }
+@keyframes pulse { 50% { opacity: 0.3; } }

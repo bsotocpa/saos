@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace=@saos/portal"],
       "port": 3000
+    },
+    {
+      "name": "internal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace=@saos/internal"],
+      "port": 3005
     }
   ]
 }

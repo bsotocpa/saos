@@ -81,6 +81,10 @@ const schema = z.object({
   OLLAMA_URL: z.string().default('http://localhost:11434'),
   OLLAMA_MODEL: z.string().default('llama3.2:3b'),
   ANTHROPIC_API_KEY: z.string().optional(),
+  // ntfy push (self-hosted — Brian + Jackson iPhones, MP Alert Center).
+  PUSH_MODE: z.enum(['stub', 'ntfy']).default('stub'),
+  NTFY_URL: z.string().default('http://localhost:8093'),
+  NTFY_TOPIC: z.string().default('saos-alerts'),
 });
 
 export type Config = z.infer<typeof schema>;

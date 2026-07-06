@@ -2,16 +2,22 @@
   "name": "@saos/internal",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
-  "description": "SAOS internal staff app + admin (app.sotoaccounting.com / admin.sotoaccounting.com) — scaffolded in M0",
+  "description": "SAOS internal staff app (app.sotoaccounting.com): dashboards, alerts, return upload, session recorder",
   "scripts": {
+    "dev": "next dev -p 3005",
+    "build": "next build",
+    "start": "next start -p 3005",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@saos/shared": "*"
+    "next": "^15.5.20",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.6.0"
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.0"
   }
 }

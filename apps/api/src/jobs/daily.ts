@@ -11,8 +11,10 @@ import { runEntityComplianceJob } from '../modules/entity/service.ts';
 import { runDocumentChaseJob } from '../modules/documents/service.ts';
 import { runInvoiceOverdueJob } from '../modules/billing/service.ts';
 import { runSosRecheckJob } from '../modules/entity/sos.ts';
+import { makePusher, runPushSweep } from '../notify/push.ts';
 
 const TICK_MS = 15 * 60 * 1000;
+const PUSH_SWEEP_MS = 60 * 1000; // alerts reach iPhones within a minute
 
 export async function runDailyJobs(app: FastifyInstance, today: string): Promise<void> {
   const decision = await runExtensionDecisionListJob(app, today);
@@ -60,5 +62,12 @@ export function startScheduler(app: FastifyInstance): NodeJS.Timeout {
   void tick();
   const handle = setInterval(tick, TICK_MS);
   handle.unref();
+
+  // Fast lane: leadership alerts push to iPhones within a minute (MP Alert Center).
+  const pusher = makePusher(app.config);
+  const pushHandle = setInterval(() => {
+    runPushSweep(app, pusher).catch((err) => app.log.warn({ err }, 'push sweep failed'));
+  }, PUSH_SWEEP_MS);
+  pushHandle.unref();
   return handle;
 }
