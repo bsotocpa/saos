@@ -128,15 +128,16 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       (walkthrough scripted as the CRM e2e test; UI demo lands with M15)
 
 ## M7 — Tax engagement module
-- [ ] Pipeline stages + transitions (MP): Intake Started → … → Completed |
+- [x] Pipeline stages + transitions (MP): Intake Started → … → Completed |
       On Hold | Withdrawn; parallel "Extended" tag; Pending Client Response
-      auto-set on doc request
-- [ ] Signature gates enforced in code: engagement letter → past Scheduled;
-      8879 → Filed (MP automations 7)
-- [ ] Complexity score fn (base 1 … cap L5) + scope-creep auto-flag (final >
-      estimate top) with required reason enum
-- [ ] Estimated-fee-locked → preparation unlocked (automation 8)
-- [ ] Prove it: table-driven tests for gates/score/creep; stage-history rows
+      auto-set on doc request ("Extended" lives on extension_filed — M8 wires it)
+- [x] Signature gates enforced in code: engagement letter → past Scheduled;
+      8879 → Filed (MP automations 7) — incl. wet-signature path with
+      signature method recorded; Docuseal remote path (M11) sets the same fields
+- [x] Complexity score fn (base 1 … cap L5) + scope-creep auto-flag (final >
+      estimate top) with required reason enum ('other' requires description)
+- [x] Estimated-fee-locked → preparation unlocked (automation 8)
+- [x] Prove it: table-driven tests for gates/score/creep; stage-history rows
 
 ## M8 — Extension workflow + deadline engine
 - [ ] Deadline derivation as pure fn from return type + fiscal-year end
@@ -383,3 +384,23 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
   chars), audited as engagement.independence_override.
 - Engagements pin price_book_version_id at creation (grandfathering root).
 - 22/22 API tests green.
+
+### M7 (completed 2026-07-05)
+- Pipeline state machine with explicit transition map; on_hold/withdrawn
+  reachable from any non-terminal stage; resuming from on_hold re-applies all
+  gates (tested). Every transition writes a stage-history row with client/
+  staff delay attribution (pending_client_response + client_review = client
+  court). filed_date auto-stamps on → filed.
+- Three gates enforced in code, all 409 with distinct error codes:
+  engagement_letter_required (past Scheduled), estimate_lock_required
+  (into preparation, automation 8), f8879_required (into filed).
+- Wet-signature endpoint (in-office ~10%): records letter/8879 with
+  signature_method='in_person_wet', maintains contact letter rollup, audited.
+  M11's Docuseal webhook will set the same timestamps for the remote path.
+- Scope creep: final > estimate top auto-flags; reason REQUIRED at that
+  moment (409 without), 'other' requires description; audited with
+  over-estimate delta. Complexity: pure fn, 12 table-driven cases, cap L5
+  (interpretation documented: multi-state counts states beyond the first).
+- Document-request creation triggers the pending_client_response side-effect
+  (automation 4's pipeline half; reminders/items land in M10).
+- 28/28 API tests green.
