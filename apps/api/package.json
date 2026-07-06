@@ -12,9 +12,11 @@
     "create-staff": "node src/scripts/create-staff.ts"
   },
   "dependencies": {
+    "@fastify/multipart": "^10.0.0",
     "argon2": "^0.44.0",
     "dotenv": "^16.4.0",
     "fastify": "^5.2.0",
+    "minio": "^8.0.7",
     "nodemailer": "^9.0.3",
     "otpauth": "^9.3.0",
     "pg": "^8.13.0",

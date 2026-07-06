@@ -200,6 +200,63 @@ export const templates = [
       'Si algo se lo impide, responda hoy y lo resolvemos juntos.\n\n— Soto Accounting',
   },
   {
+    key: 'doc_request',
+    name: 'Document request (initial, itemized)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'request_title', 'items_list', 'portal_link'],
+    subjectEn: 'Documents needed: {{request_title}}',
+    subjectEs: 'Documentos necesarios: {{request_title}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'To move your work forward we need the following:\n\n{{items_list}}\n\n' +
+      'Upload them to your secure portal (photos from your phone work great):\n\n{{portal_link}}\n\n' +
+      'For your security, please use the portal — not email or text — for documents.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Para avanzar con su trabajo necesitamos lo siguiente:\n\n{{items_list}}\n\n' +
+      'Súbalos a su portal seguro (las fotos desde su teléfono funcionan perfecto):\n\n{{portal_link}}\n\n' +
+      'Por su seguridad, use el portal — no correo ni mensajes de texto — para documentos.\n\n— Soto Accounting',
+  },
+  {
+    key: 'doc_request_reminder',
+    name: 'Document request reminder (recurring)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'request_title', 'portal_link'],
+    subjectEn: 'Reminder: we still need your documents ({{request_title}})',
+    subjectEs: 'Recordatorio: aún necesitamos sus documentos ({{request_title}})',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'A friendly reminder — we’re still waiting on documents for: {{request_title}}.\n\n' +
+      'Your secure portal is the fastest way to get them to us:\n\n{{portal_link}}\n\n' +
+      'Stuck on something? Reply here and we’ll figure it out together.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Un recordatorio amistoso — seguimos esperando documentos para: {{request_title}}.\n\n' +
+      'Su portal seguro es la vía más rápida para enviárnoslos:\n\n{{portal_link}}\n\n' +
+      '¿Algo se le complica? Responda aquí y lo resolvemos juntos.\n\n— Soto Accounting',
+  },
+  {
+    key: 'return_delivered',
+    name: 'Tax return delivered to portal',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'tax_year', 'portal_link'],
+    subjectEn: 'Your {{tax_year}} tax return is ready to review',
+    subjectEs: 'Su declaración de impuestos {{tax_year}} está lista para revisar',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Your {{tax_year}} tax return is ready and waiting in your portal under “My Returns”:\n\n{{portal_link}}\n\n' +
+      'Review it at your convenience — it’s available for download any time. ' +
+      'We’ll follow up on the e-file authorization next.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Su declaración de impuestos {{tax_year}} está lista en su portal, en “Mis Declaraciones”:\n\n{{portal_link}}\n\n' +
+      'Revísela con calma — puede descargarla en cualquier momento. ' +
+      'Luego le enviaremos la autorización de presentación electrónica.\n\n— Soto Accounting',
+  },
+  {
     key: 'annual_report_reminder',
     name: 'Annual report reminder (client, T-30)',
     channel: 'email',

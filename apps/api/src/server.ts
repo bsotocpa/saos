@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import multipart from '@fastify/multipart';
 import { ZodError } from 'zod';
 import type { Config } from './config.ts';
 import { createPool } from './db.ts';
@@ -16,6 +17,7 @@ import { registerTaxRoutes } from './modules/tax/routes.ts';
 import { registerExtensionRoutes } from './modules/tax/extension-routes.ts';
 import { registerNoticeRoutes } from './modules/notices/routes.ts';
 import { registerEntityRoutes } from './modules/entity/routes.ts';
+import { registerDocumentRoutes } from './modules/documents/routes.ts';
 import { AppError } from './types.ts';
 
 /** True for PostgreSQL error objects (5-char SQLSTATE code). */
@@ -40,6 +42,10 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   app.decorate('mailer', overrides.mailer ?? createMailer(config));
   app.decorate('authenticate', buildAuthenticate(app));
   app.decorate('authenticateClient', buildAuthenticateClient(app));
+
+  void app.register(multipart, {
+    limits: { fileSize: config.DOC_MAX_SIZE_MB * 1024 * 1024, files: 1 },
+  });
 
   app.addHook('onClose', async () => {
     await app.db.end();
@@ -93,6 +99,7 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   registerExtensionRoutes(app);
   registerNoticeRoutes(app);
   registerEntityRoutes(app);
+  registerDocumentRoutes(app);
 
   return app;
 }

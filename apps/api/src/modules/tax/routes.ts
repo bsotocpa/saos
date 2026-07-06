@@ -9,6 +9,7 @@ import { writeAudit } from '../../audit.ts';
 import { requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
 import { createEngagement } from '../engagements/service.ts';
+import { sendTemplatedEmail } from '../templates/service.ts';
 import { computeComplexityScore } from './complexity.ts';
 import { TAX_STAGES, markDocumentsRequested, transitionStage } from './pipeline.ts';
 
@@ -72,6 +73,9 @@ const DocRequestBody = z.object({
   noteEn: z.string().optional(),
   noteEs: z.string().optional(),
   dueDate: z.iso.date().optional(),
+  items: z
+    .array(z.object({ labelEn: z.string().min(1), labelEs: z.string().optional() }))
+    .default([]),
 });
 
 function meta(request: FastifyRequest) {
@@ -275,8 +279,9 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     return { status: 'ok' };
   });
 
-  // Minimal document-request creation (automation 4's pipeline side-effect;
-  // the full request/reminder machinery is M10).
+  // Document-request creation (automation 4): itemized request → client email
+  // in their language → engagement flips to pending_client_response. The
+  // recurring reminder + 7-day alert live in the document-chase job (M10).
   app.post('/document-requests', manage, async (request, reply) => {
     const b = DocRequestBody.parse(request.body);
     const te = await loadTaxEngagement(app, b.taxEngagementId);
@@ -288,7 +293,39 @@ export function registerTaxRoutes(app: FastifyInstance): void {
         b.noteEn ?? null, b.noteEs ?? null, b.dueDate ?? null, request.staff!.id,
       ]
     );
+    const requestId = rows[0]!.id;
+    for (const item of b.items) {
+      await app.db.query(
+        `INSERT INTO document_request_items (request_id, label_en, label_es) VALUES ($1, $2, $3)`,
+        [requestId, item.labelEn, item.labelEs ?? null]
+      );
+    }
+
+    // Tell the client what we need, in their language, with an item list.
+    const contact = await app.db.query<{ first_name: string; email: string | null; language: 'en' | 'es' }>(
+      `SELECT first_name, email, language FROM contacts WHERE id = $1`,
+      [te.contact_id]
+    );
+    const c = contact.rows[0];
+    if (c?.email) {
+      const items = b.items
+        .map((i) => `• ${(c.language === 'es' ? i.labelEs : i.labelEn) ?? i.labelEn}`)
+        .join('\n');
+      await sendTemplatedEmail(app, {
+        to: c.email,
+        templateKey: 'doc_request',
+        language: c.language,
+        contactId: te.contact_id,
+        vars: {
+          first_name: c.first_name,
+          request_title: (c.language === 'es' ? b.titleEs : b.titleEn) ?? b.titleEn,
+          items_list: items || '—',
+          portal_link: app.config.PORTAL_BASE_URL,
+        },
+      });
+    }
+
     await markDocumentsRequested(app, actorOf(request), b.taxEngagementId);
-    return reply.code(201).send({ id: rows[0]!.id });
+    return reply.code(201).send({ id: requestId });
   });
 }

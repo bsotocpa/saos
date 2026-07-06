@@ -46,6 +46,16 @@ const schema = z.object({
   WEBHOOK_SECRET: z.string().min(8).default('dev-webhook-secret'),
   // Daily job scheduler (extension decision list, summer chase, health).
   JOBS_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  // MinIO object storage (documents). The API is the ONLY thing that talks to
+  // MinIO — clients never get direct/presigned access, so every read passes
+  // the auth + audit path and MinIO stays off the public internet.
+  MINIO_ENDPOINT: z.string().default('localhost'),
+  MINIO_PORT: z.coerce.number().int().positive().default(9000),
+  MINIO_USE_SSL: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+  MINIO_ROOT_USER: z.string().default('saos'),
+  MINIO_ROOT_PASSWORD: z.string().default('saos_dev_password'),
+  // Upload limits (client tax documents are PDFs/photos — 25MB is generous).
+  DOC_MAX_SIZE_MB: z.coerce.number().int().positive().default(25),
 });
 
 export type Config = z.infer<typeof schema>;

@@ -93,6 +93,28 @@ export async function makeContact(
   return { id: rows[0]!.id, email: opts.email };
 }
 
+/** Build a multipart/form-data payload for fastify.inject (fields + one file). */
+export function multipartBody(
+  fields: Record<string, string>,
+  file: { field: string; filename: string; contentType: string; data: Buffer }
+): { payload: Buffer; headers: Record<string, string> } {
+  const boundary = '----saosTestBoundary4';
+  const parts: Buffer[] = [];
+  for (const [name, value] of Object.entries(fields)) {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+  }
+  parts.push(
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="${file.field}"; filename="${file.filename}"\r\nContent-Type: ${file.contentType}\r\n\r\n`
+    )
+  );
+  parts.push(file.data, Buffer.from(`\r\n--${boundary}--\r\n`));
+  return {
+    payload: Buffer.concat(parts),
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+  };
+}
+
 export async function auditRows(db: pg.Pool, action: string, actorLabel?: string): Promise<number> {
   const { rows } = await db.query<{ n: number }>(
     actorLabel

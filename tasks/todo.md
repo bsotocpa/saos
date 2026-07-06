@@ -167,12 +167,18 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       (createIrsNotice service ready — M10's upload handler calls it)
 
 ## M10 — Document center backend (MinIO)
-- [ ] Upload/download service: presigned or streamed, category enum, per-file
+- [x] Upload/download service: presigned or streamed, category enum, per-file
       status, size/type limits; **every access audit-logged**
-- [ ] Document requests → Pending Client Response + 3-day reminder + 7-day
-      non-response alert (automations 4–5)
-- [ ] IRS-notice-category upload → auto-create notice record + alert (minutes)
-- [ ] Prove it: audit-log assertions on every path; reminder job tests
+      (DECIDED: streamed through the API, not presigned — MinIO never faces
+      the internet and no byte moves without the auth+audit path; audit row
+      writes BEFORE the stream, fail-closed)
+- [x] Document requests → Pending Client Response + 3-day reminder + 7-day
+      non-response alert (automations 4–5) — itemized requests, initial
+      bilingual email, per-item fulfillment, completion stamps docs_received_at
+- [x] IRS-notice-category upload → auto-create notice record + alert (minutes)
+- [x] Prove it: audit-log assertions on every path; reminder job tests
+- [x] BONUS (pulled from M15's backend half): return delivery — ATX PDF upload
+      → saos-returns bucket, stage → client_review, client notified EN/ES
 
 ## M11 — Docuseal + signature flows
 - [ ] Docuseal container (sign. subdomain in prod); envelope create/webhook sync;
@@ -462,3 +468,27 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - New staffing helpers: role→staff resolution + notifyOnce (idempotent
   alerts) — routing is always by role, never by name.
 - 40/40 API tests green.
+
+### M10 (completed 2026-07-05)
+- Streamed (not presigned) document storage: MinIO stays entirely internal;
+  the API is the only thing that touches it. Audit rows write BEFORE bytes
+  stream (no audit → no access, fail closed). Uploads: mime allowlist
+  (pdf/images/office/csv/txt), 25MB configurable cap, sha256, per-contact
+  object keys, bucket per family (documents / signed-docs / returns).
+- Row-level isolation on downloads: another client's document = the same 404
+  as a nonexistent one, and no audit access row (verified). Staff downloads
+  and status changes separately audited.
+- IRS-notice uploads from the portal auto-create the notice record (source
+  portal_upload, linked document) and alert the tax_preparer role in the
+  same request — "within minutes" is actually "within the request".
+- Document requests now itemized: initial bilingual email lists the items in
+  the client's language; per-item fulfillment rolls request status; full
+  completion stamps tax_engagements.docs_received_at (feeds health + at-risk).
+- Chase job (daily, date-guarded): recurring reminder every N days (settings)
+  per open request; 7-day non-response alert to Brian + Jackson via notifyOnce
+  (recurs never, reminder recurs — both proven).
+- Return delivery: preparer uploads the final PDF with category
+  return_deliverable → lands in saos-returns, stage advances to client_review
+  when the pipeline allows, client notified in their language.
+- 3 new bilingual templates (doc_request, doc_request_reminder,
+  return_delivered). 46/46 API tests green (MinIO round-trip byte-verified).
