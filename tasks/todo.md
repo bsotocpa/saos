@@ -181,19 +181,25 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       → saos-returns bucket, stage → client_review, client notified EN/ES
 
 ## M11 — Docuseal + signature flows
-- [ ] Docuseal container (sign. subdomain in prod); envelope create/webhook sync;
+- [x] Docuseal container (sign. subdomain in prod); envelope create/webhook sync;
       signed PDFs → MinIO + contact link + audit
-- [ ] Engagement-letter (per service type) + §7216 templates as clearly-marked
-      PLACEHOLDERs, admin-editable
-- [ ] **Placeholder gate enforced in code**: any template flagged PLACEHOLDER is
+      (adapter pattern: stub for dev/test, http for the real instance;
+      production send path refuses stub; webhook idempotent on replays)
+- [x] Engagement-letter (per service type) + §7216 templates as clearly-marked
+      PLACEHOLDERs, admin-editable (seeded since M0–M3)
+- [x] **Placeholder gate enforced in code**: any template flagged PLACEHOLDER is
       blocked from sending to any production client — plus regression test
-      (CLAUDE.md non-negotiable)
-- [ ] 8879 remote flow: pluggable KBA interface → stub/sandbox adapter first
+      (CLAUDE.md non-negotiable) — now covers ENVELOPES too: drafting/queueing
+      allowed, sending blocked until Brian finalizes copy in admin
+- [x] 8879 remote flow: pluggable KBA interface → stub/sandbox adapter first
       (vendor = Brian decision; $1–3/sig) → KBA pass required before envelope;
       in-person wet path = scan/upload to "Signed Authorizations"; signature
-      method recorded per 8879
-- [ ] Signature status feeds gates from M7
-- [ ] Prove it: placeholder-block test; KBA-required test; wet-path test
+      method recorded per 8879 (production refuses remote 8879 without a real
+      vendor — sandbox never reaches prod; wet path always available)
+- [x] Signature status feeds gates from M7 (webhook completion sets letter/
+      8879 timestamps; §7216 completion records consent via M6; pipeline
+      unblocking verified end-to-end)
+- [x] Prove it: placeholder-block test; KBA-required test; wet-path test
 
 ## M12 — Pricing calculator (range)
 - [ ] Range calculator from live price_book (itemized per Pricing Seed Data
@@ -492,3 +498,29 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
   when the pipeline allows, client notified in their language.
 - 3 new bilingual templates (doc_request, doc_request_reminder,
   return_delivered). 46/46 API tests green (MinIO round-trip byte-verified).
+
+### M11 (completed 2026-07-05)
+- Docuseal behind an adapter (stub | http via DOCUSEAL_MODE): stub needs no
+  instance and mints deterministic ids + synthetic signed PDFs; http talks to
+  the real container (API token from its admin UI). Container added to
+  compose (:3002, SQLite volume) — verified up and serving. Production send
+  refuses stub mode at runtime.
+- Envelope lifecycle: CREATE is always allowed (intake queues envelopes into
+  the portal checklist), SEND is where all three gates live — placeholder
+  block (unsendable in any environment, regression-tested), KBA-passed
+  requirement for remote 8879s, production-stub refusal. Completion webhook
+  (shared-secret, idempotent on replays): fetches the signed PDF → MinIO
+  saos-signed-docs via the audited M10 path → links signed_document_id →
+  sets the M7 gate fields (letter/8879 timestamps, §7216 consent via M6's
+  record7216Consent). Pipeline unblocking proven end-to-end.
+- KBA: pluggable KbaVerifier interface; sandbox adapter + simulate endpoint
+  that exists only in sandbox mode; production + no vendor = remote 8879
+  refused with a clear 503 (wet path remains). KBA pass auto-sends the
+  envelope; failure keeps it unsendable; double-resolution refused.
+- Wet path upgraded: records a completed envelope (method in_person_wet)
+  linking the scanned document — one queryable signature-status source for
+  both paths. Portal "Sign Documents" endpoint scoped to the session contact.
+- 52/52 API tests green.
+- ⛔ Brian decisions parked here: KBA vendor selection (M23); Docuseal API
+  token + template setup when going http-mode; final legal text for letters +
+  §7216 (the gate holds until then).

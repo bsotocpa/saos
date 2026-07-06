@@ -58,6 +58,8 @@ const ComplexityBody = z.object({
 const WetSignatureBody = z.object({
   type: z.enum(['engagement_letter', 'f8879']),
   note: z.string().optional(),
+  /** The scanned signed document (uploaded to Signed Authorizations first). */
+  documentId: z.uuid().optional(),
 });
 
 const ListQuery = z.object({
@@ -270,6 +272,14 @@ export function registerTaxRoutes(app: FastifyInstance): void {
         [id]
       );
     }
+    // Completed envelope record — one queryable source of signature status,
+    // wet or remote (the signed scan links in when provided).
+    await app.db.query(
+      `INSERT INTO signature_envelopes
+         (contact_id, tax_engagement_id, type, status, signature_method, signed_document_id, completed_at, created_by_staff_id)
+       VALUES ($1, $2, $3::envelope_type, 'completed', 'in_person_wet', $4, now(), $5)`,
+      [te.contact_id, id, b.type === 'f8879' ? 'f8879' : 'engagement_letter', b.documentId ?? null, request.staff!.id]
+    );
     await writeAudit(app.db, {
       actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
       action: 'signature.recorded_wet', objectType: 'tax_engagement', objectId: id,

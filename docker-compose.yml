@@ -66,6 +66,19 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-saos_dev_password}
     networks: [saos]
 
+  # Docuseal (self-hosted e-signatures — sign.sotoaccounting.com in prod).
+  # SQLite storage inside its own volume; the API talks to it via
+  # DOCUSEAL_MODE=http + DOCUSEAL_URL + an API token from its admin UI.
+  docuseal:
+    # TODO(M21 hardening): pin a specific version tag before staging/production.
+    image: docuseal/docuseal:latest
+    restart: unless-stopped
+    ports:
+      - "${DOCUSEAL_PORT:-3002}:3000"
+    volumes:
+      - saos_docuseal_data:/data
+    networks: [saos]
+
   # ── Application services (placeholders) ─────────────────────────────────────
   # Wired now so the topology is visible; excluded from a default `up` via the
   # "app" profile. Dockerfiles land with their milestones (api: M4, portal: M15,
@@ -100,6 +113,7 @@ services:
 volumes:
   saos_pg_data:
   saos_minio_data:
+  saos_docuseal_data:
 
 networks:
   saos:
