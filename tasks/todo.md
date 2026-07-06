@@ -328,11 +328,15 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       plus Alert Center and the staff MFA-enrollment login flow
 
 ## M20 — Admin interface core
-- [ ] Price-book editor (new-version-on-edit semantics + needs_confirmation
+- [x] Price-book editor (new-version-on-edit semantics + needs_confirmation
       queue for the ⚠ items) · template editor EN/ES with placeholder flag
       badge · staff + permissions · SLA windows + alert thresholds
-- [ ] Copy changes never require deploy (CLAUDE.md) — templates fully DB-driven
-- [ ] Prove it: price edit → new version; old engagements keep old version
+- [x] Copy changes never require deploy (CLAUDE.md) — templates fully DB-driven
+      (proven end to end: clearing a placeholder in admin made the blocked
+      M11 envelope sendable — zero deploy)
+- [x] Prove it: price edit → new version; old engagements keep old version
+      (v2 created future-dated; pinned engagement stayed on v1; the
+      calculator followed v2 on its effective date)
 
 ## M21 — Ops hardening
 - [ ] docker-compose.staging.yml (full clone) · Uptime Kuma monitors all
@@ -776,3 +780,27 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
   was pushed by the AUTOMATIC 60s sweep before the manual trigger could run
   → polled ntfy: message present at priority urgent, title+body intact.
 - 93/93 API tests green.
+
+### M20 (completed 2026-07-06)
+- Price book admin: a new version is a FULL COPY of the current one (73
+  items + 3 bundle rules verified) with the listed changes applied inside a
+  transaction; the old version closes at the handover date; future-dated
+  increases supported (schedule a season adjustment in advance). THE
+  prove-it passed: pinned engagement kept v1 while asOf-dated quotes
+  followed v2. Confirming a ⚠ seed item is metadata (no version churn) —
+  the admin UI surfaces all 12 as the "awaiting your confirmation" launch-
+  gate queue with one-click confirm.
+- Template admin: EN/ES side-by-side editor, version bump per edit,
+  PLACEHOLDER badges sorted first; "Save as FINAL" clears the flag behind a
+  confirm dialog and is audited as template.placeholder_cleared. Cross-
+  checked against M11: the blocked engagement-letter envelope became
+  sendable the moment the flag cleared — copy changes require zero deploys.
+- Settings admin: every app_setting editable inline; updates audit old→new;
+  unknown keys refused. Staff admin: role dropdown (permissions preview),
+  create-with-temp-password (shown once, never emailed), deactivate/
+  reactivate — all on M4's audited endpoints.
+- RBAC: pricing.edit / admin.settings are '*'-only — Ana's 403s tested
+  (spec: "No pricing changes" for preparers).
+- Browser-verified: pricing page (v1 badge, ⚠ queue with 12 items,
+  new-version staging form) + templates page (27 templates, 7 PLACEHOLDER
+  sorted first, 20 live). 98/98 API tests green.

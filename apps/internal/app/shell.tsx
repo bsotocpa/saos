@@ -11,6 +11,10 @@ const NAV = [
   { href: '/alerts', label: 'Alerts' },
   { href: '/upload-return', label: 'Deliver Return' },
   { href: '/recorder', label: 'Recorder' },
+  { href: '/admin/pricing', label: 'Pricing' },
+  { href: '/admin/templates', label: 'Templates' },
+  { href: '/admin/staff', label: 'Staff' },
+  { href: '/admin/settings', label: 'Settings' },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {
