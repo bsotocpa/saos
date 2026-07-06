@@ -1,16 +1,28 @@
-// Staff API access (bearer in sessionStorage — the M21 hardening pass moves
-// both apps to httpOnly-cookie BFF before production).
+// Staff API access (M21 hardening): the session token lives in an httpOnly
+// cookie set by the API and travels automatically on the same-origin /api
+// rewrite — page JavaScript never sees it. sessionStorage holds only a
+// non-sensitive "signed in" marker for shell/nav state.
 
-const TOKEN_KEY = 'saos_staff_token';
+const AUTHED_KEY = 'saos_staff_authed';
 
-export function getToken(): string | null {
-  return typeof window === 'undefined' ? null : window.sessionStorage.getItem(TOKEN_KEY);
+export function isAuthed(): boolean {
+  return typeof window !== 'undefined' && window.sessionStorage.getItem(AUTHED_KEY) === '1';
 }
-export function setToken(token: string): void {
-  window.sessionStorage.setItem(TOKEN_KEY, token);
+export function markAuthed(): void {
+  window.sessionStorage.setItem(AUTHED_KEY, '1');
 }
-export function clearToken(): void {
-  window.sessionStorage.removeItem(TOKEN_KEY);
+export function clearAuthed(): void {
+  window.sessionStorage.removeItem(AUTHED_KEY);
+}
+
+/** Server-side sign-out: revokes the session and clears the cookie. */
+export async function signOut(): Promise<void> {
+  try {
+    await api('/auth/logout', { method: 'POST' });
+  } catch {
+    /* session already dead — fine */
+  }
+  clearAuthed();
 }
 
 export async function api<T>(
@@ -18,8 +30,6 @@ export async function api<T>(
   opts: { method?: string; body?: unknown; formData?: FormData } = {}
 ): Promise<T> {
   const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) headers.authorization = `Bearer ${token}`;
   let body: BodyInit | undefined;
   if (opts.formData) {
     body = opts.formData;
@@ -29,7 +39,7 @@ export async function api<T>(
   }
   const res = await fetch(`/api${path}`, { method: opts.method ?? 'GET', headers, ...(body !== undefined ? { body } : {}) });
   if (res.status === 401 && !path.startsWith('/auth/')) {
-    clearToken();
+    clearAuthed();
     window.location.href = '/login';
     throw new Error('session expired');
   }

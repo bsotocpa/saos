@@ -347,3 +347,57 @@ test('validation failures return sanitized issues (no echoed values)', async () 
   assert.ok(Array.isArray(body.issues));
   assert.ok(!JSON.stringify(body.issues).includes('not-an-email'));
 });
+
+// ── M21 hardening: httpOnly session cookie ─────────────────────────────────
+
+test('login sets an httpOnly SameSite=Lax session cookie that authenticates on its own', async () => {
+  const login = await app.inject({
+    method: 'POST',
+    url: '/auth/login',
+    payload: { email: ceo.email, password: ceo.password, totp: totpCode(CEO_TOTP_SECRET) },
+  });
+  assert.equal(login.statusCode, 200, login.body);
+
+  const cookie = login.cookies.find((c) => c.name === 'saos_staff_session');
+  assert.ok(cookie, 'login must set the staff session cookie');
+  assert.equal(cookie.httpOnly, true, 'cookie must be httpOnly — page JS never sees the token');
+  assert.equal(cookie.sameSite?.toLowerCase(), 'lax');
+  assert.equal(cookie.path, '/');
+  assert.equal(cookie.maxAge, config.SESSION_ABSOLUTE_HOURS * 3600);
+
+  // Cookie alone (no Authorization header) authenticates.
+  const me = await app.inject({
+    method: 'GET',
+    url: '/auth/me',
+    cookies: { saos_staff_session: cookie.value },
+  });
+  assert.equal(me.statusCode, 200, me.body);
+  assert.equal(me.json().email, ceo.email);
+
+  // Logout via the cookie revokes the session AND clears the cookie.
+  const out = await app.inject({
+    method: 'POST',
+    url: '/auth/logout',
+    cookies: { saos_staff_session: cookie.value },
+  });
+  assert.equal(out.statusCode, 200, out.body);
+  const cleared = out.cookies.find((c) => c.name === 'saos_staff_session');
+  assert.ok(cleared, 'logout must clear the cookie');
+  assert.equal(cleared.value, '');
+
+  const afterLogout = await app.inject({
+    method: 'GET',
+    url: '/auth/me',
+    cookies: { saos_staff_session: cookie.value },
+  });
+  assert.equal(afterLogout.statusCode, 401, 'revoked session must not authenticate even if the cookie is replayed');
+});
+
+test('a garbage session cookie is rejected', async () => {
+  const res = await app.inject({
+    method: 'GET',
+    url: '/auth/me',
+    cookies: { saos_staff_session: 'not-a-real-token' },
+  });
+  assert.equal(res.statusCode, 401);
+});

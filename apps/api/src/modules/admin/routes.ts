@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
+import { registerOpsRoutes } from './ops.ts';
 
 const NewVersionBody = z.object({
   effectiveFrom: z.iso.date(),
@@ -46,6 +47,8 @@ const SettingBody = z.object({ value: z.unknown() });
 export function registerAdminRoutes(app: FastifyInstance): void {
   const pricing = { preHandler: [app.authenticate, requirePermission('pricing.edit')] };
   const admin = { preHandler: [app.authenticate, requirePermission('admin.settings')] };
+
+  registerOpsRoutes(app); // WISP security summary (M21)
 
   // ── Price book ────────────────────────────────────────────────────────────
   app.get('/admin/price-book', pricing, async () => {

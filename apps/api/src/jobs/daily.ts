@@ -11,6 +11,7 @@ import { runEntityComplianceJob } from '../modules/entity/service.ts';
 import { runDocumentChaseJob } from '../modules/documents/service.ts';
 import { runInvoiceOverdueJob } from '../modules/billing/service.ts';
 import { runSosRecheckJob } from '../modules/entity/sos.ts';
+import { runBackupStaleCheckJob, runRestoreDrillReminderJob } from '../modules/admin/ops.ts';
 import { makePusher, runPushSweep } from '../notify/push.ts';
 
 const TICK_MS = 15 * 60 * 1000;
@@ -29,6 +30,10 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   if (!invoices.skipped) app.log.info({ job: 'invoice_overdue', ...invoices }, 'daily job ran');
   const sos = await runSosRecheckJob(app, today);
   if (!sos.skipped) app.log.info({ job: 'sos_recheck', ...sos }, 'daily job ran');
+  const drill = await runRestoreDrillReminderJob(app, today);
+  if (!drill.skipped) app.log.info({ job: 'restore_drill_reminder', ...drill }, 'daily job ran');
+  const backup = await runBackupStaleCheckJob(app, today);
+  if (!backup.skipped) app.log.info({ job: 'backup_stale_check', ...backup }, 'daily job ran');
   // Restart safety: re-enqueue recordings stuck before processing began.
   if (app.meetingQueue) {
     const { recoverStuckMeetings } = await import('../modules/meetings/pipeline.ts');

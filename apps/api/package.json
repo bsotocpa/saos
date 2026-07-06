@@ -12,6 +12,7 @@
     "create-staff": "node src/scripts/create-staff.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.0.0",
     "@fastify/multipart": "^10.0.0",
     "argon2": "^0.44.0",
     "dotenv": "^16.4.0",

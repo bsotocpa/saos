@@ -4,7 +4,7 @@
 // Dropbox links. Download any time.
 
 import { useEffect, useState } from 'react';
-import { api, getToken } from '../../lib/api';
+import { api } from '../../lib/api';
 import { useSession } from '../../lib/session';
 
 interface Ret { id: string; filename: string; tax_year: number | null; uploaded_at: string }
@@ -40,9 +40,8 @@ export default function ReturnsPage() {
                 className="btn"
                 onClick={() => {
                   void (async () => {
-                    const res = await fetch(`/api/portal/documents/${r.id}/download`, {
-                      headers: { authorization: `Bearer ${getToken() ?? ''}` },
-                    });
+                    // Authenticated by the httpOnly session cookie (same-origin).
+                    const res = await fetch(`/api/portal/documents/${r.id}/download`);
                     const blob = await res.blob();
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');

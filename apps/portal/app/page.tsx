@@ -7,7 +7,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, formatMoney, getToken } from '../lib/api';
+import { api, formatMoney, isAuthed } from '../lib/api';
 import { useSession } from '../lib/session';
 import type { DictKey } from '../lib/i18n';
 
@@ -41,7 +41,7 @@ export default function Dashboard() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
 
   useEffect(() => {
-    if (!getToken()) {
+    if (!isAuthed()) {
       router.replace('/login');
       return;
     }

@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
+import { PORTAL_SESSION_COOKIE, clearCookieOptions, portalCookieOptions } from '../../cookies.ts';
 import { ensurePortalUser, handleMailBounce, issueMagicLink, verifyMagicLink } from './service.ts';
 
 const RequestLinkBody = z.object({ email: z.email() });
@@ -33,18 +34,21 @@ export function registerPortalAuthRoutes(app: FastifyInstance): void {
     return { status: 'ok', message: 'If that address has portal access, a sign-in link is on its way.' };
   });
 
-  // Public: redeem the link.
-  app.post('/portal/auth/magic/verify', async (request) => {
+  // Public: redeem the link. The browser session rides in an httpOnly cookie
+  // (M21); the body token remains for programmatic clients/tests.
+  app.post('/portal/auth/magic/verify', async (request, reply) => {
     const body = VerifyBody.parse(request.body);
     const result = await verifyMagicLink(app, body.token, {
       ip: request.ip,
       userAgent: request.headers['user-agent'] ?? null,
     });
+    reply.setCookie(PORTAL_SESSION_COOKIE, result.sessionToken, portalCookieOptions(app.config));
     return { status: 'ok', token: result.sessionToken, firstLogin: result.firstLogin };
   });
 
-  app.post('/portal/auth/logout', { preHandler: [app.authenticateClient] }, async (request) => {
+  app.post('/portal/auth/logout', { preHandler: [app.authenticateClient] }, async (request, reply) => {
     const client = request.client!;
+    reply.clearCookie(PORTAL_SESSION_COOKIE, clearCookieOptions(app.config));
     await app.db.query(`UPDATE portal_sessions SET revoked_at = now() WHERE id = $1`, [client.sessionId]);
     await writeAudit(app.db, {
       actorType: 'client',

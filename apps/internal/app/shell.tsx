@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
-import { clearToken, getToken } from '../lib/api';
+import { isAuthed, signOut } from '../lib/api';
 
 const NAV = [
   { href: '/', label: 'Executive' },
@@ -15,6 +15,7 @@ const NAV = [
   { href: '/admin/templates', label: 'Templates' },
   { href: '/admin/staff', label: 'Staff' },
   { href: '/admin/settings', label: 'Settings' },
+  { href: '/admin/wisp', label: 'WISP' },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -22,7 +23,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [authed, setAuthed] = useState(false);
   useEffect(() => {
-    setAuthed(Boolean(getToken()));
+    setAuthed(isAuthed());
   }, [pathname]);
 
   return (
@@ -38,8 +39,7 @@ export function Shell({ children }: { children: ReactNode }) {
             type="button"
             data-testid="sign-out"
             onClick={() => {
-              clearToken();
-              router.push('/login');
+              void signOut().then(() => router.push('/login'));
             }}
           >
             Sign out

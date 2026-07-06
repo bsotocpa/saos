@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, formatMoney, getToken } from '../lib/api';
+import { api, formatMoney, isAuthed } from '../lib/api';
 
 interface Executive {
   openReturnsByStage: Array<{ stage: string; count: number; value_cents: string }>;
@@ -29,7 +29,7 @@ export default function ExecutivePage() {
   const [data, setData] = useState<Executive | null>(null);
 
   useEffect(() => {
-    if (!getToken()) {
+    if (!isAuthed()) {
       router.replace('/login');
       return;
     }

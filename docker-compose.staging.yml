@@ -1,0 +1,58 @@
+# SAOS staging — a FULL CLONE of the stack that runs alongside dev/prod on
+# the same box (MP Phase 1: staging mirrors production).
+#
+#   npm run staging:up      # docker compose -p saos-staging -f docker-compose.yml -f docker-compose.staging.yml up -d
+#   npm run staging:down
+#
+# The -p saos-staging project name gives staging its OWN volumes and network
+# (saos-staging_saos_pg_data etc.) — nothing is shared with the primary
+# stack. This file only remaps host ports (+1000 from the dev defaults) so
+# both stacks can listen at once; in production Caddy routes the staging
+# subdomains to these ports (M23).
+#
+# Point the staging API/apps at these ports via a separate .env (see
+# docs/RUNBOOK_OPS.md); never reuse the dev database URL against staging.
+
+# NB: `ports:` lists MERGE (append) across compose files — without !override
+# each staging service would try to bind the dev ports too and collide.
+services:
+  postgres:
+    ports: !override
+      - "${STAGING_POSTGRES_PORT:-6432}:5432"
+
+  minio:
+    ports: !override
+      - "${STAGING_MINIO_PORT:-10000}:9000"
+      - "${STAGING_MINIO_CONSOLE_PORT:-10001}:9001"
+
+  docuseal:
+    ports: !override
+      - "${STAGING_DOCUSEAL_PORT:-4002}:3000"
+
+  whisper:
+    ports: !override
+      - "${STAGING_WHISPER_PORT:-10010}:9000"
+
+  ollama:
+    ports: !override
+      - "${STAGING_OLLAMA_PORT:-12434}:11434"
+
+  ntfy:
+    ports: !override
+      - "${STAGING_NTFY_PORT:-9093}:80"
+
+  uptime-kuma:
+    ports: !override
+      - "${STAGING_UPTIME_KUMA_PORT:-4006}:3001"
+
+  vaultwarden:
+    # One Vaultwarden per box is enough — the staging clone exists so the
+    # stack topology matches, but don't store real credentials in it.
+    ports: !override
+      - "${STAGING_VAULTWARDEN_PORT:-9094}:80"
+
+  calcom:
+    ports: !override
+      - "${STAGING_CALCOM_PORT:-4003}:3000"
+    environment:
+      NEXT_PUBLIC_WEBAPP_URL: ${STAGING_CALCOM_URL:-http://localhost:4003}

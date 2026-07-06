@@ -85,6 +85,10 @@ const schema = z.object({
   PUSH_MODE: z.enum(['stub', 'ntfy']).default('stub'),
   NTFY_URL: z.string().default('http://localhost:8093'),
   NTFY_TOPIC: z.string().default('saos-alerts'),
+  // Where scripts/backup.sh drops its machine-readable result. Read by the
+  // WISP security summary and the backup-staleness check (no client data in
+  // the file — timestamps, snapshot id, row counts).
+  BACKUP_STATUS_PATH: z.string().default(path.resolve(here, '../../../backups/status.json')),
 });
 
 export type Config = z.infer<typeof schema>;

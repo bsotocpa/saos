@@ -286,3 +286,51 @@ test('PLACEHOLDER GATE: placeholder templates are unsendable in every environmen
   );
   assert.equal(sentMail.length, sentBefore, 'nothing may be sent when the gate fires');
 });
+
+// ── M21 hardening: httpOnly portal session cookie ───────────────────────────
+
+test('magic verify sets an httpOnly cookie that authenticates; logout clears it', async () => {
+  const finn = await makeContact(app.db, {
+    firstName: 'Synthetic',
+    lastName: 'Finn',
+    email: 'finn@example.test',
+  });
+  await grantAccess(finn.id);
+
+  const token = extractToken(lastMailTo(finn.email));
+  const verify = await app.inject({ method: 'POST', url: '/portal/auth/magic/verify', payload: { token } });
+  assert.equal(verify.statusCode, 200, verify.body);
+
+  const cookie = verify.cookies.find((c) => c.name === 'saos_portal_session');
+  assert.ok(cookie, 'verify must set the portal session cookie');
+  assert.equal(cookie.httpOnly, true, 'cookie must be httpOnly — page JS never sees the token');
+  assert.equal(cookie.sameSite?.toLowerCase(), 'lax');
+  assert.equal(cookie.maxAge, config.PORTAL_SESSION_DAYS * 86400);
+
+  // Cookie alone authenticates (no Authorization header)…
+  const me = await app.inject({
+    method: 'GET',
+    url: '/portal/me',
+    cookies: { saos_portal_session: cookie.value },
+  });
+  assert.equal(me.statusCode, 200, me.body);
+  assert.equal(me.json().contact.email, finn.email);
+
+  // …and logout via the cookie revokes the session and clears the cookie.
+  const out = await app.inject({
+    method: 'POST',
+    url: '/portal/auth/logout',
+    cookies: { saos_portal_session: cookie.value },
+  });
+  assert.equal(out.statusCode, 200, out.body);
+  const cleared = out.cookies.find((c) => c.name === 'saos_portal_session');
+  assert.ok(cleared);
+  assert.equal(cleared.value, '');
+
+  const replay = await app.inject({
+    method: 'GET',
+    url: '/portal/me',
+    cookies: { saos_portal_session: cookie.value },
+  });
+  assert.equal(replay.statusCode, 401, 'revoked session must not authenticate even if the cookie is replayed');
+});

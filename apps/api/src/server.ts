@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import { ZodError } from 'zod';
 import type { Config } from './config.ts';
@@ -52,6 +53,8 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   app.decorate('authenticate', buildAuthenticate(app));
   app.decorate('authenticateClient', buildAuthenticateClient(app));
 
+  // Session cookies (M21): httpOnly, first-party via each app's /api rewrite.
+  void app.register(cookie);
   void app.register(multipart, {
     limits: { fileSize: config.DOC_MAX_SIZE_MB * 1024 * 1024, files: 1 },
   });

@@ -4,7 +4,7 @@
 // toggle persists to the contact record (MP: applied to all outbound comms).
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { api, getToken } from './api';
+import { api, isAuthed } from './api';
 import { translate, type DictKey, type Lang } from './i18n';
 
 export interface Me {
@@ -45,7 +45,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>('en');
 
   const refresh = useCallback(async () => {
-    if (!getToken()) {
+    if (!isAuthed()) {
       setReady(true);
       return;
     }
@@ -66,7 +66,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const setLang = useCallback((next: Lang) => {
     setLangState(next);
-    if (getToken()) {
+    if (isAuthed()) {
       void api('/portal/me', { method: 'PATCH', body: { language: next } });
     }
   }, []);

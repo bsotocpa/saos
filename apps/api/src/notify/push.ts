@@ -20,6 +20,17 @@ function stubPusher(): Pusher {
   };
 }
 
+/**
+ * HTTP header values are Latin-1; titles with em-dashes or accented Spanish
+ * text would make fetch throw. ntfy understands RFC 2047, so non-ASCII
+ * titles go base64-encoded (=?UTF-8?B?...?=).
+ */
+export function headerSafe(value: string): string {
+  return /^[\x20-\x7E]*$/.test(value)
+    ? value
+    : `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
+}
+
 function ntfyPusher(config: Config): Pusher {
   const url = `${config.NTFY_URL.replace(/\/$/, '')}/${config.NTFY_TOPIC}`;
   return {
@@ -28,7 +39,7 @@ function ntfyPusher(config: Config): Pusher {
       const res = await fetch(url, {
         method: 'POST',
         headers: {
-          Title: msg.title,
+          Title: headerSafe(msg.title),
           Priority: msg.priority,
           ...(msg.tags?.length ? { Tags: msg.tags.join(',') } : {}),
         },

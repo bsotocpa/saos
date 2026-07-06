@@ -1,0 +1,12 @@
+# Restore-drill override: fresh ports so the drill stack can boot next to the
+# dev/staging/prod stacks. Used only by scripts/restore-drill.sh with
+# -p saos-restore-drill, which also gives it fully separate volumes.
+# (!override because ports lists MERGE across compose files.)
+services:
+  postgres:
+    ports: !override
+      - "${DRILL_POSTGRES_PORT:-7432}:5432"
+  minio:
+    ports: !override
+      - "${DRILL_MINIO_PORT:-11000}:9000"
+      - "${DRILL_MINIO_CONSOLE_PORT:-11001}:9001"

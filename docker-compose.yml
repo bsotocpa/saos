@@ -1,16 +1,21 @@
 # SAOS — local/dev stack. Target: `docker compose up -d` brings up everything
-# the current milestone needs. Production/staging variants land in M21/M23.
+# the current milestone needs. Staging: same file + docker-compose.staging.yml
+# (see npm run staging:up). Production deploy lands in M23.
 #
 # IMPORTANT: data lives in NAMED VOLUMES only. This repo sits in a Dropbox
 # folder — bind-mounting database or object-storage data would sync raw DB
 # files to Dropbox (slow, corrupting, and a data-control problem). Never
 # convert these to bind mounts.
+#
+# Image tags are PINNED (M21) to the exact versions this stack was verified
+# against (digest-matched to the running containers). Upgrades are deliberate:
+# bump the tag, run the stack + test suite, commit.
 
 name: saos
 
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16.14
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-saos}
@@ -28,8 +33,7 @@ services:
     networks: [saos]
 
   minio:
-    # TODO(M21 hardening): pin a specific RELEASE tag before staging/production.
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -51,7 +55,7 @@ services:
   # Buckets stay private — client documents are served only through the app,
   # which audit-logs every access (WISP requirement).
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
         condition: service_healthy
@@ -70,8 +74,7 @@ services:
   # SQLite storage inside its own volume; the API talks to it via
   # DOCUSEAL_MODE=http + DOCUSEAL_URL + an API token from its admin UI.
   docuseal:
-    # TODO(M21 hardening): pin a specific version tag before staging/production.
-    image: docuseal/docuseal:latest
+    image: docuseal/docuseal:3.1.2
     restart: unless-stopped
     ports:
       - "${DOCUSEAL_PORT:-3002}:3000"
@@ -86,8 +89,7 @@ services:
   # with: docker compose --profile intel up -d
   whisper:
     profiles: [intel]
-    # TODO(M21 hardening): pin a specific version tag.
-    image: onerahmet/openai-whisper-asr-webservice:latest
+    image: onerahmet/openai-whisper-asr-webservice:v1.9.1
     restart: unless-stopped
     environment:
       ASR_MODEL: ${WHISPER_MODEL:-small}
@@ -100,8 +102,7 @@ services:
 
   ollama:
     profiles: [intel]
-    # TODO(M21 hardening): pin a specific version tag.
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.31.1
     restart: unless-stopped
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
@@ -113,14 +114,46 @@ services:
   # to the alerts topic; access control configured at M23). Tiny image, so it
   # runs in the default profile.
   ntfy:
-    # TODO(M21 hardening): pin a specific version tag.
-    image: binwiederhier/ntfy:latest
+    image: binwiederhier/ntfy:v2.25.0
     restart: unless-stopped
     command: serve
     ports:
       - "${NTFY_PORT:-8093}:80"
     volumes:
       - saos_ntfy_data:/var/lib/ntfy
+    networks: [saos]
+
+  # ── Ops hardening (M21) ─────────────────────────────────────────────────────
+  # Uptime Kuma — self-hosted uptime monitoring (status.sotoaccounting.com in
+  # prod, internal-only). Monitors are configured in its UI on first boot;
+  # the canonical monitor list lives in docs/RUNBOOK_OPS.md.
+  uptime-kuma:
+    image: louislam/uptime-kuma:2.4.0
+    restart: unless-stopped
+    ports:
+      - "${UPTIME_KUMA_PORT:-3006}:3001"
+    volumes:
+      - saos_uptime_kuma_data:/app/data
+    networks: [saos]
+
+  # Vaultwarden — self-hosted password manager (vault.sotoaccounting.com in
+  # prod). Funder-portal credentials migrate IN here at launch and the shared
+  # Sheet gets purged (MP WISP). Signups are closed: accounts are created by
+  # the admin via the admin panel (VAULTWARDEN_ADMIN_TOKEN; empty = admin
+  # panel disabled). Needs HTTPS in front for WebAuthn — Caddy handles that
+  # at M23; plain HTTP is fine for local evaluation.
+  vaultwarden:
+    image: vaultwarden/server:1.36.0
+    restart: unless-stopped
+    environment:
+      SIGNUPS_ALLOWED: "false"
+      INVITATIONS_ALLOWED: "true"
+      ADMIN_TOKEN: ${VAULTWARDEN_ADMIN_TOKEN:-}
+      DOMAIN: ${VAULTWARDEN_DOMAIN:-http://localhost:8094}
+    ports:
+      - "${VAULTWARDEN_PORT:-8094}:80"
+    volumes:
+      - saos_vaultwarden_data:/data
     networks: [saos]
 
   # ── Scheduling (profile: booking) — Cal.com self-hosted ─────────────────────
@@ -148,8 +181,7 @@ services:
 
   calcom:
     profiles: [booking]
-    # TODO(M21 hardening): pin a specific version tag.
-    image: calcom/cal.com:latest
+    image: calcom/cal.com:v6.2.0
     restart: unless-stopped
     depends_on:
       calcom-db-init:
@@ -202,6 +234,8 @@ volumes:
   saos_whisper_cache:
   saos_ollama_data:
   saos_ntfy_data:
+  saos_uptime_kuma_data:
+  saos_vaultwarden_data:
 
 networks:
   saos:

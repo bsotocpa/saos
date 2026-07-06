@@ -4,7 +4,7 @@
 // portal-only policy enforced in copy. Uploads can fulfil request items.
 
 import { useEffect, useRef, useState } from 'react';
-import { api, getToken } from '../../lib/api';
+import { api } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import type { DictKey } from '../../lib/i18n';
 
@@ -124,12 +124,10 @@ export default function DocumentsPage() {
                 className="btn ghost"
                 href={`/api/portal/documents/${d.id}/download`}
                 onClick={(e) => {
-                  // Authenticated download: fetch with the bearer, then save.
+                  // Authenticated by the httpOnly session cookie (same-origin).
                   e.preventDefault();
                   void (async () => {
-                    const res = await fetch(`/api/portal/documents/${d.id}/download`, {
-                      headers: { authorization: `Bearer ${getToken() ?? ''}` },
-                    });
+                    const res = await fetch(`/api/portal/documents/${d.id}/download`);
                     const blob = await res.blob();
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');

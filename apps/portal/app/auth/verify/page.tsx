@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { api, setToken } from '../../../lib/api';
+import { api, markAuthed } from '../../../lib/api';
 import { useSession } from '../../../lib/session';
 
 function VerifyInner() {
@@ -20,11 +20,12 @@ function VerifyInner() {
     }
     void (async () => {
       try {
-        const res = await api<{ token: string; firstLogin: boolean }>('/portal/auth/magic/verify', {
+        await api<{ firstLogin: boolean }>('/portal/auth/magic/verify', {
           method: 'POST',
           body: { token },
         });
-        setToken(res.token);
+        // The session itself arrived as an httpOnly cookie.
+        markAuthed();
         await refresh();
         router.replace('/');
       } catch {

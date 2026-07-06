@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, setToken } from '../../lib/api';
+import { api, markAuthed } from '../../lib/api';
 
 type Phase = 'credentials' | 'enroll' | 'verify';
 
@@ -24,12 +24,13 @@ export default function LoginPage() {
     setBusy(true);
     setError('');
     try {
-      const res = await api<{ status?: string; token?: string; setupToken?: string }>('/auth/login', {
+      const res = await api<{ status?: string; setupToken?: string }>('/auth/login', {
         method: 'POST',
         body: { email, password, ...(totp ? { totp } : {}) },
       });
-      if (res.status === 'ok' && res.token) {
-        setToken(res.token);
+      if (res.status === 'ok') {
+        // The session itself arrived as an httpOnly cookie.
+        markAuthed();
         router.push('/');
       } else if (res.status === 'mfa_setup_required' && res.setupToken) {
         setSetupToken(res.setupToken);
@@ -52,11 +53,11 @@ export default function LoginPage() {
     setBusy(true);
     setError('');
     try {
-      const res = await api<{ token: string }>('/auth/mfa/verify', {
+      await api('/auth/mfa/verify', {
         method: 'POST',
         body: { setupToken, code: totp },
       });
-      setToken(res.token);
+      markAuthed();
       router.push('/');
     } catch {
       setError('Code did not match — try the next one from your app.');

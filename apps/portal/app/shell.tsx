@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
-import { clearToken, getToken } from '../lib/api';
+import { isAuthed, signOut } from '../lib/api';
 import { useSession } from '../lib/session';
 
 const NAV: Array<{ href: string; key: 'nav_home' | 'nav_documents' | 'nav_returns' | 'nav_sign' | 'nav_invoices' | 'nav_messages' | 'nav_estimate' | 'nav_resources' | 'nav_profile' }> = [
@@ -26,7 +26,7 @@ export function Shell({ children }: { children: ReactNode }) {
   // unauthenticated shell, so hydration never mismatches.
   const [authed, setAuthed] = useState(false);
   useEffect(() => {
-    setAuthed(Boolean(getToken()));
+    setAuthed(isAuthed());
   }, [pathname]);
 
   return (
@@ -51,8 +51,7 @@ export function Shell({ children }: { children: ReactNode }) {
             className="lang-toggle"
             data-testid="sign-out"
             onClick={() => {
-              clearToken();
-              router.push('/login');
+              void signOut().then(() => router.push('/login'));
             }}
           >
             {t('sign_out')}

@@ -339,12 +339,20 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       calculator followed v2 on its effective date)
 
 ## M21 — Ops hardening
-- [ ] docker-compose.staging.yml (full clone) · Uptime Kuma monitors all
+- [x] docker-compose.staging.yml (full clone) · Uptime Kuma monitors all
       services · Vaultwarden up (funder-portal creds migrate in, Sheet purged)
-- [ ] Encrypted backups → Backblaze B2 (pg_dump + MinIO mirror), documented +
+      — the creds migration itself is Brian's launch task (RUNBOOK_OPS.md)
+- [x] Encrypted backups → Backblaze B2 (pg_dump + MinIO mirror), documented +
       **tested** restore script; quarterly-restore-test reminder
-- [ ] WISP security-summary export (MFA status, audit stats, backup status)
-- [ ] Prove it: restore drill from a real backup on a clean stack
+      (restic client-side encryption; local repo until Brian's B2 lands —
+      switching targets is an env change only)
+- [x] WISP security-summary export (MFA status, audit stats, backup status)
+- [x] Prove it: restore drill from a real backup on a clean stack
+      (RESTORE DRILL PASSED — 15/15: 7 table counts + 4 bucket object counts
+      + 4 volume archives verified against the backup-time manifest)
+- [x] (parked from M15) httpOnly-cookie hardening — both apps' sessions moved
+      out of sessionStorage into httpOnly SameSite=Lax cookies
+- [x] Pin every compose image tag (digest-matched to the running containers)
 
 ## M22 — Data migration
 - [ ] Import pipeline w/ per-record source flags: Dubsado (24–36mo active),
@@ -804,3 +812,45 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - Browser-verified: pricing page (v1 badge, ⚠ queue with 12 items,
   new-version staging form) + templates page (27 templates, 7 PLACEHOLDER
   sorted first, 20 live). 98/98 API tests green.
+
+### M21 (completed 2026-07-06)
+- Backups: scripts/backup.sh = pg_dumpall (test DBs excluded) + mc mirror of
+  all four buckets + tarballs of the Docuseal/Vaultwarden/Uptime-Kuma/ntfy
+  volumes + a row/object-count manifest, shipped as a restic snapshot
+  (client-side AES — B2 only ever sees ciphertext). Retention 14d/8w/12m.
+  Writes backups/status.json (timestamps + counts only, no client data).
+- THE prove-it: scripts/restore-drill.sh restored the latest snapshot into a
+  brand-new stack (saos-restore-drill project, fresh volumes, shifted ports)
+  and PASSED 15/15 checks against the backup-time manifest. The drill runs
+  with a READ-ONLY repo mount (--no-lock) — a drill physically cannot damage
+  the backups; production can use a read-only B2 key for it.
+- Watchdogs: daily restore-drill reminder (nags Brian once per quarter until
+  ops.last_restore_drill_at is fresh — fires on day one in prod by design)
+  + backup-staleness check (>26h once status.json exists → critical push;
+  silent on dev boxes that never back up). Both date-guarded + notifyOnce.
+- WISP export: GET /admin/wisp/security-summary (+ ?format=markdown for the
+  binder) — live MFA enrollment, session/lockout policy, audit statistics,
+  backup + drill recency, vendor list. /admin/wisp page in the internal app.
+  Browser-verified showing the day's real snapshot (ca1aa6b4, "fresh") and
+  the drill-overdue badge.
+- Cookie hardening (parked at M15, landed here): staff + portal sessions now
+  ride httpOnly SameSite=Lax first-party cookies via each app's /api rewrite
+  — page JS can never read a token (document.cookie verified empty in the
+  browser). Bearer-header auth remains for tests/programmatic clients.
+  sessionStorage keeps only a boolean "signed in" marker. Sign-out now
+  revokes server-side AND clears the cookie (verified: logout 200 → replayed
+  cookie 401). CSRF posture: Lax + JSON-only body parsing.
+- Ops stack: Uptime Kuma :3006 + Vaultwarden :8094 (signups closed) live on
+  pinned images; every compose tag now pinned, digest-matched to what the
+  stack was verified against. docker-compose.staging.yml boots a full clone
+  under -p saos-staging (verified: healthy on +1000 ports, 0 tables, own
+  buckets — nothing shared). docs/RUNBOOK_OPS.md: monitor list, cron line,
+  drill procedure, Vaultwarden launch task.
+- Bug found by the new nag + fixed at the root: ntfy titles travel as HTTP
+  headers (Latin-1) — em-dashes/Spanish text made fetch throw. Pusher now
+  RFC-2047-encodes non-ASCII titles; verified end to end (em-dash decoded
+  correctly in the delivered ntfy message, pushed_at stamped).
+- Compose gotcha encoded in both override files: ports lists MERGE across
+  -f files; !override prevents staging/drill from binding dev ports.
+- 106/106 API tests green (cookies ×3, WISP ×2, watchdogs ×2, header
+  encoding ×1 added); price guard clean.

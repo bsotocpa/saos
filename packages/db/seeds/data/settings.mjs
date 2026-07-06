@@ -106,6 +106,17 @@ export const settings = [
       'Estimate range width: one-time quote maximums widen by this percent (scope uncertainty). Recurring prices stay exact. ⚠ Default awaits Brian’s confirmation — tune here, no deploy needed.',
   },
   {
+    key: 'ops.last_restore_drill_at',
+    value: null,
+    description:
+      'ISO timestamp of the last PASSING restore drill (scripts/restore-drill.sh). Update after each quarterly drill; null = never run → the daily job nags until the first one.',
+  },
+  {
+    key: 'ops.restore_drill_interval_days',
+    value: 90,
+    description: 'Quarterly restore-drill cadence (WISP): a drill older than this opens a reminder for Brian.',
+  },
+  {
     key: 'health.red_below',
     value: 40,
     description: 'Health score below this = Red → alert assigned staff.',

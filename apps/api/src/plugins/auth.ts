@@ -5,6 +5,7 @@
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { hashToken } from '../crypto.ts';
+import { STAFF_SESSION_COOKIE } from '../cookies.ts';
 import type { AuthedStaff } from '../types.ts';
 
 interface SessionRow {
@@ -18,8 +19,12 @@ interface SessionRow {
 
 export function buildAuthenticate(app: FastifyInstance) {
   return async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    // Browser apps carry the session in an httpOnly cookie (M21); the Bearer
+    // header remains for programmatic clients and tests.
     const header = request.headers.authorization;
-    const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+    const token = header?.startsWith('Bearer ')
+      ? header.slice(7)
+      : request.cookies[STAFF_SESSION_COOKIE];
     if (!token) {
       await reply.code(401).send({ error: 'unauthorized' });
       return;

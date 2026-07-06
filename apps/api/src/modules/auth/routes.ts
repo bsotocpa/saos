@@ -1,5 +1,6 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { STAFF_SESSION_COOKIE, clearCookieOptions, staffCookieOptions } from '../../cookies.ts';
 import * as auth from './service.ts';
 
 const LoginBody = z.object({
@@ -21,6 +22,12 @@ function meta(request: FastifyRequest) {
 }
 
 export function registerAuthRoutes(app: FastifyInstance): void {
+  // The browser app authenticates via this httpOnly cookie (M21 hardening);
+  // the token also returns in the body for programmatic clients/tests, which
+  // never persist it in page-readable storage.
+  const setSessionCookie = (reply: FastifyReply, token: string) =>
+    reply.setCookie(STAFF_SESSION_COOKIE, token, staffCookieOptions(app.config));
+
   app.post('/auth/login', async (request, reply) => {
     const body = LoginBody.parse(request.body);
     const result = await auth.login(app.db, app.config, body.email, body.password, body.totp, meta(request));
@@ -34,6 +41,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       case 'mfa_setup_required':
         return reply.code(200).send({ status: 'mfa_setup_required', setupToken: result.setupToken });
       case 'ok':
+        setSessionCookie(reply, result.token);
         return reply.code(200).send({ status: 'ok', token: result.token });
     }
   });
@@ -43,15 +51,17 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     return auth.mfaSetup(app.db, app.config, body.setupToken);
   });
 
-  app.post('/auth/mfa/verify', async (request) => {
+  app.post('/auth/mfa/verify', async (request, reply) => {
     const body = MfaVerifyBody.parse(request.body);
     const { token } = await auth.mfaVerify(app.db, app.config, body.setupToken, body.code, meta(request));
+    setSessionCookie(reply, token);
     return { status: 'ok', token };
   });
 
-  app.post('/auth/logout', { preHandler: [app.authenticate] }, async (request) => {
+  app.post('/auth/logout', { preHandler: [app.authenticate] }, async (request, reply) => {
     const staff = request.staff!;
     await auth.logout(app.db, staff.sessionId, staff.id, staff.email, meta(request));
+    reply.clearCookie(STAFF_SESSION_COOKIE, clearCookieOptions(app.config));
     return { status: 'ok' };
   });
 

@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, getToken } from '../../lib/api';
+import { api, isAuthed } from '../../lib/api';
 
 interface Notification {
   id: string; type: string; severity: string; title: string; body: string | null;
@@ -21,7 +21,7 @@ export default function AlertsPage() {
     setItems(res.notifications);
   };
   useEffect(() => {
-    if (!getToken()) {
+    if (!isAuthed()) {
       router.replace('/login');
       return;
     }

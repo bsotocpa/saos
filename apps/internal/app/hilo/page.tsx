@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, formatMoney, getToken } from '../../lib/api';
+import { api, formatMoney, isAuthed } from '../../lib/api';
 
 interface Hilo {
   entrepreneursByStatus: Array<{ hilo_status: string; count: number }>;
@@ -28,7 +28,7 @@ export default function HiloPage() {
   const [data, setData] = useState<Hilo | null>(null);
 
   useEffect(() => {
-    if (!getToken()) {
+    if (!isAuthed()) {
       router.replace('/login');
       return;
     }
