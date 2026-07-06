@@ -257,6 +257,61 @@ export const templates = [
       'Luego le enviaremos la autorización de presentación electrónica.\n\n— Soto Accounting',
   },
   {
+    key: 'invoice_sent',
+    name: 'Invoice sent (portal Pay Now)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'invoice_number', 'amount', 'portal_link'],
+    subjectEn: 'Invoice {{invoice_number}} — {{amount}}',
+    subjectEs: 'Factura {{invoice_number}} — {{amount}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Your invoice {{invoice_number}} for {{amount}} is ready in your portal. ' +
+      'You can review the details and pay securely with one click:\n\n{{portal_link}}\n\n' +
+      'Questions about anything on it? Reply here — happy to walk through it.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Su factura {{invoice_number}} por {{amount}} está lista en su portal. ' +
+      'Puede revisar los detalles y pagar de forma segura con un clic:\n\n{{portal_link}}\n\n' +
+      '¿Preguntas sobre algún cargo? Responda aquí — con gusto lo repasamos.\n\n— Soto Accounting',
+  },
+  {
+    key: 'payment_received',
+    name: 'Payment received (receipt)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'invoice_number', 'amount'],
+    subjectEn: 'Payment received — thank you ({{invoice_number}})',
+    subjectEs: 'Pago recibido — gracias ({{invoice_number}})',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'We received your payment of {{amount}} for invoice {{invoice_number}} — thank you. ' +
+      'Your receipt and invoice history are always available in your portal.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Recibimos su pago de {{amount}} por la factura {{invoice_number}} — gracias. ' +
+      'Su recibo y el historial de facturas están siempre disponibles en su portal.\n\n— Soto Accounting',
+  },
+  {
+    key: 'invoice_reminder',
+    name: 'Invoice unpaid reminder (automation 17)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'invoice_number', 'amount', 'portal_link'],
+    subjectEn: 'Friendly reminder: invoice {{invoice_number}} ({{amount}})',
+    subjectEs: 'Recordatorio: factura {{invoice_number}} ({{amount}})',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'A quick reminder that invoice {{invoice_number}} for {{amount}} is still open. ' +
+      'Paying takes about a minute in your portal:\n\n{{portal_link}}\n\n' +
+      'If the timing is tight or something looks off, reply here and we’ll sort it out.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Un recordatorio rápido: la factura {{invoice_number}} por {{amount}} sigue pendiente. ' +
+      'Pagar toma un minuto en su portal:\n\n{{portal_link}}\n\n' +
+      'Si el momento no es oportuno o algo no cuadra, responda aquí y lo resolvemos.\n\n— Soto Accounting',
+  },
+  {
     key: 'annual_report_reminder',
     name: 'Annual report reminder (client, T-30)',
     channel: 'email',

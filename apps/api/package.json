@@ -20,6 +20,7 @@
     "nodemailer": "^9.0.3",
     "otpauth": "^9.3.0",
     "pg": "^8.13.0",
+    "stripe": "^22.3.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {

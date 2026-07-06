@@ -11,6 +11,7 @@
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
+import { invoiceForFiledEngagement } from '../billing/service.ts';
 
 export const TAX_STAGES = [
   'intake_started', 'scheduled', 'documents_requested', 'pending_client_response',
@@ -141,6 +142,13 @@ export async function transitionStage(
     userAgent: opts.userAgent,
     details: { from, to: toStage },
   });
+
+  // Automation 12: Filed → invoice generated (or an exception to Rene when
+  // the final fee is missing — never a silent skip).
+  if (toStage === 'filed') {
+    await invoiceForFiledEngagement(app, actor, taxEngagementId);
+  }
+
   return { from, to: toStage };
 }
 

@@ -64,6 +64,12 @@ const schema = z.object({
   // KBA for remote 8879 (IRS Pub 1345). 'sandbox' until Brian picks the
   // vendor; production refuses remote 8879 without a real vendor.
   KBA_MODE: z.enum(['sandbox', 'vendor']).default('sandbox'),
+  // Stripe (approved vendor — payment tokens only). 'stub' for dev/test;
+  // 'live' needs the secret key + webhook signing secret. Production
+  // checkout refuses stub mode at runtime.
+  STRIPE_MODE: z.enum(['stub', 'live']).default('stub'),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
 });
 
 export type Config = z.infer<typeof schema>;
@@ -84,6 +90,9 @@ export function loadConfig(overrides: Partial<Record<keyof Config, unknown>> = {
     }
     if (config.WEBHOOK_SECRET === 'dev-webhook-secret') {
       throw new Error('WEBHOOK_SECRET is the well-known dev value — refusing to start in production.');
+    }
+    if (config.STRIPE_MODE === 'live' && (!config.STRIPE_SECRET_KEY || !config.STRIPE_WEBHOOK_SECRET)) {
+      throw new Error('STRIPE_MODE=live requires STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET.');
     }
   }
   return config;
