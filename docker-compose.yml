@@ -1,0 +1,105 @@
+# SAOS — local/dev stack. Target: `docker compose up -d` brings up everything
+# the current milestone needs. Production/staging variants land in M21/M23.
+#
+# IMPORTANT: data lives in NAMED VOLUMES only. This repo sits in a Dropbox
+# folder — bind-mounting database or object-storage data would sync raw DB
+# files to Dropbox (slow, corrupting, and a data-control problem). Never
+# convert these to bind mounts.
+
+name: saos
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-saos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saos_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-saos}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - saos_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-saos} -d ${POSTGRES_DB:-saos}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [saos]
+
+  minio:
+    # TODO(M21 hardening): pin a specific RELEASE tag before staging/production.
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-saos}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-saos_dev_password}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - saos_minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [saos]
+
+  # One-shot bucket bootstrap: creates the four private buckets and exits.
+  # Buckets stay private — client documents are served only through the app,
+  # which audit-logs every access (WISP requirement).
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set saos http://minio:9000 $${MINIO_ROOT_USER:-saos} $${MINIO_ROOT_PASSWORD:-saos_dev_password} &&
+      mc mb --ignore-existing saos/saos-documents saos/saos-returns saos/saos-signed-docs saos/saos-recordings &&
+      echo 'MinIO buckets ready.'
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-saos}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-saos_dev_password}
+    networks: [saos]
+
+  # ── Application services (placeholders) ─────────────────────────────────────
+  # Wired now so the topology is visible; excluded from a default `up` via the
+  # "app" profile. Dockerfiles land with their milestones (api: M4, portal: M15,
+  # internal: M6+). Do not run `--profile app` until then.
+  api:
+    profiles: [app]
+    build: ./apps/api
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks: [saos]
+
+  portal:
+    profiles: [app]
+    build: ./apps/portal
+    env_file: .env
+    depends_on:
+      - api
+    networks: [saos]
+
+  internal:
+    profiles: [app]
+    build: ./apps/internal
+    env_file: .env
+    depends_on:
+      - api
+    networks: [saos]
+
+volumes:
+  saos_pg_data:
+  saos_minio_data:
+
+networks:
+  saos:

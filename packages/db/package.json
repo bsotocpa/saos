@@ -1,0 +1,17 @@
+{
+  "name": "@saos/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SAOS database: versioned SQL migrations (node-pg-migrate) + idempotent seeds. See README.md.",
+  "scripts": {
+    "migrate": "node scripts/migrate.cjs up",
+    "migrate:down": "node scripts/migrate.cjs down",
+    "seed": "node seeds/run.mjs",
+    "test:db": "node --test \"test/*.spec.mjs\""
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0",
+    "node-pg-migrate": "^8.0.4",
+    "pg": "^8.13.0"
+  }
+}

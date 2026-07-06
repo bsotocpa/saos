@@ -1,0 +1,17 @@
+{
+  "name": "@saos/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SAOS backend API (Fastify) — scaffolded in M0, implemented from M4",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@saos/shared": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

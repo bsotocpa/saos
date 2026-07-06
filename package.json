@@ -1,0 +1,25 @@
+{
+  "name": "saos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Soto Accounting Operating System — self-hosted business OS for Soto Accounting LLC + Hilo NFP",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "migrate": "npm run migrate --workspace=@saos/db",
+    "migrate:down": "npm run migrate:down --workspace=@saos/db",
+    "seed": "npm run seed --workspace=@saos/db",
+    "test": "npm run check:prices && npm run test --workspaces --if-present",
+    "test:db": "npm run test:db --workspace=@saos/db",
+    "check:prices": "node scripts/check-no-hardcoded-prices.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

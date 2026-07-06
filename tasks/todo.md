@@ -1,0 +1,313 @@
+# SAOS Phase 1 — Build Plan (v4.2 specs are source of truth)
+
+Sequence is dependency-ordered. Nothing ships unverified; every milestone ends
+with its "Prove it" step. Spec refs: MP = SAOS_Fable_Master_Prompt_v4.2.md,
+OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
+
+## Definition of Done (applies to every item)
+- Touches client documents/PII → audit logging in place (MP: WISP) — no exceptions
+- Client-facing copy exists in EN **and** ES, admin-editable, professional voice
+- No dollar literal in app code — all prices resolve from price_book (CI-enforced)
+- Gates/derivations (deadlines, complexity, signature gates, placeholder block,
+  §7216 checks, independence check) carry unit tests
+- Verified working (test run, log, or demo) before its box is checked
+
+## M0 — Repo bootstrap
+- [x] `git init` + .gitignore (node_modules, .env, dist) + .editorconfig
+- [x] npm-workspaces monorepo: apps/api, apps/portal, apps/internal,
+      packages/db, packages/shared; TypeScript strict everywhere
+- [x] `.env.example` documented per MP Output Requirements
+- [x] `tasks/lessons.md` created; README with one-command quickstart
+- [x] Prove it: fresh `npm install` + typecheck passes
+
+## M1 — Docker Compose skeleton (PostgreSQL + MinIO)
+- [x] `docker-compose.yml`: postgres:16 + minio, named volumes only (repo is in
+      Dropbox — DB files must never bind-mount), healthchecks, single network,
+      ports/creds from .env
+- [x] MinIO bootstrap job: create buckets (documents, returns, signed-docs,
+      recordings) private-by-default
+- [x] Placeholder app services (api, portal, internal) wired but optional via
+      profiles, so `docker compose up -d` works from day one
+- [x] Prove it: `docker compose up -d` → both services healthy; psql connects;
+      MinIO console reachable; volumes survive `down` + `up`
+
+## M2 — Core database schema (versioned migrations, documented)
+- [x] Migration tooling (node-pg-migrate, raw SQL) + `npm run migrate` up/down
+- [x] Staff & auth: staff, roles/permissions (all 8 current roles + future ones:
+      MP Team & Access), MFA secrets, sessions, failed-login lockout
+- [x] audit_log — append-only (trigger blocks UPDATE/DELETE): who/what/when/where,
+      exportable (MP WISP)
+- [x] Contacts domain (MP Unified Contact Record): contacts (identity, language
+      pref, relationship statuses, compliance fields incl. §7216 status,
+      BR1–BR6 bridge fields, health-score inputs, referral attribution, source
+      flag Dubsado/Zoho/native), businesses (EIN, entity type, NAICS/IRS code…),
+      entity_groups + members (v4.2 module 2)
+- [x] consents (§7216 et al.: status, signed-doc link, method, timestamps)
+- [x] Engagements: engagements (service line, price-lock fields,
+      price_book_version ref) + tax_engagements (full MP Tax Engagement field
+      set: pricing incl. fee range, complexity score + inputs, extension block,
+      compliance gates, signature method) + stage history (client-vs-staff
+      delay attribution)
+- [x] irs_notices (MP IRS Notice Module) · entity_compliance (annual-report
+      dues, PLLC-conversion flag)
+- [x] documents + document_requests (categories per MP Document Center)
+- [x] signature_envelopes + kba_verifications (pluggable vendor field)
+- [x] templates (EN/ES bodies, **is_placeholder flag**), message_threads/messages,
+      notifications
+- [x] Portal auth: portal_users, magic_link_tokens, portal_sessions
+- [x] meetings/transcripts/summaries/suggested_actions · tasks · referrals
+      (direction, disclosure timestamp, policy version) · import_batches +
+      enrichment_queue · grants_received (minimal, for tracker migration) ·
+      form_definitions/form_submissions (admin-editable selects, Form 5 modules
+      as data) · resource_library · admin settings (SLA windows, thresholds)
+- [x] Schema docs: every table/field/constraint/index annotated (MP Output Reqs)
+      — documented in the migration SQL itself (inline comments + COMMENT ON)
+- [x] Prove it: migrate up → down → up clean on fresh volume; constraint spot-checks
+
+## M3 — price_book + seed (Pricing Seed Data, MP v4.2 addendum)
+- [x] Tables: price_book_versions (effective-dated, admin edits create new
+      version) · price_book_items (stable item_code, service_line, EN/ES names,
+      amount_cents, unit [flat/hourly/per-form/per-month/…], min/max for ranges,
+      is_pass_through, needs_confirmation + note) · bundle_rules
+      (bundle-price + free-with rules)
+- [x] Engagements reference the version in force at signing; price-lock fields
+      (locked price + lock expiry) per MP Billing Architecture
+- [x] Seed v1 — every line of Pricing Seed Data (73 items): individual base +
+      17 add-ons + other; business returns (Sch C 180 … 1120 800, addl state
+      350…); recurring accounting; scope-ladder rungs; setups & conversions;
+      QBO/payroll software pass-throughs (display-only); 1099/W-2 ($50 + $10/form);
+      entity services; attest; specialized CPA; COO $150/unit; deposits (1040
+      $250…). Owner-comp default (⅓ net profits) as config, not a price
+- [x] Seed the 3 bundle rules: QBO+payroll setup = one $250 · ST-1 filings free
+      w/ monthly package · forecasting+margin analysis free w/ monthly package
+- [x] ⚠ items seeded with primary value + needs_confirmation=true: CPA
+      letters/planning $250–500 · semi-annual $1,000 · sales-tax full-mgmt $100
+      · formation w/ EIN $500 · annual report $130 · specialized CPA $500 ·
+      business-tax deposit $300 — Brian confirms before launch (launch-gate item)
+      (12 item-level flags incl. payroll full-mgmt billing-unit question)
+- [x] CI guard: build fails on dollar/cents literals in app code outside
+      packages/db seeds + test fixtures (CLAUDE.md hard rule)
+- [x] Prove it: seed idempotent; version-2 edit leaves v1 engagements priced at
+      v1; spot queries (MFJ base 200.00, 1120-S 700.00) pass in tests
+
+## M4 — API skeleton, staff auth, audit middleware
+- [ ] Fastify app + health endpoint + zod-validated config; request logging with
+      **no PII in logs** (CLAUDE.md)
+- [ ] Staff auth: password + TOTP MFA (required), session timeout, lockout,
+      RBAC middleware (role → permission checks per MP Team table)
+- [ ] Audit middleware: document/PII reads + permission changes emit audit rows
+- [ ] Mailer interface: SES transport (prod) / console transport (dev) — approved
+      vendors only, no other SaaS
+- [ ] Prove it: auth + RBAC + lockout integration tests; audit rows asserted
+
+## M5 — Client magic-link auth
+- [ ] Magic-link issue/verify (single-use, expiring), optional password + MFA,
+      clients see only their own records (row-level checks)
+- [ ] Bounce fallback: delivery-failure webhook → Rene task (MP Portal Auth)
+- [ ] Prove it: e2e login via console transport; cross-client access test fails closed
+
+## M6 — CRM core
+- [ ] Contacts/businesses/entity-groups CRUD + search; assigned manager;
+      enrichment-gap surfacing (missing EIN/entity type…)
+- [ ] Health score job (5×20 weights, MP) + Red alert / Green+tenure upsell flag
+      (upsell **§7216-gated**)
+- [ ] §7216 enforcement helper used by every cross-entity/referral/upsell code
+      path — blocked until signed consent on file; migrated clients default
+      "Not on file" (MP §7216)
+- [ ] Attest independence check: block attest engagement creation when active
+      bookkeeping/payroll/mgmt services exist, absent Brian's documented
+      override (CLAUDE.md hard rule) + test
+- [ ] Prove it: unit tests incl. gate tests; seeded demo data walkthrough
+
+## M7 — Tax engagement module
+- [ ] Pipeline stages + transitions (MP): Intake Started → … → Completed |
+      On Hold | Withdrawn; parallel "Extended" tag; Pending Client Response
+      auto-set on doc request
+- [ ] Signature gates enforced in code: engagement letter → past Scheduled;
+      8879 → Filed (MP automations 7)
+- [ ] Complexity score fn (base 1 … cap L5) + scope-creep auto-flag (final >
+      estimate top) with required reason enum
+- [ ] Estimated-fee-locked → preparation unlocked (automation 8)
+- [ ] Prove it: table-driven tests for gates/score/creep; stage-history rows
+
+## M8 — Extension workflow + deadline engine
+- [ ] Deadline derivation as pure fn from return type + fiscal-year end
+      (1065/1120-S→Sep 15 · 1040/1120→Oct 15 · 990→Nov 15 · fiscal-year→+6mo)
+      — table-driven tests, **never a hardcoded date swap** (CLAUDE.md)
+- [ ] T-21 Extension Decision List job; Extend → client notice (EN/ES) +
+      payment-estimate flow; filed → deadline swap + Extended tag
+- [ ] Summer chase scheduler (Jun 1 / Jul 15 / Aug 15, escalating copy) +
+      at-risk flag (extended, no docs by Aug 15)
+- [ ] Deadline dashboard data (countdowns, at-risk counts)
+- [ ] Prove it: clock-injected job tests around Mar 15/Apr 15 boundaries
+
+## M9 — IRS notices + entity compliance
+- [ ] Notice records + auto response-deadline + Ana-Maria default routing;
+      escalations (<14d → Brian; unactioned 48h → Brian+Jackson)
+- [ ] Entity module: annual-report due dates per state, Laura T-60 / client
+      T-30 reminders; PLLC-conversion pipeline (Module I flag → Laura +
+      advisory flag; license-verification checklist step)
+- [ ] Prove it: alert-timing tests; notice-upload → record within minutes (hook in M10)
+
+## M10 — Document center backend (MinIO)
+- [ ] Upload/download service: presigned or streamed, category enum, per-file
+      status, size/type limits; **every access audit-logged**
+- [ ] Document requests → Pending Client Response + 3-day reminder + 7-day
+      non-response alert (automations 4–5)
+- [ ] IRS-notice-category upload → auto-create notice record + alert (minutes)
+- [ ] Prove it: audit-log assertions on every path; reminder job tests
+
+## M11 — Docuseal + signature flows
+- [ ] Docuseal container (sign. subdomain in prod); envelope create/webhook sync;
+      signed PDFs → MinIO + contact link + audit
+- [ ] Engagement-letter (per service type) + §7216 templates as clearly-marked
+      PLACEHOLDERs, admin-editable
+- [ ] **Placeholder gate enforced in code**: any template flagged PLACEHOLDER is
+      blocked from sending to any production client — plus regression test
+      (CLAUDE.md non-negotiable)
+- [ ] 8879 remote flow: pluggable KBA interface → stub/sandbox adapter first
+      (vendor = Brian decision; $1–3/sig) → KBA pass required before envelope;
+      in-person wet path = scan/upload to "Signed Authorizations"; signature
+      method recorded per 8879
+- [ ] Signature status feeds gates from M7
+- [ ] Prove it: placeholder-block test; KBA-required test; wet-path test
+
+## M12 — Pricing calculator (range)
+- [ ] Range calculator from live price_book (itemized per Pricing Seed Data
+      structure); output = RANGE, never exact (MP Get an Estimate); writes
+      range + version ref to engagement
+- [ ] Bundle rules applied; pass-throughs shown on quotes as non-revenue
+- [ ] Prove it: golden tests from seed values; range logic reviewed with Brian
+
+## M13 — Stripe one-time billing
+- [ ] Invoices (from price_book items) + Stripe Checkout/PaymentIntents +
+      webhooks; receipt template; unpaid-14-day reminder + Rene flag; Filed →
+      invoice generated + QB export flag (automations 12, 17)
+- [ ] Prove it: Stripe test-mode e2e incl. webhook signature verification
+
+## M14 — Intake forms
+- [ ] Form 1 Soto intake (OF): 4 screens, conditional logic exactly as specced,
+      ≤3 min mobile, autosave/resume via magic link, admin-editable selects,
+      entity-group question, SSN by-phone escape hatch, hidden BR1–BR6 only via
+      Hilo link; on-submit automation #1 (contact + lead + welcome + engagement
+      letter & §7216 queued + Rene notified; 3.3=Yes → Ana-Maria flag)
+- [ ] IL SOS good-standing check at intake (v4.2): lookup + stamp result +
+      adverse → task + fix-steps notification; scheduled re-check job
+- [ ] Form 2 Hilo intake (90-second, warm voice, demographics optional →
+      reporting tables only, never day-to-day views)
+- [ ] Form 4 portal first-login checklist (4 steps, migrated-client variant)
+- [ ] Form 5 framework: modules as data; ship F (tax → complexity inputs),
+      B (F&B fires on industry alone — v4.1 fix), I (healthcare → PLLC flag);
+      A/C/D/E defined but deferred to their service phases
+- [ ] Form analytics counters (started/completed/drop-off per screen)
+- [ ] Prove it: e2e submits for all branches; module-firing rule tests
+
+## M15 — Soto client portal (bilingual)
+- [ ] Next.js portal, i18n EN/ES from day one (toggle persists to contact,
+      applied to outbound comms); Soto brand tokens (Forest Teal #0D3B38,
+      Electric Teal #00C9BF, Inter **self-hosted** — no CDN fonts per vendor rule)
+- [ ] Empty-state 4-step checklist · Dashboard (status plain-English, doc
+      requests, unsigned docs, invoices w/ Pay Now, messages, quick actions)
+- [ ] Document Center (drag-drop/camera, categories, per-file status,
+      portal-only policy copy) · My Returns + internal return-upload UI (ATX
+      PDF → portal delivery, auto-notify in client language, stage → Client
+      Review) · Sign Documents (Docuseal embed) · Invoices & Payments ·
+      Messages thread · Request a Service (→ opportunity, 24h commitment) ·
+      Get an Estimate (range + Cal.com embed) · Resource Library EN/ES
+- [ ] Prove it: full client journey demo on mobile viewport, both languages
+
+## M16 — Referral flows both directions (§7216-gated)
+- [ ] Form 3 Hilo→Soto transition: pre-filled, BR1–BR6 locked, referral-
+      integrity disclosure block (ack + timestamp + policy version logged),
+      <60s to submit; Soto lead w/ attribution + Brian notified + warm handoff
+- [ ] Soto→Hilo referral + both approval queues (one-tap mobile approve);
+      portal CTA fires only with consent on file (automations 14–15)
+- [ ] Prove it: gating tests (no consent → no referral/CTA); disclosure audit trail
+
+## M17 — Meeting intelligence
+- [ ] Whisper + Ollama containers sized for shared 16GB box (small/medium
+      Whisper, ~3–8B quantized LLM); job queue serializes heavy work; flag if
+      memory budget doesn't hold (CLAUDE.md) — API fallback text-only
+- [ ] Zoom webhook → download → transcribe → summary/decisions/actions/referral
+      recs → contact record + auto tasks + referral queue + suggested time entry
+- [ ] Browser-based mobile recorder (no app) + voice-memo upload → same pipeline;
+      meeting type tagged
+- [ ] Prove it: e2e on a sample recording; peak-memory measured and recorded
+
+## M18 — Cal.com + booking
+- [ ] Cal.com container (book. subdomain); event types; **Zoom-only enforced on
+      initial consultations**; booking → Form 1 handoff
+- [ ] Two-lane booking (v4.2): Lane 1 discovery collects service-level deposit
+      via Stripe (true-up language at checkout, deposit amounts from
+      price_book); Lane 2 questions always free
+- [ ] Prove it: booking e2e; deposit charge in Stripe test mode
+
+## M19 — Dashboards + alerts (Phase 1 set)
+- [ ] Executive (Brian): open returns by stage+value, revenue MTD/YTD, A/R,
+      alerts, capacity, health distribution, deadline-countdown widget
+- [ ] Hilo Ops (Jackson): entrepreneurs by status, sessions, referral queues,
+      summaries 7-day, milestones 30-day, live funder metrics
+- [ ] ntfy push (Brian+Jackson) + Phase-1 alert set (IRS 48h, SLA, non-response
+      7d, scope creep, health Red, magic-link bounce, unsigned 8879 near
+      deadline, extension at-risk…)
+- [ ] Prove it: dashboards over seeded demo data; test push received on iPhone
+
+## M20 — Admin interface core
+- [ ] Price-book editor (new-version-on-edit semantics + needs_confirmation
+      queue for the ⚠ items) · template editor EN/ES with placeholder flag
+      badge · staff + permissions · SLA windows + alert thresholds
+- [ ] Copy changes never require deploy (CLAUDE.md) — templates fully DB-driven
+- [ ] Prove it: price edit → new version; old engagements keep old version
+
+## M21 — Ops hardening
+- [ ] docker-compose.staging.yml (full clone) · Uptime Kuma monitors all
+      services · Vaultwarden up (funder-portal creds migrate in, Sheet purged)
+- [ ] Encrypted backups → Backblaze B2 (pg_dump + MinIO mirror), documented +
+      **tested** restore script; quarterly-restore-test reminder
+- [ ] WISP security-summary export (MFA status, audit stats, backup status)
+- [ ] Prove it: restore drill from a real backup on a clean stack
+
+## M22 — Data migration
+- [ ] Import pipeline w/ per-record source flags: Dubsado (24–36mo active),
+      Zoho (full, skip 36mo+ inactive unless flagged), Grant Tracker →
+      grants_received; dedupe/merge into unified schema; enrichment queue for
+      gaps  ⛔ needs export files from Brian
+- [ ] Migrated-client onboarding sequence staged (EN/ES "we upgraded our
+      portal" + magic link + checklist w/ pending signatures) — **not sent**
+      until launch gates pass
+- [ ] Prove it: dry-run counts/dedupe report reviewed with Brian before commit
+
+## M23 — Deploy + launch gates
+- [ ] Hetzner CPX41 (encrypted volume), DNS subdomains, Caddy/Traefik +
+      Let's Encrypt, prod + staging up, Twilio 312 number provisioned (client-
+      facing in Phase 2)  ⛔ needs Brian's accounts (Hetzner, DNS, Stripe,
+      Twilio, SES prod access, B2, Zoom app, KBA vendor)
+- [ ] Launch-gate checklist: no PLACEHOLDER template sendable (verified by
+      test) · ⚠ prices confirmed by Brian · restore tested · MFA enforced ·
+      audit export works · portal copy EN/ES review by Brian/Jackson
+- [ ] Prove it: smoke suite against staging; `docker-compose up -d` from clean
+      server per MP one-command requirement
+
+## Review
+
+### M0–M3 (completed 2026-07-05)
+- Stack as approved: Node 24 + TypeScript strict, npm workspaces, Fastify (M4),
+  node-pg-migrate **v8** (upgraded from v7 during build — v7 pulled a
+  high-severity glob advisory; v8 audits clean), raw-SQL migrations.
+- 7 migrations, ~45 tables/28 enums covering the full Phase 1 data model.
+  Verified: up → down ×7 → up clean; audit_log append-only trigger and
+  scope-creep CHECK proven by tests.
+- Price book v1: **73 items** (every Pricing Seed Data line), 3 bundle rules,
+  **12 item-level needs_confirmation flags** (the spec's 7 ⚠ conflicts, expanded
+  per item, + 1 honest question: payroll full-mgmt $500 has no billing unit in
+  the spec — seeded as monthly, flagged for Brian).
+- 9/9 integration tests green incl. grandfathering (new version never touches
+  v1) and placeholder-template flags. `npm run check:prices` guard active.
+- DB-level guardrails beyond the plan: Hilo→Soto referrals CANNOT reach 'sent'
+  without a disclosure timestamp (CHECK); f8879 envelopes require a recorded
+  signature method before sending (CHECK).
+- Deviation from README quickstart: none — fresh-clone sequence verified end
+  to end on this machine (compose up → migrate → seed → test:db).
+- Not yet done: initial git commit (awaiting Brian's go-ahead), MinIO image
+  tag pinning (M21), generated human-readable schema doc (docs live in
+  migration SQL comments for now).

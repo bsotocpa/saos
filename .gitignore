@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Environment — real secrets never enter git; use .env.example as the template
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+.next/
+*.tsbuildinfo
+
+# Test artifacts
+coverage/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+
+# Claude Code local (machine-specific) settings
+.claude/settings.local.json
