@@ -365,10 +365,12 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       portal" + magic link + checklist w/ pending signatures) — **not sent**
       until launch gates pass (portal_migration_welcome seeded live,
       admin-editable; 426 staged clients listed in the dry-run report)
-- [ ] Prove it: dry-run counts/dedupe report reviewed with Brian before commit
-      → report generated 2026-07-06 (migration-data/import-report.md):
-      862 contacts / 617 businesses / 54 grants / 12 credentials→Vaultwarden.
-      ⛔ AWAITING BRIAN'S REVIEW — then `npm run import:legacy -- --execute`
+- [x] Prove it: dry-run counts/dedupe report reviewed with Brian before commit
+      → report reviewed and APPROVED by Brian 2026-07-06; executed same day:
+      862 contacts / 617 businesses (637 owner links) / 54 grants /
+      611 enrichment entries / 49 skips recorded — DB aggregates verified
+      identical to the approved report; 12 credential markers confirmed in
+      import_records, zero credential values anywhere in the database
 
 ## M23 — Deploy + launch gates
 - [ ] Hetzner CPX41 (encrypted volume), DNS subdomains, Caddy/Traefik +
@@ -861,7 +863,18 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - 106/106 API tests green (cookies ×3, WISP ×2, watchdogs ×2, header
   encoding ×1 added); price guard clean.
 
-### M22 build (dry run complete 2026-07-06 — DB execute awaits Brian)
+### M22 (completed 2026-07-06 — dry run reviewed by Brian, then executed)
+- EXECUTED after Brian's approval: 862 contacts created / 0 duplicates,
+  617 businesses + 637 owner links, 54 grants, 611 enrichment-queue rows,
+  49 skips recorded. Post-load verification: source/status aggregates match
+  the approved report line for line; native records untouched; exactly 12
+  '[routed-to-vaultwarden]' markers and zero credential values in the DB.
+- Brian's remaining launch-side steps: import vaultwarden-import.json
+  (Tools → Import → Bitwarden json), DELETE that file, purge the Sheet's
+  credential columns; work the report's review lists in the CRM (18
+  no-activity clients, 35 business-name billing names, 59 same-name pairs).
+
+#### Build notes
 - Importer (apps/api/src/migration/*): zero-dep RFC-4180 CSV reader + exceljs
   for the Grant Tracker xlsx (read path only; its uuid advisory sits in the
   write path we never call — noted like the postcss precedent). Pure rule
