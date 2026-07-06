@@ -32,12 +32,19 @@ const EXEMPT = [
 
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 
-// Patterns that indicate a hardcoded price:
-//  1. A dollar sign directly followed by an amount ("$150", "$ 1,000").
-//     The lookbehind excludes template-literal interpolation "${...}".
-//  2. A *_cents / *Cents variable assigned a numeric literal.
+// Patterns that indicate a hardcoded price. Deliberately NOT matched: SQL
+// positional parameters ($1 … $99), which look exactly like small dollar
+// amounts. Consequence: a bare two-digit price string like "$75" slips this
+// net — the cents-assignment pattern below is the primary enforcement for
+// amounts entering logic; the dollar patterns catch display strings.
 const PATTERNS = [
-  { re: /\$\s?\d[\d,]*(\.\d+)?(?![{\w])/g, why: 'dollar literal' },
+  // $1,000 / $12,345.67 — thousands-formatted amounts
+  { re: /\$\s?\d{1,3}(,\d{3})+(\.\d+)?/g, why: 'dollar literal' },
+  // $75.00 — cents-formatted amounts
+  { re: /\$\s?\d+\.\d{2}(?!\d)/g, why: 'dollar literal' },
+  // $150 and larger — 3+ digit amounts (SQL params stop at $99)
+  { re: /\$\s?\d{3,}(?![\d{\w])/g, why: 'dollar literal' },
+  // amount_cents = 15000 / amountCents: 15000 — numeric price assignments
   { re: /[cC]ents\s*[:=]\s*\d/g, why: 'cents literal assignment' },
 ];
 

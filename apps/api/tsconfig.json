@@ -1,9 +1,14 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
+    // The API runs directly on Node 24's native TypeScript type-stripping —
+    // no build step between source and runtime. That imposes two rules,
+    // enforced here: relative imports name the real .ts file, and only
+    // erasable TS syntax is allowed (no enums/namespaces/param properties).
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
     "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }

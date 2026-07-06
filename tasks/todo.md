@@ -91,14 +91,16 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       v1; spot queries (MFJ base 200.00, 1120-S 700.00) pass in tests
 
 ## M4 — API skeleton, staff auth, audit middleware
-- [ ] Fastify app + health endpoint + zod-validated config; request logging with
+- [x] Fastify app + health endpoint + zod-validated config; request logging with
       **no PII in logs** (CLAUDE.md)
-- [ ] Staff auth: password + TOTP MFA (required), session timeout, lockout,
+- [x] Staff auth: password + TOTP MFA (required), session timeout, lockout,
       RBAC middleware (role → permission checks per MP Team table)
-- [ ] Audit middleware: document/PII reads + permission changes emit audit rows
-- [ ] Mailer interface: SES transport (prod) / console transport (dev) — approved
+- [x] Audit middleware: document/PII reads + permission changes emit audit rows
+      (writeAudit fail-closed helper; permission.change asserted; document-read
+      wiring lands with the document service in M10)
+- [x] Mailer interface: SES transport (prod) / console transport (dev) — approved
       vendors only, no other SaaS
-- [ ] Prove it: auth + RBAC + lockout integration tests; audit rows asserted
+- [x] Prove it: auth + RBAC + lockout integration tests; audit rows asserted
 
 ## M5 — Client magic-link auth
 - [ ] Magic-link issue/verify (single-use, expiring), optional password + MFA,
@@ -311,3 +313,26 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - Not yet done: initial git commit (awaiting Brian's go-ahead), MinIO image
   tag pinning (M21), generated human-readable schema doc (docs live in
   migration SQL comments for now).
+
+### M4 (completed 2026-07-05)
+- Fastify 5 API running directly on Node 24 native type-stripping (no build
+  step; erasableSyntaxOnly enforced). 10/10 integration tests against a fresh
+  migrated+seeded throwaway database (`saos_api_test`) via @saos/db's new
+  programmatic migrate/seed exports.
+- Auth: argon2id passwords, TOTP (otpauth) REQUIRED for staff — password-only
+  accounts get a 15-min HMAC-scoped token usable solely for MFA enrollment;
+  no full session exists until an authenticator is proven. Sliding session
+  expiry (60m idle / 12h absolute), failed-login lockout (5 → 15m), sessions
+  revoked on password change and deactivation. All flows audit-logged
+  (login_success/failed/locked_out, mfa_enrolled, permission.change, …).
+- No-PII logging: path-only URLs, redacted auth headers, no bodies ever;
+  pg errors logged as SQLSTATE+constraint only (pg `detail` echoes column
+  values). Verified against live server log output.
+- Mailer behind one interface: console (dev) / SMTP smart host (SES prod;
+  Postal-compatible later). Production config REFUSES console transport and
+  the well-known dev encryption key. SMTP path not live-tested (no SES creds
+  yet — M23 dependency).
+- `create-staff` CLI solves first-admin bootstrap (temp password shown once).
+- Fixes en route: price guard was flagging SQL positional params ($1, $2) —
+  patterns now require price-shaped amounts; guard self-tested both ways.
+  nodemailer bumped to v9 (v7 carried six advisories); audit clean.

@@ -3,15 +3,28 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "SAOS backend API (Fastify) — scaffolded in M0, implemented from M4",
+  "description": "SAOS backend API (Fastify): staff auth w/ required MFA, RBAC, audit logging, mailer",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "dev": "node --watch src/index.ts",
+    "start": "node src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.spec.ts\"",
+    "create-staff": "node src/scripts/create-staff.ts"
   },
   "dependencies": {
-    "@saos/shared": "*"
+    "argon2": "^0.44.0",
+    "dotenv": "^16.4.0",
+    "fastify": "^5.2.0",
+    "nodemailer": "^9.0.3",
+    "otpauth": "^9.3.0",
+    "pg": "^8.13.0",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@saos/db": "*",
     "@types/node": "^22.0.0",
-    "typescript": "^5.6.0"
+    "@types/nodemailer": "^7.0.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.9.0"
   }
 }
