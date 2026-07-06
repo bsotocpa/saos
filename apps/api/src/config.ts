@@ -44,6 +44,8 @@ const schema = z.object({
   PORTAL_BASE_URL: z.url().default('http://localhost:3000'),
   // Shared secret for inbound delivery-status webhooks (bounce fallback).
   WEBHOOK_SECRET: z.string().min(8).default('dev-webhook-secret'),
+  // Daily job scheduler (extension decision list, summer chase, health).
+  JOBS_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
 });
 
 export type Config = z.infer<typeof schema>;

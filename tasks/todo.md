@@ -140,15 +140,18 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - [x] Prove it: table-driven tests for gates/score/creep; stage-history rows
 
 ## M8 — Extension workflow + deadline engine
-- [ ] Deadline derivation as pure fn from return type + fiscal-year end
+- [x] Deadline derivation as pure fn from return type + fiscal-year end
       (1065/1120-S→Sep 15 · 1040/1120→Oct 15 · 990→Nov 15 · fiscal-year→+6mo)
       — table-driven tests, **never a hardcoded date swap** (CLAUDE.md)
-- [ ] T-21 Extension Decision List job; Extend → client notice (EN/ES) +
+      (model: 15th of Nth month after FYE, extension = original + 6 months;
+      weekend/holiday observance + June-30-FYE special rule documented as
+      not modeled in v1)
+- [x] T-21 Extension Decision List job; Extend → client notice (EN/ES) +
       payment-estimate flow; filed → deadline swap + Extended tag
-- [ ] Summer chase scheduler (Jun 1 / Jul 15 / Aug 15, escalating copy) +
+- [x] Summer chase scheduler (Jun 1 / Jul 15 / Aug 15, escalating copy) +
       at-risk flag (extended, no docs by Aug 15)
-- [ ] Deadline dashboard data (countdowns, at-risk counts)
-- [ ] Prove it: clock-injected job tests around Mar 15/Apr 15 boundaries
+- [x] Deadline dashboard data (countdowns, at-risk counts)
+- [x] Prove it: clock-injected job tests around Mar 15/Apr 15 boundaries
 
 ## M9 — IRS notices + entity compliance
 - [ ] Notice records + auto response-deadline + Ana-Maria default routing;
@@ -404,3 +407,32 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - Document-request creation triggers the pending_client_response side-effect
   (automation 4's pipeline half; reminders/items land in M10).
 - 28/28 API tests green.
+
+### M8 (completed 2026-07-05)
+- Deadlines derive: due = 15th of Nth month after fiscal year end (1065/
+  1120-S: 3rd · 1040/1120 family: 4th · 990: 5th), extended = original + 6
+  months. Calendar filers reproduce the spec table exactly; fiscal filers
+  proven by test (1120 FYE-June → extended 2027-04-15 — a date no
+  Sep/Oct/Nov swap could produce). tax_year convention: the calendar year
+  the fiscal year ENDS in. Not modeled in v1 (documented): weekend/holiday
+  shifts (countdowns err conservative), June-30-FYE C-corp special rule.
+- Daily jobs are idempotent PER DATE via audit-log run records — safe across
+  restarts, clock-injectable (?asOf=) for tests and admin replays. Scheduler
+  ticks every 15 min in index.ts (JOBS_ENABLED=false in tests), and runs the
+  health refresh once per day.
+- T-21 job stamps missing original_deadlines (business FYE; individuals
+  calendar), then notifies CEO + tax preparers per deadline with counts;
+  decision list queryable sorted by preparer; tested at both the Mar 15 and
+  Apr 15 boundaries.
+- Extend decision → bilingual notice (explicitly: extension of time to FILE,
+  not to PAY — Spanish verified); payment estimate → instructions email with
+  formatted amount + payment-made checkbox; filed → Extended tag + derived
+  deadline swap.
+- Summer chase (dates from app_settings): June gentle / July firmer / August
+  urgent, all EN+ES; clients with docs received are skipped; on/after the
+  at-risk date preparers get critical extension_at_risk alerts.
+- Deadline dashboard endpoint: per-engagement countdowns, per-deadline
+  buckets, extended + at-risk counts.
+- 6 new bilingual templates seeded (notice, payment reminder, 3 chases; all
+  functional copy, admin-editable, not placeholder-flagged).
+- 34/34 API tests green.

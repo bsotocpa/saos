@@ -97,6 +97,109 @@ export const templates = [
       '— Soto Accounting',
   },
   {
+    key: 'extension_notice',
+    name: 'Extension filed notice (extension of time to FILE, not to pay)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'tax_year', 'extended_deadline'],
+    subjectEn: 'We’re filing an extension for your {{tax_year}} return',
+    subjectEs: 'Presentaremos una extensión para su declaración {{tax_year}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'We’re filing an extension for your {{tax_year}} tax return. This is a smart, routine move — ' +
+      'it gives us until {{extended_deadline}} to file an accurate return.\n\n' +
+      'One important thing: an extension extends the time to FILE, not the time to PAY. ' +
+      'If an estimated payment applies to you, we’ll send the amount and instructions separately.\n\n' +
+      '— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Presentaremos una extensión para su declaración de impuestos {{tax_year}}. Es un paso ' +
+      'inteligente y de rutina — nos da hasta el {{extended_deadline}} para presentar una declaración precisa.\n\n' +
+      'Algo importante: la extensión extiende el plazo para PRESENTAR, no para PAGAR. ' +
+      'Si le corresponde un pago estimado, le enviaremos el monto y las instrucciones por separado.\n\n' +
+      '— Soto Accounting',
+  },
+  {
+    key: 'extension_payment_reminder',
+    name: 'Extension payment estimate + instructions',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'tax_year', 'amount', 'original_deadline'],
+    subjectEn: 'Your estimated payment for tax year {{tax_year}}',
+    subjectEs: 'Su pago estimado para el año fiscal {{tax_year}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'With your {{tax_year}} extension, we recommend an estimated payment of {{amount}}, ' +
+      'submitted by {{original_deadline}} — the extension moves the filing date, not the payment date.\n\n' +
+      'Paying now avoids interest and penalties later. Reply here or call the office if you’d like ' +
+      'to walk through it.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Con su extensión {{tax_year}}, recomendamos un pago estimado de {{amount}}, ' +
+      'enviado antes del {{original_deadline}} — la extensión mueve la fecha de presentación, no la de pago.\n\n' +
+      'Pagar ahora evita intereses y multas después. Responda aquí o llame a la oficina si desea repasarlo.\n\n' +
+      '— Soto Accounting',
+  },
+  {
+    key: 'extension_chase_june',
+    name: 'Summer document chase #1 (June — beat the fall rush)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'extended_deadline', 'portal_link'],
+    subjectEn: 'Beat the fall rush — send your tax documents when ready',
+    subjectEs: 'Adelántese al otoño — envíe sus documentos cuando pueda',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Your extended deadline is {{extended_deadline}} — plenty of time, and that’s exactly why now ' +
+      'is the easiest moment to knock this out. Upload your documents to your portal whenever you’re ready:\n\n' +
+      '{{portal_link}}\n\nEarly filers get the calmest turnaround of the year.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Su plazo extendido es el {{extended_deadline}} — hay tiempo de sobra, y justo por eso este es ' +
+      'el momento más fácil para resolverlo. Suba sus documentos a su portal cuando esté listo(a):\n\n' +
+      '{{portal_link}}\n\nQuienes presentan temprano reciben la atención más ágil del año.\n\n— Soto Accounting',
+  },
+  {
+    key: 'extension_chase_july',
+    name: 'Summer document chase #2 (July — firmer)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'extended_deadline', 'portal_link'],
+    subjectEn: 'Your {{extended_deadline}} deadline — let’s get your documents in',
+    subjectEs: 'Su plazo del {{extended_deadline}} — enviemos sus documentos',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'A quick nudge: we still need your tax documents to prepare your extended return ' +
+      '(deadline {{extended_deadline}}). Uploading them this month keeps everything comfortable:\n\n' +
+      '{{portal_link}}\n\nIf anything is hard to track down, tell us — we can usually help.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Un recordatorio rápido: aún necesitamos sus documentos para preparar su declaración extendida ' +
+      '(plazo {{extended_deadline}}). Subirlos este mes mantiene todo sin prisas:\n\n' +
+      '{{portal_link}}\n\nSi algo le cuesta conseguir, díganos — normalmente podemos ayudar.\n\n— Soto Accounting',
+  },
+  {
+    key: 'extension_chase_august',
+    name: 'Summer document chase #3 (August — urgent)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'extended_deadline', 'portal_link'],
+    subjectEn: 'Action needed: documents required for your {{extended_deadline}} deadline',
+    subjectEs: 'Acción necesaria: documentos para su plazo del {{extended_deadline}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Your extended deadline of {{extended_deadline}} is now close, and we don’t yet have your ' +
+      'documents. To file on time — and avoid a compressed, error-prone October — we need them within ' +
+      'the next two weeks:\n\n{{portal_link}}\n\n' +
+      'If something is blocking you, reply today and we’ll solve it together.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Su plazo extendido del {{extended_deadline}} ya está cerca y aún no tenemos sus documentos. ' +
+      'Para presentar a tiempo — y evitar un octubre comprimido y propenso a errores — los necesitamos ' +
+      'dentro de las próximas dos semanas:\n\n{{portal_link}}\n\n' +
+      'Si algo se lo impide, responda hoy y lo resolvemos juntos.\n\n— Soto Accounting',
+  },
+  {
     key: 'consent_7216_disclose',
     name: '§7216 Consent to DISCLOSE Tax Return Information',
     channel: 'document',

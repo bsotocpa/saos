@@ -1,8 +1,10 @@
 import { loadConfig } from './config.ts';
 import { buildServer } from './server.ts';
+import { startScheduler } from './jobs/daily.ts';
 
 const config = loadConfig();
 const app = buildServer(config);
+if (config.JOBS_ENABLED) startScheduler(app);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'shutting down');

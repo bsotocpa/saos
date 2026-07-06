@@ -1,0 +1,413 @@
+// Extension workflow (MP Tax Ops — 30–40% of clients file extensions).
+//
+// Daily jobs are idempotent per calendar date: each records its run in the
+// audit log and refuses to re-fire the same day (safe across restarts).
+// Every job takes `today` (YYYY-MM-DD) explicitly — clock-injected for tests,
+// todayChicago() in production.
+
+import type { FastifyInstance } from 'fastify';
+import { writeAudit } from '../../audit.ts';
+import { AppError } from '../../types.ts';
+import { sendTemplatedEmail } from '../templates/service.ts';
+import {
+  addDays,
+  daysBetween,
+  extendedDeadline,
+  originalDeadline,
+  type DeadlineReturnType,
+} from './deadlines.ts';
+
+/** Stages "not yet at Internal Review" (MP: decision-list population). */
+const PRE_INTERNAL_REVIEW = [
+  'intake_started', 'scheduled', 'documents_requested', 'pending_client_response', 'in_preparation', 'on_hold',
+];
+
+const CHASE_TEMPLATES = ['extension_chase_june', 'extension_chase_july', 'extension_chase_august'] as const;
+
+async function jobAlreadyRan(app: FastifyInstance, action: string, runDate: string): Promise<boolean> {
+  const { rows } = await app.db.query(
+    `SELECT 1 FROM audit_log WHERE action = $1 AND details->>'run_date' = $2 LIMIT 1`,
+    [action, runDate]
+  );
+  return rows.length > 0;
+}
+
+async function getSetting<T>(app: FastifyInstance, key: string, fallback: T): Promise<T> {
+  const { rows } = await app.db.query<{ value: T }>(`SELECT value FROM app_settings WHERE key = $1`, [key]);
+  return rows[0]?.value ?? fallback;
+}
+
+/** Stamp original_deadline on any engagement missing it (uses business FYE; individuals = calendar year). */
+export async function stampOriginalDeadlines(app: FastifyInstance): Promise<number> {
+  const { rows } = await app.db.query<{
+    id: string;
+    tax_year: number;
+    return_type: DeadlineReturnType;
+    fiscal_year_end_month: number | null;
+  }>(
+    `SELECT te.id, te.tax_year, te.return_type, b.fiscal_year_end_month
+     FROM tax_engagements te
+     JOIN engagements e ON e.id = te.engagement_id
+     LEFT JOIN businesses b ON b.id = e.business_id
+     WHERE te.original_deadline IS NULL AND te.stage NOT IN ('completed', 'withdrawn')`
+  );
+  let stamped = 0;
+  for (const r of rows) {
+    const deadline = originalDeadline(r.return_type, r.tax_year, r.fiscal_year_end_month ?? 12);
+    if (deadline) {
+      await app.db.query(`UPDATE tax_engagements SET original_deadline = $2 WHERE id = $1`, [r.id, deadline]);
+      stamped++;
+    }
+  }
+  return stamped;
+}
+
+/**
+ * Automation 10: at T-minus N days (default 21) before each filing deadline,
+ * announce the Extension Decision List to Brian + the tax preparers.
+ */
+export async function runExtensionDecisionListJob(
+  app: FastifyInstance,
+  today: string
+): Promise<{ skipped: boolean; lists: Array<{ deadline: string; count: number }> }> {
+  const ACTION = 'job.extension_decision_list';
+  if (await jobAlreadyRan(app, ACTION, today)) return { skipped: true, lists: [] };
+
+  await stampOriginalDeadlines(app);
+  const tMinus = await getSetting<number>(app, 'extension.decision_list_days_before', 21);
+  const targetDeadline = addDays(today, tMinus);
+
+  const { rows } = await app.db.query<{ deadline: string; count: number }>(
+    `SELECT te.original_deadline::text AS deadline, count(*)::int AS count
+     FROM tax_engagements te
+     WHERE te.original_deadline = $1
+       AND te.stage = ANY($2::tax_stage[])
+       AND NOT te.extension_filed
+     GROUP BY te.original_deadline`,
+    [targetDeadline, PRE_INTERNAL_REVIEW]
+  );
+
+  for (const list of rows) {
+    const staff = await app.db.query<{ id: string }>(
+      `SELECT st.id FROM staff st JOIN roles r ON r.id = st.role_id
+       WHERE st.is_active AND r.key IN ('ceo', 'tax_preparer')`
+    );
+    for (const s of staff.rows) {
+      await app.db.query(
+        `INSERT INTO notifications (staff_id, type, severity, title, body)
+         VALUES ($1, 'extension_decision_list', 'warning', $2, $3)`,
+        [
+          s.id,
+          `Extension Decision List ready — deadline ${list.deadline}`,
+          `${list.count} engagement(s) not yet at Internal Review. Mark each: Extend or Push to finish.`,
+        ]
+      );
+    }
+  }
+
+  await writeAudit(app.db, {
+    actorType: 'system',
+    action: ACTION,
+    details: { run_date: today, lists: rows },
+  });
+  return { skipped: false, lists: rows };
+}
+
+/** The queryable decision list (sorted by preparer, MP step 1). */
+export async function extensionDecisionList(app: FastifyInstance, deadline: string) {
+  const { rows } = await app.db.query(
+    `SELECT te.id, te.tax_year, te.return_type, te.stage, te.extension_recommended,
+            te.original_deadline::text AS original_deadline,
+            te.preparer_id, sp.full_name AS preparer_name,
+            c.id AS contact_id, c.first_name, c.last_name
+     FROM tax_engagements te
+     JOIN engagements e ON e.id = te.engagement_id
+     JOIN contacts c ON c.id = e.contact_id
+     LEFT JOIN staff sp ON sp.id = te.preparer_id
+     WHERE te.original_deadline = $1
+       AND te.stage = ANY($2::tax_stage[])
+       AND NOT te.extension_filed
+     ORDER BY sp.full_name NULLS LAST, c.last_name`,
+    [deadline, PRE_INTERNAL_REVIEW]
+  );
+  return rows;
+}
+
+/** MP step 2: marked "Extend" → bilingual client notice (file ≠ pay). */
+export async function markExtensionDecision(
+  app: FastifyInstance,
+  actor: { staffId: string; label: string },
+  taxEngagementId: string,
+  recommend: boolean
+): Promise<void> {
+  const te = await loadForExtension(app, taxEngagementId);
+  await app.db.query(`UPDATE tax_engagements SET extension_recommended = $2 WHERE id = $1`, [
+    taxEngagementId,
+    recommend,
+  ]);
+
+  if (recommend && te.email) {
+    const ext = extendedDeadline(te.return_type, te.tax_year, te.fiscal_year_end_month ?? 12);
+    await sendTemplatedEmail(app, {
+      to: te.email,
+      templateKey: 'extension_notice',
+      language: te.language,
+      contactId: te.contact_id,
+      vars: {
+        first_name: te.first_name,
+        tax_year: String(te.tax_year),
+        extended_deadline: ext ?? '',
+      },
+    });
+  }
+  await writeAudit(app.db, {
+    actorType: 'staff',
+    actorId: actor.staffId,
+    actorLabel: actor.label,
+    action: recommend ? 'tax_engagement.extension_recommended' : 'tax_engagement.extension_push_to_finish',
+    objectType: 'tax_engagement',
+    objectId: taxEngagementId,
+    contactId: te.contact_id,
+  });
+}
+
+/** MP step 3: payment estimate entered → client notified with instructions. */
+export async function setExtensionPaymentEstimate(
+  app: FastifyInstance,
+  actor: { staffId: string; label: string },
+  taxEngagementId: string,
+  amountCents: number
+): Promise<void> {
+  const te = await loadForExtension(app, taxEngagementId);
+  await app.db.query(`UPDATE tax_engagements SET extension_payment_estimate_cents = $2 WHERE id = $1`, [
+    taxEngagementId,
+    amountCents,
+  ]);
+  if (te.email) {
+    await sendTemplatedEmail(app, {
+      to: te.email,
+      templateKey: 'extension_payment_reminder',
+      language: te.language,
+      contactId: te.contact_id,
+      vars: {
+        first_name: te.first_name,
+        tax_year: String(te.tax_year),
+        amount: formatUsd(amountCents),
+        original_deadline: te.original_deadline ?? '',
+      },
+    });
+  }
+  await writeAudit(app.db, {
+    actorType: 'staff',
+    actorId: actor.staffId,
+    actorLabel: actor.label,
+    action: 'tax_engagement.extension_payment_estimated',
+    objectType: 'tax_engagement',
+    objectId: taxEngagementId,
+    contactId: te.contact_id,
+  });
+}
+
+/** MP step 4: extension filed in ATX → Extended tag + DERIVED deadline swap. */
+export async function markExtensionFiled(
+  app: FastifyInstance,
+  actor: { staffId: string; label: string },
+  taxEngagementId: string,
+  today: string
+): Promise<{ extendedDeadline: string | null }> {
+  const te = await loadForExtension(app, taxEngagementId);
+  const ext = extendedDeadline(te.return_type, te.tax_year, te.fiscal_year_end_month ?? 12);
+  await app.db.query(
+    `UPDATE tax_engagements
+     SET extension_filed = true,
+         extension_filed_date = $2,
+         extended_deadline = $3,
+         original_deadline = COALESCE(original_deadline, $4)
+     WHERE id = $1`,
+    [
+      taxEngagementId,
+      today,
+      ext,
+      originalDeadline(te.return_type, te.tax_year, te.fiscal_year_end_month ?? 12),
+    ]
+  );
+  await writeAudit(app.db, {
+    actorType: 'staff',
+    actorId: actor.staffId,
+    actorLabel: actor.label,
+    action: 'tax_engagement.extension_filed',
+    objectType: 'tax_engagement',
+    objectId: taxEngagementId,
+    contactId: te.contact_id,
+    details: { extended_deadline: ext },
+  });
+  return { extendedDeadline: ext };
+}
+
+/**
+ * MP step 5: summer chase (Jun 1 / Jul 15 / Aug 15, escalating copy) for
+ * extended clients whose documents haven't arrived. On/after the at-risk date
+ * (docs not in by Aug 15) the preparer is alerted too.
+ */
+export async function runSummerChaseJob(
+  app: FastifyInstance,
+  today: string
+): Promise<{ skipped: boolean; chased: number; atRiskAlerts: number }> {
+  const ACTION = 'job.extension_summer_chase';
+  if (await jobAlreadyRan(app, ACTION, today)) return { skipped: true, chased: 0, atRiskAlerts: 0 };
+
+  const dates = await getSetting<string[]>(app, 'extension.summer_chase_dates', ['06-01', '07-15', '08-15']);
+  const monthDay = today.slice(5);
+  const chaseIndex = dates.indexOf(monthDay);
+  if (chaseIndex === -1) return { skipped: true, chased: 0, atRiskAlerts: 0 };
+
+  const atRiskDate = await getSetting<string>(app, 'extension.at_risk_no_docs_by', '08-15');
+  const isAtRiskDate = monthDay >= atRiskDate;
+
+  const { rows } = await app.db.query<{
+    id: string;
+    contact_id: string;
+    first_name: string;
+    last_name: string;
+    email: string | null;
+    language: 'en' | 'es';
+    extended_deadline: string | null;
+    preparer_id: string | null;
+  }>(
+    `SELECT te.id, c.id AS contact_id, c.first_name, c.last_name, c.email, c.language,
+            te.extended_deadline::text AS extended_deadline, te.preparer_id
+     FROM tax_engagements te
+     JOIN engagements e ON e.id = te.engagement_id
+     JOIN contacts c ON c.id = e.contact_id
+     WHERE te.extension_filed
+       AND te.docs_received_at IS NULL
+       AND te.stage = ANY($1::tax_stage[])`,
+    [PRE_INTERNAL_REVIEW]
+  );
+
+  let chased = 0;
+  let atRiskAlerts = 0;
+  const templateKey = CHASE_TEMPLATES[chaseIndex] ?? CHASE_TEMPLATES[CHASE_TEMPLATES.length - 1]!;
+
+  for (const r of rows) {
+    if (r.email) {
+      await sendTemplatedEmail(app, {
+        to: r.email,
+        templateKey,
+        language: r.language,
+        contactId: r.contact_id,
+        vars: {
+          first_name: r.first_name,
+          extended_deadline: r.extended_deadline ?? '',
+          portal_link: app.config.PORTAL_BASE_URL,
+        },
+      });
+      chased++;
+    }
+    if (isAtRiskDate && r.preparer_id) {
+      await app.db.query(
+        `INSERT INTO notifications (staff_id, type, severity, title, contact_id)
+         VALUES ($1, 'extension_at_risk', 'critical', $2, $3)`,
+        [r.preparer_id, `Extension AT RISK: ${r.first_name} ${r.last_name} — no documents received`, r.contact_id]
+      );
+      atRiskAlerts++;
+    }
+  }
+
+  await writeAudit(app.db, {
+    actorType: 'system',
+    action: ACTION,
+    details: { run_date: today, chase_index: chaseIndex, chased, at_risk_alerts: atRiskAlerts },
+  });
+  return { skipped: false, chased, atRiskAlerts };
+}
+
+/** Deadline dashboard data (countdowns + at-risk, MP step 6). */
+export async function deadlineDashboard(app: FastifyInstance, today: string) {
+  const atRiskMonthDay = await getSetting<string>(app, 'extension.at_risk_no_docs_by', '08-15');
+  const { rows } = await app.db.query<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    tax_year: number;
+    return_type: string;
+    stage: string;
+    extension_filed: boolean;
+    docs_received_at: Date | null;
+    effective_deadline: string | null;
+  }>(
+    `SELECT te.id, c.first_name, c.last_name, te.tax_year, te.return_type, te.stage,
+            te.extension_filed, te.docs_received_at,
+            COALESCE(te.extended_deadline, te.original_deadline)::text AS effective_deadline
+     FROM tax_engagements te
+     JOIN engagements e ON e.id = te.engagement_id
+     JOIN contacts c ON c.id = e.contact_id
+     WHERE te.stage NOT IN ('completed', 'withdrawn', 'filed')
+     ORDER BY COALESCE(te.extended_deadline, te.original_deadline) NULLS LAST`
+  );
+
+  const engagements = rows.map((r) => {
+    const daysLeft = r.effective_deadline ? daysBetween(today, r.effective_deadline) : null;
+    const atRisk =
+      r.extension_filed && r.docs_received_at === null && today.slice(5) >= atRiskMonthDay;
+    return {
+      id: r.id,
+      client: `${r.first_name} ${r.last_name}`,
+      taxYear: r.tax_year,
+      returnType: r.return_type,
+      stage: r.stage,
+      deadline: r.effective_deadline,
+      daysLeft,
+      extended: r.extension_filed,
+      atRisk,
+    };
+  });
+
+  const byDeadline: Record<string, { total: number; atRisk: number }> = {};
+  for (const e of engagements) {
+    if (!e.deadline) continue;
+    byDeadline[e.deadline] ??= { total: 0, atRisk: 0 };
+    byDeadline[e.deadline]!.total++;
+    if (e.atRisk) byDeadline[e.deadline]!.atRisk++;
+  }
+  return {
+    today,
+    engagements,
+    byDeadline,
+    atRiskCount: engagements.filter((e) => e.atRisk).length,
+    extendedCount: engagements.filter((e) => e.extended).length,
+  };
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+function formatUsd(cents: number): string {
+  return `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+interface ExtensionRow {
+  id: string;
+  tax_year: number;
+  return_type: DeadlineReturnType;
+  original_deadline: string | null;
+  contact_id: string;
+  first_name: string;
+  email: string | null;
+  language: 'en' | 'es';
+  fiscal_year_end_month: number | null;
+}
+
+async function loadForExtension(app: FastifyInstance, taxEngagementId: string): Promise<ExtensionRow> {
+  const { rows } = await app.db.query<ExtensionRow>(
+    `SELECT te.id, te.tax_year, te.return_type, te.original_deadline::text AS original_deadline,
+            c.id AS contact_id, c.first_name, c.email, c.language, b.fiscal_year_end_month
+     FROM tax_engagements te
+     JOIN engagements e ON e.id = te.engagement_id
+     JOIN contacts c ON c.id = e.contact_id
+     LEFT JOIN businesses b ON b.id = e.business_id
+     WHERE te.id = $1`,
+    [taxEngagementId]
+  );
+  if (!rows[0]) throw new AppError(404, 'not_found', 'Tax engagement not found.');
+  return rows[0];
+}
