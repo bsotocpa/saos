@@ -257,6 +257,29 @@ export const templates = [
       'Luego le enviaremos la autorización de presentación electrónica.\n\n— Soto Accounting',
   },
   {
+    key: 'discovery_deposit',
+    name: 'Discovery booking deposit (Lane 1, true-up model)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'amount', 'checkout_link'],
+    subjectEn: 'Your consultation is booked — one quick step',
+    subjectEs: 'Su consulta está reservada — un paso rápido',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Great — your discovery consultation is on the calendar. To hold your spot we collect a ' +
+      '{{amount}} deposit, which applies in full toward your final invoice (any overpayment is ' +
+      'credited back — no surprises).\n\n' +
+      'Pay securely here:\n\n{{checkout_link}}\n\n' +
+      'Questions before we meet? Just reply — question calls are always free.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Perfecto — su consulta inicial está en el calendario. Para reservar su espacio cobramos un ' +
+      'depósito de {{amount}}, que se aplica por completo a su factura final (cualquier excedente ' +
+      'se acredita — sin sorpresas).\n\n' +
+      'Pague de forma segura aquí:\n\n{{checkout_link}}\n\n' +
+      '¿Preguntas antes de vernos? Responda este correo — las llamadas de preguntas siempre son gratis.\n\n— Soto Accounting',
+  },
+  {
     key: 'referral_disclosure',
     name: 'Referral-integrity disclosure block (Form 3 — REQUIRED screen)',
     channel: 'portal',

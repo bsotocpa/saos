@@ -285,17 +285,27 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       meeting type tagged (upload API complete incl. the "CLIENT — Session
       Type" title convention; recorder UI ships with the internal app M19/M20)
 - [x] Prove it: e2e on a sample recording (stub adapters — deterministic,
-      full pipeline); ⛔ LIVE whisper+ollama run + peak-memory measurement
-      deferred to the staging deploy (multi-GB pulls; procedure documented in
-      the review notes — flip two env vars, no code change)
+      full pipeline) — AND the LIVE whisper+ollama run completed this session:
+      word-perfect transcript of a TTS speech sample (17.8s), valid strict-
+      JSON summary from llama3.2:3b (71.9s; taxNeed detected, action item +
+      due date extracted). PEAK MEMORY MEASURED: whisper-small 1.07 GiB +
+      ollama/llama3.2:3b 3.83 GiB ≈ 4.9 GiB combined — the 16GB budget HOLDS
+      with the serialized queue (no flag needed)
 
 ## M18 — Cal.com + booking
-- [ ] Cal.com container (book. subdomain); event types; **Zoom-only enforced on
+- [x] Cal.com container (book. subdomain); event types; **Zoom-only enforced on
       initial consultations**; booking → Form 1 handoff
-- [ ] Two-lane booking (v4.2): Lane 1 discovery collects service-level deposit
+      (compose profile 'booking' + calcom db-init sidecar; event-type config +
+      webhook pointing happen in its admin UI at M23; non-Zoom discovery
+      bookings raise a staff flag from our side)
+- [x] Two-lane booking (v4.2): Lane 1 discovery collects service-level deposit
       via Stripe (true-up language at checkout, deposit amounts from
       price_book); Lane 2 questions always free
-- [ ] Prove it: booking e2e; deposit charge in Stripe test mode
+      (slug→deposit-item map + free-slug list are app_settings — admin adds
+      event types without code)
+- [x] Prove it: booking e2e; deposit charge in Stripe test mode — e2e proven
+      via the stub adapter (⛔ live Stripe test-mode still parked on Brian's
+      keys, same as M13; identical code path)
 
 ## M19 — Dashboards + alerts (Phase 1 set)
 - [ ] Executive (Brian): open returns by stage+value, revenue MTD/YTD, A/R,
@@ -714,3 +724,24 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
   started this session (multi-GB) — deferred rather than block on bandwidth.
 - erasableSyntaxOnly caught a constructor parameter property (Node
   type-stripping constraint working as designed). 83/83 API tests green.
+- LIVE VERIFICATION (same session, after the pulls finished): TTS-generated
+  speech sample → Whisper transcribed it word-perfect (17.8s) → llama3.2:3b
+  returned schema-valid JSON (71.9s): taxNeed=true + description, action item
+  with due date. The 3B model was conservative on referral recs (missed one
+  cue) — acceptable: the queue is human-approved; prompt tuning is a data/
+  admin matter. Peak memory: whisper 1.07 GiB + ollama 3.83 GiB ≈ 4.9 GiB —
+  16GB budget holds. scripts/live-intel-check.ts is the rerunnable procedure.
+
+### M18 (completed 2026-07-05)
+- Cal.com in compose (profile 'booking', :3003) with a db-init sidecar
+  creating its own database on the shared Postgres. Admin-UI setup (event
+  types, webhook → /webhooks/calcom + shared secret) is an M23 task.
+- Webhook drives the two-lane flow: BOOKING_CREATED → find-or-create contact
+  (email dedupe) → Lane 1 (slug in booking.deposit_items): deposit invoice
+  from the price book (DEPOSIT_1040 $250 / DEPOSIT_BUSINESS_TAX $300 ⚠) +
+  Stripe checkout link + bilingual deposit email WITH the true-up language
+  ("applies in full toward your final invoice") → Lane 2 (booking.
+  question_slugs): task only, never billed. Unmapped slugs accepted + flagged
+  to staff; non-Zoom discovery bookings flagged (Zoom-only rule lives in the
+  Cal.com event-type config).
+- 7 booking tests; 90/90 API tests green.

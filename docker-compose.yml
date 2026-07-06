@@ -109,6 +109,47 @@ services:
       - saos_ollama_data:/root/.ollama
     networks: [saos]
 
+  # ── Scheduling (profile: booking) — Cal.com self-hosted ─────────────────────
+  # book.sotoaccounting.com in production. Shares the Postgres instance via
+  # its own database (created by calcom-db-init). Event types (two-lane
+  # booking, Zoom-only initial consultations) are configured in its admin UI
+  # at M23; our webhook handler drives deposits + intake handoff.
+  calcom-db-init:
+    profiles: [booking]
+    image: postgres:16
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      PGPASSWORD=$${POSTGRES_PASSWORD:-saos_dev_password} psql -h postgres -U $${POSTGRES_USER:-saos} -d postgres
+      -tc \"SELECT 1 FROM pg_database WHERE datname = 'calcom'\" | grep -q 1 ||
+      PGPASSWORD=$${POSTGRES_PASSWORD:-saos_dev_password} createdb -h postgres -U $${POSTGRES_USER:-saos} calcom;
+      echo 'calcom database ready.'
+      "
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-saos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saos_dev_password}
+    networks: [saos]
+
+  calcom:
+    profiles: [booking]
+    # TODO(M21 hardening): pin a specific version tag.
+    image: calcom/cal.com:latest
+    restart: unless-stopped
+    depends_on:
+      calcom-db-init:
+        condition: service_completed_successfully
+    ports:
+      - "${CALCOM_PORT:-3003}:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-saos}:${POSTGRES_PASSWORD:-saos_dev_password}@postgres:5432/calcom
+      DATABASE_DIRECT_URL: postgresql://${POSTGRES_USER:-saos}:${POSTGRES_PASSWORD:-saos_dev_password}@postgres:5432/calcom
+      NEXTAUTH_SECRET: ${CALCOM_NEXTAUTH_SECRET:-dev-calcom-nextauth-secret}
+      CALENDSO_ENCRYPTION_KEY: ${CALCOM_ENCRYPTION_KEY:-dev-calcom-encryption-key}
+      NEXT_PUBLIC_WEBAPP_URL: ${CALCOM_URL:-http://localhost:3003}
+    networks: [saos]
+
   # ── Application services (placeholders) ─────────────────────────────────────
   # Wired now so the topology is visible; excluded from a default `up` via the
   # "app" profile. Dockerfiles land with their milestones (api: M4, portal: M15,

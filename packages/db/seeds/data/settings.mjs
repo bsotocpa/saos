@@ -71,6 +71,18 @@ export const settings = [
     description: 'Annual report reminder to the client at T-minus days.',
   },
   {
+    key: 'booking.deposit_items',
+    value: { 'new-client-discovery': 'DEPOSIT_1040', 'business-discovery': 'DEPOSIT_BUSINESS_TAX' },
+    description:
+      'Lane 1 (v4.2 two-lane booking): Cal.com event-type slug → price_book deposit item collected at booking. Add slugs here when event types are created (M23).',
+  },
+  {
+    key: 'booking.question_slugs',
+    value: ['general-inquiries'],
+    description:
+      'Lane 2: event-type slugs that are ALWAYS FREE ("Book a question call — no charge", codified retention asset).',
+  },
+  {
     key: 'referral.disclosure_policy_version',
     value: '2026-07-05.v1',
     description:
