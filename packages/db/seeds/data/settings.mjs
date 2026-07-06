@@ -71,6 +71,11 @@ export const settings = [
     description: 'Annual report reminder to the client at T-minus days.',
   },
   {
+    key: 'sos.recheck_days',
+    value: 90,
+    description: 'IL SOS good-standing re-check cadence for active clients (days since last check).',
+  },
+  {
     key: 'pricing.estimate_band_percent',
     value: 15,
     description:

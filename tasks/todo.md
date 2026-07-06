@@ -222,21 +222,29 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       verification code in place via stripe.webhooks.constructEvent)
 
 ## M14 — Intake forms
-- [ ] Form 1 Soto intake (OF): 4 screens, conditional logic exactly as specced,
+- [x] Form 1 Soto intake (OF): 4 screens, conditional logic exactly as specced,
       ≤3 min mobile, autosave/resume via magic link, admin-editable selects,
       entity-group question, SSN by-phone escape hatch, hidden BR1–BR6 only via
       Hilo link; on-submit automation #1 (contact + lead + welcome + engagement
       letter & §7216 queued + Rene notified; 3.3=Yes → Ana-Maria flag)
-- [ ] IL SOS good-standing check at intake (v4.2): lookup + stamp result +
+      (BR fields server-written only — client attempts at the reserved '_'
+      namespace are stripped and proven ignored)
+- [x] IL SOS good-standing check at intake (v4.2): lookup + stamp result +
       adverse → task + fix-steps notification; scheduled re-check job
-- [ ] Form 2 Hilo intake (90-second, warm voice, demographics optional →
-      reporting tables only, never day-to-day views)
-- [ ] Form 4 portal first-login checklist (4 steps, migrated-client variant)
-- [ ] Form 5 framework: modules as data; ship F (tax → complexity inputs),
+      (adapter: stub | live ilsos.gov scraper — self-hosted, no third party)
+- [x] Form 2 Hilo intake (90-second, warm voice, demographics optional →
+      reporting tables only, never day-to-day views) — demographics proven to
+      exist ONLY in the submission row; contacts has no demographic columns
+- [x] Form 4 portal first-login checklist (4 steps, migrated-client variant)
+      — state endpoints live; checklist row auto-created with portal access;
+      migrated variant set by the M22 import
+- [x] Form 5 framework: modules as data; ship F (tax → complexity inputs),
       B (F&B fires on industry alone — v4.1 fix), I (healthcare → PLLC flag);
       A/C/D/E defined but deferred to their service phases
-- [ ] Form analytics counters (started/completed/drop-off per screen)
-- [ ] Prove it: e2e submits for all branches; module-firing rule tests
+      (all 9 modules seeded as data with triggers + flag rules — the Phase 2
+      no-code builder edits rows, not code)
+- [x] Form analytics counters (started/completed/drop-off per screen)
+- [x] Prove it: e2e submits for all branches; module-firing rule tests
 
 ## M15 — Soto client portal (bilingual)
 - [ ] Next.js portal, i18n EN/ES from day one (toggle persists to contact,
@@ -578,3 +586,32 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
   (fee > estimate top without a reason) — the system refused correctly; test
   now supplies the reason. Cross-test date sweep in the overdue job replaced
   with a same-date guard assertion.
+
+### M14 (completed 2026-07-05)
+- Forms are DATA: Form 1 (4 screens, every OF field incl. the v4.2 additions —
+  entity-group question, SSN escape hatch) and Form 2 seeded as definitions;
+  all selects admin-editable. Validator honors conditional logic (hidden
+  fields never required; selects validate against definition options).
+- Public form API: start → per-screen autosave (mobile interruptions) →
+  resume by token (wrong token 404; submitted forms refuse writes) → submit
+  with sanitized validation issues.
+- Automation #1 verified end to end: contact (duplicate detection by email —
+  links, never duplicates), business + IL SOS check + stamp, entity group
+  from co-owned businesses, tax engagement at intake_started, engagement
+  letter + §7216 envelopes QUEUED as drafts (placeholder gate governs
+  sending), ES welcome + ES magic link, Rene notified, IRS-letters flag to
+  Ana, SSN-by-phone task to Rene. Reserved '_hilo' namespace stripped from
+  client input — bridge fields are server-written only (M16 supplies the
+  verified transition link).
+- Form 5: 9 modules seeded (triggers + flag rules as data). Assembly proven:
+  B fires on food_beverage industry ALONE (the v4.1 fix); F for tax feeds
+  complexity inputs (states count); I fires for healthcare and its processor
+  enforces the PLLC auto-flag (licensed + LLC/sole-prop + IL →
+  pllc_conversions record routed to Laura + advisory flag) + the 1099-
+  clinician worker-classification flag. A/C/D/E/G/H defined, dormant until
+  their services flow.
+- IL SOS: stub|live adapter (live = self-hosted ilsos.gov scrape, best-effort
+  parse failing safe to not_found); adverse → Laura task + bilingual
+  fix-steps email; daily re-check job (90-day cadence setting, date-guarded).
+- Analytics: started/submitted per form + drop-off by screen for abandons.
+- 3 new templates (welcome_soto, welcome_hilo, sos_fix_steps). 73/73 tests.

@@ -11,6 +11,7 @@ import { seedRoles } from './seeds/data/roles.mjs';
 import { seedSettings } from './seeds/data/settings.mjs';
 import { seedTemplates } from './seeds/data/templates.mjs';
 import { seedPriceBook } from './seeds/data/price_book.mjs';
+import { seedForms } from './seeds/data/forms.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -33,7 +34,7 @@ export async function migrate(databaseUrl, direction = 'up') {
 /** Run all seeds (idempotent) using an already-connected pg client. */
 export async function seedAll(client) {
   const results = [];
-  for (const fn of [seedRoles, seedSettings, seedTemplates, seedPriceBook]) {
+  for (const fn of [seedRoles, seedSettings, seedTemplates, seedPriceBook, seedForms]) {
     results.push(await fn(client));
   }
   return results;

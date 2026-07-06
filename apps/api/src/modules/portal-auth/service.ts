@@ -37,6 +37,12 @@ export async function ensurePortalUser(
     `INSERT INTO portal_users (contact_id, email) VALUES ($1, $2) RETURNING id, email`,
     [contactId, contact.rows[0].email]
   );
+  // Form 4: every new portal account gets the 4-step first-login checklist
+  // ('migrated' variant is set by the M22 import instead).
+  await app.db.query(
+    `INSERT INTO portal_onboarding (contact_id, variant) VALUES ($1, 'new') ON CONFLICT (contact_id) DO NOTHING`,
+    [contactId]
+  );
   return { ...rows[0]!, created: true };
 }
 

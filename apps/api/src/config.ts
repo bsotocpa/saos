@@ -70,6 +70,9 @@ const schema = z.object({
   STRIPE_MODE: z.enum(['stub', 'live']).default('stub'),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // IL SOS good-standing checker: 'stub' (dev/test) or 'live' (self-hosted
+  // scraper against ilsos.gov — no third-party service).
+  SOS_MODE: z.enum(['stub', 'live']).default('stub'),
 });
 
 export type Config = z.infer<typeof schema>;

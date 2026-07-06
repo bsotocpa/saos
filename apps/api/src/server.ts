@@ -21,6 +21,7 @@ import { registerDocumentRoutes } from './modules/documents/routes.ts';
 import { registerSignatureRoutes } from './modules/signatures/routes.ts';
 import { registerPricingRoutes } from './modules/pricing/routes.ts';
 import { registerBillingRoutes } from './modules/billing/routes.ts';
+import { registerFormRoutes } from './modules/forms/routes.ts';
 import { AppError } from './types.ts';
 
 /** True for PostgreSQL error objects (5-char SQLSTATE code). */
@@ -66,7 +67,10 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
       });
     }
     if (err instanceof AppError) {
-      return reply.code(err.statusCode).send({ error: err.code, message: err.message });
+      const issues = (err as AppError & { issues?: unknown }).issues;
+      return reply
+        .code(err.statusCode)
+        .send({ error: err.code, message: err.message, ...(issues !== undefined ? { issues } : {}) });
     }
     if (isPgError(err)) {
       request.log.error(
@@ -106,6 +110,7 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   registerSignatureRoutes(app);
   registerPricingRoutes(app);
   registerBillingRoutes(app);
+  registerFormRoutes(app);
 
   return app;
 }

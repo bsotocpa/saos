@@ -14,6 +14,7 @@ import { seedRoles } from './data/roles.mjs';
 import { seedSettings } from './data/settings.mjs';
 import { seedTemplates } from './data/templates.mjs';
 import { seedPriceBook } from './data/price_book.mjs';
+import { seedForms } from './data/forms.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(here, '../../../.env') });
@@ -31,6 +32,7 @@ try {
     ['settings', seedSettings],
     ['templates', seedTemplates],
     ['price_book', seedPriceBook],
+    ['forms', seedForms],
   ]) {
     const result = await fn(client);
     console.log(`✓ ${name}: ${result}`);

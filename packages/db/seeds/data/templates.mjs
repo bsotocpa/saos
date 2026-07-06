@@ -257,6 +257,69 @@ export const templates = [
       'Luego le enviaremos la autorización de presentación electrónica.\n\n— Soto Accounting',
   },
   {
+    key: 'welcome_soto',
+    name: 'Welcome — Soto Accounting (intake)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'portal_link'],
+    subjectEn: 'Welcome to Soto Accounting, {{first_name}}',
+    subjectEs: 'Bienvenido(a) a Soto Accounting, {{first_name}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Welcome — we’re glad you’re here. Your secure client portal is being set up now; ' +
+      'a sign-in link is on its way in a separate email.\n\n' +
+      'Once you’re in, a short 4-step checklist gets everything moving: confirm your info, ' +
+      'sign your documents, upload last year’s return, and book your consultation.\n\n' +
+      'You run your business. We’ve got the numbers.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Bienvenido(a) — nos alegra tenerle aquí. Su portal seguro de cliente se está configurando; ' +
+      'un enlace de acceso llega en un correo aparte.\n\n' +
+      'Al entrar, una lista de 4 pasos pone todo en marcha: confirme sus datos, firme sus documentos, ' +
+      'suba su declaración del año pasado y reserve su consulta.\n\n' +
+      'Usted dirige su negocio. Nosotros nos encargamos de los números.\n\n— Soto Accounting',
+  },
+  {
+    key: 'welcome_hilo',
+    name: 'Welcome — Hilo NFP (intake)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'portal_link'],
+    subjectEn: 'You’re in, {{first_name}} — welcome to Hilo',
+    subjectEs: 'Ya está dentro, {{first_name}} — bienvenido(a) a Hilo',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Welcome to Hilo! You’re building something — and you don’t have to figure it all out alone. ' +
+      'Your portal sign-in link is on its way in a separate email.\n\n' +
+      'Book a session whenever you’re ready; bring whatever’s on your mind. This is your space.\n\n— The Hilo team',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      '¡Bienvenido(a) a Hilo! Usted está construyendo algo — y no tiene que resolverlo todo solo(a). ' +
+      'Su enlace de acceso al portal llega en un correo aparte.\n\n' +
+      'Reserve una sesión cuando quiera; traiga lo que tenga en mente. Este es su espacio.\n\n— El equipo de Hilo',
+  },
+  {
+    key: 'sos_fix_steps',
+    name: 'IL SOS not in good standing — fix steps',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'business_name'],
+    subjectEn: '{{business_name}}: an Illinois filing needs attention',
+    subjectEs: '{{business_name}}: una presentación de Illinois requiere atención',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Our compliance check shows {{business_name}} is currently not in good standing with the ' +
+      'Illinois Secretary of State — usually a missed annual report, and very fixable.\n\n' +
+      'We’re already on it: our team will confirm exactly what’s owed and handle the reinstatement ' +
+      'filing with you. No action needed yet — we’ll reach out with the specifics.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Nuestra verificación muestra que {{business_name}} no está al corriente con el Secretario de ' +
+      'Estado de Illinois — normalmente es un informe anual pendiente, y tiene solución.\n\n' +
+      'Ya estamos en ello: confirmaremos exactamente qué se debe y gestionaremos la reinstalación ' +
+      'con usted. No necesita hacer nada aún — le contactaremos con los detalles.\n\n— Soto Accounting',
+  },
+  {
     key: 'invoice_sent',
     name: 'Invoice sent (portal Pay Now)',
     channel: 'email',
