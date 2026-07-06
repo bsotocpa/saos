@@ -15,9 +15,10 @@ export const BUCKET_BY_CATEGORY: Record<string, string> = {
   other: 'saos-documents',
   signed_authorizations: 'saos-signed-docs',
   return_deliverable: 'saos-returns',
+  recording: 'saos-recordings',
 };
 
-/** Accepted upload types — tax documents, photos of documents, spreadsheets. */
+/** Accepted upload types — documents, photos, spreadsheets, and session audio. */
 export const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
   'image/jpeg',
@@ -29,6 +30,15 @@ export const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/csv',
   'text/plain',
+  // Meeting recordings (M17): MediaRecorder/voice-memo formats.
+  'audio/webm',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/ogg',
+  'video/mp4',
+  'video/webm',
 ]);
 
 export function makeMinioClient(config: Config): MinioClient {

@@ -45,6 +45,8 @@ declare module 'fastify' {
       request: import('fastify').FastifyRequest,
       reply: import('fastify').FastifyReply
     ) => Promise<void>;
+    /** Serial meeting-intelligence queue (decorated by the meetings module). */
+    meetingQueue?: import('./modules/meetings/pipeline.ts').MeetingQueue;
   }
   interface FastifyRequest {
     staff?: AuthedStaff;

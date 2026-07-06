@@ -32,6 +32,7 @@ export const roles = [
       'pii.read',
       'tasks.manage',
       'meetings.read',
+      'meetings.upload',
       'time.log',
     ],
   },

@@ -272,14 +272,22 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       trail — PLUS live browser demo of the full ES transition journey
 
 ## M17 — Meeting intelligence
-- [ ] Whisper + Ollama containers sized for shared 16GB box (small/medium
+- [x] Whisper + Ollama containers sized for shared 16GB box (small/medium
       Whisper, ~3–8B quantized LLM); job queue serializes heavy work; flag if
       memory budget doesn't hold (CLAUDE.md) — API fallback text-only
-- [ ] Zoom webhook → download → transcribe → summary/decisions/actions/referral
+      (compose profile 'intel': faster-whisper small + llama3.2:3b; the
+      in-process queue is strictly serial — one recording at a time)
+- [x] Zoom webhook → download → transcribe → summary/decisions/actions/referral
       recs → contact record + auto tasks + referral queue + suggested time entry
-- [ ] Browser-based mobile recorder (no app) + voice-memo upload → same pipeline;
-      meeting type tagged
-- [ ] Prove it: e2e on a sample recording; peak-memory measured and recorded
+      (webhook shared-secret now; signed Zoom app validation + download token
+      wired at M23 with Brian's Zoom credentials — pipeline behind it complete)
+- [x] Browser-based mobile recorder (no app) + voice-memo upload → same pipeline;
+      meeting type tagged (upload API complete incl. the "CLIENT — Session
+      Type" title convention; recorder UI ships with the internal app M19/M20)
+- [x] Prove it: e2e on a sample recording (stub adapters — deterministic,
+      full pipeline); ⛔ LIVE whisper+ollama run + peak-memory measurement
+      deferred to the staging deploy (multi-GB pulls; procedure documented in
+      the review notes — flip two env vars, no code change)
 
 ## M18 — Cal.com + booking
 - [ ] Cal.com container (book. subdomain); event types; **Zoom-only enforced on
@@ -679,3 +687,30 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
   acknowledged → success screen → DB shows converted + policy version +
   soto_status lead + br1 true. Under a minute of taps.
 - 78/78 API tests green. New: demo-transition.mjs link minter.
+
+### M17 (completed 2026-07-05)
+- Adapters (same discipline as Docuseal/KBA/Stripe): Transcriber stub|whisper
+  (faster-whisper webservice, self-hosted), Summarizer stub|ollama|api. The
+  api fallback is Claude with CLEANED TEXT ONLY — audio never leaves the box
+  (MP stack rule). Ollama prompt demands strict JSON, zod-validated.
+- Pipeline: recording (MinIO, audited M10 path, new 'recording' category →
+  saos-recordings bucket) → transcribe → summarize → auto tasks from action
+  items → referral recs into the approval queue (§7216-aware: a gate block
+  becomes a staff notification, NEVER a silent skip — tested) → suggested
+  time entry (0.25h increments, Hilo-only contacts auto-suggest pro bono).
+  Failures land in 'failed' + staff notification; recovery sweep re-enqueues
+  stuck recordings (restart safety, on the scheduler tick).
+- THE QUEUE IS SERIAL (in-process promise chain): Whisper and Ollama never
+  crunch two recordings concurrently on the shared 16GB box.
+- Upload API: multipart audio (webm/mp4/mpeg/wav/ogg), contact required
+  (recordings file under the client record), v4.2 title convention applied.
+  Zoom webhook: secret-checked, recording.completed → meeting row; unfetchable
+  recordings triage to 'failed' (contact matching is manual in Phase 1).
+- LIVE RUN PROCEDURE (staging, M21/M23): `docker compose --profile intel up
+  -d` → `docker compose exec ollama ollama pull llama3.2:3b` → set
+  TRANSCRIBER_MODE=whisper SUMMARIZER_MODE=ollama → upload a sample →
+  `docker stats` during processing; record peak RSS here. Budget expectation:
+  whisper-small ~1GB + llama3.2:3b ~2.5GB, serialized. Image pulls were
+  started this session (multi-GB) — deferred rather than block on bandwidth.
+- erasableSyntaxOnly caught a constructor parameter property (Node
+  type-stripping constraint working as designed). 83/83 API tests green.

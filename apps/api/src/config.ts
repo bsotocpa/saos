@@ -73,6 +73,14 @@ const schema = z.object({
   // IL SOS good-standing checker: 'stub' (dev/test) or 'live' (self-hosted
   // scraper against ilsos.gov — no third-party service).
   SOS_MODE: z.enum(['stub', 'live']).default('stub'),
+  // Meeting intelligence (M17). Transcription stays on owned infrastructure;
+  // the API summarizer fallback receives CLEANED TEXT ONLY (MP stack rule).
+  TRANSCRIBER_MODE: z.enum(['stub', 'whisper']).default('stub'),
+  WHISPER_URL: z.string().default('http://localhost:9010'),
+  SUMMARIZER_MODE: z.enum(['stub', 'ollama', 'api']).default('stub'),
+  OLLAMA_URL: z.string().default('http://localhost:11434'),
+  OLLAMA_MODEL: z.string().default('llama3.2:3b'),
+  ANTHROPIC_API_KEY: z.string().optional(),
 });
 
 export type Config = z.infer<typeof schema>;

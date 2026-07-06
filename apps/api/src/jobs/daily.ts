@@ -27,6 +27,12 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   if (!invoices.skipped) app.log.info({ job: 'invoice_overdue', ...invoices }, 'daily job ran');
   const sos = await runSosRecheckJob(app, today);
   if (!sos.skipped) app.log.info({ job: 'sos_recheck', ...sos }, 'daily job ran');
+  // Restart safety: re-enqueue recordings stuck before processing began.
+  if (app.meetingQueue) {
+    const { recoverStuckMeetings } = await import('../modules/meetings/pipeline.ts');
+    const recovered = await recoverStuckMeetings(app, app.meetingQueue);
+    if (recovered > 0) app.log.info({ job: 'meeting_recovery', recovered }, 'stuck meetings re-enqueued');
+  }
   // Notice escalations run EVERY tick (48h precision matters); idempotent per notice.
   const notices = await runNoticeEscalations(app);
   if (notices.unactioned > 0 || notices.deadline > 0) {

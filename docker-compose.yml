@@ -79,6 +79,36 @@ services:
       - saos_docuseal_data:/data
     networks: [saos]
 
+  # ── Meeting intelligence (profile: intel) ───────────────────────────────────
+  # Sized for the shared Hetzner CPX41 16GB box (MP): Whisper 'small' (~1GB
+  # resident) + a ~3B quantized LLM (~2-3GB). The API's job queue SERIALIZES
+  # transcription/summarization so the two never peak together per job. Run
+  # with: docker compose --profile intel up -d
+  whisper:
+    profiles: [intel]
+    # TODO(M21 hardening): pin a specific version tag.
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    restart: unless-stopped
+    environment:
+      ASR_MODEL: ${WHISPER_MODEL:-small}
+      ASR_ENGINE: faster_whisper
+    ports:
+      - "${WHISPER_PORT:-9010}:9000"
+    volumes:
+      - saos_whisper_cache:/root/.cache
+    networks: [saos]
+
+  ollama:
+    profiles: [intel]
+    # TODO(M21 hardening): pin a specific version tag.
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - saos_ollama_data:/root/.ollama
+    networks: [saos]
+
   # ── Application services (placeholders) ─────────────────────────────────────
   # Wired now so the topology is visible; excluded from a default `up` via the
   # "app" profile. Dockerfiles land with their milestones (api: M4, portal: M15,
@@ -114,6 +144,8 @@ volumes:
   saos_pg_data:
   saos_minio_data:
   saos_docuseal_data:
+  saos_whisper_cache:
+  saos_ollama_data:
 
 networks:
   saos:
