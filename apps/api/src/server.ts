@@ -14,6 +14,8 @@ import { registerCrmRoutes } from './modules/crm/routes.ts';
 import { registerEngagementRoutes } from './modules/engagements/routes.ts';
 import { registerTaxRoutes } from './modules/tax/routes.ts';
 import { registerExtensionRoutes } from './modules/tax/extension-routes.ts';
+import { registerNoticeRoutes } from './modules/notices/routes.ts';
+import { registerEntityRoutes } from './modules/entity/routes.ts';
 import { AppError } from './types.ts';
 
 /** True for PostgreSQL error objects (5-char SQLSTATE code). */
@@ -89,6 +91,8 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   registerEngagementRoutes(app);
   registerTaxRoutes(app);
   registerExtensionRoutes(app);
+  registerNoticeRoutes(app);
+  registerEntityRoutes(app);
 
   return app;
 }

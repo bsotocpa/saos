@@ -154,12 +154,17 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - [x] Prove it: clock-injected job tests around Mar 15/Apr 15 boundaries
 
 ## M9 — IRS notices + entity compliance
-- [ ] Notice records + auto response-deadline + Ana-Maria default routing;
+- [x] Notice records + auto response-deadline + Ana-Maria default routing;
       escalations (<14d → Brian; unactioned 48h → Brian+Jackson)
-- [ ] Entity module: annual-report due dates per state, Laura T-60 / client
+      (routing is by ROLE — tax_preparer — never by name; auto deadline =
+      notice date + admin-configurable 30 days)
+- [x] Entity module: annual-report due dates per state, Laura T-60 / client
       T-30 reminders; PLLC-conversion pipeline (Module I flag → Laura +
       advisory flag; license-verification checklist step)
-- [ ] Prove it: alert-timing tests; notice-upload → record within minutes (hook in M10)
+      (state rules: IL = first day of anniversary month, default =
+      anniversary date; filed → history row + due date rolls)
+- [x] Prove it: alert-timing tests; notice-upload → record within minutes
+      (createIrsNotice service ready — M10's upload handler calls it)
 
 ## M10 — Document center backend (MinIO)
 - [ ] Upload/download service: presigned or streamed, category enum, per-file
@@ -436,3 +441,24 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - 6 new bilingual templates seeded (notice, payment reminder, 3 chases; all
   functional copy, admin-editable, not placeholder-flagged).
 - 34/34 API tests green.
+
+### M9 (completed 2026-07-05)
+- IRS notices: creation (staff route + createIrsNotice service for M10's
+  portal-upload hook), auto response-deadline (notice date + configurable 30
+  days), handler routed to the tax_preparer ROLE with immediate notification,
+  first_actioned_at stamps once on leaving 'received' (the 48h SLA basis).
+- Escalations run on every 15-min scheduler tick (48h precision), idempotent
+  per notice via notification-existence checks (notifyOnce): unactioned-48h →
+  Brian + Jackson (critical); deadline ≤14d → Brian + status 'escalated' +
+  escalated_at stamped. Re-runs verifiably duplicate nothing.
+- Entity compliance: due-date rule engine (IL: first day of anniversary
+  month; default: anniversary date; admin override always wins), status
+  upkeep (good/due_soon/overdue), T-60 staff notification + task (assigned
+  staff or va_entity role), T-30 bilingual client email (Spanish verified),
+  filed → annual_report_filings history + due date rolls to next period.
+- PLLC conversions: flag → Laura (va_entity) + advisory flag → Brian, 6-step
+  conversion checklist seeded per record, license-verification step, loose
+  status machine. createPllcConversion is the fn Module I firing (M14) calls.
+- New staffing helpers: role→staff resolution + notifyOnce (idempotent
+  alerts) — routing is always by role, never by name.
+- 40/40 API tests green.

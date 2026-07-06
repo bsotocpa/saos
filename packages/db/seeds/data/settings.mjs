@@ -31,6 +31,11 @@ export const settings = [
     description: 'Response deadlines closer than this many days escalate to Brian.',
   },
   {
+    key: 'irs_notice.default_response_days',
+    value: 30,
+    description: 'Auto response-deadline: notice date + this many days when the notice itself is not specific.',
+  },
+  {
     key: 'sla.invoice_unpaid_reminder_days',
     value: 14,
     description: 'Days an invoice may sit unpaid before the reminder + Rene flag (automation 17).',

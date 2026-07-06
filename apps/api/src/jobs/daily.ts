@@ -6,6 +6,8 @@ import type { FastifyInstance } from 'fastify';
 import { todayChicago } from '../modules/tax/deadlines.ts';
 import { runExtensionDecisionListJob, runSummerChaseJob } from '../modules/tax/extension.ts';
 import { runHealthRefresh } from '../modules/crm/health.ts';
+import { runNoticeEscalations } from '../modules/notices/service.ts';
+import { runEntityComplianceJob } from '../modules/entity/service.ts';
 
 const TICK_MS = 15 * 60 * 1000;
 
@@ -14,6 +16,13 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   if (!decision.skipped) app.log.info({ job: 'extension_decision_list', ...decision }, 'daily job ran');
   const chase = await runSummerChaseJob(app, today);
   if (!chase.skipped) app.log.info({ job: 'summer_chase', ...chase }, 'daily job ran');
+  const entity = await runEntityComplianceJob(app, today);
+  if (!entity.skipped) app.log.info({ job: 'entity_compliance', ...entity }, 'daily job ran');
+  // Notice escalations run EVERY tick (48h precision matters); idempotent per notice.
+  const notices = await runNoticeEscalations(app);
+  if (notices.unactioned > 0 || notices.deadline > 0) {
+    app.log.info({ job: 'notice_escalations', ...notices }, 'escalations fired');
+  }
 }
 
 /** Kick off the scheduler loop; health refresh runs on the first tick of each day too. */

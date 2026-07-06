@@ -200,6 +200,27 @@ export const templates = [
       'Si algo se lo impide, responda hoy y lo resolvemos juntos.\n\n— Soto Accounting',
   },
   {
+    key: 'annual_report_reminder',
+    name: 'Annual report reminder (client, T-30)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'business_name', 'due_date', 'state'],
+    subjectEn: '{{business_name}}: annual report due {{due_date}}',
+    subjectEs: '{{business_name}}: informe anual vence el {{due_date}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'A heads-up from your compliance calendar: the {{state}} annual report for {{business_name}} ' +
+      'is due {{due_date}}. We handle the filing — no action needed unless anything about the ' +
+      'business has changed (address, ownership, registered agent).\n\n' +
+      'If something has changed, reply here and we’ll update it before filing.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Un aviso de su calendario de cumplimiento: el informe anual de {{business_name}} en {{state}} ' +
+      'vence el {{due_date}}. Nosotros nos encargamos de la presentación — no necesita hacer nada, ' +
+      'salvo que algo del negocio haya cambiado (dirección, propietarios, agente registrado).\n\n' +
+      'Si algo cambió, responda aquí y lo actualizamos antes de presentar.\n\n— Soto Accounting',
+  },
+  {
     key: 'consent_7216_disclose',
     name: '§7216 Consent to DISCLOSE Tax Return Information',
     channel: 'document',
