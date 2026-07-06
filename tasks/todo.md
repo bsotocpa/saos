@@ -114,17 +114,18 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       templates are unsendable in every environment
 
 ## M6 — CRM core
-- [ ] Contacts/businesses/entity-groups CRUD + search; assigned manager;
+- [x] Contacts/businesses/entity-groups CRUD + search; assigned manager;
       enrichment-gap surfacing (missing EIN/entity type…)
-- [ ] Health score job (5×20 weights, MP) + Red alert / Green+tenure upsell flag
-      (upsell **§7216-gated**)
-- [ ] §7216 enforcement helper used by every cross-entity/referral/upsell code
+- [x] Health score job (5×20 weights, MP) + Red alert / Green+tenure upsell flag
+      (upsell **§7216-gated**) — transition-based alerts, no duplicates on re-run
+- [x] §7216 enforcement helper used by every cross-entity/referral/upsell code
       path — blocked until signed consent on file; migrated clients default
       "Not on file" (MP §7216)
-- [ ] Attest independence check: block attest engagement creation when active
+- [x] Attest independence check: block attest engagement creation when active
       bookkeeping/payroll/mgmt services exist, absent Brian's documented
-      override (CLAUDE.md hard rule) + test
-- [ ] Prove it: unit tests incl. gate tests; seeded demo data walkthrough
+      override (CLAUDE.md hard rule) + test — override is CEO-only (Jackson 403)
+- [x] Prove it: unit tests incl. gate tests; seeded demo data walkthrough
+      (walkthrough scripted as the CRM e2e test; UI demo lands with M15)
 
 ## M7 — Tax engagement module
 - [ ] Pipeline stages + transitions (MP): Intake Started → … → Completed |
@@ -359,3 +360,26 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
   ready notification row + audit trail.
 - Fix en route: test DBs are now per-suite (node --test runs spec files in
   parallel processes; a shared DROP/CREATE raced). 18/18 API tests green.
+
+### M6 (completed 2026-07-05)
+- CRM: contacts CRUD + search (name/email/phone, status/manager filters),
+  businesses with EIN-format validation, entity groups with XOR membership.
+  Contact detail reads audit 'contact.viewed' (PII under WISP); SSN never
+  returned (status + last4 only). Enrichment gaps auto-refresh on every
+  contact/business write and resolve in enrichment_queue.
+- §7216: has/require/record helpers; gate throws 403 'consent_7216_required';
+  recording maintains the contact rollup. This is THE chokepoint referrals
+  (M16) and Docuseal completion (M11) will call.
+- Health job: 5×20 components (v1 heuristics: portal logins 90d, doc-request
+  completion, payment status, docs-turnaround, tenure+engagement depth);
+  thresholds read from app_settings; alerts fire on band TRANSITIONS only
+  (re-run produces no duplicates). Red → assigned manager; green+2yr-tenure
+  upsell fires ONLY with signed §7216 (both sides tested). Manual trigger
+  POST /jobs/health-refresh; cron wiring lands with M8's scheduler.
+- Attest independence: conflict lines = bookkeeping/payroll/sales_tax/coo/
+  nonprofit_cfo (deliberately broad — override path exists; narrowing is
+  Brian's call). 409 without override; override restricted to CEO role
+  (Jackson's '*' does NOT bypass — tested); documented note required (min 10
+  chars), audited as engagement.independence_override.
+- Engagements pin price_book_version_id at creation (grandfathering root).
+- 22/22 API tests green.

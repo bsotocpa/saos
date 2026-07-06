@@ -10,6 +10,8 @@ import { registerAuthRoutes } from './modules/auth/routes.ts';
 import { registerStaffRoutes } from './modules/staff/routes.ts';
 import { registerPortalAuthRoutes } from './modules/portal-auth/routes.ts';
 import { registerPortalRoutes } from './modules/portal/routes.ts';
+import { registerCrmRoutes } from './modules/crm/routes.ts';
+import { registerEngagementRoutes } from './modules/engagements/routes.ts';
 import { AppError } from './types.ts';
 
 /** True for PostgreSQL error objects (5-char SQLSTATE code). */
@@ -81,6 +83,8 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   registerStaffRoutes(app);
   registerPortalAuthRoutes(app);
   registerPortalRoutes(app);
+  registerCrmRoutes(app);
+  registerEngagementRoutes(app);
 
   return app;
 }
