@@ -17,6 +17,11 @@ coverage/
 # Backup status (written by scripts/backup.sh — no client data, but machine-local)
 backups/
 
+# M22 client exports (Dubsado / Zoho / Grant Tracker) — real client PII.
+# NOTHING in here may ever enter git, except the README explaining that.
+migration-data/*
+!migration-data/README.md
+
 # OS / editor noise
 .DS_Store
 Thumbs.db
