@@ -97,6 +97,37 @@ export const templates = [
       '— Soto Accounting',
   },
   {
+    key: 'portal_migration_welcome',
+    name: 'Migrated-client portal welcome ("we upgraded our portal")',
+    channel: 'email',
+    isPlaceholder: false, // operational copy, admin-editable; SENDING is a launch-gate action (M22 stages, M23 sends)
+    variables: ['first_name', 'link'],
+    subjectEn: 'Your new Soto Accounting client portal is ready',
+    subjectEs: 'Su nuevo portal de cliente de Soto Accounting está listo',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'We’ve upgraded to a new client portal — one secure place for your documents, ' +
+      'returns, signatures, invoices, and messages with our team.\n\n' +
+      'Your records came with us. Sign in here to take a look and confirm your details:\n\n' +
+      '{{link}}\n\n' +
+      'The link works once and signs you in directly — no password needed. From your phone, ' +
+      'you can photograph and upload documents in seconds.\n\n' +
+      'Going forward, the portal is how we exchange documents — faster for you, and more secure ' +
+      'than email attachments.\n\n' +
+      '— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Hemos actualizado a un nuevo portal de clientes — un solo lugar seguro para sus documentos, ' +
+      'declaraciones, firmas, facturas y mensajes con nuestro equipo.\n\n' +
+      'Sus registros ya están ahí. Entre aquí para revisarlos y confirmar sus datos:\n\n' +
+      '{{link}}\n\n' +
+      'El enlace funciona una sola vez y lo conecta directamente — sin contraseña. Desde su teléfono, ' +
+      'puede fotografiar y subir documentos en segundos.\n\n' +
+      'De ahora en adelante, el portal es la vía para intercambiar documentos — más rápido para usted ' +
+      'y más seguro que los archivos adjuntos por correo.\n\n' +
+      '— Soto Accounting',
+  },
+  {
     key: 'extension_notice',
     name: 'Extension filed notice (extension of time to FILE, not to pay)',
     channel: 'email',

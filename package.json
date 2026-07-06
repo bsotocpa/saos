@@ -19,7 +19,8 @@
     "test:db": "npm run test:db --workspace=@saos/db",
     "check:prices": "node scripts/check-no-hardcoded-prices.mjs",
     "staging:up": "docker compose -p saos-staging -f docker-compose.yml -f docker-compose.staging.yml up -d",
-    "staging:down": "docker compose -p saos-staging -f docker-compose.yml -f docker-compose.staging.yml down"
+    "staging:down": "docker compose -p saos-staging -f docker-compose.yml -f docker-compose.staging.yml down",
+    "import:legacy": "npm run import:legacy --workspace=@saos/api --"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

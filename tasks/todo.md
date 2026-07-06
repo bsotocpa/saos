@@ -355,14 +355,20 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - [x] Pin every compose image tag (digest-matched to the running containers)
 
 ## M22 — Data migration
-- [ ] Import pipeline w/ per-record source flags: Dubsado (24–36mo active),
+- [x] Import pipeline w/ per-record source flags: Dubsado (24–36mo active),
       Zoho (full, skip 36mo+ inactive unless flagged), Grant Tracker →
       grants_received; dedupe/merge into unified schema; enrichment queue for
-      gaps  ⛔ needs export files from Brian
-- [ ] Migrated-client onboarding sequence staged (EN/ES "we upgraded our
+      gaps — Brian's exports landed 2026-07-06; Login Details columns route
+      to a Vaultwarden import file and are stripped BEFORE anything touches
+      the database (Brian's instruction; grants_received table comment)
+- [x] Migrated-client onboarding sequence staged (EN/ES "we upgraded our
       portal" + magic link + checklist w/ pending signatures) — **not sent**
-      until launch gates pass
+      until launch gates pass (portal_migration_welcome seeded live,
+      admin-editable; 426 staged clients listed in the dry-run report)
 - [ ] Prove it: dry-run counts/dedupe report reviewed with Brian before commit
+      → report generated 2026-07-06 (migration-data/import-report.md):
+      862 contacts / 617 businesses / 54 grants / 12 credentials→Vaultwarden.
+      ⛔ AWAITING BRIAN'S REVIEW — then `npm run import:legacy -- --execute`
 
 ## M23 — Deploy + launch gates
 - [ ] Hetzner CPX41 (encrypted volume), DNS subdomains, Caddy/Traefik +
@@ -854,3 +860,33 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
   -f files; !override prevents staging/drill from binding dev ports.
 - 106/106 API tests green (cookies ×3, WISP ×2, watchdogs ×2, header
   encoding ×1 added); price guard clean.
+
+### M22 build (dry run complete 2026-07-06 — DB execute awaits Brian)
+- Importer (apps/api/src/migration/*): zero-dep RFC-4180 CSV reader + exceljs
+  for the Grant Tracker xlsx (read path only; its uuid advisory sits in the
+  write path we never call — noted like the postcss precedent). Pure rule
+  engine (plan.ts) so the dry run IS the run; executor is one transaction,
+  idempotent (re-runs mark duplicates), never UPDATEs native records.
+- Sources: Dubsado clients+invoices+transactions (name-keyed) + PROJECTS
+  export (EMAIL-keyed — added by Brian mid-build; rescued 38 clients whose
+  billing runs under business names, active 388→426, unexplained skips
+  56→18) · Zoho backup (contacts/accounts/leads/junction; Brian's custom
+  EIN/Entity/Formation/IRS-code fields map onto businesses) · Grant Tracker
+  (3 year sheets, month-label section rows skipped).
+- CREDENTIAL ROUTING (Brian's rule, enforced at parse time): Login Details
+  columns (split 2024/25 + combined 2023 shapes) separate BEFORE grant rows
+  exist; import_records.raw carries '[routed-to-vaultwarden]' markers; the
+  test suite greps the whole DB for a planted secret and finds nothing.
+  12 real credential items → migration-data/vaultwarden-import.json
+  (Bitwarden format) for Tools→Import, then delete + purge the Sheet.
+- Dry-run numbers (as-of 2026-07-06): 862 contacts (426 active Dubsado
+  clients, 417 Zoho leads, 19 unconverted Zoho leads; 604 Zoho rows merged
+  fill-don't-overwrite), 617 businesses (263 personal shells + 142
+  ownerless accounts skipped), 54 grants ($771K approved tracked), 49
+  skipped, enrichment queue seeded (523 missing industry / 514 EIN).
+  Review lists in the report: 18 no-activity clients, 35 business-name
+  billing names, 59 same-name pairs, unmapped entity strings (LL, COR).
+- Migration 0010: record_source gains 'grant_tracker' (full enum-rebuild
+  down). portal_migration_welcome template seeded (EN/ES, live) — staged
+  onboarding sends at launch via the existing portal-access grant.
+- 112/112 API tests green ×2 (migration suite ×6 on synthetic fixtures).
