@@ -74,6 +74,29 @@ export const templates = [
       'fiscal de {{client_name}} entre entidades, incluidas referencias y ofertas.',
   },
   {
+    key: 'portal_magic_link',
+    name: 'Portal magic-link sign-in email',
+    channel: 'email',
+    isPlaceholder: false, // functional copy, not legal language — live from day one, admin-editable
+    variables: ['first_name', 'link', 'ttl_minutes'],
+    subjectEn: 'Your secure sign-in link — Soto Accounting',
+    subjectEs: 'Su enlace seguro de acceso — Soto Accounting',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Here is your secure link to sign in to your Soto Accounting portal:\n\n' +
+      '{{link}}\n\n' +
+      'The link works once and expires in {{ttl_minutes}} minutes. If you did not request it, ' +
+      'you can ignore this email — your account is safe.\n\n' +
+      '— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Aquí está su enlace seguro para entrar a su portal de Soto Accounting:\n\n' +
+      '{{link}}\n\n' +
+      'El enlace funciona una sola vez y vence en {{ttl_minutes}} minutos. Si usted no lo solicitó, ' +
+      'puede ignorar este correo — su cuenta está segura.\n\n' +
+      '— Soto Accounting',
+  },
+  {
     key: 'consent_7216_disclose',
     name: '§7216 Consent to DISCLOSE Tax Return Information',
     channel: 'document',
@@ -94,10 +117,20 @@ export async function seedTemplates(client) {
   let inserted = 0;
   for (const t of templates) {
     const res = await client.query(
-      `INSERT INTO templates (key, name, channel, body_en, body_es, is_placeholder, variables)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+      `INSERT INTO templates (key, name, channel, subject_en, subject_es, body_en, body_es, is_placeholder, variables)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
        ON CONFLICT (key) DO NOTHING`,
-      [t.key, t.name, t.channel, t.bodyEn, t.bodyEs, t.isPlaceholder, JSON.stringify(t.variables)]
+      [
+        t.key,
+        t.name,
+        t.channel,
+        t.subjectEn ?? null,
+        t.subjectEs ?? null,
+        t.bodyEn,
+        t.bodyEs,
+        t.isPlaceholder,
+        JSON.stringify(t.variables),
+      ]
     );
     inserted += res.rowCount;
   }

@@ -38,6 +38,12 @@ const schema = z.object({
   SMTP_PORT: z.coerce.number().int().positive().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  // Client portal auth (M5).
+  MAGIC_LINK_TTL_MINUTES: z.coerce.number().int().positive().default(30),
+  PORTAL_SESSION_DAYS: z.coerce.number().int().positive().default(30),
+  PORTAL_BASE_URL: z.url().default('http://localhost:3000'),
+  // Shared secret for inbound delivery-status webhooks (bounce fallback).
+  WEBHOOK_SECRET: z.string().min(8).default('dev-webhook-secret'),
 });
 
 export type Config = z.infer<typeof schema>;
@@ -55,6 +61,9 @@ export function loadConfig(overrides: Partial<Record<keyof Config, unknown>> = {
     }
     if (config.MAIL_TRANSPORT === 'smtp' && (!config.SMTP_HOST || !config.SMTP_USER || !config.SMTP_PASS)) {
       throw new Error('MAIL_TRANSPORT=smtp requires SMTP_HOST, SMTP_USER, SMTP_PASS.');
+    }
+    if (config.WEBHOOK_SECRET === 'dev-webhook-secret') {
+      throw new Error('WEBHOOK_SECRET is the well-known dev value — refusing to start in production.');
     }
   }
   return config;

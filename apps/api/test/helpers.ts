@@ -8,9 +8,14 @@ import { migrate, seedAll } from '@saos/db';
 import { loadConfig, type Config } from '../src/config.ts';
 import { encryptSecret } from '../src/crypto.ts';
 
-const TEST_DB = 'saos_api_test';
-
-export async function createTestConfig(): Promise<Config> {
+/**
+ * Each spec FILE gets its own database (node --test runs files in parallel
+ * processes — a shared name races on DROP/CREATE). Suffixes are a fixed set,
+ * so reruns recycle the same databases instead of accumulating orphans.
+ */
+export async function createTestConfig(dbSuffix: string): Promise<Config> {
+  if (!/^[a-z0-9_]+$/.test(dbSuffix)) throw new Error('dbSuffix must be [a-z0-9_]+');
+  const testDb = `saos_api_test_${dbSuffix}`;
   const base = loadConfig({ NODE_ENV: 'test' });
   const url = new URL(base.DATABASE_URL);
 
@@ -20,13 +25,13 @@ export async function createTestConfig(): Promise<Config> {
   const admin = new pg.Client({ connectionString: adminUrl.toString() });
   await admin.connect();
   try {
-    await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-    await admin.query(`CREATE DATABASE ${TEST_DB}`);
+    await admin.query(`DROP DATABASE IF EXISTS ${testDb} WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE ${testDb}`);
   } finally {
     await admin.end();
   }
 
-  url.pathname = `/${TEST_DB}`;
+  url.pathname = `/${testDb}`;
   const testUrl = url.toString();
 
   await migrate(testUrl, 'up');
@@ -73,6 +78,19 @@ export async function makeStaff(
   const staff: TestStaff = { id: rows[0]!.id, email: opts.email, password: opts.password };
   if (opts.totpSecret !== undefined) staff.totpSecret = opts.totpSecret;
   return staff;
+}
+
+/** Insert a synthetic contact (no real client data in tests — CLAUDE.md). */
+export async function makeContact(
+  db: pg.Pool,
+  opts: { firstName: string; lastName: string; email: string; language?: 'en' | 'es' }
+): Promise<{ id: string; email: string }> {
+  const { rows } = await db.query<{ id: string }>(
+    `INSERT INTO contacts (first_name, last_name, email, language, soto_status)
+     VALUES ($1, $2, $3, $4, 'lead') RETURNING id`,
+    [opts.firstName, opts.lastName, opts.email, opts.language ?? 'en']
+  );
+  return { id: rows[0]!.id, email: opts.email };
 }
 
 export async function auditRows(db: pg.Pool, action: string, actorLabel?: string): Promise<number> {

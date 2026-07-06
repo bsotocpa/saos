@@ -37,7 +37,7 @@ async function loginToken(staff: TestStaff): Promise<string> {
 }
 
 before(async () => {
-  config = await createTestConfig();
+  config = await createTestConfig('auth');
   app = buildServer(config);
   await app.ready();
   ceo = await makeStaff(app.db, config, {

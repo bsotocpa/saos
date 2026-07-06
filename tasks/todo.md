@@ -103,10 +103,15 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - [x] Prove it: auth + RBAC + lockout integration tests; audit rows asserted
 
 ## M5 — Client magic-link auth
-- [ ] Magic-link issue/verify (single-use, expiring), optional password + MFA,
+- [x] Magic-link issue/verify (single-use, expiring), optional password + MFA,
       clients see only their own records (row-level checks)
-- [ ] Bounce fallback: delivery-failure webhook → Rene task (MP Portal Auth)
-- [ ] Prove it: e2e login via console transport; cross-client access test fails closed
+      (password/MFA columns live on portal_users; set-password UX lands with
+      the portal UI in M15 — magic link is the primary path per spec)
+- [x] Bounce fallback: delivery-failure webhook → Rene task (MP Portal Auth)
+- [x] Prove it: e2e login via console transport; cross-client access test fails closed
+- [x] BONUS (pulled forward from M11): templated-email service with the
+      **placeholder send-gate enforced + regression-tested** — placeholder
+      templates are unsendable in every environment
 
 ## M6 — CRM core
 - [ ] Contacts/businesses/entity-groups CRUD + search; assigned manager;
@@ -336,3 +341,21 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - Fixes en route: price guard was flagging SQL positional params ($1, $2) —
   patterns now require price-shaped amounts; guard self-tested both ways.
   nodemailer bumped to v9 (v7 carried six advisories); audit clean.
+
+### M5 (completed 2026-07-05)
+- Client auth: staff (magic_links.manage → Rene) grants portal access; magic
+  links are single-use (atomic redemption — racing requests can't double-
+  spend), 30-min expiry, throttled (3/user/10min, silent), token hashes only
+  in DB. Portal sessions 30 days; logout revokes. All flows audit-logged.
+- ALL client-facing copy renders from DB templates EN/ES per contact language
+  (Spanish contact verified receiving Spanish mail; missing-ES falls back to
+  EN with a warning log). sendTemplatedEmail carries the PLACEHOLDER GATE:
+  refuses flagged templates in every environment — regression test asserts
+  the engagement-letter template cannot send and nothing reaches the mailer.
+- Row-level isolation proven: client A sees zero of client B's documents,
+  client-supplied ids ignored for scoping, anonymous requests fail closed.
+- Bounce webhook (shared-secret auth, provider-neutral shape; SES adapter at
+  M23) → verification task auto-assigned to the comms_billing role + ntfy-
+  ready notification row + audit trail.
+- Fix en route: test DBs are now per-suite (node --test runs spec files in
+  parallel processes; a shared DROP/CREATE raced). 18/18 API tests green.

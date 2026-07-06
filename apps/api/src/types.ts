@@ -13,6 +13,15 @@ export interface AuthedStaff {
   sessionId: string;
 }
 
+export interface AuthedClient {
+  portalUserId: string;
+  /** THE scoping key: every portal query filters by this — never by client-supplied ids. */
+  contactId: string;
+  email: string;
+  language: 'en' | 'es';
+  sessionId: string;
+}
+
 /** Error with an HTTP status — thrown by services, mapped by the error handler. */
 export class AppError extends Error {
   statusCode: number;
@@ -29,10 +38,16 @@ declare module 'fastify' {
     db: Db;
     config: Config;
     mailer: Mailer;
-    /** preHandler: verifies the Bearer session and populates request.staff. */
+    /** preHandler: verifies the staff Bearer session and populates request.staff. */
     authenticate: (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>;
+    /** preHandler: verifies the client portal session and populates request.client. */
+    authenticateClient: (
+      request: import('fastify').FastifyRequest,
+      reply: import('fastify').FastifyReply
+    ) => Promise<void>;
   }
   interface FastifyRequest {
     staff?: AuthedStaff;
+    client?: AuthedClient;
   }
 }
