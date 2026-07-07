@@ -1,0 +1,111 @@
+# SAOS production override — used ON THE SERVER only:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# What it changes vs. the base file:
+#   - Caddy joins as the ONLY internet-facing service (80/443, auto-TLS)
+#   - the three app services activate (their `app` profile is cleared) and
+#     build from the repo root context
+#   - every host-published port on the data services is STRIPPED — Postgres,
+#     MinIO, Docuseal, ntfy, Vaultwarden, Uptime Kuma are compose-network
+#     internal, reachable only through Caddy (defense in depth on top of the
+#     Hetzner firewall)
+#   - Postgres/MinIO/Docuseal/Vaultwarden data binds into /mnt/saos-data —
+#     the LUKS-encrypted volume (scripts/setup-encrypted-volume.sh) — per the
+#     MP "encrypted volume" requirement
+
+services:
+  caddy:
+    image: caddy:2.10.2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - saos_caddy_data:/data
+      - saos_caddy_config:/config
+    depends_on:
+      - api
+      - portal
+      - internal
+    networks: [saos]
+
+  api:
+    profiles: !override []
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  portal:
+    profiles: !override []
+    build:
+      context: .
+      dockerfile: apps/portal/Dockerfile
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:3001
+    depends_on:
+      - api
+
+  internal:
+    profiles: !override []
+    build:
+      context: .
+      dockerfile: apps/internal/Dockerfile
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:3001
+    depends_on:
+      - api
+
+  postgres:
+    ports: !override []
+
+  minio:
+    ports: !override []
+
+  docuseal:
+    ports: !override []
+
+  ntfy:
+    ports: !override []
+
+  uptime-kuma:
+    ports: !override []
+
+  vaultwarden:
+    ports: !override []
+
+  whisper:
+    ports: !override []
+
+  ollama:
+    ports: !override []
+
+  calcom:
+    ports: !override []
+
+volumes:
+  saos_caddy_data:
+  saos_caddy_config:
+  # Client data lives on the LUKS-encrypted mount (MP requirement).
+  saos_pg_data:
+    driver: local
+    driver_opts: { type: none, o: bind, device: /mnt/saos-data/postgres }
+  saos_minio_data:
+    driver: local
+    driver_opts: { type: none, o: bind, device: /mnt/saos-data/minio }
+  saos_docuseal_data:
+    driver: local
+    driver_opts: { type: none, o: bind, device: /mnt/saos-data/docuseal }
+  saos_vaultwarden_data:
+    driver: local
+    driver_opts: { type: none, o: bind, device: /mnt/saos-data/vaultwarden }

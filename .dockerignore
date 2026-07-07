@@ -1,0 +1,16 @@
+# Keep image build contexts small and CLEAN. migration-data holds real client
+# PII and must never enter an image; env files carry secrets; the rest is bulk.
+migration-data/
+backups/
+.env
+.env.*
+!.env.example
+.git/
+node_modules/
+**/node_modules/
+**/.next/
+coverage/
+docs/
+tasks/
+*.md
+.claude/

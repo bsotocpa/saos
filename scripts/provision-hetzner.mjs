@@ -132,6 +132,23 @@ const ip4 = server.public_net.ipv4?.ip ?? '(none)';
 const ip6 = server.public_net.ipv6?.ip ?? '(none)';
 console.log(`provision: status ${server.status} — IPv4 ${ip4} · IPv6 ${ip6}`);
 
+// ── [5b] data volume (LUKS-encrypted by scripts/setup-encrypted-volume.sh) ──
+let volume = (await api('GET', '/volumes?name=saos-data')).volumes[0];
+if (!volume) {
+  volume = (
+    await api('POST', '/volumes', {
+      name: 'saos-data',
+      size: 100, // GB — client documents + returns + recordings + DB
+      server: server.id,
+      automount: false, // raw device: LUKS goes on top
+    })
+  ).volume;
+  console.log(`provision: volume "saos-data" created (${volume.size}GB) and attached.`);
+} else {
+  console.log(`provision: volume "saos-data" already exists (${volume.size}GB).`);
+}
+console.log(`provision: volume device ${volume.linux_device}`);
+
 // ── [6] record in .env.production (token for reruns + the IP for deploy) ────
 let env = await readFile(envPath, 'utf8');
 const setLine = (key, value) => {

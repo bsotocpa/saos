@@ -196,13 +196,15 @@ services:
       NEXT_PUBLIC_WEBAPP_URL: ${CALCOM_URL:-http://localhost:3003}
     networks: [saos]
 
-  # ── Application services (placeholders) ─────────────────────────────────────
-  # Wired now so the topology is visible; excluded from a default `up` via the
-  # "app" profile. Dockerfiles land with their milestones (api: M4, portal: M15,
-  # internal: M6+). Do not run `--profile app` until then.
+  # ── Application services ─────────────────────────────────────────────────────
+  # Excluded from a default dev `up` via the "app" profile (dev runs them via
+  # npm). docker-compose.prod.yml clears the profile and they build from the
+  # repo-root context (monorepo workspaces).
   api:
     profiles: [app]
-    build: ./apps/api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     env_file: .env
     depends_on:
       postgres:
@@ -213,16 +215,18 @@ services:
 
   portal:
     profiles: [app]
-    build: ./apps/portal
-    env_file: .env
+    build:
+      context: .
+      dockerfile: apps/portal/Dockerfile
     depends_on:
       - api
     networks: [saos]
 
   internal:
     profiles: [app]
-    build: ./apps/internal
-    env_file: .env
+    build:
+      context: .
+      dockerfile: apps/internal/Dockerfile
     depends_on:
       - api
     networks: [saos]

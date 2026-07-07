@@ -1,0 +1,39 @@
+# SAOS production edge: Caddy terminates TLS (automatic Let's Encrypt) for
+# every subdomain and reverse-proxies into the compose network. Nothing else
+# is reachable from the internet (Hetzner firewall: 22/80/443 only).
+{
+	email brian@sotoaccounting.com
+}
+
+portal.sotoaccounting.com {
+	reverse_proxy portal:3000
+}
+
+api.sotoaccounting.com {
+	reverse_proxy api:3001
+}
+
+ops.sotoaccounting.com {
+	reverse_proxy internal:3005
+}
+
+sign.sotoaccounting.com {
+	reverse_proxy docuseal:3000
+}
+
+book.sotoaccounting.com {
+	reverse_proxy calcom:3000
+}
+
+ntfy.sotoaccounting.com {
+	reverse_proxy ntfy:80
+}
+
+vault.sotoaccounting.com {
+	# Vaultwarden needs websockets (it works over the same proxy in Caddy 2).
+	reverse_proxy vaultwarden:80
+}
+
+status.sotoaccounting.com {
+	reverse_proxy uptime-kuma:3001
+}
