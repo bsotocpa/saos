@@ -23,6 +23,9 @@ echo "deploy: [1/5] shipping tracked sources to root@$IP:/opt/saos ..."
 git archive HEAD | "${SSH[@]}" 'tar -x -C /opt/saos'
 scp -q -i "$SSH_KEY" .env.production "root@$IP:/opt/saos/.env"
 
+echo "deploy: [1b/5] ensuring the encrypted data volume is mounted..."
+"${SSH[@]}" 'mountpoint -q /mnt/saos-data || bash /opt/saos/scripts/setup-encrypted-volume.sh "$(ls /dev/disk/by-id/scsi-0HC_Volume_* | head -1)"'
+
 echo "deploy: [2/5] building + starting the stack (first build takes a few minutes)..."
 "${SSH[@]}" 'cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --quiet-pull'
 
