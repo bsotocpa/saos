@@ -375,10 +375,23 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       import_records, zero credential values anywhere in the database
 
 ## M23 — Deploy + launch gates
-- [ ] Hetzner CPX41 (encrypted volume), DNS subdomains, Caddy/Traefik +
-      Let's Encrypt, prod + staging up, Twilio 312 number provisioned (client-
-      facing in Phase 2)  ⛔ needs Brian's accounts (Hetzner, DNS, Stripe,
-      Twilio, SES prod access, B2, Zoom app, KBA vendor)
+- [x] Hetzner CPX41 (encrypted volume), DNS subdomains, Caddy + Let's
+      Encrypt, prod stack up — DEPLOYED 2026-07-07 on Brian's directive:
+      code shipped via git archive (tracked files only) + .env; LUKS2 data
+      volume auto-unlocks via root-disk keyfile (crypttab+fstab, reboots
+      unattended per Brian; recovery passphrase staged at
+      /root/saos-luks-recovery.txt for his Vaultwarden pickup); postgres/
+      minio/docuseal/vaultwarden data verified ON the encrypted mount;
+      13 services up incl. intel (whisper+ollama, model pulled) + booking
+      (Cal.com); migrations 10/10 + production seeds (no demo data);
+      ALL EIGHT domains serving over Let's Encrypt TLS (api /health 200
+      against prod DB); nightly encrypted-backup cron installed.
+      Deliberately still pending: staging clone on the server · Brian's
+      admin account (create-staff on the server) · prod data import (M22
+      set, one command, awaiting Brian's nod) · console wiring per RUNBOOK
+      "Launch wiring" (Twilio number webhooks, SNS topic, Zoom events,
+      Stripe webhook→whsec then STRIPE_MODE=live) · Docuseal/Cal.com/Kuma
+      first-boot setup · Twilio 312 port post-launch (config swap)
       · SES SMTP wired 2026-07-06: IAM keys received, SMTP password derived
         (scripts/wire-ses.ts — rerun at key rotation), AUTH verified against
         us-east-2, .env.production patched. Still on AWS: verify the
@@ -422,9 +435,24 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
         ⛔ Brian: create the 8 DNS records (list in .env.production notes /
         provision script output). Then: LUKS data volume decision, Caddy +
         stack deploy, staging clone, smoke suite
-- [ ] Launch-gate checklist: no PLACEHOLDER template sendable (verified by
-      test) · ⚠ prices confirmed by Brian · restore tested · MFA enforced ·
-      audit export works · portal copy EN/ES review by Brian/Jackson
+- [ ] Launch-gate checklist (verified counts as of 2026-07-07):
+      · 7 PLACEHOLDER templates (§7216 use/disclose + 5 engagement letters)
+        remain BLOCKED from production sends — gate enforced in code + test;
+        Brian clears each in Admin → Templates when final legal text lands
+      · 12 ⚠ price confirmations open in the seed (Brian said "six" — the
+        real count is twelve: the spec's 7 conflicts expanded per-item plus
+        the payroll billing-unit question) — one-click confirm in
+        Admin → Pricing
+      · SNS bounce/complaint handling BUILT + signature-verified (committed
+        124bac5) — wire the SNS topic post-deploy per RUNBOOK Launch wiring,
+        BEFORE any real-client mail goes out
+      · SMS consent checkbox + TCPA/A2P disclosure (EN/ES) live in both
+        intake definitions; consent EVENT recorded (124bac5)
+      · Twilio inbound wired to +1 708 300 0375; 312-715-8599 ports later
+        as a TWILIO_PHONE_NUMBER config swap (124bac5)
+      · restore tested (M21 drill PASSED) · MFA enforced (M4, tested) ·
+        audit export works (WISP, M21) · portal copy EN/ES review by
+        Brian/Jackson still pending
 - [ ] Prove it: smoke suite against staging; `docker-compose up -d` from clean
       server per MP one-command requirement
 
