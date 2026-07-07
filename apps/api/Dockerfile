@@ -8,7 +8,7 @@ ENV NODE_ENV=production
 
 # Manifests first for layer caching. @saos/db rides along so migrations and
 # seeds run from this image (one-shot compose commands at deploy).
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/api/package.json apps/api/
 COPY packages/db/package.json packages/db/
 COPY packages/shared/package.json packages/shared/

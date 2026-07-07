@@ -6,7 +6,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # The /api rewrite proxies to the API service inside the compose network.
 ENV API_URL=http://api:3001
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/portal/package.json apps/portal/
 RUN npm ci --workspace=@saos/portal
 

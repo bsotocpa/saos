@@ -5,7 +5,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV API_URL=http://api:3001
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/internal/package.json apps/internal/
 RUN npm ci --workspace=@saos/internal
 
