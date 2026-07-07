@@ -390,8 +390,9 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
         /account change-password page shipped 2026-07-07
       · M22 PROD IMPORT EXECUTED 2026-07-07 (prod dry-run matched the
         approved report exactly; Brian's explicit go): 862 contacts /
-        617 businesses + 637 owner links / 54 grants ($94.9K tracked
-        avg-adjusted totals per status) / 611 enrichment rows / 49 skips;
+        617 businesses + 637 owner links / 54 grants ($9.49M tracked
+        across all statuses, incl. the $7.46M denied application) /
+        611 enrichment rows / 49 skips;
         aggregates verified in prod DB; 12 credential markers, 0 credential
         values; exports staged on the LUKS volume during the run and
         REMOVED after; prod import-report fetched to
