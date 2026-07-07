@@ -377,6 +377,11 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       Let's Encrypt, prod + staging up, Twilio 312 number provisioned (client-
       facing in Phase 2)  ⛔ needs Brian's accounts (Hetzner, DNS, Stripe,
       Twilio, SES prod access, B2, Zoom app, KBA vendor)
+      · SES SMTP wired 2026-07-06: IAM keys received, SMTP password derived
+        (scripts/wire-ses.ts — rerun at key rotation), AUTH verified against
+        us-east-2, .env.production patched. Still on AWS: verify the
+        sotoaccounting.com domain identity (DKIM CNAMEs in DNS) + request
+        production access (sandbox currently rejects unverified recipients)
 - [ ] Launch-gate checklist: no PLACEHOLDER template sendable (verified by
       test) · ⚠ prices confirmed by Brian · restore tested · MFA enforced ·
       audit export works · portal copy EN/ES review by Brian/Jackson
