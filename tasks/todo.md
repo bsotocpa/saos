@@ -217,9 +217,11 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       webhooks; receipt template; unpaid-14-day reminder + Rene flag; Filed →
       invoice generated + QB export flag (automations 12, 17)
 - [x] Prove it: Stripe test-mode e2e incl. webhook signature verification
-      — full e2e proven against the stub adapter; the LIVE test-mode run is
-      ⛔ parked on Brian's sk_test_ key + webhook secret (signature
-      verification code in place via stripe.webhooks.constructEvent)
+      — full e2e proven against the stub adapter; LIVE test-mode run
+      COMPLETED 2026-07-06 with Brian's sk_test key
+      (scripts/live-stripe-check.ts): real checkout session created via our
+      adapter with a price-book amount; stripe.webhooks.constructEvent
+      accepted a correctly signed payload and refused a tampered one
 
 ## M14 — Intake forms
 - [x] Form 1 Soto intake (OF): 4 screens, conditional logic exactly as specced,
@@ -382,6 +384,10 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
         us-east-2, .env.production patched. Still on AWS: verify the
         sotoaccounting.com domain identity (DKIM CNAMEs in DNS) + request
         production access (sandbox currently rejects unverified recipients)
+      · Stripe wired 2026-07-06: sk_test key in .env.production, auth
+        verified, live test-mode e2e passed (scripts/live-stripe-check.ts).
+        Still on Stripe: swap in sk_live_ at launch + create the webhook
+        endpoint (api subdomain → /webhooks/stripe) which mints the whsec_
 - [ ] Launch-gate checklist: no PLACEHOLDER template sendable (verified by
       test) · ⚠ prices confirmed by Brian · restore tested · MFA enforced ·
       audit export works · portal copy EN/ES review by Brian/Jackson
