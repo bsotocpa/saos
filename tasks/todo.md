@@ -388,6 +388,19 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
         verified, live test-mode e2e passed (scripts/live-stripe-check.ts).
         Still on Stripe: swap in sk_live_ at launch + create the webhook
         endpoint (api subdomain → /webhooks/stripe) which mints the whsec_
+      · B2 wired + verified 2026-07-06: key restricted to bucket
+        saos-backups, full read/write; RESTIC_REPOSITORY=b2:saos-backups:prod
+      · Zoom wired + verified 2026-07-06: S2S app activated, token + API
+        probe OK, scopes cover cloud_recording/meeting/user reads; webhook
+        Secret Token stored. Post-deploy: register the event endpoint
+        (api subdomain /webhooks/zoom, recording.completed)
+      · Twilio wired + verified 2026-07-06: account active, existing number
+        +1 708 300 0375 stored. NOTE: spec says "312 number" — Brian to
+        confirm the 708 number is the keeper or buy a 312 at launch
+      · SES DKIM + MAIL FROM records live; TEST EMAIL DELIVERED 2026-07-06;
+        production access requested (pending AWS review)
+      · Remaining vendor gaps: KBA vendor pick (last unstarted account),
+        Stripe sk_live + whsec at launch, Docuseal token at first boot
       · Hetzner PROVISIONED 2026-07-06 (Brian green-lit US pricing):
         saos-prod, CPX41 in Ashburn (id 148628619), IPv4 SERVER_IPV4-in-env-production,
         Ubuntu 24.04 + Docker 29.6.1 via cloud-init, firewall 22/80/443
