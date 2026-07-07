@@ -26,8 +26,8 @@ scp -q -i "$SSH_KEY" .env.production "root@$IP:/opt/saos/.env"
 echo "deploy: [1b/5] ensuring the encrypted data volume is mounted..."
 "${SSH[@]}" 'mountpoint -q /mnt/saos-data || bash /opt/saos/scripts/setup-encrypted-volume.sh "$(ls /dev/disk/by-id/scsi-0HC_Volume_* | head -1)"'
 
-echo "deploy: [2/5] building + starting the stack (first build takes a few minutes)..."
-"${SSH[@]}" 'cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --quiet-pull'
+echo "deploy: [2/5] building + starting the FULL stack incl. intel + booking (first build takes minutes)..."
+"${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking -f docker-compose.yml -f docker-compose.prod.yml up -d --build --quiet-pull'
 
 echo "deploy: [3/5] running migrations..."
 "${SSH[@]}" 'cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api node packages/db/scripts/migrate.cjs up'
@@ -36,5 +36,5 @@ echo "deploy: [4/5] seeding (idempotent — roles, settings, templates, price bo
 "${SSH[@]}" 'cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api node packages/db/seeds/run.mjs'
 
 echo "deploy: [5/5] service status:"
-"${SSH[@]}" 'cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml ps --format "table {{.Name}}\t{{.Status}}"'
+"${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking -f docker-compose.yml -f docker-compose.prod.yml ps --format "table {{.Name}}\t{{.Status}}"'
 echo "deploy: done. Smoke-check the subdomains next (curl -sI https://portal.sotoaccounting.com)."
