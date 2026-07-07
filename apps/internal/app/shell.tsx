@@ -16,6 +16,7 @@ const NAV = [
   { href: '/admin/staff', label: 'Staff' },
   { href: '/admin/settings', label: 'Settings' },
   { href: '/admin/wisp', label: 'WISP' },
+  { href: '/account', label: 'Account' },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {
