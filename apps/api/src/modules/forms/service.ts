@@ -102,6 +102,23 @@ const SERVICE_LINE_MAP: Record<string, string> = {
   entity: 'entity', cfo_advisory: 'advisory',
 };
 
+/**
+ * TCPA/A2P evidence trail (launch gate): the intake checkbox is the opt-in
+ * the privacy page and the A2P campaign registration reference, so a
+ * durable consent EVENT is recorded — not just the contact-row rollup.
+ * Version stamp identifies which disclosure text the client saw.
+ */
+export const SMS_DISCLOSURE_VERSION = 'sms-disclosure-2026-07-06.v1';
+
+async function recordSmsConsent(app: FastifyInstance, contactId: string, agreed: boolean): Promise<void> {
+  if (!agreed) return;
+  await app.db.query(
+    `INSERT INTO consents (contact_id, type, status, method, policy_version, signed_at)
+     VALUES ($1, 'sms', 'signed', 'intake_checkbox', $2, now())`,
+    [contactId, SMS_DISCLOSURE_VERSION]
+  );
+}
+
 export async function processSotoIntake(app: FastifyInstance, submissionId: string, answers: Answers): Promise<{ contactId: string }> {
   const a = answers as Record<string, string | string[] | boolean | Array<{ name?: string; role?: string }>>;
   const email = String(a.email);
@@ -139,6 +156,8 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
     );
     contactId = created.rows[0]!.id;
   }
+
+  await recordSmsConsent(app, contactId, a.sms_ok === 'yes');
 
   // Hidden bridge fields — ONLY when the submission arrived via a verified
   // Hilo transition link (server-written; never client-supplied).
@@ -320,6 +339,9 @@ export async function processHiloIntake(app: FastifyInstance, submissionId: stri
     );
     contactId = created.rows[0]!.id;
   }
+
+  await recordSmsConsent(app, contactId, a.sms_ok === 'yes');
+
   // Demographics (screen 3) stay in the SUBMISSION for aggregate funder
   // reporting only — deliberately NOT copied to the contact record.
 

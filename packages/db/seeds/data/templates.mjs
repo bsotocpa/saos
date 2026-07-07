@@ -97,6 +97,23 @@ export const templates = [
       '— Soto Accounting',
   },
   {
+    key: 'twilio_voice_greeting',
+    name: 'Voice greeting (spoken to callers on the texting number)',
+    channel: 'sms',
+    isPlaceholder: false, // operational copy — Brian tunes wording in admin, no deploy
+    variables: [],
+    subjectEn: null,
+    subjectEs: null,
+    bodyEn:
+      'Thank you for calling Soto Accounting. This line is best for text messages — ' +
+      'send us a text and our team will respond within one business day. ' +
+      'You can also message us any time through your secure client portal.',
+    bodyEs:
+      'Gracias por llamar a Soto Accounting. Esta línea funciona mejor para mensajes de texto — ' +
+      'envíenos un mensaje y nuestro equipo le responderá dentro de un día hábil. ' +
+      'También puede escribirnos en cualquier momento desde su portal seguro de cliente.',
+  },
+  {
     key: 'portal_migration_welcome',
     name: 'Migrated-client portal welcome ("we upgraded our portal")',
     channel: 'email',

@@ -28,6 +28,7 @@ import { registerMeetingRoutes } from './modules/meetings/routes.ts';
 import { registerBookingRoutes } from './modules/booking/routes.ts';
 import { registerDashboardRoutes } from './modules/dashboards/routes.ts';
 import { registerAdminRoutes } from './modules/admin/routes.ts';
+import { registerCommsRoutes } from './modules/comms/routes.ts';
 import { AppError } from './types.ts';
 
 /** True for PostgreSQL error objects (5-char SQLSTATE code). */
@@ -58,6 +59,13 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   void app.register(multipart, {
     limits: { fileSize: config.DOC_MAX_SIZE_MB * 1024 * 1024, files: 1 },
   });
+  // Twilio posts form-encoded, SNS posts text/plain — both arrive as RAW
+  // strings (their handlers verify signatures over the raw bytes, then parse
+  // themselves). JSON routes never accept these types, so a cross-site form
+  // post still can't reach any state-changing zod-parsed handler (M21 CSRF
+  // posture unchanged).
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => done(null, body));
+  app.addContentTypeParser('text/plain', { parseAs: 'string' }, (_req, body, done) => done(null, body));
 
   app.addHook('onClose', async () => {
     await app.db.end();
@@ -124,6 +132,7 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   registerBookingRoutes(app);
   registerDashboardRoutes(app);
   registerAdminRoutes(app);
+  registerCommsRoutes(app);
 
   return app;
 }

@@ -401,6 +401,20 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
         production access requested (pending AWS review)
       · Remaining vendor gaps: KBA vendor pick (last unstarted account),
         Stripe sk_live + whsec at launch, Docuseal token at first boot
+- [x] Launch-gate trio (Brian, 2026-07-06): (1) Twilio inbound SMS/voice on
+      +1 708 300 0375 — X-Twilio-Signature validated, matched texts land in
+      the client's message thread, Rene notified, STOP revokes consent
+      (rollup + consent event + audit), voice greeting is the admin-editable
+      twilio_voice_greeting template; 312-715-8599 ports later as a
+      TWILIO_PHONE_NUMBER swap. (2) SES bounce/complaint handling via SNS —
+      RSA signature verification against Amazon certs, auto-confirms its own
+      subscription (amazonaws-host-validated), feeds the existing Rene
+      bounce-task flow + audit. (3) SMS consent: TCPA/A2P disclosure (EN+ES)
+      now IN both intake form definitions at the point of consent, and
+      intake writes a versioned consents EVENT (type sms, intake_checkbox)
+      — the opt-in evidence the privacy page + A2P campaign reference.
+      7 new tests; 119/119 green. Console wiring steps in RUNBOOK_OPS.md
+      "Launch wiring".
       · Hetzner PROVISIONED 2026-07-06 (Brian green-lit US pricing):
         saos-prod, CPX41 in Ashburn (id 148628619), IPv4 SERVER_IPV4-in-env-production,
         Ubuntu 24.04 + Docker 29.6.1 via cloud-init, firewall 22/80/443

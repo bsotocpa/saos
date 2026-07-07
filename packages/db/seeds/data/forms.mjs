@@ -11,6 +11,22 @@
 
 const opt = (value, labelEn, labelEs, extra = {}) => ({ value, labelEn, labelEs, ...extra });
 
+// TCPA / A2P 10DLC consent disclosure — shown WITH the sms_ok question. This
+// exact language is what the privacy page and the A2P campaign registration
+// reference; renderers must display it at the point of consent.
+const SMS_DISCLOSURE_EN =
+  'By selecting Yes, you agree to receive text messages from Soto Accounting LLC about your ' +
+  'engagement — appointment reminders, document requests, and account updates — at the mobile ' +
+  'number provided. Message frequency varies. Message & data rates may apply. Reply STOP to ' +
+  'opt out, HELP for help. Consent is not a condition of service. See our Privacy Policy at ' +
+  'sotoaccounting.com/privacy.';
+const SMS_DISCLOSURE_ES =
+  'Al seleccionar Sí, usted acepta recibir mensajes de texto de Soto Accounting LLC sobre su ' +
+  'servicio — recordatorios de citas, solicitudes de documentos y actualizaciones de su cuenta — ' +
+  'al número móvil proporcionado. La frecuencia de mensajes varía. Pueden aplicar tarifas de ' +
+  'mensajes y datos. Responda STOP para cancelar o HELP para recibir ayuda. El consentimiento no ' +
+  'es condición del servicio. Consulte nuestra Política de Privacidad en sotoaccounting.com/privacy.';
+
 export const SOTO_INTAKE_DEFINITION = {
   slug: 'soto_intake',
   maxMinutes: 3,
@@ -24,7 +40,8 @@ export const SOTO_INTAKE_DEFINITION = {
         { key: 'last_name', type: 'text', required: true },
         { key: 'email', type: 'email', required: true },
         { key: 'mobile_phone', type: 'phone', required: true },
-        { key: 'sms_ok', type: 'yesno', required: true }, // TCPA consent flag
+        // TCPA consent flag — the disclosure MUST render with the question.
+        { key: 'sms_ok', type: 'yesno', required: true, helpEn: SMS_DISCLOSURE_EN, helpEs: SMS_DISCLOSURE_ES },
         {
           key: 'preferred_contact_method', type: 'select', required: true,
           options: [opt('text', 'Text', 'Texto'), opt('email', 'Email', 'Correo'), opt('phone', 'Phone', 'Teléfono'), opt('portal', 'Portal', 'Portal')],
@@ -156,7 +173,7 @@ export const HILO_INTAKE_DEFINITION = {
         { key: 'last_name', type: 'text', required: true },
         { key: 'email', type: 'email', required: true },
         { key: 'mobile_phone', type: 'phone', required: true },
-        { key: 'sms_ok', type: 'yesno', required: true },
+        { key: 'sms_ok', type: 'yesno', required: true, helpEn: SMS_DISCLOSURE_EN, helpEs: SMS_DISCLOSURE_ES },
         { key: 'zip', type: 'zip', required: true }, // funder metric
       ],
     },

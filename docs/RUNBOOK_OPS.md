@@ -104,6 +104,28 @@ After a passing drill, record it: **Admin → Settings →
 Brian when the last recorded drill is older than
 `ops.restore_drill_interval_days` (default 90).
 
+## Launch wiring (post-deploy, once api.sotoaccounting.com serves)
+
+- **Twilio number** (+1 708 300 0375; the 312 number ports in later — swap
+  `TWILIO_PHONE_NUMBER`, nothing else): in the Twilio console, on the number,
+  set Messaging webhook → `https://api.sotoaccounting.com/webhooks/twilio/sms`
+  (HTTP POST) and Voice webhook → `…/webhooks/twilio/voice`. Both endpoints
+  validate X-Twilio-Signature; the voice greeting script is the
+  `twilio_voice_greeting` template (Admin → Templates). STOP texts revoke
+  consent automatically (contact rollup + consent event, audited).
+- **SES bounces/complaints**: SES console → verified identity
+  `sotoaccounting.com` → Notifications → create one SNS topic for Bounce +
+  Complaint → add an HTTPS subscription to
+  `https://api.sotoaccounting.com/webhooks/ses-notifications`. The endpoint
+  verifies SNS signatures and CONFIRMS THE SUBSCRIPTION ITSELF — no manual
+  confirm. Bounces/complaints feed the Rene verification task + audit trail.
+- **Zoom events**: Marketplace app → Feature → Event Subscriptions → endpoint
+  `https://api.sotoaccounting.com/webhooks/zoom`, event `recording.completed`.
+- **Stripe webhook**: dashboard → endpoint
+  `https://api.sotoaccounting.com/webhooks/stripe`, event
+  `checkout.session.completed`; paste the minted `whsec_` into the server's
+  `/opt/saos/.env` (`STRIPE_WEBHOOK_SECRET`) and restart the api service.
+
 ## WISP security summary
 
 **Admin → WISP** (or `GET /admin/wisp/security-summary`, `?format=markdown`

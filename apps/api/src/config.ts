@@ -89,6 +89,14 @@ const schema = z.object({
   // WISP security summary and the backup-staleness check (no client data in
   // the file — timestamps, snapshot id, row counts).
   BACKUP_STATUS_PATH: z.string().default(path.resolve(here, '../../../backups/status.json')),
+  // Twilio (approved vendor) — inbound SMS/voice webhooks validate
+  // X-Twilio-Signature against the auth token + this API's PUBLIC url.
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_PHONE_NUMBER: z.string().optional(),
+  // The externally visible base URL of this API (signature schemes hash the
+  // exact URL Twilio called). https://api.sotoaccounting.com in production.
+  API_PUBLIC_URL: z.string().default('http://localhost:3001'),
 });
 
 export type Config = z.infer<typeof schema>;
