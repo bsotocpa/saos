@@ -388,6 +388,13 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
         verified, live test-mode e2e passed (scripts/live-stripe-check.ts).
         Still on Stripe: swap in sk_live_ at launch + create the webhook
         endpoint (api subdomain → /webhooks/stripe) which mints the whsec_
+      · Hetzner PROVISIONED 2026-07-06 (Brian green-lit US pricing):
+        saos-prod, CPX41 in Ashburn (id 148628619), IPv4 SERVER_IPV4-in-env-production,
+        Ubuntu 24.04 + Docker 29.6.1 via cloud-init, firewall 22/80/443
+        only, ssh deploy key ~/.ssh/saos_hetzner_ed25519 (local machine).
+        ⛔ Brian: create the 8 DNS records (list in .env.production notes /
+        provision script output). Then: LUKS data volume decision, Caddy +
+        stack deploy, staging clone, smoke suite
 - [ ] Launch-gate checklist: no PLACEHOLDER template sendable (verified by
       test) · ⚠ prices confirmed by Brian · restore tested · MFA enforced ·
       audit export works · portal copy EN/ES review by Brian/Jackson
