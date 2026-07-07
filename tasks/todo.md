@@ -386,12 +386,22 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       (Cal.com); migrations 10/10 + production seeds (no demo data);
       ALL EIGHT domains serving over Let's Encrypt TLS (api /health 200
       against prod DB); nightly encrypted-backup cron installed.
-      Deliberately still pending: staging clone on the server · Brian's
-      admin account (create-staff on the server) · prod data import (M22
-      set, one command, awaiting Brian's nod) · console wiring per RUNBOOK
-      "Launch wiring" (Twilio number webhooks, SNS topic, Zoom events,
-      Stripe webhook→whsec then STRIPE_MODE=live) · Docuseal/Cal.com/Kuma
-      first-boot setup · Twilio 312 port post-launch (config swap)
+      · Brian's admin account created on prod (create-staff, ceo) +
+        /account change-password page shipped 2026-07-07
+      · M22 PROD IMPORT EXECUTED 2026-07-07 (prod dry-run matched the
+        approved report exactly; Brian's explicit go): 862 contacts /
+        617 businesses + 637 owner links / 54 grants ($94.9K tracked
+        avg-adjusted totals per status) / 611 enrichment rows / 49 skips;
+        aggregates verified in prod DB; 12 credential markers, 0 credential
+        values; exports staged on the LUKS volume during the run and
+        REMOVED after; prod import-report fetched to
+        migration-data/import-report-prod.md
+      Deliberately still pending: staging clone on the server · console
+      wiring per RUNBOOK "Launch wiring" (Twilio number webhooks, SNS
+      topic, Zoom events, Stripe webhook→whsec then STRIPE_MODE=live) ·
+      Docuseal/Cal.com/Kuma first-boot setup · Twilio 312 port post-launch
+      (config swap) · migrated-client onboarding SEND (staged only —
+      launch-gate action)
       · SES SMTP wired 2026-07-06: IAM keys received, SMTP password derived
         (scripts/wire-ses.ts — rerun at key rotation), AUTH verified against
         us-east-2, .env.production patched. Still on AWS: verify the
