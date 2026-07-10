@@ -167,6 +167,18 @@ const dict = {
   prof_saved: ['Saved.', 'Guardado.'],
   prof_language: ['Language / Idioma', 'Idioma / Language'],
 
+  // Notification settings (v4.3: estimate toggle, default ON)
+  notif_title: ['Notification settings', 'Configuración de notificaciones'],
+  notif_estimate_label: [
+    'Quarterly estimated-tax due dates and reminders',
+    'Fechas y recordatorios de impuestos estimados trimestrales',
+  ],
+  notif_estimate_help: [
+    'Shows upcoming federal estimated-payment due dates on your dashboard and emails a reminder a week before each one. Turn off if estimated payments don’t apply to you.',
+    'Muestra las próximas fechas de pagos estimados federales en su panel y envía un recordatorio por correo una semana antes de cada una. Desactívelo si los pagos estimados no le aplican.',
+  ],
+  dash_estimate_due: ['Estimated payment due', 'Pago estimado vence'],
+
   // Transition (Form 3 — Hilo → Soto)
   trans_title: ['You’re almost there', 'Ya casi está'],
   trans_intro: ['Hilo already shared the basics — confirm, choose what you need, and you’re in.', 'Hilo ya compartió lo básico — confirme, elija lo que necesita, y listo.'],

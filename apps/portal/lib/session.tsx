@@ -19,10 +19,17 @@ export interface Me {
   city: string | null;
   state: string | null;
   zip: string | null;
+  estimate_reminders_enabled: boolean;
+}
+
+export interface NextEstimate {
+  quarter: string;
+  date: string;
 }
 
 interface SessionCtx {
   me: Me | null;
+  nextEstimate: NextEstimate | null;
   ready: boolean;
   lang: Lang;
   t: (key: DictKey) => string;
@@ -32,6 +39,7 @@ interface SessionCtx {
 
 const Ctx = createContext<SessionCtx>({
   me: null,
+  nextEstimate: null,
   ready: false,
   lang: 'en',
   t: (k) => translate('en', k),
@@ -41,6 +49,7 @@ const Ctx = createContext<SessionCtx>({
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
+  const [nextEstimate, setNextEstimate] = useState<NextEstimate | null>(null);
   const [ready, setReady] = useState(false);
   const [lang, setLangState] = useState<Lang>('en');
 
@@ -50,8 +59,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      const res = await api<{ contact: Me }>('/portal/me');
+      const res = await api<{ contact: Me; nextEstimate: NextEstimate | null }>('/portal/me');
       setMe(res.contact);
+      setNextEstimate(res.nextEstimate);
       setLangState(res.contact.language);
     } catch {
       /* 401 handled by api() */
@@ -73,7 +83,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const t = useCallback((key: DictKey) => translate(lang, key), [lang]);
 
-  return <Ctx.Provider value={{ me, ready, lang, t, setLang, refresh }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ me, nextEstimate, ready, lang, t, setLang, refresh }}>{children}</Ctx.Provider>;
 }
 
 export function useSession(): SessionCtx {

@@ -7,6 +7,7 @@ import {
   extensionDecisionList,
   markExtensionDecision,
   markExtensionFiled,
+  runEstimateReminderJob,
   runExtensionDecisionListJob,
   runSummerChaseJob,
   setExtensionPaymentEstimate,
@@ -74,5 +75,10 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
   app.post('/jobs/summer-chase', jobs, async (request) => {
     const q = AsOfQuery.parse(request.query);
     return runSummerChaseJob(app, q.asOf ?? todayChicago());
+  });
+
+  app.post('/jobs/estimate-reminder', jobs, async (request) => {
+    const q = AsOfQuery.parse(request.query);
+    return runEstimateReminderJob(app, q.asOf ?? todayChicago());
   });
 }

@@ -85,18 +85,26 @@ after(async () => {
 
 test('deadline derivation: table-driven, calendar AND fiscal year (no hardcoded swap)', () => {
   const cases: Array<[string, number, number, string | null, string | null]> = [
-    // [returnType, taxYear, fyeMonth, original, extended]
+    // [returnType, taxYear, fyeMonth, original, extended] — v4.3 authoritative
+    // table, BUSINESS-DAY ROLLED (2026-03-15 + 2026-11-15 + 2027-08-15 are
+    // Sundays; 2027-02-15 is Washington's Birthday).
     ['1040', 2025, 12, '2026-04-15', '2026-10-15'],
-    ['1065', 2025, 12, '2026-03-15', '2026-09-15'],
-    ['1120s', 2025, 12, '2026-03-15', '2026-09-15'],
+    ['1065', 2025, 12, '2026-03-16', '2026-09-15'],
+    ['1120s', 2025, 12, '2026-03-16', '2026-09-15'],
     ['1120', 2025, 12, '2026-04-15', '2026-10-15'],
-    ['990', 2025, 12, '2026-05-15', '2026-11-15'],
-    ['990ez', 2025, 12, '2026-05-15', '2026-11-15'],
+    ['990', 2025, 12, '2026-05-15', '2026-11-16'],
+    ['990ez', 2025, 12, '2026-05-15', '2026-11-16'],
+    // v4.3 new rows (calendar year):
+    ['1041', 2025, 12, '2026-04-15', '2026-09-30'],          // estate/trust — Sep 30, NOT +6
+    ['1120f', 2025, 12, '2026-04-15', '2026-10-15'],         // foreign corp WITH US office
+    ['1120f_foreign', 2025, 12, '2026-06-15', '2026-12-15'], // no US office
+    ['1040_expat', 2025, 12, '2026-06-15', '2026-10-15'],    // Jun 15 automatic → Oct 15
+    ['fbar', 2025, 12, '2026-04-15', '2026-10-15'],          // extension automatic
     // Fiscal-year filers: original = 15th of Nth month after FYE; extended = +6mo.
     ['1120', 2026, 6, '2026-10-15', '2027-04-15'],
-    ['990', 2026, 9, '2027-02-15', '2027-08-15'],
+    ['990', 2026, 9, '2027-02-16', '2027-08-16'],            // 990 = month 5 after FYE
     ['1065', 2026, 3, '2026-06-15', '2026-12-15'],
-    ['1120s', 2026, 11, '2027-02-15', '2027-08-15'],
+    ['1120s', 2026, 11, '2027-02-16', '2027-08-16'],
     // W-7 has no standalone deadline.
     ['w7_itin', 2025, 12, null, null],
   ];
@@ -104,6 +112,10 @@ test('deadline derivation: table-driven, calendar AND fiscal year (no hardcoded 
     assert.equal(originalDeadline(rt as never, year, fye), orig, `${rt}/${year}/fye${fye} original`);
     assert.equal(extendedDeadline(rt as never, year, fye), ext, `${rt}/${year}/fye${fye} extended`);
   }
+  // The famous compound roll: Apr 15 2028 is a Saturday, DC Emancipation Day
+  // (Apr 16) falls Sunday and is observed Monday Apr 17 — so the real filing
+  // deadline is TUESDAY APR 18, matching the IRS calendar.
+  assert.equal(originalDeadline('1040', 2027, 12), '2028-04-18');
   // Date helpers.
   assert.equal(addDays('2026-03-15', -21), '2026-02-22');
   assert.equal(daysBetween('2026-08-20', '2026-09-15'), 26);
@@ -111,21 +123,21 @@ test('deadline derivation: table-driven, calendar AND fiscal year (no hardcoded 
 
 test('T-21 decision list job fires per deadline, once per day, and the list is queryable', async () => {
   const clientA = await makeClient('Partnership', 'partnership-ext@example.test');
-  const engA = await makeTaxEngagement(clientA, '1065', 2025); // deadline 2026-03-15
+  const engA = await makeTaxEngagement(clientA, '1065', 2025); // deadline 2026-03-16 (Mar 15 = Sunday)
   const clientB = await makeClient('Individual', 'individual-ext@example.test');
   await makeTaxEngagement(clientB, '1040', 2025); // deadline 2026-04-15
 
-  // T-21 before Mar 15 → only the 1065 fires.
+  // T-21 before the ROLLED Mar 16 → only the 1065 fires.
   const run1 = await app.inject({
-    method: 'POST', url: '/jobs/extension-decision-list?asOf=2026-02-22', headers: auth(ceo),
+    method: 'POST', url: '/jobs/extension-decision-list?asOf=2026-02-23', headers: auth(ceo),
   });
   assert.equal(run1.statusCode, 200, run1.body);
   assert.equal(run1.json().skipped, false);
-  assert.deepEqual(run1.json().lists, [{ deadline: '2026-03-15', count: 1 }]);
+  assert.deepEqual(run1.json().lists, [{ deadline: '2026-03-16', count: 1 }]);
 
   // Same day again → idempotent skip (safe across restarts).
   const rerun = await app.inject({
-    method: 'POST', url: '/jobs/extension-decision-list?asOf=2026-02-22', headers: auth(ceo),
+    method: 'POST', url: '/jobs/extension-decision-list?asOf=2026-02-23', headers: auth(ceo),
   });
   assert.equal(rerun.json().skipped, true);
 
@@ -137,7 +149,7 @@ test('T-21 decision list job fires per deadline, once per day, and the list is q
 
   // The list endpoint returns the 1065, sorted by preparer.
   const list = await app.inject({
-    method: 'GET', url: '/tax-engagements/extension-decision-list?deadline=2026-03-15', headers: auth(preparer),
+    method: 'GET', url: '/tax-engagements/extension-decision-list?deadline=2026-03-16', headers: auth(preparer),
   });
   assert.equal(list.statusCode, 200, list.body);
   assert.equal(list.json().engagements.length, 1);
@@ -277,4 +289,58 @@ test('deadline dashboard: countdowns, extended + at-risk counts', async () => {
   assert.equal(chase.daysLeft, daysBetween('2026-08-20', '2026-10-15'));
   assert.equal(chase.atRisk, true);
   assert.ok(body.byDeadline['2026-10-15'].total >= 1);
+
+  // v4.3: the staff board ALWAYS shows the next estimated-payment dates.
+  assert.equal(body.estimates.length, 4);
+  assert.equal(body.estimates[0].date, '2026-09-15'); // Q3 (Tue — no roll)
+  assert.equal(body.estimates[1].date, '2027-01-15'); // Q4 of TY2026 (Fri)
+  assert.ok(body.estimates[0].quarter.startsWith('Q3'));
+});
+
+// ── M24 (v4.3 addendum) ──────────────────────────────────────────────────────
+
+test('FBAR: automatic extension keeps it OFF the T-21 decision list', async () => {
+  const fb = await makeClient('Fbar', 'fbar-client@example.test');
+  await makeTaxEngagement(fb, 'fbar', 2026); // original 2027-04-15
+  const run = await app.inject({
+    method: 'POST', url: '/jobs/extension-decision-list?asOf=2027-03-25', headers: auth(ceo),
+  });
+  assert.equal(run.statusCode, 200, run.body);
+  assert.equal(run.json().skipped, false);
+  assert.ok(
+    !run.json().lists.some((l: { deadline: string }) => l.deadline === '2027-04-15'),
+    'automatic-extension types never generate an extend/push decision'
+  );
+});
+
+test('estimate reminders: T-7 email honors the per-client toggle (default ON)', async () => {
+  const onId = await makeClient('Estimateon', 'estimate-on@example.test');
+  const offId = await makeClient('Estimateoff', 'estimate-off@example.test', 'es');
+  // Portal-active clients receive reminders (spec: portal notification setting).
+  await app.db.query(`INSERT INTO portal_users (contact_id, email) VALUES ($1, $2), ($3, $4)`,
+    [onId, 'estimate-on@example.test', offId, 'estimate-off@example.test']);
+  await app.db.query(`UPDATE contacts SET estimate_reminders_enabled = false WHERE id = $1`, [offId]);
+
+  // Default is ON straight from the schema.
+  const flag = await app.db.query(`SELECT estimate_reminders_enabled FROM contacts WHERE id = $1`, [onId]);
+  assert.equal(flag.rows[0].estimate_reminders_enabled, true);
+
+  // 2026-09-08 is T-7 before the Q3 date (Sep 15).
+  const run = await app.inject({
+    method: 'POST', url: '/jobs/estimate-reminder?asOf=2026-09-08', headers: auth(ceo),
+  });
+  assert.equal(run.statusCode, 200, run.body);
+  assert.equal(run.json().skipped, false);
+  assert.ok(run.json().sent >= 1);
+  const onMail = sentMail.filter((m) => m.to === 'estimate-on@example.test');
+  assert.ok(onMail.some((m) => /estimated tax payment due 2026-09-15/i.test(m.subject)), 'toggle-on client reminded');
+  assert.ok(!sentMail.some((m) => m.to === 'estimate-off@example.test'), 'toggle-off client left alone');
+
+  // Idempotent per date; non-T-7 dates send nothing.
+  assert.equal(
+    (await app.inject({ method: 'POST', url: '/jobs/estimate-reminder?asOf=2026-09-08', headers: auth(ceo) })).json().skipped,
+    true
+  );
+  const quiet = await app.inject({ method: 'POST', url: '/jobs/estimate-reminder?asOf=2026-09-09', headers: auth(ceo) });
+  assert.equal(quiet.json().sent, 0);
 });

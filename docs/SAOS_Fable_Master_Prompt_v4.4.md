@@ -48,7 +48,7 @@ Output is a working, deployed system packaged for a one-session developer handof
 - Frontend: Next.js — mobile-compatible; **fully bilingual English/Spanish** (i18n from day one, client chooses language, all client-facing copy in both languages)
 - Files: MinIO, encrypted buckets
 - Email: Postal (self-hosted) for composition, inbound processing, and message management; **outbound relayed through Amazon SES smart host** — self-hosted SMTP from a fresh VPS IP lands in spam, and magic links + engagement letters cannot tolerate silent delivery failure. SES sees routing metadata only, never stored documents
-- **SMS/Voice: Twilio — NEW 312 area code number, no port (DECIDED)** (see Communication section)
+- **SMS/Voice: Twilio — 708-300-0375 live at launch; 312-715-8599 ports in post-launch (DECIDED, updated July 7)** (see Communication section)
 - Transcription: Whisper (local container)
 - Summarization: Ollama local LLM primary; Claude/GPT-4 API fallback (cleaned text only, never audio/raw transcripts)
 - Payments: Stripe (one-time + Stripe Billing recurring)
@@ -94,7 +94,7 @@ Infrastructure under $75/month (Hetzner CPX41 ~$35 + B2 + Twilio usage + SES pen
 ## THE BUSINESS
 
 ### Soto Accounting LLC
-- CPA firm, Chicago. Office number: **NEW Twilio 312 number provisioned at build** (replaces 312-715-8599 — transition plan in Communication section) | contact@sotoaccounting.com
+- CPA firm, Chicago. Published office number: **312-715-8599** (Google Voice, unchanged for clients). System/SMS number: **Twilio 708-300-0375** at launch — see Communication section | contact@sotoaccounting.com
 - Services: Tax (1040, Sch C, Sch E, 1065, 1120-S, 1120, 990, **1041 estate/trust**, 1120-C housing co-op, 1120-H, **1120-F foreign**, 1120-POL, ITIN/W-7, **expat/foreign filings incl. FBAR**), **Payroll (setup, review, training, full management)**, **Sales & Use Tax (setup, review, training, full management)**, Bookkeeping & Financial Statements, Advisory/CFO, **Nonprofit CFO & Grant Vouchering**, COO Services, Entity Formation & Annual Reports (incl. BOI, DBA, amendments), **Attest (CPA financial statement review/audit — see independence rule in Service Delivery Model)**, Specialized CPA Services, IRS Notice Handling. Full catalog + prices in PRICING SEED DATA. Essential/Growth/Full Management survives as internal complexity scoping only — clients buy cadences and scope rungs per the Service Delivery Model section
 - **Tax prep happens in ATX Tax Software (external, no integration)** — this system handles everything around the return: intake, documents, pipeline, pricing, signatures, delivery, billing. Delivery step: preparer manually uploads the final return PDF to the client's portal (replaces the current Dropbox-link-by-email process)
 - 300+ clients; import last 24–36 months (Dubsado + Zoho CRM exports); QuickBooks for accounting via weekly CSV export
@@ -297,9 +297,11 @@ Cal.com enforces Zoom-only on initial-consultation event types ("Initial consult
 
 ## COMMUNICATION SYSTEM
 
-### The Number: NEW Twilio number, 312 area code (DECIDED — no port)
-Google Voice has no API, and a clean new number was chosen over porting 312-715-8599. Porting risk and the off-season timing constraint are eliminated — provision the Twilio 312 number during Phase 1 infrastructure setup.
-- **Legacy-number transition**: 312-715-8599 stays live on Google Voice with call forwarding to the new Twilio number. All templates, the website, email signatures, and portal copy carry the new number from day one. Every outbound touch during the first year includes a "save our new number" line. Retire the Google Voice number after one full tax season on the new line. Note: SMS to the legacy number cannot be forwarded — Rene checks the legacy GV inbox daily during transition and replies manually pointing to the new number
+### The Number (UPDATED July 7 — launch reality): Twilio 708-300-0375 now · 312-715-8599 ports in post-launch
+Twilio had no 312/773 inventory at purchase, so the decision changed: launch on Twilio **708-300-0375** (A2P brand approved + campaign registered on this number), and **port 312-715-8599 from Google Voice into Twilio post-launch** as a pure config swap — re-point the Messaging Service to the ported number; nothing else changes.
+- **Interim state**: 312-715-8599 remains the published office number on Google Voice, ringing exactly as today. SAOS sends and receives on 708. Rene continues checking the GV inbox for SMS until the port completes
+- **Port timing**: after launch, once SAOS inbound call/SMS handling is proven on 708 — never mid-build, never Jan–Apr. Port cutover scheduled mid-morning on a light day
+- **Build requirement**: the system is number-agnostic — the Twilio number lives in config, the Messaging Service SID is the send path, and the port must require zero code changes
 - **Every SMS and call on the new number flows into the unified inbox AND the client's portal thread**. Team texts clients FROM the system (any staff member, one shared number, full history) — no personal phones
 - Voice: inbound calls ring configured staff (Rene primary) with simultaneous ring rules; voicemail transcribed via Whisper → ticket
 - Twilio stores nothing beyond message routing; documents never travel by SMS (auto-reply nudges document texts to the portal upload link)
@@ -383,7 +385,7 @@ Pricing tiers + points (all services) | SLA windows | alert thresholds | staff +
 Docker + staging + Uptime Kuma + Vaultwarden | schema + encryption + audit logs + MFA | CRM + tax module + IRS notices + entity module | pipeline + complexity + scope creep + **extension workflow** | pricing calculator (range) | Docuseal: engagement letters + 7216 + 8879 flow (KBA decision point) | Stripe one-time | Soto portal (bilingual): documents, returns delivery, messages, invoices, signatures, empty state, resources | meeting intelligence (Zoom + mobile recorder) | Cal.com | referral flows both directions (7216-gated) | ntfy push | Executive + Hilo dashboards | Dubsado/Zoho/grant-tracker migration | magic-link onboarding + bounce fallback | admin interface core
 
 **Phase 2 — Communication + Full Client Experience**
-**Twilio 312 number goes client-facing** (provisioned in Phase 1) + unified inbox (SMS/email/voice→portal threads) + legacy-number transition messaging | SLA ticket routing | all templates EN/ES | Hilo portal full (journey, milestones, session notes, workshops, grants) | automation sequences | staff onboarding module | CPA referral network (schema + basic UI) | time tracking
+**Twilio 708 number goes client-facing** + unified inbox (SMS/email/voice→portal threads); 312-715-8599 port scheduled post-launch as config swap | SLA ticket routing | all templates EN/ES | Hilo portal full (journey, milestones, session notes, workshops, grants) | automation sequences | staff onboarding module | CPA referral network (schema + basic UI) | time tracking
 
 **Phase 3 — Bookkeeping, Advisory, Grants**
 Bookkeeping module + Stripe Billing recurring + monthly close + MRR | advisory/COO module + upsell pipeline | Rene billing queue | **Grant distribution module (application → blind scoring → selection → award → disbursement → surveys)** | **Grants-received pipeline + funder reporting calendar (Jackson)** | Eventbrite sync + surveys + QR check-in
@@ -646,6 +648,9 @@ Bilingual event pages for Hilo workshops: registration with capacity caps, confi
 | Team payroll provider | **Kept** — regulated domain, out of scope |
 | Obsidian / second brain | **Kept for notes (PKM)** per the existing markdown architecture; SAOS takes all tasks and projects |
 | Stripe, Twilio, SES, KBA | **Kept** — the four approved vendors |
+
+## CONFIG CORRECTION (July 7, 2026)
+The Communication section previously said "NEW 312 number, no port" — superseded: no 312/773 Twilio inventory existed, so launch is on 708-300-0375 (A2P registered) with 312-715-8599 as a post-launch port. Spec now matches deployed config. Number-agnostic build requirement added.
 
 ## v4.4 CHANGELOG (July 7, 2026)
 1. Unified task & project management: one task table under every module, My Tasks per person, owner rollup, team workload, kanban project boards, recurring checklists, Trello importer, lightweight time log feeding hourly invoices

@@ -97,6 +97,29 @@ export const templates = [
       '— Soto Accounting',
   },
   {
+    key: 'estimated_payment_reminder',
+    name: 'Quarterly estimated-payment reminder (T-7, toggle-gated)',
+    channel: 'email',
+    isPlaceholder: false, // operational reminder copy — live, admin-editable
+    variables: ['first_name', 'quarter', 'due_date'],
+    subjectEn: 'Estimated tax payment due {{due_date}}',
+    subjectEs: 'Pago de impuestos estimado vence el {{due_date}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'A quick reminder: the {{quarter}} federal estimated tax payment is due {{due_date}}.\n\n' +
+      'If your estimates are already handled — or estimated payments don’t apply to you — ' +
+      'you can ignore this note, or turn these reminders off any time in your portal’s ' +
+      'notification settings. Questions about your amount? Message us through the portal.\n\n' +
+      '— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Un recordatorio rápido: el pago de impuestos estimados federales del {{quarter}} vence el {{due_date}}.\n\n' +
+      'Si sus pagos estimados ya están al día — o no le aplican — puede ignorar este mensaje, ' +
+      'o desactivar estos recordatorios en la configuración de notificaciones de su portal. ' +
+      '¿Preguntas sobre su monto? Escríbanos por el portal.\n\n' +
+      '— Soto Accounting',
+  },
+  {
     key: 'twilio_voice_greeting',
     name: 'Voice greeting (spoken to callers on the texting number)',
     channel: 'sms',

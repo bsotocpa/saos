@@ -113,6 +113,26 @@ export default function ProfilePage() {
           </button>
         </form>
       </section>
+
+      <section className="card">
+        <h2>{t('notif_title')}</h2>
+        <label className="field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+          <input
+            type="checkbox"
+            data-testid="estimate-toggle"
+            checked={me?.estimate_reminders_enabled ?? true}
+            onChange={async (e) => {
+              await api('/portal/me', { method: 'PATCH', body: { estimateReminders: e.target.checked } });
+              await refresh();
+            }}
+          />
+          <span>
+            {t('notif_estimate_label')}
+            <br />
+            <span className="muted small">{t('notif_estimate_help')}</span>
+          </span>
+        </label>
+      </section>
     </>
   );
 }

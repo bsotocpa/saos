@@ -10,10 +10,12 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import {
+  AUTOMATIC_EXTENSION_TYPES,
   addDays,
   daysBetween,
   extendedDeadline,
   originalDeadline,
+  upcomingEstimateDates,
   type DeadlineReturnType,
 } from './deadlines.ts';
 
@@ -77,14 +79,17 @@ export async function runExtensionDecisionListJob(
   const tMinus = await getSetting<number>(app, 'extension.decision_list_days_before', 21);
   const targetDeadline = addDays(today, tMinus);
 
+  // Types whose extension is AUTOMATIC (FBAR) never need an extend/push
+  // decision — they stay off the list (v4.3 table).
   const { rows } = await app.db.query<{ deadline: string; count: number }>(
     `SELECT te.original_deadline::text AS deadline, count(*)::int AS count
      FROM tax_engagements te
      WHERE te.original_deadline = $1
        AND te.stage = ANY($2::tax_stage[])
        AND NOT te.extension_filed
+       AND te.return_type <> ALL($3::return_type[])
      GROUP BY te.original_deadline`,
-    [targetDeadline, PRE_INTERNAL_REVIEW]
+    [targetDeadline, PRE_INTERNAL_REVIEW, AUTOMATIC_EXTENSION_TYPES]
   );
 
   for (const list of rows) {
@@ -376,7 +381,55 @@ export async function deadlineDashboard(app: FastifyInstance, today: string) {
     byDeadline,
     atRiskCount: engagements.filter((e) => e.atRisk).length,
     extendedCount: engagements.filter((e) => e.extended).length,
+    // v4.3: the staff board ALWAYS shows estimated-payment dates (the
+    // client-side toggle only affects the portal + reminder emails).
+    estimates: upcomingEstimateDates(today),
   };
+}
+
+/**
+ * v4.3: quarterly estimated-payment reminders — T-7 before each estimate
+ * date, to portal-active clients whose estimate toggle is ON (default).
+ * The staff deadline board shows the dates regardless of any toggle.
+ */
+export async function runEstimateReminderJob(
+  app: FastifyInstance,
+  today: string
+): Promise<{ skipped: boolean; sent: number }> {
+  const ACTION = 'job.estimate_reminder';
+  if (await jobAlreadyRan(app, ACTION, today)) return { skipped: true, sent: 0 };
+
+  const next = upcomingEstimateDates(today, 1)[0];
+  let sent = 0;
+  if (next && daysBetween(today, next.date) === 7) {
+    const { rows } = await app.db.query<{
+      id: string; first_name: string; email: string; language: 'en' | 'es';
+    }>(
+      `SELECT DISTINCT c.id, c.first_name, c.email, c.language
+       FROM contacts c
+       JOIN portal_users u ON u.contact_id = c.id AND u.is_active
+       WHERE c.estimate_reminders_enabled
+         AND c.email IS NOT NULL
+         AND NOT c.is_archived`
+    );
+    for (const c of rows) {
+      await sendTemplatedEmail(app, {
+        to: c.email,
+        templateKey: 'estimated_payment_reminder',
+        language: c.language,
+        contactId: c.id,
+        vars: { first_name: c.first_name, quarter: next.quarter, due_date: next.date },
+      });
+      sent++;
+    }
+  }
+
+  await writeAudit(app.db, {
+    actorType: 'system', actorLabel: 'daily-jobs',
+    action: ACTION,
+    details: { run_date: today, estimate_date: next?.date ?? null, sent },
+  });
+  return { skipped: false, sent };
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────

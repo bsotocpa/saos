@@ -10,6 +10,7 @@ import { AppError } from '../../types.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
 import { refreshEnrichmentGaps } from '../crm/service.ts';
 import { computeQuote } from '../pricing/service.ts';
+import { todayChicago, upcomingEstimateDates } from '../tax/deadlines.ts';
 
 const ProfileBody = z.object({
   firstName: z.string().min(1).optional(),
@@ -23,6 +24,8 @@ const ProfileBody = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   zip: z.string().optional(),
+  // v4.3: quarterly-estimate dates/reminders toggle (notification settings).
+  estimateReminders: z.boolean().optional(),
 });
 
 const ServiceRequestBody = z.object({
@@ -59,11 +62,18 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     const client = request.client!;
     const { rows } = await app.db.query(
       `SELECT id, first_name, last_name, email, phone, secondary_phone, preferred_contact_method, language,
-              address_line1, address_line2, city, state, zip, soto_status, hilo_status
+              address_line1, address_line2, city, state, zip, soto_status, hilo_status,
+              estimate_reminders_enabled
        FROM contacts WHERE id = $1`,
       [client.contactId]
     );
-    return { contact: rows[0] ?? null };
+    const contact = (rows[0] ?? null) as { estimate_reminders_enabled?: boolean } | null;
+    // v4.3: next quarterly estimate date shows in the portal while the
+    // toggle is ON (default); staff surfaces are unaffected by the toggle.
+    const nextEstimate = contact?.estimate_reminders_enabled
+      ? upcomingEstimateDates(todayChicago(), 1)[0] ?? null
+      : null;
+    return { contact, nextEstimate };
   });
 
   // Profile + LANGUAGE TOGGLE persistence (applied to all outbound comms).
@@ -76,6 +86,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
       first_name: b.firstName, last_name: b.lastName, phone: b.phone, secondary_phone: b.secondaryPhone,
       language: b.language, address_line1: b.addressLine1, address_line2: b.addressLine2,
       city: b.city, state: b.state, zip: b.zip,
+      estimate_reminders_enabled: b.estimateReminders,
     };
     for (const [col, val] of Object.entries(map)) {
       if (val !== undefined) { params.push(val); sets.push(`${col} = $${params.length}`); }

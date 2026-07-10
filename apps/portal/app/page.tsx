@@ -32,7 +32,7 @@ const STEPS = [
 ] as const;
 
 export default function Dashboard() {
-  const { t, me, ready, lang } = useSession();
+  const { t, me, nextEstimate, ready, lang } = useSession();
   const router = useRouter();
   const [onboarding, setOnboarding] = useState<Onboarding | null>(null);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
@@ -78,6 +78,12 @@ export default function Dashboard() {
         {t('home_title')}
         {me ? `, ${me.first_name}` : ''}
       </h1>
+
+      {nextEstimate ? (
+        <p className="muted small" data-testid="estimate-line">
+          {t('dash_estimate_due')}: <strong>{nextEstimate.quarter}</strong> — {nextEstimate.date}
+        </p>
+      ) : null}
 
       {showChecklist ? (
         <section className="card" data-testid="checklist">

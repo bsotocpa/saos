@@ -472,23 +472,35 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 Spec: SAOS_Fable_Master_Prompt_v4.4.md + SAOS_Onboarding_Forms_Spec_v4.4.md
 (addenda equal in authority) · UI reference for ALL portal/ops screens:
 docs/SAOS_Wireframes.html (customer / owner / preparer personas).
-⚠ SPEC CONFLICT for Brian: master prompt §Communication says "NEW Twilio
-number, 312 area code (DECIDED — no port)" but Brian's 2026-07-06 launch
-directive wired 708-300-0375 with 312-715-8599 as a post-launch PORT.
-Brian to reconcile; system is number-agnostic either way (config swap).
+✓ Twilio RESOLVED (Brian 2026-07-07): config is current, spec §Communication
+is stale — 708-300-0375 is the live number (A2P registered; no 312 inventory
+existed); 312-715-8599 stays the published office number on Google Voice and
+ports post-launch as a Messaging Service config swap. Corrected spec file
+incoming from Brian. System stays number-agnostic.
+✓ Notification-vs-task design principle approved as stated (alerts = channel,
+tasks = work). Trello JSONs arriving in migration-data this week.
 
-## M24 — Authoritative deadline-table migration (v4.3)
-- [ ] return_type coverage extended: 1041 (Apr 15/Sep 30 — NOT a +6mo
+## M24 — Authoritative deadline-table migration (v4.3) ✅ 2026-07-09
+- [x] return_type coverage extended: 1041 (Apr 15/Sep 30 — NOT a +6mo
       pattern), 1120-F US office (Apr 15/Oct 15), 1120-F no US office
       (Jun 15/Dec 15), 1040 expat (Jun 15 auto/Oct 15), FBAR rider
-      (Apr 15/Oct 15 automatic), 990 ORIGINAL May 15 (corrected) —
-      enum migration + table-driven derivation module (the authoritative
-      table as one code constant; fiscal-year = month 4, month 5 for 990)
-- [ ] Estimated-payment dates (Q1–Q4) on the staff deadline board
-- [ ] Client estimate-reminder toggle (portal notification settings,
-      default ON; staff board unaffected)
-- [ ] Prove it: table-driven tests for every row incl. fiscal-year 990 +
-      1041; decision-list windows follow new original dates
+      (Apr 15/Oct 15 automatic), 990 ORIGINAL May 15 (already correct in
+      code; spec text corrected) — migration 0011 + THE_TABLE constant
+      mirroring the spec row-for-row (fiscal = month 4, month 5 for 990)
+- [x] BUSINESS-DAY ROLL added per the spec's roll rule: weekends + observed
+      federal holidays + DC Emancipation Day. Proof case: 1040 TY2027 →
+      2028-04-18 (Sat 15th → Sun Emancipation observed Mon 17 → Tue 18),
+      matching the IRS calendar
+- [x] Estimated-payment dates (Q1–Q4, rolled) on the staff deadline board
+      — always shown, toggle-independent
+- [x] Client estimate-reminder toggle (portal notification settings card,
+      default ON): /portal/me carries it + nextEstimate; dashboard shows
+      the next due date; T-7 bilingual reminder job (template
+      estimated_payment_reminder, live) honors the toggle; FBAR's automatic
+      extension excluded from T-21 decision lists
+- [x] Prove it: table-driven tests for EVERY spec row (calendar + fiscal
+      incl. 990-month-5 and 1041), compound-roll case, FBAR exclusion,
+      toggle-gated reminder job idempotence — 121/121 green
 
 ## M25 — Unified task system (v4.4 — the connective layer)
 - [ ] Schema: task status/comments/checklists/linked docs/SOP link/

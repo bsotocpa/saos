@@ -17,7 +17,12 @@ const CreateBody = z.object({
   contactId: z.uuid(),
   businessId: z.uuid().optional(),
   taxYear: z.number().int().min(2000).max(2100),
-  returnType: z.enum(['1040', '1065', '1120s', '1120', '990', '990ez', '1120c', '1120f', '1120h', '1120pol', 'w7_itin']),
+  // v4.3 authoritative table coverage (M24): estate/trust, both 1120-F
+  // variants, expat 1040, and FBAR join the original set.
+  returnType: z.enum([
+    '1040', '1065', '1120s', '1120', '990', '990ez', '1120c', '1120f', '1120h', '1120pol', 'w7_itin',
+    '1041', '1120f_foreign', '1040_expat', 'fbar',
+  ]),
   clientType: z.enum(['individual', 'business', 'nonprofit']).optional(),
   preparerId: z.uuid().optional(),
   reviewerId: z.uuid().optional(),

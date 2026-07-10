@@ -4,7 +4,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { todayChicago } from '../modules/tax/deadlines.ts';
-import { runExtensionDecisionListJob, runSummerChaseJob } from '../modules/tax/extension.ts';
+import { runEstimateReminderJob, runExtensionDecisionListJob, runSummerChaseJob } from '../modules/tax/extension.ts';
 import { runHealthRefresh } from '../modules/crm/health.ts';
 import { runNoticeEscalations } from '../modules/notices/service.ts';
 import { runEntityComplianceJob } from '../modules/entity/service.ts';
@@ -22,6 +22,8 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   if (!decision.skipped) app.log.info({ job: 'extension_decision_list', ...decision }, 'daily job ran');
   const chase = await runSummerChaseJob(app, today);
   if (!chase.skipped) app.log.info({ job: 'summer_chase', ...chase }, 'daily job ran');
+  const estimates = await runEstimateReminderJob(app, today);
+  if (!estimates.skipped) app.log.info({ job: 'estimate_reminder', ...estimates }, 'daily job ran');
   const entity = await runEntityComplianceJob(app, today);
   if (!entity.skipped) app.log.info({ job: 'entity_compliance', ...entity }, 'daily job ran');
   const docs = await runDocumentChaseJob(app, today);
