@@ -13,6 +13,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Db } from '../../db.ts';
 import { has7216Consent } from '../compliance/consent.ts';
 import { writeAudit } from '../../audit.ts';
+import { createTask } from '../tasks/service.ts';
 
 export interface HealthComponents {
   portal_logins: number;
@@ -138,6 +139,16 @@ export async function runHealthRefresh(app: FastifyInstance): Promise<{ scored: 
            VALUES ($1, 'health_red', 'warning', $2, $3)`,
           [c.assigned_manager_id, `Client health RED: ${name} (${score}/100)`, c.id]
         );
+        // M25: the alert stays the alert; the CHECK-IN is a work item.
+        await createTask(app, {
+          title: `Check in with ${name} — health dropped to RED (${score}/100)`,
+          assignedStaffId: c.assigned_manager_id,
+          contactId: c.id,
+          priority: 1,
+          source: 'automation',
+          sourceType: 'health_red',
+          sourceId: c.id,
+        });
       }
       redAlerts++;
     }

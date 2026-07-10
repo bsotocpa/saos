@@ -5,6 +5,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 import { handleMailBounce } from '../portal-auth/service.ts';
 import { escapeXml, isStopMessage, parseFormBody, validateTwilioSignature } from './twilio.ts';
 import { isAmazonSnsUrl, parseSesFeedback, snsHttp, verifySnsSignature, type SnsMessage } from './ses-sns.ts';
@@ -111,6 +112,19 @@ export function registerCommsRoutes(app: FastifyInstance): void {
         relatedObjectType: 'sms',
         relatedObjectId: messageSid,
       });
+      // M25: an UNMATCHED text is a phone ticket — nobody owns the thread,
+      // so someone must own the follow-up (v4.4 "Rene's phone tickets").
+      if (!contact && !stop) {
+        await createTask(app, {
+          title: `Phone ticket: text from unrecognized number ${from}`,
+          description: 'Match the number to a contact (or create one), then reply. Message body is in the SMS log.',
+          assignedStaffId: rene,
+          priority: 1,
+          source: 'automation',
+          sourceType: 'sms_unmatched',
+          sourceId: messageSid,
+        });
+      }
     }
 
     // Audit carries identifiers only — the message BODY lives in messages.
@@ -139,6 +153,7 @@ export function registerCommsRoutes(app: FastifyInstance): void {
 
     const contact = await contactByPhone(app, params['From'] ?? '');
     const rene = await firstActiveByRole(app.db, 'comms_billing');
+    const callSid = params['CallSid'] ?? `unknown-${Date.now()}`;
     if (rene) {
       await notifyOnce(app.db, {
         staffId: rene,
@@ -149,7 +164,19 @@ export function registerCommsRoutes(app: FastifyInstance): void {
           : `Missed call from ${params['From'] ?? 'unknown number'}`,
         contactId: contact?.id ?? null,
         relatedObjectType: 'call',
-        relatedObjectId: params['CallSid'] ?? `unknown-${Date.now()}`,
+        relatedObjectId: callSid,
+      });
+      // M25: every missed call is a phone ticket on Rene's list.
+      await createTask(app, {
+        title: contact
+          ? `Return call: ${contact.first_name} ${contact.last_name}`
+          : `Return call: ${params['From'] ?? 'unknown number'}`,
+        assignedStaffId: rene,
+        contactId: contact?.id ?? null,
+        priority: 1,
+        source: 'automation',
+        sourceType: 'call_ticket',
+        sourceId: callSid,
       });
     }
     await writeAudit(app.db, {

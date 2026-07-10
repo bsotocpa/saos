@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { currentPriceBookVersion } from '../pricing/service.ts';
 
@@ -196,6 +197,15 @@ export async function invoiceForFiledEngagement(
         relatedObjectType: 'tax_engagement',
         relatedObjectId: te.id,
       });
+      await createTask(app, {
+        title: `Set final fee + invoice: ${te.first_name} ${te.last_name} (${te.tax_year} ${te.return_type.toUpperCase()})`,
+        assignedStaffId: rene,
+        contactId: te.contact_id,
+        priority: 1,
+        source: 'automation',
+        sourceType: 'invoice_needed',
+        sourceId: te.id,
+      });
     }
     return { invoiced: false };
   }
@@ -282,6 +292,8 @@ export async function markInvoicePaid(
       },
     });
   }
+  // M25: payment closes the collection work item automatically.
+  await closeTasksForSource(app, 'invoice_overdue', invoiceId, 'invoice paid');
   await writeAudit(app.db, {
     actorType: 'system',
     action: 'invoice.paid',
@@ -352,6 +364,17 @@ export async function runInvoiceOverdueJob(
         contactId: inv.contact_id,
         relatedObjectType: 'invoice',
         relatedObjectId: inv.id,
+      });
+      // M25: the collection follow-up is a WORK ITEM (v4.3 flow 4's dunning
+      // ladder builds on this task in M26). Closed by payment.
+      await createTask(app, {
+        title: `Chase overdue invoice ${inv.invoice_number} — ${inv.first_name} ${inv.last_name}`,
+        assignedStaffId: rene,
+        contactId: inv.contact_id,
+        priority: 1,
+        source: 'automation',
+        sourceType: 'invoice_overdue',
+        sourceId: inv.id,
       });
     }
     overdue++;

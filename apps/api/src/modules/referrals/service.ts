@@ -18,6 +18,7 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { has7216Consent, require7216Consent } from '../compliance/consent.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { createScopedToken, verifyScopedToken } from '../../crypto.ts';
 import { processSotoIntake } from '../forms/service.ts';
@@ -81,6 +82,17 @@ export async function createReferral(
       relatedObjectType: 'referral',
       relatedObjectId: id,
     });
+    // M25: the approval is a WORK ITEM — a task in the owner rollup, closed
+    // automatically by the decision (v4.4 unified-task rule).
+    await createTask(app, {
+      title: `Approve referral: ${input.direction === 'hilo_to_soto' ? 'Hilo → Soto' : 'Soto → Hilo'}`,
+      assignedStaffId: approver,
+      contactId: input.contactId,
+      priority: 1,
+      source: 'automation',
+      sourceType: 'referral_approval',
+      sourceId: id,
+    });
   }
   await writeAudit(app.db, {
     actorType: actor.type,
@@ -133,6 +145,7 @@ export async function approveReferral(
     `UPDATE referrals SET status = 'approved', approved_by_staff_id = $2, approved_at = now() WHERE id = $1`,
     [referralId, actor.id]
   );
+  await closeTasksForSource(app, 'referral_approval', referralId, 'referral approved');
   await writeAudit(app.db, {
     actorType: 'staff', actorId: actor.id, actorLabel: actor.label,
     action: 'referral.approved', objectType: 'referral', objectId: referralId, contactId: r.contact_id,
@@ -146,6 +159,7 @@ export async function declineReferral(
 ): Promise<void> {
   const r = await loadReferral(app, referralId);
   await app.db.query(`UPDATE referrals SET status = 'declined' WHERE id = $1`, [referralId]);
+  await closeTasksForSource(app, 'referral_approval', referralId, 'referral declined');
   await writeAudit(app.db, {
     actorType: 'staff', actorId: actor.id, actorLabel: actor.label,
     action: 'referral.declined', objectType: 'referral', objectId: referralId, contactId: r.contact_id,

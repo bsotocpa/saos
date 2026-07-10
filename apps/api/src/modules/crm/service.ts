@@ -31,7 +31,13 @@ export async function computeEnrichmentGaps(db: Db, contactId: string): Promise<
   return [...gaps].sort();
 }
 
-/** Keep the enrichment_queue row in sync after any contact/business change. */
+/**
+ * Keep the enrichment_queue row in sync after any contact/business change.
+ * M25: the gap is ALSO a task (no module-local to-do lists) — created when
+ * gaps appear, description refreshed as they change, auto-closed when the
+ * portal backfill (or staff edit) fills everything. The queue table stays
+ * as the machine-readable source the auto-resolution reads.
+ */
 export async function refreshEnrichmentGaps(db: Db, contactId: string): Promise<string[]> {
   const gaps = await computeEnrichmentGaps(db, contactId);
   if (gaps.length === 0) {
@@ -39,16 +45,44 @@ export async function refreshEnrichmentGaps(db: Db, contactId: string): Promise<
       `UPDATE enrichment_queue SET resolved_at = now() WHERE contact_id = $1 AND resolved_at IS NULL`,
       [contactId]
     );
+    await db.query(
+      `UPDATE tasks SET status = 'done', completed_at = now(), updated_at = now()
+       WHERE contact_id = $1 AND source_type = 'enrichment' AND status IN ('open', 'in_progress')`,
+      [contactId]
+    );
   } else {
     const open = await db.query<{ id: string }>(
       `SELECT id FROM enrichment_queue WHERE contact_id = $1 AND resolved_at IS NULL`,
       [contactId]
     );
+    let queueId: string;
     if (open.rows[0]) {
-      await db.query(`UPDATE enrichment_queue SET missing_fields = $2 WHERE id = $1`, [open.rows[0].id, gaps]);
+      queueId = open.rows[0].id;
+      await db.query(`UPDATE enrichment_queue SET missing_fields = $2 WHERE id = $1`, [queueId, gaps]);
     } else {
-      await db.query(`INSERT INTO enrichment_queue (contact_id, missing_fields) VALUES ($1, $2)`, [contactId, gaps]);
+      const ins = await db.query<{ id: string }>(
+        `INSERT INTO enrichment_queue (contact_id, missing_fields) VALUES ($1, $2) RETURNING id`,
+        [contactId, gaps]
+      );
+      queueId = ins.rows[0]!.id;
     }
+    const description =
+      'Missing: ' + gaps.join(', ') + '. Portal first-login backfill resolves most of these automatically.';
+    await db.query(
+      `INSERT INTO tasks (title, description, contact_id, source, source_type, source_id)
+       SELECT 'Complete missing client info: ' || c.first_name || ' ' || c.last_name, $3, $1, 'system', 'enrichment', $2
+       FROM contacts c WHERE c.id = $1
+         AND NOT EXISTS (
+           SELECT 1 FROM tasks t
+           WHERE t.source_type = 'enrichment' AND t.source_id = $2 AND t.status IN ('open', 'in_progress')
+         )`,
+      [contactId, queueId, description]
+    );
+    await db.query(
+      `UPDATE tasks SET description = $3, updated_at = now()
+       WHERE source_type = 'enrichment' AND source_id = $2 AND contact_id = $1 AND status IN ('open', 'in_progress')`,
+      [contactId, queueId, description]
+    );
   }
   return gaps;
 }

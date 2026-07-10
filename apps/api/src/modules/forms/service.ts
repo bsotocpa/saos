@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { ensurePortalUser, issueMagicLink } from '../portal-auth/service.ts';
 import { refreshEnrichmentGaps } from '../crm/service.ts';
@@ -300,6 +301,16 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
         title: `Intake flagged IRS letters: ${a.first_name} ${a.last_name} — priority routing`,
         contactId, relatedObjectType: 'form_submission', relatedObjectId: submissionId,
       });
+      // M25: priority triage is a work item on the handler's list.
+      await createTask(app, {
+        title: `Triage IRS letters flagged at intake: ${a.first_name} ${a.last_name}`,
+        assignedStaffId: ana,
+        contactId,
+        priority: 1,
+        source: 'automation',
+        sourceType: 'intake_irs_letters',
+        sourceId: submissionId,
+      });
     }
   }
 
@@ -435,6 +446,16 @@ export async function processServiceOnboarding(
           staffId, type: `onboarding_flag_${flag.flagKey}`, severity: 'warning',
           title: `Onboarding flag: ${flag.flagKey.replace(/_/g, ' ')} (${m.key})`,
           contactId, relatedObjectType: 'contact', relatedObjectId: contactId,
+        });
+        // M25: the flag's follow-up is a routed work item.
+        await createTask(app, {
+          title: `Onboarding flag: ${flag.flagKey.replace(/_/g, ' ')} (${m.key})`,
+          assignedStaffId: staffId,
+          contactId,
+          priority: 1,
+          source: 'automation',
+          sourceType: 'onboarding_flag',
+          sourceId: `${contactId}:${flag.flagKey}`,
         });
       }
     }

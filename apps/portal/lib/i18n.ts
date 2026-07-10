@@ -179,6 +179,14 @@ const dict = {
   ],
   dash_estimate_due: ['Estimated payment due', 'Pago estimado vence'],
 
+  // Client to-dos (v4.4)
+  todos_title: ['Your to-dos', 'Sus pendientes'],
+  todos_empty: ['Nothing waiting on you right now.', 'No hay nada pendiente de su parte por ahora.'],
+  todos_done: ['Done', 'Listo'],
+  todos_kind_upload: ['Upload', 'Subir'],
+  todos_kind_signature: ['Signature', 'Firma'],
+  todos_due: ['due', 'vence'],
+
   // Transition (Form 3 — Hilo → Soto)
   trans_title: ['You’re almost there', 'Ya casi está'],
   trans_intro: ['Hilo already shared the basics — confirm, choose what you need, and you’re in.', 'Hilo ya compartió lo básico — confirme, elija lo que necesita, y listo.'],

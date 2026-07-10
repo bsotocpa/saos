@@ -24,9 +24,18 @@ const STAGE_LABELS: Record<string, string> = {
   client_review: 'Client review', ready_to_file: 'Ready to file', filed: 'Filed', on_hold: 'On hold',
 };
 
+interface Rollup {
+  mine: Array<{ id: string; title: string; priority: number; due_date: string | null; source_type: string | null }>;
+  approvals: Array<{ id: string; title: string }>;
+  stalled: number;
+  day60: number;
+  vouchers_due: number;
+}
+
 export default function ExecutivePage() {
   const router = useRouter();
   const [data, setData] = useState<Executive | null>(null);
+  const [rollup, setRollup] = useState<Rollup | null>(null);
 
   useEffect(() => {
     if (!isAuthed()) {
@@ -34,6 +43,7 @@ export default function ExecutivePage() {
       return;
     }
     void api<Executive>('/dashboards/executive').then(setData);
+    void api<Rollup>('/tasks/rollup').then(setRollup);
   }, [router]);
 
   if (!data) return <p className="muted">Loading…</p>;
@@ -43,6 +53,36 @@ export default function ExecutivePage() {
   return (
     <>
       <h1>Executive</h1>
+
+      {rollup ? (
+        <section className="card" data-testid="owner-rollup" style={rollup.mine.length + rollup.approvals.length > 0 ? { borderColor: 'var(--electric)' } : undefined}>
+          <h2>
+            Needs you today{' '}
+            <span className="muted small">
+              {rollup.stalled > 0 ? `· ${rollup.stalled} stalled ` : ''}
+              {rollup.day60 > 0 ? `· ${rollup.day60} day-60 deposits ` : ''}
+              {rollup.vouchers_due > 0 ? `· ${rollup.vouchers_due} vouchers due` : ''}
+            </span>
+          </h2>
+          {rollup.mine.length + rollup.approvals.length === 0 ? (
+            <p className="muted">Clear — nothing waiting on you.</p>
+          ) : (
+            <ul className="list">
+              {rollup.approvals.map((a) => (
+                <li key={a.id}><span className="badge warn">approval</span> <span className="grow small">{a.title}</span></li>
+              ))}
+              {rollup.mine.slice(0, 8).map((m) => (
+                <li key={m.id}>
+                  <span className="grow small">
+                    {m.title}
+                    {m.due_date ? <span className="muted"> · due {m.due_date}</span> : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
       <div className="cards">
         <section className="card">
           <h2>Revenue</h2>

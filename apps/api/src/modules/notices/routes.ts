@@ -4,6 +4,7 @@ import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { createIrsNotice, runNoticeEscalations } from './service.ts';
+import { closeTasksForSource } from '../tasks/service.ts';
 
 const CreateBody = z.object({
   contactId: z.uuid(),
@@ -89,6 +90,10 @@ export function registerNoticeRoutes(app: FastifyInstance): void {
     if (sets.length === 0) throw new AppError(400, 'empty_update', 'No fields to update.');
 
     await app.db.query(`UPDATE irs_notices SET ${sets.join(', ')} WHERE id = $1`, params);
+    // M25: resolving the notice closes its owned ticket-task automatically.
+    if (b.status === 'resolved') {
+      await closeTasksForSource(app, 'irs_notice', id, 'notice resolved');
+    }
     await writeAudit(app.db, {
       actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
       action: 'irs_notice.updated', objectType: 'irs_notice', objectId: id,

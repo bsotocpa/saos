@@ -8,6 +8,7 @@
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { allActiveByRoles, firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 import { addDays } from '../tax/deadlines.ts';
 
 export interface CreateNoticeInput {
@@ -70,6 +71,19 @@ export async function createIrsNotice(
       relatedObjectId: id,
     });
   }
+  // v4.3 flow 1 / M25: every notice is an OWNED TICKET — a task on the
+  // handler's list that auto-closes when the notice resolves.
+  await createTask(app, {
+    title: `IRS notice ${input.noticeType} — respond${responseDeadline ? ` by ${responseDeadline}` : ''}`,
+    description: 'Owned notice ticket. Work the notice playbook; the ticket closes itself when the notice is marked resolved.',
+    assignedStaffId: handlerStaffId,
+    contactId: input.contactId,
+    dueDate: responseDeadline,
+    priority: 1,
+    source: 'automation',
+    sourceType: 'irs_notice',
+    sourceId: id,
+  });
   await writeAudit(app.db, {
     actorType: actor.type,
     actorId: actor.id ?? null,

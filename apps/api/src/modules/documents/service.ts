@@ -8,7 +8,8 @@ import type { FastifyInstance } from 'fastify';
 import type { Client as MinioClient } from 'minio';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
-import { allActiveByRoles, notifyOnce } from '../../staffing.ts';
+import { allActiveByRoles, firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { createIrsNotice } from '../notices/service.ts';
 import { transitionStage } from '../tax/pipeline.ts';
@@ -136,11 +137,16 @@ async function fulfillRequestItem(
   );
   if (complete) {
     // Docs are in — stamp the engagement (feeds health + at-risk logic).
-    await app.db.query(
+    const stamped = await app.db.query<{ id: string }>(
       `UPDATE tax_engagements SET docs_received_at = COALESCE(docs_received_at, now())
-       WHERE id = (SELECT tax_engagement_id FROM document_requests WHERE id = $1)`,
+       WHERE id = (SELECT tax_engagement_id FROM document_requests WHERE id = $1)
+       RETURNING id`,
       [requestId]
     );
+    // M25: arriving documents close the non-response follow-up task.
+    if (stamped.rows[0]) {
+      await closeTasksForSource(app, 'client_non_response', stamped.rows[0].id, 'documents received');
+    }
   }
 }
 
@@ -298,6 +304,7 @@ export async function runDocumentChaseJob(
   let nonResponseAlerts = 0;
   if (stalled.rows.length > 0) {
     const leadership = await allActiveByRoles(app.db, ['ceo', 'ed_coo']);
+    const rene = await firstActiveByRole(app.db, 'comms_billing');
     for (const s of stalled.rows) {
       let fired = false;
       for (const staffId of leadership) {
@@ -311,6 +318,20 @@ export async function runDocumentChaseJob(
             relatedObjectType: 'tax_engagement',
             relatedObjectId: s.id,
           })) || fired;
+      }
+      // M25: the follow-up call is a WORK ITEM on Rene's list (the full
+      // D3/D7/D14/D30 ladder lands with v4.3 flow 3 in M26). Closes when
+      // documents arrive (docs_received hook).
+      if (rene) {
+        await createTask(app, {
+          title: `Call ${s.first_name} ${s.last_name} — no response to document request (${alertDays}+ days)`,
+          assignedStaffId: rene,
+          contactId: s.contact_id,
+          priority: 1,
+          source: 'automation',
+          sourceType: 'client_non_response',
+          sourceId: s.id,
+        });
       }
       if (fired) nonResponseAlerts++;
     }

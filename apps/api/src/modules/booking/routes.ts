@@ -13,6 +13,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { createInvoice } from '../billing/service.ts';
 import { makeStripeAdapter } from '../billing/stripe.ts';
@@ -123,6 +124,15 @@ export function registerBookingRoutes(app: FastifyInstance): void {
           relatedObjectType: 'contact',
           relatedObjectId: contactId,
         });
+        // M25: mapping the slug is a work item, deduped per slug.
+        await createTask(app, {
+          title: `Map Cal.com event type '${slug}' in Admin → Settings (booking.deposit_items)`,
+          assignedStaffId: rene,
+          contactId,
+          source: 'automation',
+          sourceType: 'booking_unmapped',
+          sourceId: slug,
+        });
       }
       return { status: 'ok', lane: 'unmapped' };
     }
@@ -171,6 +181,15 @@ export function registerBookingRoutes(app: FastifyInstance): void {
           contactId,
           relatedObjectType: 'invoice',
           relatedObjectId: invoice.id,
+        });
+        await createTask(app, {
+          title: `Fix non-Zoom discovery booking (${location || 'no location'}) — Zoom-only rule`,
+          assignedStaffId: rene,
+          contactId,
+          priority: 1,
+          source: 'automation',
+          sourceType: 'booking_not_zoom',
+          sourceId: invoice.id,
         });
       }
     }

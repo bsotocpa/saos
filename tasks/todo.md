@@ -502,20 +502,28 @@ tasks = work). Trello JSONs arriving in migration-data this week.
       incl. 990-month-5 and 1041), compound-roll case, FBAR exclusion,
       toggle-gated reminder job idempotence — 121/121 green
 
-## M25 — Unified task system (v4.4 — the connective layer)
-- [ ] Schema: task status/comments/checklists/linked docs/SOP link/
-      engagement link/client_visible/board placement/recurring templates —
-      ADDITIVE columns + new tables only (no rewrites; prod has 0 tasks)
-- [ ] Views: My Tasks · client-record tasks · owner rollup (approvals,
-      stalled, Day-60 deposits, vouchers due) · team workload · kanban
-      project boards (custom columns, drag)
-- [ ] Client to-dos in portal (staff-added + system items, auto-close on
-      completion) — drives the D3/D7/D14 ladder
-- [ ] AI auto-creation from sessions (no gate on internal tasks; client
-      recap approval stays)
-- [ ] Recurring tasks + checklist templates · lightweight time log →
-      hourly invoice lines · Trello board-export importer (⛔ needs
-      Brian's Trello JSON exports)
+## M25 — Unified task system (v4.4 — the connective layer) ✅ 2026-07-09
+- [x] Schema (migration 0012, all additive): boards/columns, comments,
+      checklists, task-documents, templates, tasks gain engagement link +
+      client_visible + sop_link + board placement; time_entries gain
+      task/engagement links + start/stop + rate_item_code (price-book) +
+      invoice marker. Open enrichment rows BACKFILLED as tasks in-migration
+- [x] Views: My Tasks · client-record tasks (API) · owner rollup
+      (approvals + stalled/day-60/voucher counters wired for M26) · team
+      workload · kanban boards (custom columns, move controls; drag polish
+      = M28 wireframe pass). Internal UI: /tasks, /tasks/boards, Executive
+      "Needs you today" tile
+- [x] Client to-dos in portal: ONE list aggregating staff-added
+      client-visible tasks + open upload items + pending signatures —
+      auto-close inherent (upload fulfills its item); client check-off for
+      staff-added items; internal tasks never leak to the portal (tested)
+- [x] AI auto-creation from sessions — already gate-free for internal
+      tasks (M17); confirmed against v4.4
+- [x] Recurring checklist templates (create + instantiate per client) ·
+      lightweight time log (manual + start/stop timer, 0.25h rounding,
+      rate_item_code for billing flow-through) · Trello importer BUILT +
+      tested on synthetic exports (idempotent; done-list detection;
+      assignee name-matching) — ⛔ RUN awaits Brian's Trello JSONs
 - [ ] LOCAL-WORK-ITEM MIGRATION (audited 2026-07-07 — modules whose work
       items must become task objects):
       1. notices — notices exist w/ notifications only → owned Ana-Maria
@@ -544,9 +552,19 @@ tasks = work). Trello JSONs arriving in migration-data this week.
       the new fields + SOP links but stay as-is.)
       Notifications REMAIN the alert channel (push/read state); tasks are
       the WORK channel — every alert that demands action now carries one.
-- [ ] Prove it: one work item per migrated module lands in My Tasks +
-      owner rollup; client to-do auto-closes on upload; Trello import
-      dry-run counts reviewed by Brian
+      → ALL 11 MIGRATED 2026-07-09: notices (owned ticket, closes on
+      resolve — tested) · billing (dunning + fee-needed tasks, paid
+      auto-close) · extension (Brian review task per decision list) ·
+      documents (non-response call task, closes on docs-received) ·
+      referrals (approval task, closes on decision) · enrichment (task
+      follows the gaps — tested lifecycle) · health (red check-in task) ·
+      comms (unmatched-SMS + missed-call phone tickets) · ops (drill +
+      backup tasks) · booking (unmapped/non-Zoom tasks) · forms
+      (IRS-letter triage + onboarding-flag tasks)
+- [x] Prove it: 8-test suite green (dedupe/auto-close, views, templates,
+      client to-do aggregation + check-off + internal-task isolation,
+      notice ticket lifecycle, enrichment lifecycle, Trello idempotence,
+      intern execute-own-only scope) — 129/129 total
 
 ## M26 — Seven v4.3 operational flows (consume M24+M25)
 - [ ] 1. E-file rejects (Filed→Rejected re-queue, perfection-period

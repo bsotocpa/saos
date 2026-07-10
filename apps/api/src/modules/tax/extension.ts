@@ -9,6 +9,8 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
+import { firstActiveByRole } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 import {
   AUTOMATIC_EXTENSION_TYPES,
   addDays,
@@ -93,6 +95,21 @@ export async function runExtensionDecisionListJob(
   );
 
   for (const list of rows) {
+    // M25: the review itself is Brian's work item (owner rollup); the
+    // notifications below remain the alert channel.
+    const ceo = await firstActiveByRole(app.db, 'ceo');
+    if (ceo) {
+      await createTask(app, {
+        title: `Review Extension Decision List — deadline ${list.deadline} (${list.count} engagement(s))`,
+        description: 'Mark each engagement: Extend or Push to finish. The auto-extension batch (Mar 25 / Apr 1 cutoffs) files only after this review.',
+        assignedStaffId: ceo,
+        dueDate: list.deadline,
+        priority: 2,
+        source: 'automation',
+        sourceType: 'extension_batch_review',
+        sourceId: list.deadline,
+      });
+    }
     const staff = await app.db.query<{ id: string }>(
       `SELECT st.id FROM staff st JOIN roles r ON r.id = st.role_id
        WHERE st.is_active AND r.key IN ('ceo', 'tax_preparer')`

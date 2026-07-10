@@ -7,6 +7,7 @@ import { isAuthed, signOut } from '../lib/api';
 
 const NAV = [
   { href: '/', label: 'Executive' },
+  { href: '/tasks', label: 'My Tasks' },
   { href: '/hilo', label: 'Hilo Ops' },
   { href: '/alerts', label: 'Alerts' },
   { href: '/upload-return', label: 'Deliver Return' },

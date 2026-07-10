@@ -8,6 +8,7 @@ import type { FastifyInstance } from 'fastify';
 import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 
 /** Written by scripts/backup.sh — timestamps, snapshot id, counts. No client data. */
 export interface BackupStatus {
@@ -243,6 +244,16 @@ export async function runRestoreDrillReminderJob(
         relatedObjectType: 'ops_quarter',
         relatedObjectId: quarter,
       });
+      // M25: the drill is Brian's work item (owner rollup), one per quarter.
+      await createTask(app, {
+        title: `Run the quarterly restore drill (${quarter})`,
+        description: 'scripts/restore-drill.sh — record the pass in Admin → Settings → ops.last_restore_drill_at. Procedure: RUNBOOK_OPS.md.',
+        assignedStaffId: ceo,
+        priority: 1,
+        source: 'system',
+        sourceType: 'restore_drill',
+        sourceId: quarter,
+      });
     }
   }
 
@@ -282,6 +293,16 @@ export async function runBackupStaleCheckJob(
           title: `Nightly backup is stale — last snapshot ${status.last_backup_at}. Check the cron + scripts/backup.sh log.`,
           relatedObjectType: 'ops_date',
           relatedObjectId: today, // re-nags daily until fixed
+        });
+        // M25: one open work item until fixed (dedupe on a stable source id).
+        await createTask(app, {
+          title: 'Fix the stale nightly backup',
+          description: `Last snapshot ${status.last_backup_at}. Check /etc/cron.d/saos-backup and /var/log/saos-backup.log on the server.`,
+          assignedStaffId: ceo,
+          priority: 2,
+          source: 'system',
+          sourceType: 'backup_stale',
+          sourceId: 'backup-stale', // stable: re-opens only after the last one closes
         });
       }
     }

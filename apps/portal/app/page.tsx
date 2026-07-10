@@ -11,6 +11,7 @@ import { api, formatMoney, isAuthed } from '../lib/api';
 import { useSession } from '../lib/session';
 import type { DictKey } from '../lib/i18n';
 
+interface Todo { id: string; title: string; description: string | null; due_date: string | null; kind: 'task' | 'upload' | 'signature' }
 interface Onboarding {
   variant: string;
   step_confirm_info_at: string | null;
@@ -35,6 +36,7 @@ export default function Dashboard() {
   const { t, me, nextEstimate, ready, lang } = useSession();
   const router = useRouter();
   const [onboarding, setOnboarding] = useState<Onboarding | null>(null);
+  const [todos, setTodos] = useState<Todo[]>([]);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [requests, setRequests] = useState<DocRequest[]>([]);
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
@@ -47,6 +49,7 @@ export default function Dashboard() {
     }
     void Promise.all([
       api<{ onboarding: Onboarding | null }>('/portal/onboarding').then((r) => setOnboarding(r.onboarding)),
+      api<{ todos: Todo[] }>('/portal/todos').then((r) => setTodos(r.todos)),
       api<{ engagements: Engagement[] }>('/portal/engagements').then((r) => setEngagements(r.engagements)),
       api<{ requests: DocRequest[] }>('/portal/document-requests').then((r) => setRequests(r.requests)),
       api<{ envelopes: Envelope[] }>('/portal/signature-envelopes').then((r) =>
@@ -84,6 +87,44 @@ export default function Dashboard() {
           {t('dash_estimate_due')}: <strong>{nextEstimate.quarter}</strong> — {nextEstimate.date}
         </p>
       ) : null}
+
+      <section className="card" data-testid="todos">
+        <h2>{t('todos_title')}</h2>
+        {todos.length === 0 ? <p className="muted">{t('todos_empty')}</p> : null}
+        <ul className="list">
+          {todos.map((td) => (
+            <li key={`${td.kind}-${td.id}`}>
+              <span className="grow">
+                <strong className="small">{td.title}</strong>
+                {td.due_date ? <span className="muted small"> · {t('todos_due')} {td.due_date}</span> : null}
+                {td.description ? (
+                  <>
+                    <br />
+                    <span className="muted small">{td.description}</span>
+                  </>
+                ) : null}
+              </span>
+              {td.kind === 'upload' ? (
+                <Link className="btn ghost" href="/documents">{t('todos_kind_upload')}</Link>
+              ) : td.kind === 'signature' ? (
+                <Link className="btn ghost" href="/sign">{t('todos_kind_signature')}</Link>
+              ) : (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={async () => {
+                    await api(`/portal/todos/${td.id}/complete`, { method: 'POST' });
+                    const r = await api<{ todos: Todo[] }>('/portal/todos');
+                    setTodos(r.todos);
+                  }}
+                >
+                  {t('todos_done')}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
 
       {showChecklist ? (
         <section className="card" data-testid="checklist">

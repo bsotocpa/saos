@@ -107,6 +107,55 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     return { status: 'ok' };
   });
 
+  // ── Client to-dos (v4.4): ONE standing list — staff-added client-visible
+  // tasks + system items aggregated live from open document requests and
+  // pending signatures. Aggregation makes auto-close inherent: an upload
+  // fulfills its request item and the to-do disappears.
+  app.get('/portal/todos', scoped, async (request) => {
+    const client = request.client!;
+    const tasks = await app.db.query(
+      `SELECT id, title, description, due_date::text AS due_date, 'task' AS kind
+       FROM tasks
+       WHERE contact_id = $1 AND client_visible AND status IN ('open', 'in_progress')
+       ORDER BY due_date NULLS LAST, created_at`,
+      [client.contactId]
+    );
+    const docItems = await app.db.query(
+      `SELECT i.id, COALESCE(NULLIF(CASE WHEN c.language = 'es' THEN i.label_es ELSE i.label_en END, ''), i.label_en) AS title,
+              NULL AS description, r.due_date::text AS due_date, 'upload' AS kind
+       FROM document_request_items i
+       JOIN document_requests r ON r.id = i.request_id
+       JOIN contacts c ON c.id = r.contact_id
+       WHERE r.contact_id = $1 AND i.status = 'pending' AND r.status <> 'complete'
+       ORDER BY r.due_date NULLS LAST`,
+      [client.contactId]
+    );
+    const envelopes = await app.db.query(
+      `SELECT id, 'Sign: ' || replace(type::text, '_', ' ') AS title, NULL AS description, NULL AS due_date, 'signature' AS kind
+       FROM signature_envelopes
+       WHERE contact_id = $1 AND status IN ('sent', 'viewed', 'kba_required', 'kba_pending')`,
+      [client.contactId]
+    );
+    return { todos: [...docItems.rows, ...envelopes.rows, ...tasks.rows] };
+  });
+
+  // Client checks off a STAFF-ADDED to-do ("mark Q2 estimate paid" style).
+  app.post<{ Params: { taskId: string } }>('/portal/todos/:taskId/complete', scoped, async (request) => {
+    const client = request.client!;
+    const taskId = z.uuid().parse(request.params.taskId);
+    const res = await app.db.query(
+      `UPDATE tasks SET status = 'done', completed_at = now(), updated_at = now()
+       WHERE id = $1 AND contact_id = $2 AND client_visible AND status IN ('open', 'in_progress')`,
+      [taskId, client.contactId]
+    );
+    if (res.rowCount === 0) throw new AppError(404, 'not_found', 'To-do not found.');
+    await writeAudit(app.db, {
+      actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
+      action: 'task.client_completed', objectType: 'task', objectId: taskId, contactId: client.contactId,
+    });
+    return { status: 'ok' };
+  });
+
   app.get('/portal/documents', scoped, async (request) => {
     const client = request.client!;
     const { rows } = await app.db.query(
