@@ -467,6 +467,134 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
 - [ ] Prove it: smoke suite against staging; `docker-compose up -d` from clean
       server per MP one-command requirement
 
+─────────────────────────────────────────────────────────────────────────
+# PHASE 1.5 — SPEC v4.3/v4.4 REFACTOR (sequenced by Brian, 2026-07-07)
+Spec: SAOS_Fable_Master_Prompt_v4.4.md + SAOS_Onboarding_Forms_Spec_v4.4.md
+(addenda equal in authority) · UI reference for ALL portal/ops screens:
+docs/SAOS_Wireframes.html (customer / owner / preparer personas).
+⚠ SPEC CONFLICT for Brian: master prompt §Communication says "NEW Twilio
+number, 312 area code (DECIDED — no port)" but Brian's 2026-07-06 launch
+directive wired 708-300-0375 with 312-715-8599 as a post-launch PORT.
+Brian to reconcile; system is number-agnostic either way (config swap).
+
+## M24 — Authoritative deadline-table migration (v4.3)
+- [ ] return_type coverage extended: 1041 (Apr 15/Sep 30 — NOT a +6mo
+      pattern), 1120-F US office (Apr 15/Oct 15), 1120-F no US office
+      (Jun 15/Dec 15), 1040 expat (Jun 15 auto/Oct 15), FBAR rider
+      (Apr 15/Oct 15 automatic), 990 ORIGINAL May 15 (corrected) —
+      enum migration + table-driven derivation module (the authoritative
+      table as one code constant; fiscal-year = month 4, month 5 for 990)
+- [ ] Estimated-payment dates (Q1–Q4) on the staff deadline board
+- [ ] Client estimate-reminder toggle (portal notification settings,
+      default ON; staff board unaffected)
+- [ ] Prove it: table-driven tests for every row incl. fiscal-year 990 +
+      1041; decision-list windows follow new original dates
+
+## M25 — Unified task system (v4.4 — the connective layer)
+- [ ] Schema: task status/comments/checklists/linked docs/SOP link/
+      engagement link/client_visible/board placement/recurring templates —
+      ADDITIVE columns + new tables only (no rewrites; prod has 0 tasks)
+- [ ] Views: My Tasks · client-record tasks · owner rollup (approvals,
+      stalled, Day-60 deposits, vouchers due) · team workload · kanban
+      project boards (custom columns, drag)
+- [ ] Client to-dos in portal (staff-added + system items, auto-close on
+      completion) — drives the D3/D7/D14 ladder
+- [ ] AI auto-creation from sessions (no gate on internal tasks; client
+      recap approval stays)
+- [ ] Recurring tasks + checklist templates · lightweight time log →
+      hourly invoice lines · Trello board-export importer (⛔ needs
+      Brian's Trello JSON exports)
+- [ ] LOCAL-WORK-ITEM MIGRATION (audited 2026-07-07 — modules whose work
+      items must become task objects):
+      1. notices — notices exist w/ notifications only → owned Ana-Maria
+         ticket-task per notice (v4.3 flow 1)
+      2. billing/AR — invoice_overdue + invoice_needed notifyOnce → dunning
+         call tasks + work-pause states (v4.3 flow 4)
+      3. tax/extension — T-21 decision list (query+email only) → batch
+         work items + Brian review task (v4.3 flow 3)
+      4. documents chase — reminder/7-day alert notifications → D14 Rene
+         call task + D30 stalled flag (ladder)
+      5. referrals — approval-queue rows → approval tasks (auto-close on
+         decision)
+      6. enrichment_queue — module-local table (611 open rows in prod) →
+         task per contact w/ gap checklist; table stays as auto-resolution
+         source of truth
+      7. crm/health — red-transition alert → check-in task for manager
+      8. comms — unmatched SMS / missed-call notifyOnce → Rene phone
+         tickets (v4.4 "My Tasks" example)
+      9. admin/ops — restore-drill due + backup-stale → Brian tasks
+         (owner rollup)
+      10. booking — not-Zoom + unmapped-event flags → follow-up tasks
+      11. forms — IRS-letter intake flag + onboarding module flags →
+          routed tasks
+      (Correct already: booking lane-2, annual-report, SOS adverse, portal
+      service request, magic-link bounce, meeting auto-tasks — they gain
+      the new fields + SOP links but stay as-is.)
+      Notifications REMAIN the alert channel (push/read state); tasks are
+      the WORK channel — every alert that demands action now carries one.
+- [ ] Prove it: one work item per migrated module lands in My Tasks +
+      owner rollup; client to-do auto-closes on upload; Trello import
+      dry-run counts reviewed by Brian
+
+## M26 — Seven v4.3 operational flows (consume M24+M25)
+- [ ] 1. E-file rejects (Filed→Rejected re-queue, perfection-period
+      clocks: 10d business/5d individual) + notice tickets w/ client-
+      visible plain-language status EN/ES + notice billing from price book
+- [ ] 2. Entity-group workflow: consolidated packet, ONE bundled Docuseal
+      envelope/KBA for group 8879s, billing mode consolidated|per-entity,
+      per-entity estimates + rollup
+- [ ] 3. Escalation ladder (D3 portal/D7 SMS/D14 Rene call/D30 STALLED)
+      on every waiting state + auto-extension batch (Mar 25 business /
+      Apr 1 individual cutoffs, Brian reviews before filing)
+- [ ] 4. AR dunning (Stripe retry ×3/10d → call task → 30d work pause) +
+      late fees 1.5%/mo 30d+ (price-book rate, engagement-letter
+      disclosure GATE, deposits/credits net first) + late-fee disclosure
+      block added to all engagement-letter templates (stay placeholder)
+- [ ] 5. Books close cycle (Marian workbench): per-cadence checklists,
+      statements AUTO-POST to portal on close, calendar cross-check
+      (attach to existing session; task only when none)
+- [ ] 6. Grant vouchering tracker: Brian-operated, status-only
+      (Due→In progress→Submitted→Reimbursed), period reminders + T-7
+      funder-deadline, dashboard tile — NEVER generates files
+- [ ] 7. Stalled-onboarding rescue: Deposit→Questionnaire→Docs→Complete
+      pipeline + ladder; deposits held as credit, Day-60 to Brian, never
+      auto-refunded
+- [ ] Prove it: per-flow integration tests incl. reject re-queue clock,
+      group envelope bundling, ladder timing, letter-gated late fee
+      refusal, close cross-check both branches, Day-60 surfacing
+
+## M27 — Remaining v4.4 modules (task system shipped in M25)
+- [ ] Quote builder: live-quote from price book → quote record on lead →
+      portal link EN/ES → accept = engagement + deposit checkout, zero
+      re-entry; declined/expired → leads pipeline w/ reason; pipeline
+      stages Call booked→Quoted→Deposit→Onboarding→Client + conversion
+      metrics by stage/referral source
+- [ ] Reports & KPIs: revenue by line/month, AR aging, pipeline
+      conversion, session utilization, team throughput, client counts,
+      referral-source performance — CSV export, configurable tiles
+- [ ] Announcements + review requests: segmented broadcast (SES/Twilio,
+      EN/ES) w/ CAN-SPAM unsubscribe + TCPA opt-out + suppression at
+      send + approval gate; milestone-triggered Google-review asks
+      (throttled, opt-out, never post-notice/dispute); portal broadcast-
+      consent settings beside the estimate toggle
+- [ ] SOP knowledge base: versioned searchable wiki per role/process;
+      task types carry "how to do this" links (CLAUDE.md: task-generating
+      features without SOP hooks are incomplete); Whisper-seeded drafts
+      w/ approval before publish
+- [ ] Hilo events (Eventbrite replacement): bilingual pages, capacity
+      caps, confirm/remind email+SMS, check-in list, post-event follow-up
+      → Hilo CRM + §7216-gated referral pipeline
+- [ ] Prove it: quote→engagement zero-re-entry e2e; broadcast suppression
+      + approval-gate tests; SOP link on every task type; event
+      registration → check-in → follow-up e2e
+
+## M28 — Wireframe conformance pass
+- [ ] SAOS_Wireframes.html applied as the UI reference DURING M25–M27
+      builds; this milestone is the final sweep: customer portal, owner
+      ops, and preparer screens conformed; Brian/Jackson EN/ES copy
+      review rides along (existing launch-gate item)
+- [ ] Prove it: per-persona walkthrough vs wireframes with Brian
+
 ## Review
 
 ### M0–M3 (completed 2026-07-05)
