@@ -1,5 +1,5 @@
-# SAOS Onboarding Forms — Field-Level Spec (v4.2)
-### Companion to SAOS Master Prompt v4.2 | July 5, 2026 | v4.1: bridge fields renamed BR1–BR6; Module B firing rule fixed. v4.2: additions listed in addendum at end
+# SAOS Onboarding Forms — Field-Level Spec (v4.4)
+### Companion to SAOS Master Prompt v4.4 | July 7, 2026 | v4.1: bridge fields renamed BR1–BR6; Module B firing rule fixed. v4.2 + v4.3: additions listed in addenda at end
 ### All forms render in English and Spanish; language selected on first screen and saved to contact record.
 
 ---
@@ -233,3 +233,24 @@ Brian or Jackson creates new onboarding modules from admin without a developer:
 
 ## v4.2 CHANGELOG
 Deposit checkout · entity-group question · IL SOS auto-check at intake · SSN by-phone option · two-axis service configurator · client W9 request flow.
+
+---
+
+## v4.3 ADDENDUM — CONFIGURATOR & PORTAL SETTINGS (see Master Prompt v4.3 for full flow specs)
+1. **Entity-group billing mode** (service configurator, per group): `consolidated` (default — one invoice, line-itemed per entity) or `per-entity` (separate invoices per entity, for clients who want clean per-entity books). Changeable anytime; takes effect next billing cycle.
+2. **Estimate-reminder toggle** (client portal notification settings, default ON): controls whether quarterly estimated-payment due dates and reminders appear for the client. Staff deadline board always shows them regardless.
+3. **Onboarding pipeline stages** (staff-visible): Deposit paid → Questionnaire → Docs → Complete, each stage carrying the D3/D7/D14/D30 escalation ladder; Day-60 stalled deposits surface to Brian.
+4. **Engagement letter templates**: all templates (placeholder set included) gain a late-fee disclosure block (1.5%/mo on balances 30+ days past due, admin-configurable) — late fees never apply to clients whose signed letter lacks the disclosure.
+
+## v4.3 CHANGELOG
+Entity-group billing mode option · client estimate toggle · onboarding pipeline stages with escalation · late-fee disclosure block in all engagement letters.
+
+---
+
+## v4.4 ADDENDUM — QUOTE, TO-DOS, BROADCAST CONSENT
+1. **Quote acceptance flow**: quote link → itemized view (EN/ES) → Accept → deposit checkout (Stripe) → onboarding begins pre-filled from the quote. Declined/expired quotes return to the leads pipeline with reason capture.
+2. **Client to-do list** (portal): standing list combining system items (uploads, signatures, estimate confirmations) and staff-added items; auto-close on completion; feeds the D3/D7/D14 ladder.
+3. **Broadcast consent**: announcement email/SMS preferences surfaced in portal notification settings alongside the estimate toggle; unsubscribe/opt-out writes a suppression record honored at send time. Transactional messages (login links, document requests) are unaffected by marketing opt-out.
+
+## v4.4 CHANGELOG
+Quote acceptance → engagement conversion · client to-do list · broadcast consent + suppression, separated from transactional messaging.

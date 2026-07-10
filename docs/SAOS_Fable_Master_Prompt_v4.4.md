@@ -1,8 +1,10 @@
-# SAOS Master Build Prompt — v4.2 (PRODUCTION — LOCKED FOR BUILD)
+# SAOS Master Build Prompt — v4.4 (PRODUCTION — LOCKED FOR BUILD)
 ### For Fable AI — Full Stack Build + Business Automation
 ### Client: Brian Soto, CPA | Soto Accounting LLC + Hilo NFP | Chicago, IL
 ### Last Updated: July 5, 2026 | Supersedes all prior versions | All blocking decisions resolved — changelogs at end
 ### v4.2 adds: Service Delivery Model (two-axis), 8 new modules, and the Pricing Seed Data section — grounded in 147 client session transcripts + the 2025 pricing workbook
+### v4.3 adds: authoritative deadline table (990 May 15 original corrected; 1041 estate + foreign returns added) and seven operational flows — rejects/notices, entity groups, escalation + auto-extension, AR dunning/late fees, books close cycle, grant vouchering tracker, stalled-onboarding rescue
+### v4.4 adds: unified task & project management (full Trello replacement), quote builder, reports & KPIs, client announcements + review requests, SOP knowledge base, Hilo events, and the stack disposition table
 
 ---
 
@@ -93,7 +95,7 @@ Infrastructure under $75/month (Hetzner CPX41 ~$35 + B2 + Twilio usage + SES pen
 
 ### Soto Accounting LLC
 - CPA firm, Chicago. Office number: **NEW Twilio 312 number provisioned at build** (replaces 312-715-8599 — transition plan in Communication section) | contact@sotoaccounting.com
-- Services: Tax (1040, Sch C, Sch E, 1065, 1120-S, 1120, 990, 1120-C housing co-op, 1120-H, 1120-F, 1120-POL, ITIN/W-7), **Payroll (setup, review, training, full management)**, **Sales & Use Tax (setup, review, training, full management)**, Bookkeeping & Financial Statements, Advisory/CFO, **Nonprofit CFO & Grant Vouchering**, COO Services, Entity Formation & Annual Reports (incl. BOI, DBA, amendments), **Attest (CPA financial statement review/audit — see independence rule in Service Delivery Model)**, Specialized CPA Services, IRS Notice Handling. Full catalog + prices in PRICING SEED DATA. Essential/Growth/Full Management survives as internal complexity scoping only — clients buy cadences and scope rungs per the Service Delivery Model section
+- Services: Tax (1040, Sch C, Sch E, 1065, 1120-S, 1120, 990, **1041 estate/trust**, 1120-C housing co-op, 1120-H, **1120-F foreign**, 1120-POL, ITIN/W-7, **expat/foreign filings incl. FBAR**), **Payroll (setup, review, training, full management)**, **Sales & Use Tax (setup, review, training, full management)**, Bookkeeping & Financial Statements, Advisory/CFO, **Nonprofit CFO & Grant Vouchering**, COO Services, Entity Formation & Annual Reports (incl. BOI, DBA, amendments), **Attest (CPA financial statement review/audit — see independence rule in Service Delivery Model)**, Specialized CPA Services, IRS Notice Handling. Full catalog + prices in PRICING SEED DATA. Essential/Growth/Full Management survives as internal complexity scoping only — clients buy cadences and scope rungs per the Service Delivery Model section
 - **Tax prep happens in ATX Tax Software (external, no integration)** — this system handles everything around the return: intake, documents, pipeline, pricing, signatures, delivery, billing. Delivery step: preparer manually uploads the final return PDF to the client's portal (replaces the current Dropbox-link-by-email process)
 - 300+ clients; import last 24–36 months (Dubsado + Zoho CRM exports); QuickBooks for accounting via weekly CSV export
 - **Extensions: 30–40% of clients file extensions** — full workflow required (see Tax Operations)
@@ -200,7 +202,7 @@ Referral tracking: referred by | to Hilo/to Soto + dates | converted | CPA netwo
 Core: tax year | return type | client type | preparer | reviewer | stage
 Pricing: estimated fee RANGE (from calculator) | final fee | discount | tier (admin-configurable price points — Brian adjusts anytime, nothing hardcoded) | scope creep flag (auto when final > estimate top) | scope creep reason (required: additional states / additional Sch C / additional Sch E / foreign / late docs / prior-year cleanup / IRS notice / other+description)
 Operational: complexity score L1–5 (formula below) | complexity inputs | client responsiveness score | docs requested/received dates | filed date | gross revenue/contributions (990s)
-**Extension fields: extension recommended (Y/N) | extension filed (Y/N) | extension filed date | extension payment estimate | extension payment made (Y/N) | extended deadline (auto-derived from return type + fiscal year end: 1065 & 1120-S → Sep 15 | 1040 & 1120 → Oct 15 | 990 → Nov 15 | fiscal-year filers → 6 months from original due date — never a hardcoded two-value swap)**
+**Extension fields: extension recommended (Y/N) | extension filed (Y/N) | extension filed date | extension payment estimate | extension payment made (Y/N) | extended deadline (auto-derived from the AUTHORITATIVE TAX DEADLINE TABLE in the v4.3 addendum — never hardcoded)**
 Financial: invoice amount/number | payment status | sent/received dates | QB export flag
 Compliance: engagement letter signed (GATE past "Scheduled") | 8879 signed (GATE before "Filed") | signature method (remote-KBA / in-person wet)
 
@@ -214,7 +216,7 @@ Intake Started → Scheduled → Documents Requested → **Pending Client Respon
 3. Extension payment estimate workflow: Ana-Maria enters estimate → client notified with payment instructions → payment-made checkbox tracked
 4. Extension filed in ATX → preparer checks "Extension Filed" → engagement tagged Extended, deadline swaps per the return-type table above (Sep 15 / Oct 15 / Nov 15 / fiscal-year offset)
 5. **Summer document chase cadence**: automated reminders to extended clients at Jun 1, Jul 15, Aug 15 ("beat the fall rush") — escalating copy; stops the October pile-up
-6. **Deadline Dashboard**: all engagements against their original and extended deadlines (Mar 15 / Apr 15 / May 15 / Sep 15 / Oct 15 / Nov 15 + fiscal-year dates) with countdown, at-risk flags (extended + docs not received by Aug 15 = red)
+6. **Deadline Dashboard**: all engagements against their original and extended deadlines per the AUTHORITATIVE TAX DEADLINE TABLE (v4.3 addendum), with countdown, at-risk flags (extended + docs not received by Aug 15 = red), and estimated-payment due dates (Apr 15 / Jun 15 / Sep 15 / Jan 15) shown alongside return deadlines
 7. Q-estimate reminders (Apr/Jun/Sep/Jan) as a bonus automation for business clients flagged for estimates
 
 ### Complexity Score
@@ -508,3 +510,146 @@ Sch C (sole prop or SMLLC) $180 · 1065 $600 · 1120-S $700 · 1120 $800 · 990/
 5. Payroll, Sales & Use Tax, Nonprofit CFO/Grant Vouchering, Attest, and Specialized CPA added to the service catalog (payroll was an omission — it's actively sold)
 6. Cristian Borcan (contract auditor) added to staff; attest independence check enforced in code
 7. Dropbox migration plan, SSN-by-phone option, session title convention
+
+---
+
+# v4.3 ADDENDUM — DEADLINE TABLE + SEVEN OPERATIONAL FLOWS
+*Corrects the 990 deadline error (May 15 is the ORIGINAL due date; Nov 15 is extended), adds estate and foreign returns, and closes the seven workflow gaps identified in wireframe review. Equal in authority to everything above.*
+
+## AUTHORITATIVE TAX DEADLINE TABLE (replaces every prior partial list in this document)
+Calendar-year filers; all deadlines roll to next business day per IRS rules.
+
+| Return type | Original due | Extended due |
+|---|---|---|
+| 1065 (partnership) | Mar 15 | Sep 15 |
+| 1120-S (S corp) | Mar 15 | Sep 15 |
+| 1040 (individual) | Apr 15 | Oct 15 |
+| 1120 / 1120-C / 1120-H / 1120-POL | Apr 15 | Oct 15 |
+| 1041 (estate/trust) | Apr 15 | Sep 30 |
+| 990 / 990-EZ (nonprofit) | **May 15** | **Nov 15** |
+| 1120-F (foreign corp, US office) | Apr 15 | Oct 15 |
+| 1120-F (foreign corp, no US office) | Jun 15 | Dec 15 |
+| 1040 expat (abroad on Apr 15) | Jun 15 (automatic) | Oct 15 |
+| FBAR (FinCEN 114) | Apr 15 | Oct 15 (automatic) |
+| Fiscal-year filers | 15th day of month 4 after year-end (month 5 for 990) | +6 months |
+
+**Estimated payments**: Q1 Apr 15 · Q2 Jun 15 · Q3 Sep 15 · Q4 Jan 15. Shown on the staff deadline board alongside return deadlines. **Client portal: estimate due dates are a per-client toggle (default ON)** in notification settings — clients who don't want estimate reminders turn them off; the staff board always shows them.
+
+Deadline derivation is ALWAYS from this table + entity fiscal year end. Any hardcoded date pair anywhere in the codebase is a build failure.
+
+## SEVEN OPERATIONAL FLOWS (all DECIDED — build)
+
+### 1. E-file rejection & IRS notice management
+- **Rejects**: a return marked e-filed can bounce. Reject event re-enters the preparer's queue at top priority with the reject code + reason, engagement status flips from Filed → Rejected, deadline clock recalculates (IRS perfection period: 10 days business / 5 days individual after reject — tracked). No dead-end states: Filed is not terminal until acceptance confirmed.
+- **Notices**: any IRS/state notice creates a ticket owned by Ana-Maria, tied to the client record, with the notice type (CP2000, balance due, ID verify, etc.), response deadline, and document upload slot for the notice scan. Notice support billing per price book ($150 individual / $300 business).
+- **Client-visible status (DECIDED)**: the client portal shows notice state in plain language — "Notice received — we're handling it. Response due [date]." — with EN/ES copy. Status auto-updates as the ticket moves. Kills "did you get my letter?" calls.
+
+### 2. Entity-group workflow
+- **Consolidated packet**: an entity group (e.g., construction co + equity LLC, same owner) presents one packet to the preparer covering all group returns; one session covers the group; group dashboard shows all entities' engagement states.
+- **Signatures**: 8879s remain per-return (IRS requirement) but bundle into ONE Docuseal envelope = one KBA check, one signing session for the owner.
+- **Billing (DECIDED — per-group option)**: default is one consolidated invoice at group level, line-itemed per entity. Each group carries a billing-mode setting: `consolidated` (default) or `per-entity` — some clients want separate invoices per entity for clean books. Set in the service configurator, changeable anytime.
+- **Estimates**: tracked per-entity with a group rollup view.
+
+### 3. Silent-client escalation ladder + auto-extension batch
+- **Ladder** (any waiting-on-client state, applies to active engagements AND in-progress onboarding): Day 3 portal reminder → Day 7 SMS nudge → Day 14 call task assigned to Rene → Day 30 engagement flagged STALLED (owner dashboard, work paused). All automatic; every rung logged on the client record.
+- **Auto-extension batch (DECIDED)**: in season, tax engagements with incomplete docs at the cutoff — **Mar 25 (business returns) / Apr 1 (individual)** — are automatically added to the extension batch. Client is notified ("we're filing a protective extension — this is normal and protects you"), Brian reviews the batch list before preparers file. Extended engagements re-enter the normal flow with extended deadlines from the table above.
+
+### 4. AR dunning & late fees
+- **Failed recurring charge (Stripe)**: auto-retry 3× over 10 days with client notification each attempt → unresolved: call task to Rene → 30 days unpaid: engagement work pauses (status visible to client: "account needs attention").
+- **Unpaid true-up invoices**: same ladder from invoice due date.
+- **Late fees (DECIDED)**: industry-standard **1.5% per month (18% APR) on balances 30+ days past due**, admin-configurable in the price book, applied automatically, itemized on the invoice. GATE: late fees only apply to clients whose signed engagement letter contains the late-fee disclosure — the system checks before applying. (Add the disclosure to all engagement letter templates; placeholder set included.)
+- Deposits and credits always net against balance before any fee calculates.
+
+### 5. Bookkeeping close cycle (Marian's workbench)
+- Per-client close checklist per prep cadence (weekly/monthly/quarterly/semi-annual): transactions categorized → reconciliations done → statements generated → close marked complete.
+- **Statements auto-post to the client portal on close** — no owner review gate (the session discusses what the client has already seen).
+- **Session cross-check (DECIDED)**: on close, the system checks the calendar for an existing recurring session with that client. Recurring bookkeeping clients already have sessions scheduled → statements simply attach to the upcoming session, no action created. Only when NO session exists — new bookkeeping client's first review, one-time/cleanup client's first walkthrough — does the system create a scheduling task/booking link. Never double-book; never assume.
+
+### 6. Grant vouchering tracker (Brian-operated)
+- **Operator: Brian.** Status-only tracking, NO file generation — Brian prepares vouchers in his own working files; the system tracks that the work happened.
+- Per client grant/contract: voucher periods (monthly/quarterly per grant calendar) each with status Due → In progress → Submitted → Reimbursed, amount fields, and reminders to Brian at period open and T-7 before funder deadline.
+- Dashboard tile: vouchers due this month across all nonprofit clients, overdue in red. History per grant feeds the client's nonprofit-CFO session.
+
+### 7. Stalled-onboarding rescue
+- Onboarding is a tracked pipeline: Deposit paid → Questionnaire → Docs → Complete. Any stage idle triggers the same Day 3/7/14 ladder (portal → SMS → Rene call); Day 30 flags the onboarding STALLED on the owner dashboard.
+- **Deposit policy (DECIDED)**: stalled deposits are held as client credit indefinitely — never auto-refunded. At Day 60 the record surfaces to Brian for a personal decision (rescue call, refund, or hold). The system prevents forgotten deposits; the refund call stays human.
+
+## v4.3 CHANGELOG (July 7, 2026)
+1. **990 deadline corrected**: May 15 is the original due date, Nov 15 the extension — prior versions listed only Nov 15
+2. **Authoritative deadline table** added: 1041 estate (Apr 15/Sep 30), 1120-F foreign (both variants), expat Jun 15, FBAR; all derivation from the table, estimates on staff board, client-side estimate toggle (default ON)
+3. **Rejects & notices**: reject re-queue with perfection-period clocks; Ana-Maria notice tickets; client-visible plain-language notice status (EN/ES)
+4. **Entity groups**: consolidated packet + one bundled KBA envelope; billing mode per group — consolidated (default) or per-entity by client preference
+5. **Escalation ladder** (D3 portal / D7 SMS / D14 Rene call / D30 stalled) + **auto-extension batch** at Mar 25 / Apr 1 cutoffs with owner review before filing
+6. **AR dunning**: Stripe retry ×3/10d → call task → 30-day work pause; **late fees 1.5%/mo after 30 days**, engagement-letter-disclosure gated, admin-configurable
+7. **Books close cycle**: statements auto-post on close; calendar cross-check — attach to existing recurring session, only create scheduling task when none exists (first reviews, cleanup clients)
+8. **Grant vouchering tracker**: Brian-operated, status-only (Due/In progress/Submitted/Reimbursed), no file output, funder-deadline reminders
+9. **Stalled onboarding**: pipeline rescue ladder; deposits held as credit, surfaced to Brian at Day 60, never auto-refunded
+
+---
+
+# v4.4 ADDENDUM — UNIFIED TASK SYSTEM + FULL-STACK REPLACEMENT AUDIT
+*Decisions: full Trello replacement (1), client-visible to-do lists (2), auto task creation from sessions (3). Plus the modules the stack audit surfaced. Equal in authority to everything above.*
+
+## UNIFIED TASK & PROJECT MANAGEMENT (full Trello replacement — DECIDED)
+The connective layer every other module writes into. One task table, many views.
+
+**Task object**: title, description, assignee, due date, priority, status, optional client/engagement link, source (which module or human or AI created it), comments thread, checklist items, linked documents, optional SOP link, optional time log.
+
+**Views**:
+- **My Tasks** — every person's single list across all modules (Rene's escalation calls + phone tickets + anything manual, one screen)
+- **Client record tasks** — all open/done tasks on any client, staff-side
+- **Owner rollup** — Brian's "needs you today" tile expands to: approvals waiting, stalled flags, Day-60 deposits, vouchers due, plus anything assigned to him
+- **Team workload** — open tasks per person for assignment balancing and coverage when someone's out (the Jackson-recovery scenario, systematized)
+- **Project boards** — kanban boards for non-client work: firm projects (Hilo rebrand, 10-year event), Brian's personal board, custom columns, drag between columns
+
+**Mechanics**:
+- **AI auto-creation (DECIDED)**: meeting intelligence auto-creates staff tasks from sessions — no approval gate on internal tasks; the client-facing recap approval remains the safety layer
+- **Client to-dos (DECIDED)**: the portal shows each client a standing "Your to-dos" list (upload P&L, sign 8879, mark Q2 estimate paid). Staff can add items; system items auto-close on completion (an upload closes its request). Client to-dos drive the D3/D7/D14 escalation ladder
+- **Recurring tasks & checklist templates**: tax-season opening checklist, onboarding checklist, month-close checklist — instantiable per client or per season
+- **Trello import**: one-time importer for Trello board export JSON (Soto Accounting workspace + Brian's workspace) — boards, lists, cards, due dates, assignees mapped
+- **Lightweight time log**: manual minutes or start/stop on any task/engagement; hourly work ($75 cleanup, $150 specialized) flows from time logs to invoices — no separate time-tracking product
+
+## QUOTE BUILDER (closes the pre-client pipeline)
+Brian quotes live on discovery calls from the pricing sheet; the system makes that a record instead of a verbal.
+- Live-quote screen: pick services from the price book → itemized quote exactly mirroring the call flow (base by filing status + schedule add-ons + first-time discount) → save as quote record on the lead
+- Quote sends as a portal link; client accepts → converts to engagement + deposit checkout, zero re-entry
+- Leads pipeline stages: Call booked → Quoted → Deposit paid → Onboarding → Client; conversion metrics per stage and per referral source
+
+## REPORTS & KPIs
+Owner-facing analytics, exportable CSV: revenue by service line and month, AR aging, pipeline conversion, session utilization per client (feeds maintenance-mode suggestions), team throughput (tasks/returns completed), client counts by industry and cadence, referral-source performance (client-to-client, Hilo bridge, partners). Dashboard tiles configurable.
+
+## CLIENT ANNOUNCEMENTS + REVIEW REQUESTS
+- **Broadcast module**: segmented announcements (all clients / by service / by language) over SES email and Twilio SMS — deadline-season reminders, firm news, EN/ES. CAN-SPAM unsubscribe on every email, TCPA opt-out on every SMS, suppression enforced at send. Every broadcast is approval-gated; nothing bulk sends itself
+- **Review-request automation**: milestone-triggered (return accepted, onboarding complete) Google review link supporting the GBP strategy — throttled per client, opt-out respected, never after a notice/dispute engagement
+
+## SOP KNOWLEDGE BASE (the runs-without-Brian layer)
+- Internal wiki: SOPs per role and process (Rene's phone flows, Marian's close checklist, Ana-Maria's notice playbook, Laura's annual-report steps), versioned, searchable
+- Task types link to their SOP ("how to do this" on the task itself) — new hires execute from tasks, not tribal knowledge
+- Whisper-transcribed training/handoff sessions can seed SOP drafts (approval before publish)
+
+## HILO EVENTS (Eventbrite replacement)
+Bilingual event pages for Hilo workshops: registration with capacity caps, confirmation + reminder email/SMS, attendee check-in list, post-event follow-up sequence into the Hilo CRM and (7216-gated) referral pipeline.
+
+## STACK DISPOSITION TABLE (the replacement verdict)
+| Current tool | SAOS verdict |
+|---|---|
+| Zoho One, Zapier, Otter, Adobe Sign, Calendly, Dubsado, Google Voice | **Replaced** (as previously specced) |
+| Trello (both workspaces) | **Replaced — fully** (task system + project boards + importer, this addendum) |
+| Dropbox (client uploads + Otter sync) | **Replaced** (portal uploads; Whisper) |
+| Grant Tracker sheet, Eventbrite | **Replaced** (grant module + vouchering tracker; events module) |
+| Squarespace (website) | **Replace post-launch**: v2 website moves to the SAOS server once the portal has run a real onboarding — root-domain DNS cutover is the last flip |
+| ATX | **Kept by design** — no integration, PDF handoff |
+| Client QuickBooks Online | **Kept — client property.** Marian continues as accountant user in client files; SAOS tracks the work, never replaces the client's ledger |
+| Soto's own firm books (QBO) | **Deferred candidate** — SAOS already owns invoicing/AR; migrating the firm's own general ledger is a post-launch evaluation, not v1 |
+| Zoom | **Kept** — recordings feed Whisper; video conferencing isn't worth rebuilding |
+| Outlook (general business email) | **Kept** — client communication threads live in SAOS; the general inbox stays Outlook |
+| Team payroll provider | **Kept** — regulated domain, out of scope |
+| Obsidian / second brain | **Kept for notes (PKM)** per the existing markdown architecture; SAOS takes all tasks and projects |
+| Stripe, Twilio, SES, KBA | **Kept** — the four approved vendors |
+
+## v4.4 CHANGELOG (July 7, 2026)
+1. Unified task & project management: one task table under every module, My Tasks per person, owner rollup, team workload, kanban project boards, recurring checklists, Trello importer, lightweight time log feeding hourly invoices
+2. AI session tasks auto-create for staff (client-facing recaps stay approval-gated); clients get a standing portal to-do list wired to the escalation ladder
+3. Quote builder + leads pipeline: live quotes from the price book that convert to engagements without re-entry
+4. Reports & KPIs module; client announcements (compliance-gated broadcast) + milestone review requests; SOP knowledge base linked from tasks; Hilo events module
+5. Stack disposition table: full replacement verdict per tool — ATX, client QBO, Zoom, Outlook, team payroll, and Obsidian PKM kept; everything else replaced or scheduled

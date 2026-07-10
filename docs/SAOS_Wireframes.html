@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAOS — Workflow Wireframes</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root{
+    --forest:#0D3B38; --forest-2:#12514D; --teal:#00C9BF; --teal-ink:#00807A;
+    --ink:#0E1B1A; --slate:#5A6B69; --line:#D9E2E0; --line-2:#E8EEED;
+    --paper:#F4F7F6; --white:#FFFFFF; --amber:#D4930A; --rose:#C6553F;
+    --shadow:0 1px 2px rgba(13,59,56,.04),0 8px 24px rgba(13,59,56,.06);
+    --shadow-lg:0 12px 40px rgba(13,59,56,.14);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;line-height:1.5}
+
+  /* ===== top bar ===== */
+  .topbar{position:sticky;top:0;z-index:50;background:var(--forest);color:#EAF3F2;border-bottom:1px solid rgba(255,255,255,.08)}
+  .topbar-inner{max-width:1180px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+  .wordmark{font-weight:800;font-size:20px;letter-spacing:-.02em;color:#fff}
+  .wordmark .dot{color:var(--teal)}
+  .topbar p{font-size:12.5px;color:#9FC0BD;margin-right:auto;letter-spacing:.01em}
+  .roleswitch{display:flex;gap:4px;background:rgba(0,0,0,.22);padding:4px;border-radius:11px}
+  .roleswitch button{font-family:inherit;font-size:13px;font-weight:600;color:#A9C7C4;background:transparent;border:0;padding:8px 15px;border-radius:8px;cursor:pointer;transition:.18s;white-space:nowrap}
+  .roleswitch button:hover{color:#fff}
+  .roleswitch button.active{background:var(--teal);color:var(--forest)}
+
+  /* ===== canvas ===== */
+  .stage{max-width:1180px;margin:0 auto;padding:34px 24px 90px}
+  .view{display:none;animation:fade .4s ease}
+  .view.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .view-head{margin-bottom:26px}
+  .eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--teal-ink);margin-bottom:9px}
+  .view-head h1{font-size:29px;font-weight:800;letter-spacing:-.025em;color:var(--forest);margin-bottom:7px}
+  .view-head p{font-size:15px;color:var(--slate);max-width:680px}
+
+  /* ===== flow rail ===== */
+  .rail{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:4px 0 16px;margin-bottom:6px}
+  .step-chip{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:9px 15px 9px 12px;background:var(--white);border:1px solid var(--line);border-radius:11px;font-size:13px;font-weight:600;color:var(--slate);box-shadow:var(--shadow);white-space:nowrap}
+  .step-chip .n{width:22px;height:22px;border-radius:50%;background:var(--paper);color:var(--teal-ink);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;display:grid;place-items:center;border:1px solid var(--line)}
+  .rail .arrow{flex:0 0 auto;align-self:center;color:var(--line);padding:0 6px;font-size:15px}
+
+  /* ===== screens grid ===== */
+  .screens{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:22px;margin-top:10px}
+  .device{background:var(--white);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
+  .device-cap{display:flex;align-items:center;gap:8px;padding:11px 14px;background:var(--forest);border-bottom:1px solid rgba(255,255,255,.07)}
+  .device-cap .dots{display:flex;gap:5px}
+  .device-cap .dots i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.22)}
+  .device-cap .title{font-size:11.5px;font-weight:600;color:#CFE3E1;font-family:'JetBrains Mono',monospace;letter-spacing:.02em}
+  .device-cap .tag{margin-left:auto;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;border-radius:20px;background:rgba(0,201,191,.16);color:var(--teal)}
+  .screen{padding:18px;flex:1;min-height:230px;display:flex;flex-direction:column;gap:13px}
+
+  .s-step{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--teal-ink);font-weight:500;letter-spacing:.06em}
+  .s-h{font-size:17px;font-weight:700;color:var(--forest);letter-spacing:-.015em;line-height:1.28}
+  .s-sub{font-size:13px;color:var(--slate);line-height:1.45}
+
+  /* mini ui bits */
+  .field{border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:12.5px;color:var(--slate);background:var(--paper)}
+  .field b{color:var(--ink);font-weight:600}
+  .choice{display:flex;gap:9px}
+  .opt{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:11px 10px;font-size:12.5px;font-weight:600;color:var(--slate);text-align:center;background:var(--white)}
+  .opt.sel{border-color:var(--teal);background:rgba(0,201,191,.08);color:var(--forest)}
+  .opt small{display:block;font-weight:400;font-size:10.5px;margin-top:2px;color:var(--slate)}
+  .btn{background:var(--teal);color:var(--forest);font-weight:700;font-size:13px;text-align:center;padding:11px;border-radius:9px;margin-top:auto}
+  .btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--forest)}
+  .btn.amber{background:var(--amber);color:#fff}
+  .rowline{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:9px 0;border-bottom:1px solid var(--line-2)}
+  .rowline:last-child{border-bottom:0}
+  .rowline .lab{color:var(--slate)}
+  .rowline .val{font-weight:600;color:var(--ink)}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.02em}
+  .pill.ok{background:rgba(0,128,122,.12);color:var(--teal-ink)}
+  .pill.wait{background:rgba(212,147,10,.14);color:var(--amber)}
+  .pill.gate{background:rgba(198,85,63,.12);color:var(--rose)}
+  .pill.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .stat{display:flex;gap:10px}
+  .stat .box{flex:1;background:var(--paper);border:1px solid var(--line-2);border-radius:10px;padding:11px}
+  .stat .box .k{font-size:22px;font-weight:800;color:var(--forest);letter-spacing:-.02em;line-height:1}
+  .stat .box .l{font-size:10.5px;color:var(--slate);margin-top:5px;font-weight:500}
+  .note{font-size:11.5px;color:var(--slate);background:var(--paper);border-left:3px solid var(--teal);border-radius:0 7px 7px 0;padding:9px 11px;line-height:1.45}
+  .note b{color:var(--forest)}
+  .list{display:flex;flex-direction:column;gap:8px}
+  .li{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--ink)}
+  .li .mk{color:var(--teal-ink);font-weight:700;flex:0 0 auto;margin-top:1px}
+  .doc{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:12px}
+  .doc .ic{width:26px;height:32px;border-radius:4px;background:linear-gradient(160deg,var(--forest),var(--forest-2));flex:0 0 auto;position:relative}
+  .doc .ic::after{content:"";position:absolute;top:5px;left:5px;right:5px;height:2px;background:rgba(255,255,255,.35);box-shadow:0 4px 0 rgba(255,255,255,.22),0 8px 0 rgba(255,255,255,.22)}
+  .doc .nm{font-weight:600;color:var(--ink)}
+  .doc .mt{color:var(--slate);font-size:10.5px}
+  .bubble{max-width:88%;font-size:12px;padding:9px 12px;border-radius:13px;line-height:1.4}
+  .bubble.them{background:var(--paper);color:var(--ink);border-bottom-left-radius:4px;align-self:flex-start}
+  .bubble.us{background:var(--forest);color:#EAF3F2;border-bottom-right-radius:4px;align-self:flex-end}
+  .minibar{height:7px;border-radius:5px;background:var(--line-2);overflow:hidden}
+  .minibar i{display:block;height:100%;background:var(--teal)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:22px;padding:15px 18px;background:var(--white);border:1px solid var(--line);border-radius:12px}
+  .legend .li{font-size:12px;color:var(--slate)}
+  .kbd{font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--paper);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--teal-ink)}
+
+  .section-label{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--slate);margin:30px 0 2px;font-weight:500}
+
+  @media(max-width:640px){
+    .topbar p{display:none}
+    .view-head h1{font-size:24px}
+    .screens{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="wordmark">SOTO<span class="dot">.</span></div>
+    <p>SAOS · workflow wireframes · v4.2</p>
+    <div class="roleswitch" role="tablist">
+      <button class="active" data-view="customer" role="tab">Customer</button>
+      <button data-view="admin" role="tab">Admin (You)</button>
+      <button data-view="preparer" role="tab">Tax Preparer</button>
+    </div>
+  </div>
+</div>
+
+<div class="stage">
+
+  <!-- ============================ CUSTOMER ============================ -->
+  <section class="view active" id="customer">
+    <div class="view-head">
+      <div class="eyebrow">Client journey · ideation → recurring CFO relationship</div>
+      <h1>What a customer experiences</h1>
+      <p>The path a new entrepreneur walks from the website to a standing CPA relationship — the exact sequence from your discovery calls: two-lane entry, deposit, questionnaire, secure upload, then the recurring session cadence they choose.</p>
+    </div>
+
+    <div class="rail">
+      <div class="step-chip"><span class="n">1</span>Discover &amp; book</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">2</span>Pick lane</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">3</span>Deposit</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">4</span>Questionnaire</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">5</span>Upload docs</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">6</span>Sign 8879</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">7</span>Recap &amp; recurring</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">8</span>If IRS writes</div>
+    </div>
+
+    <div class="screens">
+      <!-- 1 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">sotoaccounting.com</span><span class="tag">Public</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 1 · TWO-LANE BOOKING</div>
+          <div class="s-h">Two front doors, no wrong turn</div>
+          <div class="choice">
+            <div class="opt sel">New client<small>Discovery call · $300 deposit</small></div>
+            <div class="opt">Existing client<small>Sign in to portal</small></div>
+          </div>
+          <div class="field">Free question? → <b>Book a question call — no charge</b></div>
+          <div class="note"><b>EN / ES toggle</b> persists site-wide. Pricing shows transparent "starting at" figures.</div>
+          <div class="btn">Book discovery call →</div>
+        </div>
+      </div>
+
+      <!-- 2 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">/onboarding</span><span class="tag">Intake</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 2 · PICK YOUR LANE</div>
+          <div class="s-h">Virtual or in-office · then who you are</div>
+          <div class="choice">
+            <div class="opt sel">Virtual<small>Upload from home</small></div>
+            <div class="opt">In office<small>Bring everything, 1 hr</small></div>
+          </div>
+          <div class="choice">
+            <div class="opt sel">Individual<small>Form 1040</small></div>
+            <div class="opt">Business<small>1065 · 1120-S · 1120</small></div>
+          </div>
+          <div class="s-sub">Form picker adapts — Schedule C, E, or K-1 add-ons appear based on answers.</div>
+        </div>
+      </div>
+
+      <!-- 3 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">/onboarding/deposit</span><span class="tag">Stripe</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 3 · DEPOSIT TO SCHEDULE</div>
+          <div class="s-h">One deposit, credited to your work</div>
+          <div class="rowline"><span class="lab">Individual 1040 + Sch C</span><span class="val">$330</span></div>
+          <div class="rowline"><span class="lab">First-time client discount −10%</span><span class="val">−$33</span></div>
+          <div class="rowline"><span class="lab">Deposit due now</span><span class="val">$200</span></div>
+          <div class="note">Deposit credits to the final invoice. <b>Overpayment auto-credits; underpayment bills the difference.</b></div>
+          <div class="btn amber">Pay $200 deposit</div>
+        </div>
+      </div>
+
+      <!-- 4 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">/questionnaire</span><span class="tag">Adaptive</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 4 · QUESTIONNAIRE</div>
+          <div class="s-h">Tell us the moving pieces</div>
+          <div class="minibar"><i style="width:60%"></i></div>
+          <div class="s-sub">6 of 10 · Business &amp; income</div>
+          <div class="field"><b>Do you own or co-own other businesses?</b> → links an <b>entity group</b></div>
+          <div class="field">Consent: <b>§7216 use &amp; disclose</b> · SMS opt-in (EN/ES)</div>
+          <div class="note">Answers fire the right organizer — Sch C, Sch E, or F&amp;B module for restaurants.</div>
+        </div>
+      </div>
+
+      <!-- 5 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">portal · Documents</span><span class="tag">Secure</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 5 · UPLOAD (replaces Dropbox)</div>
+          <div class="s-h">Everything in one secure place</div>
+          <div class="doc"><span class="ic"></span><span><span class="nm">W-2_2025.pdf</span><br><span class="mt">Uploaded · encrypted</span></span><span class="pill ok dot" style="margin-left:auto">Done</span></div>
+          <div class="doc"><span class="ic"></span><span><span class="nm">1099-NEC.pdf</span><br><span class="mt">Uploaded · encrypted</span></span><span class="pill ok dot" style="margin-left:auto">Done</span></div>
+          <div class="doc"><span class="ic"></span><span><span class="nm">Business P&amp;L.xlsx</span><br><span class="mt">Requested</span></span><span class="pill wait dot" style="margin-left:auto">Needed</span></div>
+          <div class="note">SMS nudge: "Your documents are ready to upload — <b>portal link</b>." Never by email attachment.</div>
+        </div>
+      </div>
+
+      <!-- 6 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">sign.sotoaccounting.com</span><span class="tag">Docuseal + KBA</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 6 · SIGN FORM 8879</div>
+          <div class="s-h">Verify identity, then sign remotely</div>
+          <div class="list">
+            <div class="li"><span class="mk">1</span>Answer KBA identity questions</div>
+            <div class="li"><span class="mk">2</span>Review your return PDF</div>
+            <div class="li"><span class="mk">3</span>Sign — timestamped &amp; stored</div>
+          </div>
+          <div class="note">IRS Pub 1345 compliant. In-office clients sign wet; method recorded per 8879.</div>
+          <div class="btn">Start identity check →</div>
+        </div>
+      </div>
+
+      <!-- 7 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">portal · Home</span><span class="tag">Recap</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 7 · RECAP &amp; RECURRING</div>
+          <div class="s-h">What we covered · what's next</div>
+          <div class="bubble them">Session recap (EN/ES): filed 1040, set S-corp path for 2026.</div>
+          <div class="bubble them">Your action items: send P&amp;L, mark Q2 estimate paid.</div>
+          <div class="field">Recurring: <b>Quarterly books · Quarterly session</b> · $600/qtr</div>
+          <div class="field"><b>Your to-dos (2):</b> upload P&amp;L · confirm Q2 estimate paid</div>
+          <div class="note"><b>Estimated payments:</b> Fed $500 / IL $250 due Jun 15 — mark paid here. Reminders: <b>toggle ON/OFF</b> in settings.</div>
+        </div>
+      </div>
+      <!-- 8 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">portal · Notices</span><span class="tag">Handled</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 8 · IF THE IRS WRITES</div>
+          <div class="s-h">You see it's handled — in plain language</div>
+          <div class="rowline"><span class="lab">CP2000 notice · 2024</span><span class="pill wait dot">We're on it</span></div>
+          <div class="rowline"><span class="lab">Response due</span><span class="val">Aug 4</span></div>
+          <div class="doc"><span class="ic"></span><span><span class="nm">Upload your notice scan</span><br><span class="mt">Drop the letter here</span></span></div>
+          <div class="note">Status updates automatically as Ana-Maria works it (EN/ES). No more "did you get my letter?" calls.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="li"><span class="pill ok dot">Done</span></div>
+      <div class="li"><span class="pill wait dot">Waiting on client</span></div>
+      <div class="li"><span class="pill gate dot">Compliance gate</span></div>
+      <div class="li">Tap <span class="kbd">Admin</span> or <span class="kbd">Tax Preparer</span> above to see the same journey from the other side.</div>
+    </div>
+  </section>
+
+  <!-- ============================ ADMIN ============================ -->
+  <section class="view" id="admin">
+    <div class="view-head">
+      <div class="eyebrow">Owner cockpit · oversight without operating</div>
+      <h1>What you see as owner</h1>
+      <p>The CEO-level view — complete oversight of every client, engagement, and deadline, with approval gates on the few things that need your judgment. Built to hit your under-five-hours-a-week target.</p>
+    </div>
+
+    <div class="rail">
+      <div class="step-chip"><span class="n">1</span>Command dashboard</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">2</span>Referral queue</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">3</span>Approve recaps</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">4</span>Pricing &amp; gates</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">5</span>Team &amp; access</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">6</span>Compliance monitor</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">7</span>AR &amp; rescue</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">8</span>Vouchering &amp; close</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">9</span>Tasks &amp; quotes</div>
+    </div>
+
+    <div class="screens">
+      <!-- 1 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Dashboard</span><span class="tag">Owner</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 1 · ONE SCREEN, WHOLE FIRM</div>
+          <div class="s-h">Past, present, future at a glance</div>
+          <div class="stat">
+            <div class="box"><div class="k">41</div><div class="l">Active engagements</div></div>
+            <div class="box"><div class="k">7</div><div class="l">Need you today</div></div>
+          </div>
+          <div class="stat">
+            <div class="box"><div class="k">12</div><div class="l">Extended returns</div></div>
+            <div class="box"><div class="k">3</div><div class="l">At-risk (red)</div></div>
+          </div>
+          <div class="note">Originals: Mar 15 · Apr 15 · <b>May 15 (990)</b> | Extended: Sep 15 · Sep 30 (1041) · Oct 15 · <b>Nov 15 (990)</b> · Dec 15 (1120-F) + fiscal filers &amp; quarterly estimates.</div>
+        </div>
+      </div>
+
+      <!-- 2 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Pipeline</span><span class="tag">Hilo → Soto</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 2 · REFERRAL QUEUE</div>
+          <div class="s-h">The nonprofit-to-firm bridge</div>
+          <div class="rowline"><span class="lab">Sarah P. → therapy PLLC</span><span class="pill ok dot">7216 ✓</span></div>
+          <div class="rowline"><span class="lab">Hilo grad → food truck</span><span class="pill wait dot">Consent pending</span></div>
+          <div class="rowline"><span class="lab">Referral partner → S-corp</span><span class="pill ok dot">7216 ✓</span></div>
+          <div class="note"><b>Every DRK→Soto handoff gated behind §7216 consent.</b> Referral integrity trail logged both directions.</div>
+        </div>
+      </div>
+
+      <!-- 3 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Approvals</span><span class="tag">One tap</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 3 · APPROVE SESSION RECAPS</div>
+          <div class="s-h">Your voice, before it sends</div>
+          <div class="field"><b>Daeji Dough — monthly session</b><br><span style="color:var(--slate)">AI drafted recap · EN + ES · 4 action items</span></div>
+          <div class="choice">
+            <div class="opt sel" style="flex:2">Approve &amp; send</div>
+            <div class="opt">Edit</div>
+          </div>
+          <div class="note">Meeting intel → tasks fire automatically. <b>Client-facing recap waits for your approval</b> — never auto-sent.</div>
+        </div>
+      </div>
+
+      <!-- 4 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Pricing</span><span class="tag">Versioned</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 4 · PRICE BOOK &amp; GATES</div>
+          <div class="s-h">Change a price, not the code</div>
+          <div class="rowline"><span class="lab">Monthly package</span><span class="val">$250/mo</span></div>
+          <div class="rowline"><span class="lab">Semi-annual <span class="pill wait" style="font-size:9px">confirm</span></span><span class="val">$1,000</span></div>
+          <div class="rowline"><span class="lab">1120-S return</span><span class="val">$700</span></div>
+          <div class="note"><b>12 price confirmations</b> open · effective-dated, so launch-day increases are one click. Price-lock holds first-year clients.</div>
+        </div>
+      </div>
+
+      <!-- 5 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Team</span><span class="tag">Scoped</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 5 · TEAM &amp; ACCESS</div>
+          <div class="s-h">Everyone sees only their lane</div>
+          <div class="rowline"><span class="lab">Ana-Maria · Tax &amp; IRS notices</span><span class="pill ok dot">Full</span></div>
+          <div class="rowline"><span class="lab">Marian · Bookkeeping</span><span class="pill ok dot">Books only</span></div>
+          <div class="rowline"><span class="lab">Cristian · Attest</span><span class="pill gate dot">Independence ✓</span></div>
+          <div class="rowline"><span class="lab">Juan · Intern</span><span class="pill wait dot">Read-only</span></div>
+          <div class="note">Reduces key-person risk by design — no single point of failure, including Jackson.</div>
+        </div>
+      </div>
+
+      <!-- 6 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Compliance</span><span class="tag">Auto</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 6 · COMPLIANCE MONITOR</div>
+          <div class="s-h">The firm watches itself</div>
+          <div class="rowline"><span class="lab">IL SOS good standing</span><span class="pill ok dot">38 clear</span></div>
+          <div class="rowline"><span class="lab">Not in good standing</span><span class="pill gate dot">2 flagged</span></div>
+          <div class="rowline"><span class="lab">Annual reports (Laura)</span><span class="pill wait dot">5 due T-60</span></div>
+          <div class="note">Placeholder templates <b>blocked from client sends</b> until final legal text drops in.</div>
+        </div>
+      </div>
+      <!-- 7 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · AR &amp; Rescue</span><span class="tag">Auto</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 7 · DUNNING &amp; STALLED RESCUE</div>
+          <div class="s-h">Money and momentum, chased for you</div>
+          <div class="rowline"><span class="lab">Failed charge · retry 2/3</span><span class="pill wait dot">Day 6</span></div>
+          <div class="rowline"><span class="lab">True-up 30+ days · fee 1.5%/mo</span><span class="pill gate dot">Work paused</span></div>
+          <div class="rowline"><span class="lab">Stalled onboarding · deposit held</span><span class="pill wait dot">Day 60 → you</span></div>
+          <div class="note">Ladder: D3 portal → D7 SMS → D14 Rene call → D30 stalled. <b>Late fees only if the signed letter discloses them.</b></div>
+        </div>
+      </div>
+
+      <!-- 8 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Vouchering + Close</span><span class="tag">You + Marian</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 8 · VOUCHERING &amp; BOOKS CLOSE</div>
+          <div class="s-h">Two loops that run themselves</div>
+          <div class="rowline"><span class="lab">18th St Casa · June voucher</span><span class="pill wait dot">Due T-7</span></div>
+          <div class="rowline"><span class="lab">Healthy Hood · Q2 voucher</span><span class="pill ok dot">Submitted</span></div>
+          <div class="rowline"><span class="lab">Daeji · June close → posted</span><span class="pill ok dot">On next session</span></div>
+          <div class="note">Vouchers: status-only, you operate. Closes: statements auto-post; <b>calendar cross-check</b> — attach to existing session, task only if none exists.</div>
+        </div>
+      </div>
+      <!-- 9 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Tasks &amp; Boards</span><span class="tag">Trello, replaced</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 9 · ONE TASK SYSTEM + QUOTES</div>
+          <div class="s-h">Every to-do in the firm, one table</div>
+          <div class="rowline"><span class="lab">My Tasks · Rene</span><span class="val">6 open</span></div>
+          <div class="rowline"><span class="lab">Boards · Hilo rebrand</span><span class="val">kanban</span></div>
+          <div class="rowline"><span class="lab">Quote · Falcon Strategies</span><span class="pill wait dot">Sent</span></div>
+          <div class="note">Sessions auto-create staff tasks. Clients get a portal <b>"Your to-dos"</b> list. Quotes build from the price book → convert to engagement + deposit, no re-entry.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="li"><span class="pill ok dot">Clear / done</span></div>
+      <div class="li"><span class="pill wait dot">Needs attention</span></div>
+      <div class="li"><span class="pill gate dot">Gated / compliance</span></div>
+      <div class="li">Approval gates keep you at oversight, not operation — the under-5-hours goal.</div>
+    </div>
+  </section>
+
+  <!-- ============================ PREPARER ============================ -->
+  <section class="view" id="preparer">
+    <div class="view-head">
+      <div class="eyebrow">Preparer workbench · Ana-Maria's daily flow</div>
+      <h1>What a tax preparer works from</h1>
+      <p>The queue-driven view your preparers live in — assigned returns, everything the client uploaded in one place, the ATX handoff, and the signature chase, without touching anything outside their lane.</p>
+    </div>
+
+    <div class="rail">
+      <div class="step-chip"><span class="n">1</span>My queue</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">2</span>Client packet</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">3</span>Prepare in ATX</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">4</span>Upload return</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">5</span>Send for 8879</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">6</span>File &amp; log estimate</div><span class="arrow">→</span>
+      <div class="step-chip"><span class="n">7</span>Rejects &amp; notices</div>
+    </div>
+
+    <div class="screens">
+      <!-- 1 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · My Queue</span><span class="tag">Ana-Maria</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 1 · ASSIGNED TO ME</div>
+          <div class="s-h">Today's returns, prioritized</div>
+          <div class="rowline"><span class="lab">Caccamo · 1040+Sch C</span><span class="pill wait dot">Docs in</span></div>
+          <div class="rowline"><span class="lab">Koziura grp · 1120-S ×2</span><span class="pill gate dot">Extended</span></div>
+          <div class="rowline"><span class="lab">Bueno Days · 1065</span><span class="pill wait dot">Missing P&amp;L</span></div>
+          <div class="note">Sorted by deadline. Extended + docs late by Aug 15 flips <b>red</b>.</div>
+        </div>
+      </div>
+
+      <!-- 2 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Client Packet</span><span class="tag">Read</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 2 · EVERYTHING IN ONE PLACE</div>
+          <div class="s-h">Caccamo · tax year 2025</div>
+          <div class="doc"><span class="ic"></span><span><span class="nm">Questionnaire</span><br><span class="mt">Complete · 2 Sch C</span></span></div>
+          <div class="doc"><span class="ic"></span><span><span class="nm">W-2 · 1099 · student loan</span><br><span class="mt">3 files uploaded</span></span></div>
+          <div class="field">Consent on file: <b>§7216 ✓</b> · engagement letter <b>signed ✓</b></div>
+          <div class="note">No hunting through email or Dropbox — the packet is the return's front page.</div>
+        </div>
+      </div>
+
+      <!-- 3 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ATX (external)</span><span class="tag">Prepare</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 3 · PREPARE IN ATX</div>
+          <div class="s-h">Do the return where you always have</div>
+          <div class="s-sub">SAOS doesn't replace ATX. Preparer works the return in ATX, then brings the final PDF back.</div>
+          <div class="list">
+            <div class="li"><span class="mk">→</span>Pull figures from the packet</div>
+            <div class="li"><span class="mk">→</span>Prepare &amp; review in ATX</div>
+            <div class="li"><span class="mk">→</span>Export final return PDF</div>
+          </div>
+          <div class="note">Deliberately no integration — clean handoff, no sync risk.</div>
+        </div>
+      </div>
+
+      <!-- 4 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Upload Return</span><span class="tag">Handoff</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 4 · UPLOAD FINAL RETURN</div>
+          <div class="s-h">Post it to the client's folder</div>
+          <div class="doc"><span class="ic"></span><span><span class="nm">Caccamo_1040_2025_FINAL.pdf</span><br><span class="mt">Category: Prepared Returns</span></span><span class="pill ok dot" style="margin-left:auto">Set</span></div>
+          <div class="field">True-up quote: prep <b>$526</b> − deposit <b>$200</b> = <b>bill $326</b></div>
+          <div class="note">Upload triggers the client's "ready to sign" notification automatically.</div>
+        </div>
+      </div>
+
+      <!-- 5 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">sign · Envelope</span><span class="tag">8879</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 5 · SEND FOR SIGNATURE</div>
+          <div class="s-h">KBA envelope, one click</div>
+          <div class="rowline"><span class="lab">Form 8879 · Caccamo</span><span class="pill wait dot">Sent · KBA</span></div>
+          <div class="rowline"><span class="lab">Method</span><span class="val">Remote (KBA)</span></div>
+          <div class="s-sub">Preparer sees signature status live; chase-nudge auto-fires if unsigned in 48 hrs.</div>
+          <div class="note">In-office? Switch to <b>wet signature</b> — method recorded per 8879. Entity groups: <b>one envelope, one KBA, per-return 8879s.</b></div>
+        </div>
+      </div>
+
+      <!-- 6 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Close-out</span><span class="tag">File</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 6 · FILE &amp; LOG ESTIMATE</div>
+          <div class="s-h">Close the loop for next quarter</div>
+          <div class="rowline"><span class="lab">8879 signed</span><span class="pill ok dot">✓ stored</span></div>
+          <div class="rowline"><span class="lab">Return e-filed in ATX</span><span class="pill ok dot">✓ marked</span></div>
+          <div class="field">Log estimate: <b>Fed $500 / IL $250 · due Jun 15</b> → client tracker</div>
+          <div class="note">Estimate history hands back to you and the client automatically — no verbal-only recs lost.</div>
+        </div>
+      </div>
+      <!-- 7 -->
+      <div class="device">
+        <div class="device-cap"><div class="dots"><i></i><i></i><i></i></div><span class="title">ops · Rejects &amp; Notices</span><span class="tag">No dead ends</span></div>
+        <div class="screen">
+          <div class="s-step">STEP 7 · WHEN FILINGS BOUNCE BACK</div>
+          <div class="s-h">Rejects re-queue · notices become tickets</div>
+          <div class="rowline"><span class="lab">Reject R0000-504 · Caccamo</span><span class="pill gate dot">Fix in 5 days</span></div>
+          <div class="rowline"><span class="lab">CP2000 · Bueno Days</span><span class="pill wait dot">Resp. Aug 4</span></div>
+          <div class="s-sub">Rejects jump to top of queue with the perfection-period clock. Notices open Ana-Maria tickets — client sees plain-language status automatically.</div>
+          <div class="note">"Filed" isn't done until <b>accepted</b>. Nothing falls in the gap.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="li"><span class="pill ok dot">Complete</span></div>
+      <div class="li"><span class="pill wait dot">In progress</span></div>
+      <div class="li"><span class="pill gate dot">Extended / gated</span></div>
+      <div class="li">Preparer never sees bookkeeping, payroll, or other clients' data — scoped to their lane.</div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  const btns=document.querySelectorAll('.roleswitch button');
+  const views=document.querySelectorAll('.view');
+  btns.forEach(b=>b.addEventListener('click',()=>{
+    btns.forEach(x=>x.classList.remove('active'));
+    views.forEach(v=>v.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById(b.dataset.view).classList.add('active');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }));
+</script>
+</body>
+</html>

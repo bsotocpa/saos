@@ -1,7 +1,7 @@
 # CLAUDE.md — SAOS Build (Soto Accounting Operating System)
 
 ## Source of Truth
-- `SAOS_Fable_Master_Prompt_v4.2.md` and `SAOS_Onboarding_Forms_Spec_v4.2.md` are the spec (the v4.2 addendum sections are equal in authority to the main body). When code and spec conflict, the spec wins. When the spec is ambiguous, ask Brian — do not invent requirements.
+- `SAOS_Fable_Master_Prompt_v4.4.md` and `SAOS_Onboarding_Forms_Spec_v4.4.md` are the spec (all addendum sections are equal in authority to the main body). When code and spec conflict, the spec wins. When the spec is ambiguous, ask Brian — do not invent requirements.
 - Build in phase order (Phase 1 → 5 per the roadmap). Do not start a later-phase feature to avoid a hard problem in the current phase.
 
 ## Workflow Orchestration
@@ -59,6 +59,15 @@
 - **No hardcoded prices, anywhere.** Every dollar amount comes from the versioned price_book table (effective-dated); engagements carry price-lock fields. A price appearing as a literal in application code is a build failure.
 - **Attest independence check**: the system blocks creating a CPA review/audit engagement for any client with active Soto bookkeeping/payroll/management services, absent Brian's documented override.
 - **S corp session floor**: the engagement configurator must not allow an active S corp client below 2 CPA sessions/year.
+- **All tax deadlines derive from the AUTHORITATIVE TAX DEADLINE TABLE** (v4.3 addendum) + fiscal year end. 990 original is May 15, extended Nov 15. Any hardcoded date pair is a build failure.
+- **No dead-end engagement states**: Filed is not terminal until e-file acceptance; rejects re-queue with perfection-period clocks; notices create owned tickets. Every waiting state has the D3/D7/D14/D30 escalation ladder attached.
+- **Late fees are engagement-letter gated**: never apply a late fee unless the client's signed engagement letter contains the late-fee disclosure. Rate lives in the price book, never in code.
+- **Calendar cross-check before scheduling**: never create a session-scheduling task without first checking for an existing recurring session with that client. Attach to existing sessions; only create tasks when none exists.
+- **Grant vouchering is status-tracking only** — the system never generates voucher files; Brian operates the work outside the system.
+- **Every work item in every module IS a task object in the unified task system** — no module-local to-do lists, ever. Escalation calls, notice tickets, scheduling tasks, voucher reminders, annual-report tasks, preparer queue items: all the same task table, all visible in My Tasks and the owner rollup.
+- **Quotes come from the price book** — the quote builder composes from price_book entries; a quote converts to an engagement + deposit checkout without re-entry.
+- **Broadcast messages require unsubscribe compliance**: every announcement email carries CAN-SPAM unsubscribe; every broadcast SMS respects TCPA opt-out; suppression lists enforced at send time, approval-gated, never auto-sent.
+- **Tasks link to SOPs**: task types carry an optional "how to do this" link into the knowledge base; building a task-generating feature without its SOP hook is incomplete.
 
 ### Brand & Copy
 - Soto: Forest Teal `#0D3B38` primary, Electric Teal `#00C9BF` accent, "SOTO." wordmark in Inter 800 with Electric Teal period. Inter across UI.
