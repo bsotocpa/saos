@@ -89,6 +89,113 @@ export async function createTask(app: FastifyInstance, input: CreateTaskInput): 
   return { id, created: true };
 }
 
+// ── v4.6: task dependencies ("blocked by") ───────────────────────────────────
+
+const TERMINAL: TaskStatus[] = ['completed', 'cancelled'];
+
+/** Blockers of `taskId` that are still open (what "blocked" means). */
+export async function openBlockers(app: FastifyInstance, taskId: string): Promise<Array<{ id: string; title: string }>> {
+  const { rows } = await app.db.query<{ id: string; title: string }>(
+    `SELECT bt.id, bt.title
+     FROM task_dependencies d JOIN tasks bt ON bt.id = d.blocker_task_id
+     WHERE d.blocked_task_id = $1 AND NOT (bt.status = ANY($2::task_status[]))`,
+    [taskId, TERMINAL]
+  );
+  return rows;
+}
+
+export async function addTaskDependency(
+  app: FastifyInstance,
+  blockedId: string,
+  blockerId: string,
+  actor: { id: string; email: string }
+): Promise<void> {
+  if (blockedId === blockerId) throw new AppError(400, 'self_dependency', 'A task cannot block itself.');
+  const both = await app.db.query<{ id: string; status: TaskStatus }>(
+    `SELECT id, status FROM tasks WHERE id = ANY($1::uuid[])`,
+    [[blockedId, blockerId]]
+  );
+  if (both.rows.length !== 2) throw new AppError(404, 'not_found', 'Task not found.');
+  const blocker = both.rows.find((r) => r.id === blockerId)!;
+  if (TERMINAL.includes(blocker.status)) {
+    throw new AppError(400, 'blocker_terminal', 'That task is already closed — nothing to wait on.');
+  }
+  // Cycle check: if the proposed blocker is itself (transitively) blocked by
+  // the blocked task, this edge would close a loop nothing could ever finish.
+  const cycle = await app.db.query(
+    `WITH RECURSIVE chain AS (
+       SELECT blocker_task_id FROM task_dependencies WHERE blocked_task_id = $1
+       UNION
+       SELECT td.blocker_task_id FROM task_dependencies td JOIN chain ON td.blocked_task_id = chain.blocker_task_id
+     )
+     SELECT 1 FROM chain WHERE blocker_task_id = $2 LIMIT 1`,
+    [blockerId, blockedId]
+  );
+  if (cycle.rows.length > 0) throw new AppError(409, 'dependency_cycle', 'That would create a dependency loop.');
+
+  await app.db.query(
+    `INSERT INTO task_dependencies (blocked_task_id, blocker_task_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [blockedId, blockerId]
+  );
+  await writeAudit(app.db, {
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    action: 'task.dependency_added', objectType: 'task', objectId: blockedId,
+    details: { blocker_task_id: blockerId },
+  });
+}
+
+export async function removeTaskDependency(
+  app: FastifyInstance,
+  blockedId: string,
+  blockerId: string,
+  actor: { id: string; email: string }
+): Promise<void> {
+  const res = await app.db.query(
+    `DELETE FROM task_dependencies WHERE blocked_task_id = $1 AND blocker_task_id = $2`,
+    [blockedId, blockerId]
+  );
+  if (res.rowCount === 0) throw new AppError(404, 'not_found', 'Dependency not found.');
+  await writeAudit(app.db, {
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    action: 'task.dependency_removed', objectType: 'task', objectId: blockedId,
+    details: { blocker_task_id: blockerId },
+  });
+}
+
+/**
+ * A blocker reached a terminal state → any task it was blocking that has NO
+ * remaining open blockers gets an unblock notification to its assignee
+ * (v4.6: "completing a blocker cascades unblock notifications").
+ */
+export async function cascadeUnblock(app: FastifyInstance, blockerTaskId: string): Promise<number> {
+  const { rows } = await app.db.query<{ id: string; title: string; assigned_staff_id: string | null; contact_id: string | null }>(
+    `SELECT t.id, t.title, t.assigned_staff_id, t.contact_id
+     FROM task_dependencies d
+     JOIN tasks t ON t.id = d.blocked_task_id
+     WHERE d.blocker_task_id = $1
+       AND NOT (t.status = ANY($2::task_status[]))
+       AND NOT EXISTS (
+         SELECT 1 FROM task_dependencies d2
+         JOIN tasks bt ON bt.id = d2.blocker_task_id
+         WHERE d2.blocked_task_id = t.id AND bt.id <> $1 AND NOT (bt.status = ANY($2::task_status[]))
+       )`,
+    [blockerTaskId, TERMINAL]
+  );
+  for (const t of rows) {
+    if (!t.assigned_staff_id) continue;
+    await notifyOnce(app.db, {
+      staffId: t.assigned_staff_id,
+      type: 'task_unblocked',
+      severity: 'info',
+      title: `Unblocked: ${t.title}`,
+      contactId: t.contact_id,
+      relatedObjectType: 'task_unblocked',
+      relatedObjectId: t.id,
+    });
+  }
+  return rows.length;
+}
+
 /** Auto-close: the source object completed → its open task(s) close themselves. */
 export async function closeTasksForSource(
   app: FastifyInstance,
@@ -96,12 +203,16 @@ export async function closeTasksForSource(
   sourceId: string,
   note?: string
 ): Promise<number> {
+  // Deliberately unconditional on dependencies: auto-close means the SOURCE
+  // work is objectively done (doc uploaded, notice resolved) — refusing here
+  // would strand zombie tasks. Manual completion is where the block applies.
   const { rows } = await app.db.query<{ id: string }>(
     `UPDATE tasks SET status = 'completed', completed_at = now(), updated_at = now()
      WHERE source_type = $1 AND source_id = $2 AND status = ANY($3::task_status[])
      RETURNING id`,
     [sourceType, sourceId, OPEN_STATUSES]
   );
+  for (const r of rows) await cascadeUnblock(app, r.id);
   if (rows.length > 0 && note) {
     await writeAudit(app.db, {
       actorType: 'system', actorLabel: 'task-autoclose',
@@ -154,6 +265,18 @@ export async function setTaskStatus(
   const task = rows[0];
   if (!task) throw new AppError(404, 'not_found', 'Task not found.');
 
+  // v4.6: a blocked task cannot complete before its blockers (hard rule).
+  // Cancelling is allowed — abandoning work is not finishing it.
+  if (status === 'completed' && task.status !== 'completed') {
+    const blockers = await openBlockers(app, taskId);
+    if (blockers.length > 0) {
+      throw new AppError(
+        409, 'task_blocked',
+        `Blocked by ${blockers.length} open task${blockers.length === 1 ? '' : 's'}: ${blockers.map((b) => b.title).join('; ').slice(0, 200)}`
+      );
+    }
+  }
+
   // v4.5: entering waiting_for_input arms the escalation ladder; leaving it
   // (the client responded / work resumed) disarms and resets the rung.
   const entersWaiting = status === 'waiting_for_input' && task.status !== 'waiting_for_input';
@@ -192,6 +315,11 @@ export async function setTaskStatus(
       boardColumnId: task.board_column_id,
       // sourceId deliberately NOT copied: each occurrence is its own work item.
     });
+  }
+
+  // v4.6: reaching a terminal state may unblock downstream tasks.
+  if (TERMINAL.includes(status) && !TERMINAL.includes(task.status)) {
+    await cascadeUnblock(app, taskId);
   }
 
   await writeAudit(app.db, {
@@ -246,7 +374,9 @@ export const TASK_SELECT = `
          b.name AS business_name,
          (SELECT count(*)::int FROM task_checklist_items i WHERE i.task_id = t.id) AS checklist_total,
          (SELECT count(*)::int FROM task_checklist_items i WHERE i.task_id = t.id AND i.done) AS checklist_done,
-         (SELECT count(*)::int FROM task_comments tc WHERE tc.task_id = t.id) AS comment_count
+         (SELECT count(*)::int FROM task_comments tc WHERE tc.task_id = t.id) AS comment_count,
+         (SELECT count(*)::int FROM task_dependencies d JOIN tasks bt ON bt.id = d.blocker_task_id
+          WHERE d.blocked_task_id = t.id AND bt.status NOT IN ('completed', 'cancelled')) AS open_blockers
   FROM tasks t
   LEFT JOIN staff st ON st.id = t.assigned_staff_id
   LEFT JOIN staff cr ON cr.id = t.created_by_staff_id

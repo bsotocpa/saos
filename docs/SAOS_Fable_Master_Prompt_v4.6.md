@@ -1,4 +1,4 @@
-# SAOS Master Build Prompt — v4.5 (PRODUCTION — LOCKED FOR BUILD)
+# SAOS Master Build Prompt — v4.6 (PRODUCTION — LOCKED FOR BUILD)
 ### For Fable AI — Full Stack Build + Business Automation
 ### Client: Brian Soto, CPA | Soto Accounting LLC + Hilo NFP | Chicago, IL
 ### Last Updated: July 5, 2026 | Supersedes all prior versions | All blocking decisions resolved — changelogs at end
@@ -6,6 +6,7 @@
 ### v4.3 adds: authoritative deadline table (990 May 15 original corrected; 1041 estate + foreign returns added) and seven operational flows — rejects/notices, entity groups, escalation + auto-extension, AR dunning/late fees, books close cycle, grant vouchering tracker, stalled-onboarding rescue
 ### v4.4 adds: unified task & project management (full Trello replacement), quote builder, reports & KPIs, client announcements + review requests, SOP knowledge base, Hilo events, and the stack disposition table
 ### v4.5 adds: Task System UX spec (Zoho CRM parity — views, filters, saved views, recurrence, layouts) from review of the firm's live Zoho usage
+### v4.6 adds: Tax Resolution lane (multi-year non-filer engagements, statute clocks, paper-file workflow, task dependencies) + the Bundle Builder (composable service packages, S-Corp conversion package seeded)
 
 ---
 
@@ -710,3 +711,47 @@ Owner/assignee · Subject · Due date · **linked Contact AND linked Business/Ac
 2. Status set updated — "Waiting for input" added and wired to the escalation ladder; "Deferred" added
 3. Module parity map: Sales/Purchase Orders, Vendors, CPQ, Social, Visits formally out of scope
 4. AG990-IL added to the deadline table (6 months post-FYE, independent of federal 990 extensions); Hector Pardo + Michelle Zhang excluded from roster — historical migration items map to unassigned/Brian
+
+---
+
+# v4.6 ADDENDUM — TAX RESOLUTION LANE + BUNDLE BUILDER
+*Multi-year non-filer clients (the classic Hilo-pipeline entrant) and the general bundle mechanism. All items DECIDED. Equal in authority to everything above.*
+
+## TAX RESOLUTION LANE (multi-year engagements)
+
+### Intake & engagement spawning
+- Resolution intake path: "Which years are unfiled?" multi-select per return type, plus per-year "do books exist for this year?" — **default scope is the 6-year non-filer norm (DECIDED)**, with per-client override to include older years
+- Accepting the quote spawns **one engagement per year per return type**, plus a paired bookkeeping-reconstruction engagement for each year without books
+- Quote builder renders a **years × services grid** composed from the price book
+
+### Authorization gating (DECIDED)
+- **Form 8821 signs via Docuseal at onboarding** for every resolution client — before any document work; transcript-request task auto-creates on signature
+- **Form 2848 (POA) swaps in only when representation begins** (abatement, installment agreement, exam) — a per-engagement upgrade, tracked on the client record with scope years
+
+### Prior-year deadline mode (statute clocks, not filing deadlines)
+- Per unfiled year, the dashboard shows: **refund statute expiry (3 years from the original due date — after which the client's refund is forfeited)** with countdown; 6-year lookback boundary; SFR-risk flag when IRS transcripts show a substitute return
+- Refund-statute countdowns are urgency that sells and serves: surfaced on the client portal for their own years ("your 2023 refund expires April 2027")
+
+### Filing-method derivation (DECIDED — automatic)
+- Current + two prior tax years → standard e-file lane (KBA remote 8879)
+- Older years → **paper lane**: print-packet checklist, wet-signature 8879, certified-mail task with tracking-number field, mailed-date stamp, and a distinct closing checklist. The system derives the lane from the year; staff never choose
+
+### Task dependencies (new task-system capability, general)
+- Tasks gain **"blocked by"** relations; blocked tasks render distinctly, cannot complete before blockers, and unblocking cascades notifications to assignees
+- Resolution engagements auto-chain **oldest-year-first (DECIDED)**: books(Y) → return(Y) → books(Y+1) → return(Y+1)…, honoring carryforwards
+
+### Resolution engagement types
+- Penalty abatement (first-time + reasonable-cause) and installment-agreement setup as engagement types with price-book entries (seed at Specialized $500 each ⚠ confirm), each requiring active 2848
+
+## BUNDLE BUILDER (general mechanism — DECIDED)
+- Admin composes a **bundle** from price-book items: fixed components + **optional components** (client-selectable at quote time, e.g., "add recurring quarterly package")
+- Bundle pricing: sum of components minus a **discount (percent or fixed)** or a manual bundle price override; effective-dated and versioned like everything else in the price book
+- Bundles are sellable objects: they appear in the quote builder, each gets a shareable quote/landing link, and the announcements module can run a **campaign around a bundle** with pipeline attribution (campaign → quote link → engagement)
+- **Multi-year pricing rules (DECIDED)**: per-year multiplication from the price book; **+$100/return surcharge automatically applied to any return more than 2 years back**; multi-year discount set per bundle/quote (admin judgment, no fixed default)
+- **Seed bundle #1 — S-Corp Conversion Package**: 2553 conversion ($250) + 1120-S return ($700) + one year book cleanup ($75/hr est.) + QBO & payroll systems setup ($250 bundled) + analysis & owner-compensation calc ($500) · optional add-on: recurring quarterly bookkeeping package ($600/qtr). Bundle discount: admin-set at publish
+- **Seed bundle #2 — Tax Resolution Package**: per-year returns (surcharge rules auto-applied) + per-year reconstruction + 8821/transcript step, multi-year discount admin-set — the resolution lane IS a bundle instance, proving the mechanism
+
+## v4.6 CHANGELOG (July 12, 2026)
+1. Tax Resolution lane: 6-year-norm multi-select intake spawning per-year engagements + reconstruction pairs; 8821-at-onboarding gating with 2848 upgrade; refund-statute/SFR clocks on dashboards and client portal; automatic e-file vs paper lane derivation with certified-mail workflow
+2. Task dependencies ("blocked by") added to the task system generally; resolution chains enforce oldest-year-first
+3. Bundle Builder: composable price-book bundles with optional components, discounts, campaign attribution; +$100 prior-year surcharge (>2 years back) automatic everywhere; S-Corp Conversion Package and Tax Resolution Package seeded

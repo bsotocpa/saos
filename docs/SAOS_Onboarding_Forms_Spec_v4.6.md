@@ -1,5 +1,4 @@
-# SAOS Onboarding Forms — Field-Level Spec (v4.5)
-*(v4.5: version sync with master prompt — no forms changes)*
+# SAOS Onboarding Forms — Field-Level Spec (v4.6)
 ### Companion to SAOS Master Prompt v4.5 | July 11, 2026 | v4.1: bridge fields renamed BR1–BR6; Module B firing rule fixed. v4.2 + v4.3: additions listed in addenda at end
 ### All forms render in English and Spanish; language selected on first screen and saved to contact record.
 
@@ -255,3 +254,13 @@ Entity-group billing mode option · client estimate toggle · onboarding pipelin
 
 ## v4.4 CHANGELOG
 Quote acceptance → engagement conversion · client to-do list · broadcast consent + suppression, separated from transactional messaging.
+
+---
+
+## v4.6 ADDENDUM — RESOLUTION INTAKE
+1. **Unfiled-years question set** (fires when "have you filed last year's return" = No, or client selects Tax Resolution): per return type, multi-select of unfiled years defaulting to the last 6; per selected year, "do accounting records/books exist for this year?" (Yes / Partial / No) — Partial/No pairs a reconstruction engagement.
+2. **Authorization step**: Form 8821 Docuseal envelope inserted into onboarding immediately after engagement letter, before document requests; completion auto-creates the transcript-request task.
+3. **Quote surface**: years × services grid with automatic +$100 surcharge on returns >2 years back, bundle discount line, and refund-statute note per eligible year ("filing 2023 by Apr 2027 preserves any refund").
+
+## v4.6 CHANGELOG
+Resolution intake (unfiled years multi-select, books-exist matrix) · 8821 onboarding step · years × services quote grid with statute notes.

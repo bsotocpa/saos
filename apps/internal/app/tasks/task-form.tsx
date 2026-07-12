@@ -145,6 +145,59 @@ function Lookup(props: {
   );
 }
 
+/** v4.6 "Blocked by" management — shown when editing an existing task. */
+function BlockersSection(props: { taskId: string; canManage: boolean }) {
+  const [blockers, setBlockers] = useState<{ id: string; title: string; status: string }[]>([]);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    const r = await api<{ blockers: { id: string; title: string; status: string }[] }>(`/tasks/${props.taskId}/dependencies`);
+    setBlockers(r.blockers);
+  };
+  useEffect(() => { void load(); }, [props.taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const add = async (v: { id: string; name: string }) => {
+    if (!v.id) return;
+    setError('');
+    try {
+      await api(`/tasks/${props.taskId}/dependencies`, { method: 'POST', body: { blockerTaskId: v.id } });
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+  const remove = async (blockerId: string) => {
+    await api(`/tasks/${props.taskId}/dependencies/${blockerId}`, { method: 'DELETE' });
+    await load();
+  };
+
+  return (
+    <section>
+      <h2 style={{ marginTop: 10 }}>Blocked by</h2>
+      {error ? <div className="alert error">{error}</div> : null}
+      {blockers.length === 0 ? <p className="muted small">Not waiting on any task.</p> : null}
+      {blockers.map((b) => (
+        <p key={b.id} className="small" style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '2px 0' }}>
+          <span className={`badge ${b.status === 'completed' || b.status === 'cancelled' ? 'ok' : 'warn'}`}>{b.status.replace(/_/g, ' ')}</span>
+          <span style={{ flex: 1 }}>{b.title}</span>
+          {props.canManage ? <button type="button" className="chip" onClick={() => void remove(b.id)}>remove</button> : null}
+        </p>
+      ))}
+      {props.canManage ? (
+        <Lookup
+          label="Add blocker" required={false} placeholder="Search open tasks…"
+          value={{ id: '', name: '' }}
+          search={async (q) => {
+            const r = await api<{ tasks: { id: string; title: string }[] }>(`/tasks/search?q=${encodeURIComponent(q)}&limit=8`);
+            return r.tasks.filter((t) => t.id !== props.taskId).map((t) => ({ id: t.id, name: t.title }));
+          }}
+          onPick={(v) => void add(v)}
+        />
+      ) : null}
+    </section>
+  );
+}
+
 export function TaskFormModal(props: {
   task: Task | null;            // null = create
   layout: TaskLayout | null;
@@ -371,6 +424,7 @@ export function TaskFormModal(props: {
               <div className="grid2">{section.fields.map(renderField)}</div>
             </section>
           ))}
+          {props.task ? <BlockersSection taskId={props.task.id} canManage={true} /> : null}
           <label className="check small" style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 400 }}>
             <input type="checkbox" style={{ width: 'auto', margin: 0, display: 'inline' }} checked={form.clientVisible} onChange={(e) => set('clientVisible', e.target.checked)} />
             Client-visible (appears on the client&apos;s portal to-do list; arms the follow-up ladder)

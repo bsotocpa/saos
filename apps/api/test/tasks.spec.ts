@@ -10,7 +10,8 @@ import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
 import {
-  advanceDate, closeTasksForSource, createTask, runLadderJob, runTaskReminderSweep, setTaskStatus,
+  addTaskDependency, advanceDate, closeTasksForSource, createTask, runLadderJob,
+  runTaskReminderSweep, setTaskStatus,
 } from '../src/modules/tasks/service.ts';
 import { refreshEnrichmentGaps } from '../src/modules/crm/service.ts';
 import { importTrelloBoard } from '../src/migration/trello.ts';
@@ -453,4 +454,84 @@ test('duplicate + follow-up + inline PATCH (client-visible arms the ladder clock
   assert.equal(patched.rows[0].due, '2026-09-15');
   assert.ok(patched.rows[0].waiting_since, 'becoming client-visible arms the ladder clock');
   assert.deepEqual(patched.rows[0].tags, ['x', 'y']);
+});
+
+// ── v4.6: task dependencies ("blocked by") ───────────────────────────────────
+
+test('dependencies: blocked tasks cannot complete; completing the blocker cascades unblock notification', async () => {
+  const books = await createTask(app, { title: 'Reconstruct 2021 books', assignedStaffId: rene.id, source: 'manual' });
+  const ret = await createTask(app, { title: 'Prepare 2021 return', assignedStaffId: brian.id, source: 'manual' });
+  await addTaskDependency(app, ret.id, books.id, brian);
+
+  // Blocked task shows up as blocked in search…
+  const search = await app.inject({ method: 'GET', url: '/tasks/search?q=Prepare%202021', headers: auth(brian) });
+  assert.equal(search.json().tasks[0].open_blockers, 1);
+
+  // …and refuses to complete, via service AND route.
+  await assert.rejects(() => setTaskStatus(app, ret.id, 'completed', brian), (e: { code?: string }) => e.code === 'task_blocked');
+  const viaRoute = await app.inject({
+    method: 'PATCH', url: `/tasks/${ret.id}/status`, headers: auth(brian), payload: { status: 'completed' },
+  });
+  assert.equal(viaRoute.statusCode, 409, viaRoute.body);
+
+  // Non-terminal moves stay allowed while blocked.
+  await setTaskStatus(app, ret.id, 'in_progress', brian);
+
+  // Blocker completes → assignee of the unblocked task is notified once.
+  await setTaskStatus(app, books.id, 'completed', brian);
+  const note = await app.db.query(
+    `SELECT count(*)::int AS n FROM notifications WHERE staff_id = $1 AND type = 'task_unblocked' AND related_object_id = $2`,
+    [brian.id, ret.id]
+  );
+  assert.equal(note.rows[0].n, 1, 'unblock notification cascaded to the assignee');
+
+  // Now it completes fine.
+  await setTaskStatus(app, ret.id, 'completed', brian);
+});
+
+test('dependencies: no self-blocks, no cycles, no terminal blockers; multi-blocker waits for the LAST one', async () => {
+  const a = await createTask(app, { title: 'Dep A', assignedStaffId: brian.id, source: 'manual' });
+  const b = await createTask(app, { title: 'Dep B', source: 'manual' });
+  const c = await createTask(app, { title: 'Dep C', assignedStaffId: brian.id, source: 'manual' });
+
+  await assert.rejects(() => addTaskDependency(app, a.id, a.id, brian), (e: { code?: string }) => e.code === 'self_dependency');
+
+  // a blocked by b, b blocked by c → adding c blocked by a closes a loop.
+  await addTaskDependency(app, a.id, b.id, brian);
+  await addTaskDependency(app, b.id, c.id, brian);
+  await assert.rejects(() => addTaskDependency(app, c.id, a.id, brian), (e: { code?: string }) => e.code === 'dependency_cycle');
+
+  // Terminal blockers are meaningless — refused.
+  const done = await createTask(app, { title: 'Dep done', source: 'manual' });
+  await setTaskStatus(app, done.id, 'completed', brian);
+  await assert.rejects(() => addTaskDependency(app, a.id, done.id, brian), (e: { code?: string }) => e.code === 'blocker_terminal');
+
+  // Two blockers: completing only one does NOT unblock (no notification yet).
+  const two = await createTask(app, { title: 'Dep two-blockers', assignedStaffId: brian.id, source: 'manual' });
+  const b1 = await createTask(app, { title: 'Dep blocker 1', source: 'manual' });
+  const b2 = await createTask(app, { title: 'Dep blocker 2', source: 'manual' });
+  await addTaskDependency(app, two.id, b1.id, brian);
+  await addTaskDependency(app, two.id, b2.id, brian);
+  await setTaskStatus(app, b1.id, 'completed', brian);
+  const early = await app.db.query(
+    `SELECT count(*)::int AS n FROM notifications WHERE type = 'task_unblocked' AND related_object_id = $1`, [two.id]
+  );
+  assert.equal(early.rows[0].n, 0, 'still one open blocker — not unblocked');
+  await assert.rejects(() => setTaskStatus(app, two.id, 'completed', brian), (e: { code?: string }) => e.code === 'task_blocked');
+  // CANCELLING the last blocker also unblocks (abandoned work stops blocking).
+  await setTaskStatus(app, b2.id, 'cancelled', brian);
+  const after2 = await app.db.query(
+    `SELECT count(*)::int AS n FROM notifications WHERE type = 'task_unblocked' AND related_object_id = $1`, [two.id]
+  );
+  assert.equal(after2.rows[0].n, 1);
+  await setTaskStatus(app, two.id, 'completed', brian);
+
+  // Bulk mass-complete SKIPS blocked tasks and reports the count.
+  const free = await createTask(app, { title: 'Dep free', source: 'manual' });
+  const res = await app.inject({
+    method: 'POST', url: '/tasks/bulk', headers: auth(brian),
+    payload: { ids: [b.id, free.id], set: { status: 'completed' } }, // b is blocked by c
+  });
+  assert.equal(res.json().blocked, 1);
+  assert.equal(res.json().updated, 1);
 });

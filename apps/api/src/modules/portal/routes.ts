@@ -9,6 +9,7 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
 import { refreshEnrichmentGaps } from '../crm/service.ts';
+import { cascadeUnblock } from '../tasks/service.ts';
 import { computeQuote } from '../pricing/service.ts';
 import { todayChicago, upcomingEstimateDates } from '../tax/deadlines.ts';
 
@@ -143,12 +144,18 @@ export function registerPortalRoutes(app: FastifyInstance): void {
   app.post<{ Params: { taskId: string } }>('/portal/todos/:taskId/complete', scoped, async (request) => {
     const client = request.client!;
     const taskId = z.uuid().parse(request.params.taskId);
+    // v4.6: blocked tasks cannot complete — from the portal either.
     const res = await app.db.query(
       `UPDATE tasks SET status = 'completed', completed_at = now(), updated_at = now()
-       WHERE id = $1 AND contact_id = $2 AND client_visible AND status IN ('not_started', 'in_progress', 'waiting_for_input')`,
+       WHERE id = $1 AND contact_id = $2 AND client_visible AND status IN ('not_started', 'in_progress', 'waiting_for_input')
+         AND NOT EXISTS (
+           SELECT 1 FROM task_dependencies d JOIN tasks bt ON bt.id = d.blocker_task_id
+           WHERE d.blocked_task_id = tasks.id AND bt.status NOT IN ('completed', 'cancelled')
+         )`,
       [taskId, client.contactId]
     );
     if (res.rowCount === 0) throw new AppError(404, 'not_found', 'To-do not found.');
+    await cascadeUnblock(app, taskId);
     await writeAudit(app.db, {
       actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
       action: 'task.client_completed', objectType: 'task', objectId: taskId, contactId: client.contactId,

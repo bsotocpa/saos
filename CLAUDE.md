@@ -1,7 +1,10 @@
 # CLAUDE.md — SAOS Build (Soto Accounting Operating System)
 
 ## Source of Truth
-- `SAOS_Fable_Master_Prompt_v4.5.md` and `SAOS_Onboarding_Forms_Spec_v4.5.md` are the spec (all addendum sections are equal in authority to the main body). The Zoho reference screenshots in docs/reference/ are the UI benchmark for the task system — match their density and capability, not the thin v1 views. When code and spec conflict, the spec wins. When the spec is ambiguous, ask Brian — do not invent requirements.
+- `SAOS_Fable_Master_Prompt_v4.6.md` and `SAOS_Onboarding_Forms_Spec_v4.6.md` are the spec (all addendum sections are equal in authority to the main body). The Zoho reference screenshots in docs/reference/ are the UI benchmark for the task system — match their density and capability, not the thin v1 views.
+- **Task dependencies are first-class**: tasks support "blocked by"; blocked tasks are visually distinct and cannot complete before their blockers; completing a blocker cascades unblock notifications. Resolution engagements auto-chain oldest-year-first.
+- **Bundles compose from the price book only** — a bundle is price_book items + discount rules + optional components; no ad-hoc prices inside bundles. The prior-year surcharge (+$100/return, years >2 back) applies automatically wherever a prior-year return is quoted, bundled or not.
+- **Prior-year returns derive their filing method from the year**: current + 2 prior → e-file/KBA lane; older → paper lane with wet signature and certified-mail tracking. Never route an old year to e-file. When code and spec conflict, the spec wins. When the spec is ambiguous, ask Brian — do not invent requirements.
 - Build in phase order (Phase 1 → 5 per the roadmap). Do not start a later-phase feature to avoid a hard problem in the current phase.
 
 ## Workflow Orchestration

@@ -619,6 +619,16 @@ tasks = work). Trello JSONs arriving in migration-data this week.
         Trello/Zoho migration maps their historical items to unassigned
         (importer already does; ruling documented in trello.ts) or Brian
 
+## M25.6 — Task dependencies (v4.6 — lands inside the task-system work; schema)
+- [ ] task_dependencies table (blocked_task_id ↔ blocker_task_id, no
+      self/cycles); blocked tasks CANNOT complete before their blockers
+      (status route + portal check-off + bulk both refuse); completing or
+      cancelling a blocker cascades unblock notifications to assignees
+- [ ] Blocked tasks visually distinct (list badge + kanban); manage
+      blockers from the task modal; open_blockers in search payload
+- [ ] Prove it: block/refuse/unblock-notify/cycle-reject tests
+      (oldest-year-first auto-chaining is resolution-lane scope → M26.5)
+
 ## M26 — Seven v4.3 operational flows (consume M24+M25)
 - [ ] 1. E-file rejects (Filed→Rejected re-queue, perfection-period
       clocks: 10d business/5d individual) + notice tickets w/ client-
@@ -645,6 +655,38 @@ tasks = work). Trello JSONs arriving in migration-data this week.
 - [ ] Prove it: per-flow integration tests incl. reject re-queue clock,
       group envelope bundling, ladder timing, letter-gated late fee
       refusal, close cross-check both branches, Day-60 surfacing
+
+## M26.5 — Tax resolution lane + Bundle builder (v4.6 — queued after the seven flows)
+- [ ] Resolution intake: unfiled-years multi-select per return type
+      (6-year norm default, per-client override) + per-year books-exist
+      matrix (Partial/No pairs a reconstruction engagement); quote accept
+      spawns ONE engagement per year per return type + reconstruction
+      pairs, auto-chained oldest-year-first via task dependencies
+- [ ] Authorization gating: 8821 Docuseal at onboarding (before document
+      work; signature auto-creates the transcript-request task); 2848
+      swaps in per-engagement when representation begins, scope years
+      tracked
+- [ ] Prior-year deadline mode: refund-statute expiry countdown (3 years
+      from original due date — derives from THE_TABLE, never hardcoded),
+      6-year lookback boundary, SFR-risk flag; client portal shows the
+      client's own statute clocks
+- [ ] Filing-method derivation (hard rule): current + 2 prior years →
+      e-file/KBA lane; older → paper lane (print-packet checklist, wet
+      8879, certified-mail task w/ tracking + mailed-date, distinct
+      closing checklist). System derives; staff never choose
+- [ ] Resolution engagement types: penalty abatement + installment
+      agreement (price book, seed Specialized $500 each ⚠ confirm),
+      2848 required
+- [ ] Bundle builder: bundles compose from price_book items ONLY (fixed +
+      optional components, percent/fixed discount or manual override,
+      effective-dated + versioned); sellable (quote builder + shareable
+      link + campaign attribution); +$100/return surcharge >2 years back
+      AUTOMATIC wherever prior-year returns are quoted; seed S-Corp
+      Conversion Package + Tax Resolution Package
+- [ ] Prove it: per-year spawn + dependency chain e2e; paper-lane
+      derivation table test; statute-clock derivation tests; bundle
+      price = components − discount (no ad-hoc literals); surcharge
+      auto-applies bundled AND unbundled
 
 ## M27 — Remaining v4.4 modules (task system shipped in M25)
 - [ ] Quote builder: live-quote from price book → quote record on lead →

@@ -9,8 +9,8 @@ import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import {
-  clientTasks, createTask, instantiateTemplate, myTasks, ownerRollup, searchTasks, setTaskStatus,
-  TASK_SELECT, teamWorkload,
+  addTaskDependency, clientTasks, createTask, instantiateTemplate, myTasks, ownerRollup,
+  removeTaskDependency, searchTasks, setTaskStatus, TASK_SELECT, teamWorkload,
 } from './service.ts';
 import type { TaskFilters, TaskStatus } from './service.ts';
 
@@ -302,16 +302,53 @@ export function registerTaskRoutes(app: FastifyInstance): void {
     return { status: 'ok' };
   });
 
+  // ── dependencies (v4.6: "blocked by") ──────────────────────────────────────
+  app.get<{ Params: { id: string } }>('/tasks/:id/dependencies', read, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const blockers = await app.db.query(
+      `SELECT bt.id, bt.title, bt.status FROM task_dependencies d
+       JOIN tasks bt ON bt.id = d.blocker_task_id WHERE d.blocked_task_id = $1 ORDER BY bt.created_at`,
+      [id]
+    );
+    const blocking = await app.db.query(
+      `SELECT t.id, t.title, t.status FROM task_dependencies d
+       JOIN tasks t ON t.id = d.blocked_task_id WHERE d.blocker_task_id = $1 ORDER BY t.created_at`,
+      [id]
+    );
+    return { blockers: blockers.rows, blocking: blocking.rows };
+  });
+
+  app.post<{ Params: { id: string } }>('/tasks/:id/dependencies', manage, async (request, reply) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ blockerTaskId: z.uuid() }).parse(request.body);
+    await addTaskDependency(app, id, b.blockerTaskId, request.staff!);
+    return reply.code(201).send({ status: 'ok' });
+  });
+
+  app.delete<{ Params: { id: string; blockerId: string } }>('/tasks/:id/dependencies/:blockerId', manage, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const blockerId = z.uuid().parse(request.params.blockerId);
+    await removeTaskDependency(app, id, blockerId, request.staff!);
+    return { status: 'ok' };
+  });
+
   // Bulk operations (list-view multi-select). Status changes route through
-  // setTaskStatus one-by-one so ladder + recurrence semantics hold.
+  // setTaskStatus one-by-one so ladder + recurrence + blocked semantics hold;
+  // a blocked task is SKIPPED (reported), never silently completed.
   app.post('/tasks/bulk', manage, async (request) => {
     const b = BulkBody.parse(request.body);
     const actor = request.staff!;
     let updated = 0;
+    let blocked = 0;
     if (b.set.status) {
       for (const id of b.ids) {
-        await setTaskStatus(app, id, b.set.status, actor);
-        updated++;
+        try {
+          await setTaskStatus(app, id, b.set.status, actor);
+          updated++;
+        } catch (err) {
+          if ((err as { code?: string }).code === 'task_blocked') blocked++;
+          else throw err;
+        }
       }
     }
     const sets: string[] = [];
@@ -336,9 +373,9 @@ export function registerTaskRoutes(app: FastifyInstance): void {
     await writeAudit(app.db, {
       actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
       action: 'task.bulk_updated',
-      details: { count: b.ids.length, set: Object.keys(b.set) },
+      details: { count: b.ids.length, set: Object.keys(b.set), blocked },
     });
-    return { updated };
+    return { updated, blocked };
   });
 
   app.post<{ Params: { id: string } }>('/tasks/:id/duplicate', manage, async (request, reply) => {

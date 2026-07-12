@@ -130,7 +130,13 @@ export default function TasksPage() {
 
   // ── mutations ────────────────────────────────────────────────────────────
   const setStatus = async (id: string, status: TaskStatus) => {
-    await api(`/tasks/${id}/status`, { method: 'PATCH', body: { status } });
+    try {
+      setError('');
+      await api(`/tasks/${id}/status`, { method: 'PATCH', body: { status } });
+    } catch (err) {
+      // v4.6: completing a blocked task is refused — say why, don't swallow it.
+      setError((err as Error).message);
+    }
     refresh();
   };
   const patchTask = async (id: string, body: Record<string, unknown>) => {
@@ -147,7 +153,8 @@ export default function TasksPage() {
   };
   const bulk = async (set: Record<string, unknown>) => {
     if (selected.size === 0) return;
-    await api('/tasks/bulk', { method: 'POST', body: { ids: [...selected], set } });
+    const r = await api<{ updated: number; blocked?: number }>('/tasks/bulk', { method: 'POST', body: { ids: [...selected], set } });
+    if (r.blocked) setError(`${r.blocked} task${r.blocked === 1 ? '' : 's'} skipped — blocked by open tasks.`);
     refresh();
   };
 
@@ -510,6 +517,7 @@ function ListView(props: {
                 <button type="button" style={{ all: 'unset', cursor: 'pointer', fontWeight: 600 }} title={t.description ?? t.title} onClick={() => props.onEdit(t)}>
                   {t.title}
                 </button>
+                {t.open_blockers > 0 ? <span className="badge warn" style={{ marginLeft: 6 }} title={`Blocked by ${t.open_blockers} open task${t.open_blockers === 1 ? '' : 's'}`}>⛔ blocked</span> : null}
                 {t.client_visible ? <span className="badge" style={{ marginLeft: 6 }}>client</span> : null}
                 {t.sop_link ? <a className="small" style={{ marginLeft: 6 }} href={t.sop_link} target="_blank" rel="noreferrer" title="How to do this">SOP</a> : null}
               </td>
@@ -649,6 +657,7 @@ function KanbanView(props: {
                   {t.due_date ? `due ${t.due_date}` : 'no due date'}
                   {isOverdue(t) ? <span className="badge danger" style={{ marginLeft: 4 }}>overdue</span> : null}
                 </div>
+                {t.open_blockers > 0 ? <span className="badge warn" style={{ marginRight: 4 }}>⛔ blocked</span> : null}
                 {t.priority > 0 ? <span className={`badge ${t.priority === 2 ? 'danger' : 'warn'}`}>{PRIORITY_LABEL[t.priority]}</span> : null}
                 {opts ? (
                   <select

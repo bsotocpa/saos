@@ -33,6 +33,7 @@ export interface Task {
   checklist_total: number;
   checklist_done: number;
   comment_count: number;
+  open_blockers: number;
 }
 
 export type TaskStatus = 'not_started' | 'in_progress' | 'waiting_for_input' | 'completed' | 'deferred' | 'cancelled';
