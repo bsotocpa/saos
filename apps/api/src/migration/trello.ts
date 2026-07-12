@@ -52,7 +52,10 @@ export async function importTrelloBoard(app: FastifyInstance, data: TrelloExport
     columnByList.set(list.id, columnId);
   }
 
-  // Member full names → staff ids.
+  // Member full names → staff ids. Names with no active staff match stay
+  // UNASSIGNED by design — Brian's July 11 ruling: historical Zoho/Trello
+  // owners not in the SAOS roster (Hector Pardo, Michelle Zhang) get no
+  // accounts; their items land unassigned (or Brian reassigns after import).
   const staffByName = new Map<string, string>();
   const staff = await app.db.query<{ id: string; full_name: string }>(`SELECT id, full_name FROM staff WHERE is_active`);
   for (const s of staff.rows) staffByName.set(s.full_name.toLowerCase(), s.id);

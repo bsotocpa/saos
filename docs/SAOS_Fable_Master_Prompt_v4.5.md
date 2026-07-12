@@ -535,6 +535,7 @@ Calendar-year filers; all deadlines roll to next business day per IRS rules.
 | 1040 expat (abroad on Apr 15) | Jun 15 (automatic) | Oct 15 |
 | FBAR (FinCEN 114) | Apr 15 | Oct 15 (automatic) |
 | Fiscal-year filers | 15th day of month 4 after year-end (month 5 for 990) | +6 months |
+| **AG990-IL (IL Attorney General charity annual report)** | Within 6 months of FYE (Jun 30 for calendar-year orgs) | 60-day extensions available on written request (up to two) |
 
 **Estimated payments**: Q1 Apr 15 · Q2 Jun 15 · Q3 Sep 15 · Q4 Jan 15. Shown on the staff deadline board alongside return deadlines. **Client portal: estimate due dates are a per-client toggle (default ON)** in notification settings — clients who don't want estimate reminders turn them off; the staff board always shows them.
 
@@ -699,13 +700,13 @@ Owner/assignee · Subject · Due date · **linked Contact AND linked Business/Ac
 | Reports / Analytics / Forecasts | Reports & KPIs (v4.4); revenue forecast = report, not module |
 | **Sales Orders, Purchase Orders, Vendors, CPQ, Social, Visits** | **OUT OF SCOPE — inventory-commerce and social modules a CPA firm doesn't need; CPQ's conditional pricing is covered by price-book bundle rules** |
 
-## LIVE-BOARD DISCOVERIES (from the Zoho screenshots — confirmations needed, flagged not assumed)
-1. **AG990-IL (Illinois Attorney General charity annual report)** appears as a live deadline task. This is a state charity filing NOT in the deadline table. PENDING BRIAN CONFIRM: add AG990-IL to the compliance calendar with its due-date rule (statutorily within 6 months of FYE for IL charities; confirm the rule the firm works to) — applies to the nonprofit client cluster.
-2. **Staff roster gap**: task owners "Hector Pardo" and "Michelle Zhang" appear on live payroll/1099 work but are absent from the SAOS staff table. PENDING BRIAN CONFIRM: roles and access scopes for both before seeding.
-3. Confirmed live patterns now encoded: meeting→task auto-creation, "Waiting for input" as a first-class state, recurring compliance filings (ST-1, 1099 season, QBO edit cycles) as repeat tasks.
+## LIVE-BOARD DISCOVERIES (resolved July 11)
+1. **AG990-IL — CONFIRMED, IN ARCHITECTURE**: added to the authoritative deadline table above. Due within 6 months of FYE (Jun 30 for calendar-year orgs); IL AG grants 60-day extensions on written request. Applies to every client with an IL charitable registration (the nonprofit cluster) — the compliance calendar derives it per-client from FYE, and it appears on the deadline dashboard alongside the 990. Note for build: AG990-IL is a STATE charity filing independent of the federal 990 — a client can be extended federally and still owe the AG990-IL on its own clock.
+2. **Hector Pardo / Michelle Zhang — RESOLVED: do not add.** Staff roster stays as the existing table; ignore these Zoho task owners in any Trello/Zoho migration mapping (map their historical items to unassigned or to Brian, do not create accounts).
+3. Confirmed live patterns now encoded: meeting→task auto-creation, "Waiting for input" as a first-class state, recurring compliance filings (ST-1, 1099 season, QBO edit cycles, AG990-IL annual) as repeat tasks.
 
 ## v4.5 CHANGELOG (July 11, 2026)
 1. Task System UX spec at Zoho parity: four view types, saved/shared views, full filter rail, dual contact+business lookups, reminder + recurrence, Save-and-New, bulk ops, admin-editable layouts
 2. Status set updated — "Waiting for input" added and wired to the escalation ladder; "Deferred" added
 3. Module parity map: Sales/Purchase Orders, Vendors, CPQ, Social, Visits formally out of scope
-4. Flagged for Brian: AG990-IL deadline rule; Hector Pardo + Michelle Zhang roster entries
+4. AG990-IL added to the deadline table (6 months post-FYE, independent of federal 990 extensions); Hector Pardo + Michelle Zhang excluded from roster — historical migration items map to unassigned/Brian

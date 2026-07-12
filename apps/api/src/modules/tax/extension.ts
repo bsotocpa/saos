@@ -16,6 +16,7 @@ import {
   addDays,
   daysBetween,
   extendedDeadline,
+  nextAg990Deadline,
   originalDeadline,
   upcomingEstimateDates,
   type DeadlineReturnType,
@@ -392,6 +393,35 @@ export async function deadlineDashboard(app: FastifyInstance, today: string) {
     byDeadline[e.deadline]!.total++;
     if (e.atRisk) byDeadline[e.deadline]!.atRisk++;
   }
+  // v4.5: AG990-IL tracks SEPARATELY for every IL-registered charity —
+  // derived per client from FYE, on its own clock (a federally-extended 990
+  // does not move it). Nonprofit cluster = IL businesses typed nonprofit.
+  const charities = await app.db.query<{
+    business_id: string; name: string; fiscal_year_end_month: number;
+    first_name: string | null; last_name: string | null;
+  }>(
+    `SELECT DISTINCT ON (b.id) b.id AS business_id, b.name, b.fiscal_year_end_month,
+            c.first_name, c.last_name
+     FROM businesses b
+     LEFT JOIN business_members m ON m.business_id = b.id
+     LEFT JOIN contacts c ON c.id = m.contact_id
+     WHERE b.entity_type = 'nonprofit' AND b.state = 'IL'
+     ORDER BY b.id, c.last_name NULLS LAST`
+  );
+  const ag990 = charities.rows
+    .map((r) => {
+      const next = nextAg990Deadline(today, r.fiscal_year_end_month);
+      return {
+        businessId: r.business_id,
+        business: r.name,
+        client: r.first_name ? `${r.first_name} ${r.last_name}` : null,
+        fiscalYear: next.fiscalYear,
+        deadline: next.date,
+        daysLeft: daysBetween(today, next.date),
+      };
+    })
+    .sort((a, b) => a.deadline.localeCompare(b.deadline));
+
   return {
     today,
     engagements,
@@ -401,6 +431,7 @@ export async function deadlineDashboard(app: FastifyInstance, today: string) {
     // v4.3: the staff board ALWAYS shows estimated-payment dates (the
     // client-side toggle only affects the portal + reminder emails).
     estimates: upcomingEstimateDates(today),
+    ag990,
   };
 }
 

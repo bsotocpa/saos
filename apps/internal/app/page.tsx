@@ -15,7 +15,12 @@ interface Executive {
   arAging: Array<{ bucket: string; count: number; owed_cents: string }>;
   healthDistribution: Array<{ band: string; count: number }>;
   staffCapacity: Array<{ full_name: string; role: string; open_tasks: number; open_returns: number }>;
-  deadlines: { atRiskCount: number; extendedCount: number; next: Array<{ client: string; deadline: string; daysLeft: number }> };
+  deadlines: {
+    atRiskCount: number;
+    extendedCount: number;
+    next: Array<{ client: string; deadline: string; daysLeft: number }>;
+    ag990Next: Array<{ business: string; deadline: string; daysLeft: number }>;
+  };
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -117,6 +122,14 @@ export default function ExecutivePage() {
           {data.deadlines.next.slice(0, 3).map((d, i) => (
             <p key={i} className="small muted">{d.client} · {d.deadline} ({d.daysLeft}d)</p>
           ))}
+          {data.deadlines.ag990Next.length > 0 ? (
+            <>
+              <h2 style={{ marginTop: 8 }}>AG990-IL (own clock)</h2>
+              {data.deadlines.ag990Next.map((d, i) => (
+                <p key={i} className="small muted">{d.business} · {d.deadline} ({d.daysLeft}d)</p>
+              ))}
+            </>
+          ) : null}
         </section>
 
         <section className="card span">

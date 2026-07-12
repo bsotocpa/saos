@@ -11,7 +11,7 @@ import { buildServer } from '../src/server.ts';
 import type { Mailer, MailMessage } from '../src/mailer.ts';
 import { createTestConfig, makeStaff, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
-import { extendedDeadline, originalDeadline, addDays, daysBetween } from '../src/modules/tax/deadlines.ts';
+import { extendedDeadline, nextAg990Deadline, originalDeadline, addDays, daysBetween } from '../src/modules/tax/deadlines.ts';
 
 let app: FastifyInstance;
 let config: Config;
@@ -105,6 +105,8 @@ test('deadline derivation: table-driven, calendar AND fiscal year (no hardcoded 
     ['990', 2026, 9, '2027-02-16', '2027-08-16'],            // 990 = month 5 after FYE
     ['1065', 2026, 3, '2026-06-15', '2026-12-15'],
     ['1120s', 2026, 11, '2027-02-16', '2027-08-16'],
+    // v4.5: AG990-IL — end of FYE+6 (NOT the 15th), 60-day AG extension.
+    ['ag990il', 2025, 12, '2026-06-30', '2026-08-31'],       // +60d = Aug 29 Sat → Mon
     // W-7 has no standalone deadline.
     ['w7_itin', 2025, 12, null, null],
   ];
@@ -298,6 +300,34 @@ test('deadline dashboard: countdowns, extended + at-risk counts', async () => {
 });
 
 // ── M24 (v4.3 addendum) ──────────────────────────────────────────────────────
+
+test('AG990-IL (v4.5): state charity clock — FYE+6 month-end, 60-day AG extensions, independent of the 990', async () => {
+  // Fiscal-year charity (FYE Jun): due Dec 31; +60 days = Mar 1.
+  assert.equal(originalDeadline('ag990il', 2026, 6), '2026-12-31');
+  assert.equal(extendedDeadline('ag990il', 2026, 6), '2027-03-01');
+  // Second (final) AG extension = +120 days; requests clamp at two.
+  assert.equal(extendedDeadline('ag990il', 2025, 12, 2), '2026-10-28');
+  assert.equal(extendedDeadline('ag990il', 2025, 12, 9), '2026-10-28');
+  // INDEPENDENT clocks: the federal 990's Nov 15 extension never moves this.
+  assert.notEqual(extendedDeadline('ag990il', 2025, 12), extendedDeadline('990', 2025, 12));
+  // Per-client next-occurrence helper (what the dashboard derives from FYE).
+  assert.deepEqual(nextAg990Deadline('2026-07-12', 12), { fiscalYear: 2026, date: '2027-06-30' });
+  assert.deepEqual(nextAg990Deadline('2026-05-01', 12), { fiscalYear: 2025, date: '2026-06-30' });
+
+  // Deadline dashboard: every IL-registered charity gets its own AG990-IL row.
+  await app.db.query(
+    `INSERT INTO businesses (name, entity_type, state, fiscal_year_end_month)
+     VALUES ('Synthetic Charity Org', 'nonprofit', 'IL', 12)`
+  );
+  const res = await app.inject({
+    method: 'GET', url: '/dashboards/deadlines?asOf=2026-08-20', headers: auth(preparer),
+  });
+  assert.equal(res.statusCode, 200, res.body);
+  const row = res.json().ag990.find((r: { business: string }) => r.business === 'Synthetic Charity Org');
+  assert.ok(row, 'IL charity tracked on the board');
+  assert.equal(row.deadline, '2027-06-30');
+  assert.equal(row.daysLeft, daysBetween('2026-08-20', '2027-06-30'));
+});
 
 test('FBAR: automatic extension keeps it OFF the T-21 decision list', async () => {
   const fb = await makeClient('Fbar', 'fbar-client@example.test');

@@ -69,6 +69,8 @@ export async function executiveDashboard(app: FastifyInstance) {
       atRiskCount: deadlines.atRiskCount,
       extendedCount: deadlines.extendedCount,
       next: deadlines.engagements.filter((e) => e.daysLeft !== null && e.daysLeft >= 0).slice(0, 5),
+      // v4.5: AG990-IL rows for the IL charity cluster, on their own clock.
+      ag990Next: deadlines.ag990.slice(0, 3),
     },
   };
 }

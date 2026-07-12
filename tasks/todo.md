@@ -608,8 +608,16 @@ tasks = work). Trello JSONs arriving in migration-data this week.
       ladder D3 + highest-rung-only + D30 rollup + date guard, recurrence
       spawn + no double-spawn, reminder exactly-once, filter-rail combos,
       saved-view sharing/ownership, bulk ops, duplicate/follow-up/PATCH)
-- ⛔ PENDING BRIAN: AG990-IL deadline rule · Hector Pardo + Michelle Zhang
-      roster entries ("don't seed team beyond the current table yet")
+- [x] Live-board flags RESOLVED (corrected v4.5 master prompt, July 11):
+      · AG990-IL folded into the deadline table (M24 artifact): return_type
+        gains 'ag990il' (migration 0014); THE_TABLE row = last day of
+        FYE+6 (Jun 30 calendar-year), 60-day AG extensions on written
+        request clamped at two, INDEPENDENT of the federal 990's extension
+        clock; deadline dashboard derives a per-client AG990-IL row from
+        FYE for every IL-registered nonprofit — table-driven tests added
+      · Hector Pardo / Michelle Zhang: DO NOT create — roster stays as-is;
+        Trello/Zoho migration maps their historical items to unassigned
+        (importer already does; ruling documented in trello.ts) or Brian
 
 ## M26 — Seven v4.3 operational flows (consume M24+M25)
 - [ ] 1. E-file rejects (Filed→Rejected re-queue, perfection-period

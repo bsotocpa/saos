@@ -16,17 +16,26 @@
 export type DeadlineReturnType =
   | '1040' | '1065' | '1120s' | '1120' | '990' | '990ez'
   | '1120c' | '1120f' | '1120f_foreign' | '1120h' | '1120pol'
-  | '1041' | '1040_expat' | 'fbar' | 'w7_itin';
+  | '1041' | '1040_expat' | 'fbar' | 'w7_itin' | 'ag990il';
 
 interface DeadlineRule {
   /** Original due = 15th of (FYE month + N); null = no standalone deadline. */
   monthsAfterYearEnd: number | null;
+  /** Due the LAST day of (FYE month + N), not the 15th (AG990-IL). */
+  dueEndOfMonth?: boolean;
   /** Calendar-year ORIGINAL override 'MM-DD' (expat + foreign-corp June 15). */
   calendarOriginal?: string;
   /** Calendar-year EXTENDED override 'MM-DD' (1041's Sep 30 breaks +6). */
   calendarExtended?: string;
   /** Extension needs no filing (FBAR): keep it OFF extension decision lists. */
   extensionAutomatic?: boolean;
+  /**
+   * Extension = original + N days per request instead of the federal +6
+   * months (AG990-IL: 60-day AG extensions, up to maxExtensions). A filing
+   * on this clock is INDEPENDENT of the federal 990's extension state.
+   */
+  extensionDays?: number;
+  maxExtensions?: number;
 }
 
 /** v4.3 AUTHORITATIVE TAX DEADLINE TABLE — one row per spec row. */
@@ -46,6 +55,11 @@ const THE_TABLE: Record<DeadlineReturnType, DeadlineRule> = {
   '1040_expat':    { monthsAfterYearEnd: 4, calendarOriginal: '06-15', calendarExtended: '10-15' }, // Jun 15 auto → Oct 15
   fbar:            { monthsAfterYearEnd: 4, extensionAutomatic: true },        // Apr 15 → Oct 15 AUTOMATIC
   w7_itin:         { monthsAfterYearEnd: null },                               // filed with the return
+  // v4.5: IL Attorney General charity annual report. STATE filing on its own
+  // clock — a federally-extended 990 does NOT move this date. Due the last
+  // day of the 6th month after FYE (Jun 30 for calendar-year orgs); the AG
+  // grants 60-day extensions on written request, up to two.
+  ag990il:         { monthsAfterYearEnd: 6, dueEndOfMonth: true, extensionDays: 60, maxExtensions: 2 },
 };
 
 /** Estimated-payment due dates (staff board always; client display is toggled). */
@@ -117,6 +131,13 @@ function fifteenthOf(year: number, monthOffsetFromJan1: number): string {
   return `${y}-${String(m).padStart(2, '0')}-15`;
 }
 
+function endOfMonthOf(year: number, monthOffsetFromJan1: number): string {
+  const y = year + Math.floor((monthOffsetFromJan1 - 1) / 12);
+  const m = ((monthOffsetFromJan1 - 1) % 12) + 1;
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+}
+
 /**
  * Original statutory due date (YYYY-MM-DD, business-day rolled).
  * @param fiscalYearEndMonth 1–12; 12 = calendar-year filer.
@@ -131,17 +152,28 @@ export function originalDeadline(
   if (fiscalYearEndMonth === 12 && rule.calendarOriginal) {
     return rollToBusinessDay(`${taxYear + 1}-${rule.calendarOriginal}`);
   }
-  return rollToBusinessDay(fifteenthOf(taxYear, fiscalYearEndMonth + rule.monthsAfterYearEnd));
+  const anchor = rule.dueEndOfMonth ? endOfMonthOf : fifteenthOf;
+  return rollToBusinessDay(anchor(taxYear, fiscalYearEndMonth + rule.monthsAfterYearEnd));
 }
 
-/** Extended due date (business-day rolled). Fiscal filers: original + 6 months. */
+/**
+ * Extended due date (business-day rolled). Fiscal filers: original + 6 months.
+ * Day-based rules (AG990-IL): original + extensionDays per granted request,
+ * clamped to the rule's maximum — pass `extensionsGranted` for the second.
+ */
 export function extendedDeadline(
   returnType: DeadlineReturnType,
   taxYear: number,
-  fiscalYearEndMonth = 12
+  fiscalYearEndMonth = 12,
+  extensionsGranted = 1
 ): string | null {
   const rule = THE_TABLE[returnType];
   if (rule.monthsAfterYearEnd === null) return null;
+  if (rule.extensionDays) {
+    const original = originalDeadline(returnType, taxYear, fiscalYearEndMonth)!;
+    const n = Math.min(Math.max(extensionsGranted, 1), rule.maxExtensions ?? 1);
+    return rollToBusinessDay(addDays(original, rule.extensionDays * n));
+  }
   if (fiscalYearEndMonth === 12 && rule.calendarExtended) {
     // Calendar FYE = December of taxYear → every override date falls in the
     // FOLLOWING calendar year (1041's Sep 30, expat's Oct 15).
@@ -159,6 +191,23 @@ export function isExtensionAutomatic(returnType: DeadlineReturnType): boolean {
 export const AUTOMATIC_EXTENSION_TYPES: DeadlineReturnType[] = (
   Object.keys(THE_TABLE) as DeadlineReturnType[]
 ).filter((t) => THE_TABLE[t].extensionAutomatic === true);
+
+/**
+ * Next upcoming AG990-IL due date on/after `from` for a charity with the
+ * given FYE month (v4.5: derived per client; independent of the federal 990).
+ */
+export function nextAg990Deadline(
+  from: string,
+  fiscalYearEndMonth = 12
+): { fiscalYear: number; date: string } {
+  const year = Number(from.slice(0, 4));
+  for (let y = year - 2; y <= year + 1; y++) {
+    const date = originalDeadline('ag990il', y, fiscalYearEndMonth)!;
+    if (date >= from) return { fiscalYear: y, date };
+  }
+  // Unreachable: the y = year + 1 candidate is always in the future.
+  return { fiscalYear: year, date: originalDeadline('ag990il', year, fiscalYearEndMonth)! };
+}
 
 /** The next `count` estimated-payment dates on/after `from` (business-day rolled). */
 export function upcomingEstimateDates(
