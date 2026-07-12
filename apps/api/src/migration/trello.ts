@@ -98,11 +98,11 @@ export async function importTrelloBoard(app: FastifyInstance, data: TrelloExport
     const { rows } = await app.db.query<{ id: string }>(
       `INSERT INTO tasks (title, description, assigned_staff_id, due_date, status, completed_at,
                           source, source_type, source_id, board_column_id)
-       VALUES ($1, $2, $3, $4, $5::task_status, CASE WHEN $5::text = 'done' THEN now() END, 'import', 'trello', $6, $7)
+       VALUES ($1, $2, $3, $4, $5::task_status, CASE WHEN $5::text = 'completed' THEN now() END, 'import', 'trello', $6, $7)
        RETURNING id`,
       [
         card.name, card.desc || null, assignee, card.due ? card.due.slice(0, 10) : null,
-        done ? 'done' : 'open', card.id, columnId,
+        done ? 'completed' : 'not_started', card.id, columnId,
       ]
     );
     result.tasksCreated++;

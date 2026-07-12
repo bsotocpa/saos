@@ -9,7 +9,9 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTask, closeTasksForSource } from '../src/modules/tasks/service.ts';
+import {
+  advanceDate, closeTasksForSource, createTask, runLadderJob, runTaskReminderSweep, setTaskStatus,
+} from '../src/modules/tasks/service.ts';
 import { refreshEnrichmentGaps } from '../src/modules/crm/service.ts';
 import { importTrelloBoard } from '../src/migration/trello.ts';
 import { generateToken } from '../src/crypto.ts';
@@ -92,7 +94,7 @@ test('views: My Tasks, owner rollup (approvals), team workload', async () => {
   const wl = await app.inject({ method: 'GET', url: '/tasks/workload', headers: auth(rene) });
   assert.equal(wl.statusCode, 200, wl.body);
   const brianRow = wl.json().workload.find((w: { id: string }) => w.id === brian.id);
-  assert.ok(brianRow.open >= 2);
+  assert.ok(brianRow.not_started >= 2);
 });
 
 test('checklist template instantiates per client with items', async () => {
@@ -171,7 +173,7 @@ test('migration representative: IRS notice creates an owned ticket that closes o
     [noticeId]
   );
   assert.equal(ticket.rows.length, 1, 'notice = owned ticket-task (v4.3 flow 1)');
-  assert.equal(ticket.rows[0].status, 'open');
+  assert.equal(ticket.rows[0].status, 'not_started');
   assert.ok(ticket.rows[0].due_date, 'ticket carries the response deadline');
 
   const resolve = await app.inject({
@@ -180,7 +182,7 @@ test('migration representative: IRS notice creates an owned ticket that closes o
   });
   assert.equal(resolve.statusCode, 200, resolve.body);
   const closed = await app.db.query(`SELECT status FROM tasks WHERE source_type = 'irs_notice' AND source_id = $1`, [noticeId]);
-  assert.equal(closed.rows[0].status, 'done', 'resolving the notice closes its ticket');
+  assert.equal(closed.rows[0].status, 'completed', 'resolving the notice closes its ticket');
 });
 
 test('migration representative: enrichment gaps live as ONE task that follows the data', async () => {
@@ -190,7 +192,7 @@ test('migration representative: enrichment gaps live as ONE task that follows th
 
   await refreshEnrichmentGaps(app.db, gapId);
   const open = await app.db.query<{ id: string; description: string }>(
-    `SELECT id, description FROM tasks WHERE contact_id = $1 AND source_type = 'enrichment' AND status = 'open'`,
+    `SELECT id, description FROM tasks WHERE contact_id = $1 AND source_type = 'enrichment' AND status = 'not_started'`,
     [gapId]
   );
   assert.equal(open.rows.length, 1, 'gap task created');
@@ -200,7 +202,7 @@ test('migration representative: enrichment gaps live as ONE task that follows th
   await app.db.query(`UPDATE contacts SET email = 'gappy@example.test', phone = '+13125550188' WHERE id = $1`, [gapId]);
   await refreshEnrichmentGaps(app.db, gapId);
   const closed = await app.db.query(`SELECT status FROM tasks WHERE id = $1`, [open.rows[0]!.id]);
-  assert.equal(closed.rows[0].status, 'done');
+  assert.equal(closed.rows[0].status, 'completed');
 });
 
 test('Trello importer: board → columns → tasks, idempotent rerun', async () => {
@@ -229,7 +231,7 @@ test('Trello importer: board → columns → tasks, idempotent rerun', async () 
   const doneCard = await app.db.query(
     `SELECT status, due_date FROM tasks WHERE source_type = 'trello' AND source_id = 'c2'`
   );
-  assert.equal(doneCard.rows[0].status, 'done', 'cards on done-ish lists arrive completed');
+  assert.equal(doneCard.rows[0].status, 'completed', 'cards on done-ish lists arrive completed');
   const dated = await app.db.query(`SELECT due_date::text AS d FROM tasks WHERE source_type = 'trello' AND source_id = 'c1'`);
   assert.equal(dated.rows[0].d, '2026-08-01');
 
@@ -244,11 +246,211 @@ test('intern scope: tasks.execute changes status only on OWN tasks', async () =>
   const foreign = await createTask(app, { title: 'Not intern job', assignedStaffId: brian.id, source: 'manual' });
 
   const ok = await app.inject({
-    method: 'PATCH', url: `/tasks/${own.id}/status`, headers: auth(intern), payload: { status: 'done' },
+    method: 'PATCH', url: `/tasks/${own.id}/status`, headers: auth(intern), payload: { status: 'completed' },
   });
   assert.equal(ok.statusCode, 200, ok.body);
   const refused = await app.inject({
-    method: 'PATCH', url: `/tasks/${foreign.id}/status`, headers: auth(intern), payload: { status: 'done' },
+    method: 'PATCH', url: `/tasks/${foreign.id}/status`, headers: auth(intern), payload: { status: 'completed' },
   });
   assert.equal(refused.statusCode, 403);
+});
+
+// ── v4.5 additions: waiting/ladder, recurrence, reminders, search, views ─────
+
+test('waiting_for_input stamps waiting_since; leaving clears it and resets the rung', async () => {
+  const wanda = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Waiting', email: 'waiting@example.test' });
+  const t = await createTask(app, { title: 'Need the K-1', contactId: wanda.id, source: 'manual' });
+
+  await setTaskStatus(app, t.id, 'waiting_for_input', brian);
+  const armed = await app.db.query(`SELECT waiting_since, ladder_rung FROM tasks WHERE id = $1`, [t.id]);
+  assert.ok(armed.rows[0].waiting_since, 'entering waiting arms the ladder clock');
+
+  await app.db.query(`UPDATE tasks SET ladder_rung = 2 WHERE id = $1`, [t.id]); // pretend D7 fired
+  await setTaskStatus(app, t.id, 'in_progress', brian);
+  const disarmed = await app.db.query(`SELECT waiting_since, ladder_rung FROM tasks WHERE id = $1`, [t.id]);
+  assert.equal(disarmed.rows[0].waiting_since, null, 'client responded — clock disarmed');
+  assert.equal(disarmed.rows[0].ladder_rung, 0, 'rung resets for the next waiting episode');
+});
+
+test('escalation ladder: D3 fires rung 1; a task discovered late fires ONLY the highest rung', async () => {
+  const larry = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Ladder', email: 'ladder@example.test' });
+  const t = await createTask(app, { title: 'Sign the 8879', contactId: larry.id, source: 'manual', status: 'waiting_for_input' });
+
+  // 4 days waiting on 2030-06-15 → D3 rung.
+  await app.db.query(`UPDATE tasks SET waiting_since = timestamp '2030-06-11 12:00' WHERE id = $1`, [t.id]);
+  const run1 = await runLadderJob(app, '2030-06-15');
+  assert.equal(run1.skipped, false);
+  assert.deepEqual(run1.rungs, [1, 0, 0, 0]);
+  const afterD3 = await app.db.query(`SELECT ladder_rung FROM tasks WHERE id = $1`, [t.id]);
+  assert.equal(afterD3.rows[0].ladder_rung, 1);
+
+  // Same date reruns are a no-op (date guard).
+  const rerun = await runLadderJob(app, '2030-06-15');
+  assert.equal(rerun.skipped, true);
+
+  // Next day the task is 15 days old → jumps straight to D14 (call task for
+  // Rene), skipping D7 — only the highest newly-reached rung fires.
+  await app.db.query(`UPDATE tasks SET waiting_since = timestamp '2030-06-01 12:00' WHERE id = $1`, [t.id]);
+  const run2 = await runLadderJob(app, '2030-06-16');
+  assert.deepEqual(run2.rungs, [0, 0, 1, 0]);
+  const call = await app.db.query(
+    `SELECT assigned_staff_id FROM tasks WHERE source_type = 'ladder_call' AND source_id = $1`,
+    [t.id]
+  );
+  assert.equal(call.rows.length, 1, 'D14 = a call task, owned');
+  assert.equal(call.rows[0].assigned_staff_id, rene.id);
+
+  // D30 → STALLED flag task lands on the owner rollup.
+  await app.db.query(`UPDATE tasks SET waiting_since = timestamp '2030-05-10 12:00' WHERE id = $1`, [t.id]);
+  const run3 = await runLadderJob(app, '2030-06-17');
+  assert.deepEqual(run3.rungs, [0, 0, 0, 1]);
+  const rollup = await app.inject({ method: 'GET', url: '/tasks/rollup', headers: auth(brian) });
+  assert.ok(rollup.json().stalled >= 1, 'stalled count surfaces on the rollup');
+});
+
+test('recurrence: completing a repeating task spawns the next occurrence', async () => {
+  assert.equal(advanceDate('2026-01-31', 'monthly', 1), '2026-02-28', 'month-end clamps');
+  assert.equal(advanceDate('2026-03-31', 'quarterly', 1), '2026-06-30');
+  assert.equal(advanceDate('2026-04-15', 'annually', 1), '2027-04-15');
+
+  const t = await createTask(app, {
+    title: 'File ST-1', dueDate: '2026-01-31', recurFreq: 'monthly', source: 'manual', tags: ['sales-tax'],
+  });
+  await setTaskStatus(app, t.id, 'completed', brian);
+  const next = await app.db.query<{ id: string; due_date: string; status: string; tags: string[] }>(
+    `SELECT id, due_date::text AS due_date, status, tags FROM tasks WHERE parent_task_id = $1`,
+    [t.id]
+  );
+  assert.equal(next.rows.length, 1, 'next occurrence spawned');
+  assert.equal(next.rows[0]!.due_date, '2026-02-28');
+  assert.equal(next.rows[0]!.status, 'not_started');
+  assert.deepEqual(next.rows[0]!.tags, ['sales-tax']);
+
+  // Completing the completed task again must not double-spawn.
+  await setTaskStatus(app, t.id, 'completed', brian);
+  const still = await app.db.query(`SELECT count(*)::int AS n FROM tasks WHERE parent_task_id = $1`, [t.id]);
+  assert.equal(still.rows[0].n, 1);
+});
+
+test('reminder sweep: due reminders notify the assignee exactly once', async () => {
+  const t = await createTask(app, {
+    title: 'Prep for the noon call', assignedStaffId: brian.id, source: 'manual',
+    remindAt: new Date(Date.now() - 60_000).toISOString(),
+  });
+  const sweep1 = await runTaskReminderSweep(app);
+  assert.ok(sweep1.reminded >= 1);
+  const note = await app.db.query(
+    `SELECT 1 FROM notifications WHERE staff_id = $1 AND type = 'task_reminder' AND related_object_id = $2`,
+    [brian.id, t.id]
+  );
+  assert.equal(note.rows.length, 1);
+  const sweep2 = await runTaskReminderSweep(app);
+  const again = await app.db.query(
+    `SELECT count(*)::int AS n FROM notifications WHERE type = 'task_reminder' AND related_object_id = $1`,
+    [t.id]
+  );
+  assert.equal(again.rows[0].n, 1, `reminder never repeats (sweep2=${sweep2.reminded})`);
+});
+
+test('search: the filter rail combines q, tag, priority, and dual lookups', async () => {
+  const searchClient = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Searchee', email: 'searchee@example.test' });
+  const biz = await app.db.query<{ id: string }>(
+    `INSERT INTO businesses (name) VALUES ('Synthetic Search LLC') RETURNING id`
+  );
+  await createTask(app, {
+    title: 'Quarterly books close', contactId: searchClient.id, businessId: biz.rows[0]!.id,
+    priority: 2, tags: ['books', 'q3'], source: 'manual',
+  });
+
+  const byTag = await app.inject({ method: 'GET', url: '/tasks/search?tag=q3', headers: auth(brian) });
+  assert.equal(byTag.statusCode, 200, byTag.body);
+  assert.equal(byTag.json().tasks.length, 1);
+
+  const combined = await app.inject({
+    method: 'GET',
+    url: `/tasks/search?q=books&priority=2&businessId=${biz.rows[0]!.id}&contactId=${searchClient.id}`,
+    headers: auth(brian),
+  });
+  assert.equal(combined.json().tasks.length, 1);
+  assert.equal(combined.json().tasks[0].business_name, 'Synthetic Search LLC');
+
+  const miss = await app.inject({ method: 'GET', url: '/tasks/search?q=books&priority=0', headers: auth(brian) });
+  assert.equal(miss.json().tasks.some((x: { title: string }) => x.title === 'Quarterly books close'), false);
+});
+
+test('saved views: private stays private, shared is visible, only the owner deletes', async () => {
+  const created = await app.inject({
+    method: 'POST', url: '/task-views', headers: auth(brian),
+    payload: { name: 'My urgent list', viewType: 'list', filters: { priority: [2] }, sort: { field: 'due_date', dir: 'asc' } },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const privateId = created.json().id as string;
+
+  const sharedRes = await app.inject({
+    method: 'POST', url: '/task-views', headers: auth(brian),
+    payload: { name: 'Team waiting board', shared: true, viewType: 'kanban', groupBy: 'status' },
+  });
+  const sharedId = sharedRes.json().id as string;
+
+  const reneSees = await app.inject({ method: 'GET', url: '/task-views', headers: auth(rene) });
+  const names = reneSees.json().views.map((v: { name: string }) => v.name);
+  assert.ok(names.includes('Team waiting board'));
+  assert.ok(!names.includes('My urgent list'), 'private views stay private');
+
+  const reneDelete = await app.inject({ method: 'DELETE', url: `/task-views/${sharedId}`, headers: auth(rene) });
+  assert.equal(reneDelete.statusCode, 404, 'only the owner deletes a view');
+  const brianDelete = await app.inject({ method: 'DELETE', url: `/task-views/${privateId}`, headers: auth(brian) });
+  assert.equal(brianDelete.statusCode, 200);
+});
+
+test('bulk operations: mass status + owner + tags across a selection', async () => {
+  const a = await createTask(app, { title: 'Bulk A', source: 'manual' });
+  const b = await createTask(app, { title: 'Bulk B', source: 'manual', tags: ['old'] });
+  const res = await app.inject({
+    method: 'POST', url: '/tasks/bulk', headers: auth(brian),
+    payload: { ids: [a.id, b.id], set: { assignedStaffId: rene.id, addTags: ['sweep'], removeTags: ['old'] } },
+  });
+  assert.equal(res.statusCode, 200, res.body);
+  const rows = await app.db.query<{ assigned_staff_id: string; tags: string[] }>(
+    `SELECT assigned_staff_id, tags FROM tasks WHERE id = ANY($1::uuid[]) ORDER BY title`,
+    [[a.id, b.id]]
+  );
+  assert.equal(rows.rows[0]!.assigned_staff_id, rene.id);
+  assert.deepEqual(rows.rows[1]!.tags, ['sweep'], 'old removed, sweep added');
+
+  const complete = await app.inject({
+    method: 'POST', url: '/tasks/bulk', headers: auth(brian),
+    payload: { ids: [a.id, b.id], set: { status: 'completed' } },
+  });
+  assert.equal(complete.json().updated, 2);
+  const done = await app.db.query(`SELECT count(*)::int AS n FROM tasks WHERE id = ANY($1::uuid[]) AND status = 'completed'`, [[a.id, b.id]]);
+  assert.equal(done.rows[0].n, 2);
+});
+
+test('duplicate + follow-up + inline PATCH (client-visible arms the ladder clock)', async () => {
+  const dup = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Dup', email: 'dup@example.test' });
+  const orig = await createTask(app, { title: 'Original work', contactId: dup.id, tags: ['x'], priority: 1, source: 'manual' });
+
+  const d = await app.inject({ method: 'POST', url: `/tasks/${orig.id}/duplicate`, headers: auth(brian), payload: {} });
+  assert.equal(d.statusCode, 201, d.body);
+  const copy = await app.db.query(`SELECT title, parent_task_id, status FROM tasks WHERE id = $1`, [d.json().id]);
+  assert.equal(copy.rows[0].title, 'Original work');
+  assert.equal(copy.rows[0].parent_task_id, orig.id);
+  assert.equal(copy.rows[0].status, 'not_started');
+
+  const f = await app.inject({ method: 'POST', url: `/tasks/${orig.id}/follow-up`, headers: auth(brian), payload: { dueDate: '2026-08-01' } });
+  assert.equal(f.statusCode, 201, f.body);
+  const fu = await app.db.query(`SELECT title, due_date::text AS due FROM tasks WHERE id = $1`, [f.json().id]);
+  assert.equal(fu.rows[0].title, 'Follow up: Original work');
+  assert.equal(fu.rows[0].due, '2026-08-01');
+
+  const patch = await app.inject({
+    method: 'PATCH', url: `/tasks/${orig.id}`, headers: auth(brian),
+    payload: { dueDate: '2026-09-15', clientVisible: true, tags: ['x', 'y'] },
+  });
+  assert.equal(patch.statusCode, 200, patch.body);
+  const patched = await app.db.query(`SELECT due_date::text AS due, client_visible, waiting_since, tags FROM tasks WHERE id = $1`, [orig.id]);
+  assert.equal(patched.rows[0].due, '2026-09-15');
+  assert.ok(patched.rows[0].waiting_since, 'becoming client-visible arms the ladder clock');
+  assert.deepEqual(patched.rows[0].tags, ['x', 'y']);
 });

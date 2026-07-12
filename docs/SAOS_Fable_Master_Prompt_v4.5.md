@@ -1,10 +1,11 @@
-# SAOS Master Build Prompt — v4.4 (PRODUCTION — LOCKED FOR BUILD)
+# SAOS Master Build Prompt — v4.5 (PRODUCTION — LOCKED FOR BUILD)
 ### For Fable AI — Full Stack Build + Business Automation
 ### Client: Brian Soto, CPA | Soto Accounting LLC + Hilo NFP | Chicago, IL
 ### Last Updated: July 5, 2026 | Supersedes all prior versions | All blocking decisions resolved — changelogs at end
 ### v4.2 adds: Service Delivery Model (two-axis), 8 new modules, and the Pricing Seed Data section — grounded in 147 client session transcripts + the 2025 pricing workbook
 ### v4.3 adds: authoritative deadline table (990 May 15 original corrected; 1041 estate + foreign returns added) and seven operational flows — rejects/notices, entity groups, escalation + auto-extension, AR dunning/late fees, books close cycle, grant vouchering tracker, stalled-onboarding rescue
 ### v4.4 adds: unified task & project management (full Trello replacement), quote builder, reports & KPIs, client announcements + review requests, SOP knowledge base, Hilo events, and the stack disposition table
+### v4.5 adds: Task System UX spec (Zoho CRM parity — views, filters, saved views, recurrence, layouts) from review of the firm's live Zoho usage
 
 ---
 
@@ -658,3 +659,53 @@ The Communication section previously said "NEW 312 number, no port" — supersed
 3. Quote builder + leads pipeline: live quotes from the price book that convert to engagements without re-entry
 4. Reports & KPIs module; client announcements (compliance-gated broadcast) + milestone review requests; SOP knowledge base linked from tasks; Hilo events module
 5. Stack disposition table: full replacement verdict per tool — ATX, client QBO, Zoom, Outlook, team payroll, and Obsidian PKM kept; everything else replaced or scheduled
+
+---
+
+# v4.5 ADDENDUM — TASK SYSTEM UX SPEC (Zoho CRM parity)
+*Source: review of the firm's live Zoho CRM (screenshots in docs/reference/). The v4.4 task system defined the data layer correctly; this addendum defines the UI/UX depth it must ship with. Supersedes any thinner task-view implementation.*
+
+## VIEWS & NAVIGATION (every view, not one)
+- **View switcher per task surface**: List (dense table, sortable columns, inline edit, column chooser) · **Kanban** (group-by ANY picklist field — default Status; column headers show counts; drag cards between columns updates the field) · Calendar (by due date) · Timeline
+- **Saved views**: "All Tasks" system default plus user-created saved views — a saved view persists filters + sort + visible columns, is nameable, and can be shared to the team or kept private (e.g., Rene's "My calls this week", Brian's "Everything overdue")
+- **Filter panel** (left rail, collapsible): free-text search; system filters (overdue, due today, due this week, created by me, delegated by me, touched/untouched in X days, locked); field filters on every task field — due date, priority, status, assignee, client, business, subject, tag, created/modified by and time
+- Sort control on any field, persistent per view
+
+## TASK RECORD (full field set)
+Owner/assignee · Subject · Due date · **linked Contact AND linked Business/Account — two independent lookups** (a task can attach to Hector the person, Mi & Co Collective the business, both, or neither) · Status · Priority (High/Normal/Low) · **Reminder toggle** (date/time → notification through the unified channel) · **Repeat toggle** (recurrence rules: daily/weekly/monthly/quarterly/annually + custom — quarterly ST-1 filings, monthly QBO edits, annual AG990 are live recurring patterns) · Description · Tags · Checklist · Comments thread · SOP link · Time log · Source
+
+## STATUSES (updated set — matches live usage)
+**Not Started · In Progress · Waiting for input · Completed · Deferred**
+"Waiting for input" is load-bearing: it is the waiting-on-client state, and entering it AUTOMATICALLY attaches the D3/D7/D14/D30 escalation ladder to the task's client. The firm already works this way in Zoho; SAOS makes the column self-chasing.
+
+## RECORD ACTIONS & PRODUCTIVITY
+- **Save and New** (rapid sequential entry), duplicate task, close-and-create-follow-up
+- **Bulk operations**: multi-select in list view → mass update status/owner/due date, mass complete
+- **Editable page layouts**: admins can reorder fields, add sections, and set required fields on the task layout (extends the existing no-code module builder to tasks) — "Edit Page Layout" affordance on the record
+- **Meeting auto-tasks** keep the live naming convention: "Meeting: {Client} — {Session type}"
+
+## MODULE PARITY MAP (Zoho → SAOS disposition)
+| Zoho module | SAOS |
+|---|---|
+| Tasks / Meetings / Calls | Unified task system + comms threads (this spec) |
+| Quotes + Price Books | Quote builder + versioned price book (v4.4) |
+| Invoices | Billing/AR (v4.2–4.3) |
+| Campaigns | Client announcements (v4.4) |
+| Cases | Tickets: notices, phone tickets, service requests |
+| Solutions | SOP knowledge base (v4.4) |
+| Documents | Client document vault |
+| Tax Engagements (custom) | Engagement module (native) |
+| Appointments | Cal.com booking |
+| Reports / Analytics / Forecasts | Reports & KPIs (v4.4); revenue forecast = report, not module |
+| **Sales Orders, Purchase Orders, Vendors, CPQ, Social, Visits** | **OUT OF SCOPE — inventory-commerce and social modules a CPA firm doesn't need; CPQ's conditional pricing is covered by price-book bundle rules** |
+
+## LIVE-BOARD DISCOVERIES (from the Zoho screenshots — confirmations needed, flagged not assumed)
+1. **AG990-IL (Illinois Attorney General charity annual report)** appears as a live deadline task. This is a state charity filing NOT in the deadline table. PENDING BRIAN CONFIRM: add AG990-IL to the compliance calendar with its due-date rule (statutorily within 6 months of FYE for IL charities; confirm the rule the firm works to) — applies to the nonprofit client cluster.
+2. **Staff roster gap**: task owners "Hector Pardo" and "Michelle Zhang" appear on live payroll/1099 work but are absent from the SAOS staff table. PENDING BRIAN CONFIRM: roles and access scopes for both before seeding.
+3. Confirmed live patterns now encoded: meeting→task auto-creation, "Waiting for input" as a first-class state, recurring compliance filings (ST-1, 1099 season, QBO edit cycles) as repeat tasks.
+
+## v4.5 CHANGELOG (July 11, 2026)
+1. Task System UX spec at Zoho parity: four view types, saved/shared views, full filter rail, dual contact+business lookups, reminder + recurrence, Save-and-New, bulk ops, admin-editable layouts
+2. Status set updated — "Waiting for input" added and wired to the escalation ladder; "Deferred" added
+3. Module parity map: Sales/Purchase Orders, Vendors, CPQ, Social, Visits formally out of scope
+4. Flagged for Brian: AG990-IL deadline rule; Hector Pardo + Michelle Zhang roster entries

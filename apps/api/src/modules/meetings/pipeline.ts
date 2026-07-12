@@ -123,11 +123,15 @@ export async function processMeeting(
     );
 
     // 4. Auto-create tasks from action items (owner: the session's staff).
+    // v4.5: titles keep the live naming convention "Meeting: {Client} — {Session
+    // type}"; the action item itself is the description.
+    const sessionLabel = meeting.type.replaceAll('_', ' ');
+    const meetingTaskTitle = `Meeting: ${contactName ?? 'Unlinked session'} — ${sessionLabel}`;
     for (const item of summary.actionItems) {
       await app.db.query(
-        `INSERT INTO tasks (title, assigned_staff_id, contact_id, source, source_type, source_id)
-         VALUES ($1, $2, $3, 'meeting', 'meeting_action_item', $4)`,
-        [item.text.slice(0, 200), meeting.staff_id, meeting.contact_id, meetingId]
+        `INSERT INTO tasks (title, description, assigned_staff_id, contact_id, source, source_type, source_id)
+         VALUES ($1, $2, $3, $4, 'meeting', 'meeting_action_item', $5)`,
+        [meetingTaskTitle, item.text.slice(0, 2000), meeting.staff_id, meeting.contact_id, meetingId]
       );
     }
 

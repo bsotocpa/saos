@@ -248,6 +248,23 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     return reply.code(201).send({ id: businessId });
   });
 
+  // Business lookup for the v4.5 dual Contact/Business pickers.
+  app.get('/businesses', read, async (request) => {
+    const q = z.object({ search: z.string().max(200).optional(), limit: z.coerce.number().int().min(1).max(100).default(25) }).parse(request.query);
+    const params: unknown[] = [];
+    let where = '';
+    if (q.search) {
+      params.push(`%${q.search}%`);
+      where = `WHERE b.name ILIKE $${params.length}`;
+    }
+    params.push(q.limit);
+    const { rows } = await app.db.query(
+      `SELECT b.id, b.name, b.entity_type FROM businesses b ${where} ORDER BY b.name LIMIT $${params.length}`,
+      params
+    );
+    return { businesses: rows };
+  });
+
   app.patch<{ Params: { id: string } }>('/businesses/:id', write, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const b = BusinessUpdateBody.parse(request.body);

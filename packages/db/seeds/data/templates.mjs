@@ -97,6 +97,42 @@ export const templates = [
       '— Soto Accounting',
   },
   {
+    key: 'ladder_portal_reminder',
+    name: 'Escalation ladder — D3 portal reminder (waiting on client)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'item', 'portal_link'],
+    subjectEn: 'Quick reminder — we’re waiting on one thing from you',
+    subjectEs: 'Recordatorio rápido — esperamos una cosa de usted',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Your work is queued and ready — we’re just waiting on one item from you:\n\n' +
+      '{{item}}\n\n' +
+      'Two minutes in your portal takes care of it:\n{{portal_link}}\n\n' +
+      '— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Su trabajo está en cola y listo — solo esperamos una cosa de su parte:\n\n' +
+      '{{item}}\n\n' +
+      'Dos minutos en su portal lo resuelven:\n{{portal_link}}\n\n' +
+      '— Soto Accounting',
+  },
+  {
+    key: 'ladder_sms_nudge',
+    name: 'Escalation ladder — D7 SMS nudge (waiting on client)',
+    channel: 'sms',
+    isPlaceholder: false,
+    variables: ['first_name', 'portal_link'],
+    subjectEn: null,
+    subjectEs: null,
+    bodyEn:
+      'Hi {{first_name}}, it’s Soto Accounting. We’re still waiting on one item from you — ' +
+      'your portal has the details: {{portal_link}} Reply STOP to opt out.',
+    bodyEs:
+      'Hola {{first_name}}, le escribe Soto Accounting. Aún esperamos una cosa de su parte — ' +
+      'su portal tiene los detalles: {{portal_link}} Responda STOP para cancelar.',
+  },
+  {
     key: 'estimated_payment_reminder',
     name: 'Quarterly estimated-payment reminder (T-7, toggle-gated)',
     channel: 'email',

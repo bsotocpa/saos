@@ -1,7 +1,7 @@
 # CLAUDE.md — SAOS Build (Soto Accounting Operating System)
 
 ## Source of Truth
-- `SAOS_Fable_Master_Prompt_v4.4.md` and `SAOS_Onboarding_Forms_Spec_v4.4.md` are the spec (all addendum sections are equal in authority to the main body). When code and spec conflict, the spec wins. When the spec is ambiguous, ask Brian — do not invent requirements.
+- `SAOS_Fable_Master_Prompt_v4.5.md` and `SAOS_Onboarding_Forms_Spec_v4.5.md` are the spec (all addendum sections are equal in authority to the main body). The Zoho reference screenshots in docs/reference/ are the UI benchmark for the task system — match their density and capability, not the thin v1 views. When code and spec conflict, the spec wins. When the spec is ambiguous, ask Brian — do not invent requirements.
 - Build in phase order (Phase 1 → 5 per the roadmap). Do not start a later-phase feature to avoid a hard problem in the current phase.
 
 ## Workflow Orchestration

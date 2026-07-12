@@ -46,8 +46,8 @@ export async function refreshEnrichmentGaps(db: Db, contactId: string): Promise<
       [contactId]
     );
     await db.query(
-      `UPDATE tasks SET status = 'done', completed_at = now(), updated_at = now()
-       WHERE contact_id = $1 AND source_type = 'enrichment' AND status IN ('open', 'in_progress')`,
+      `UPDATE tasks SET status = 'completed', completed_at = now(), updated_at = now()
+       WHERE contact_id = $1 AND source_type = 'enrichment' AND status IN ('not_started', 'in_progress', 'waiting_for_input', 'deferred')`,
       [contactId]
     );
   } else {
@@ -74,13 +74,13 @@ export async function refreshEnrichmentGaps(db: Db, contactId: string): Promise<
        FROM contacts c WHERE c.id = $1
          AND NOT EXISTS (
            SELECT 1 FROM tasks t
-           WHERE t.source_type = 'enrichment' AND t.source_id = $2 AND t.status IN ('open', 'in_progress')
+           WHERE t.source_type = 'enrichment' AND t.source_id = $2 AND t.status IN ('not_started', 'in_progress', 'waiting_for_input', 'deferred')
          )`,
       [contactId, queueId, description]
     );
     await db.query(
       `UPDATE tasks SET description = $3, updated_at = now()
-       WHERE source_type = 'enrichment' AND source_id = $2 AND contact_id = $1 AND status IN ('open', 'in_progress')`,
+       WHERE source_type = 'enrichment' AND source_id = $2 AND contact_id = $1 AND status IN ('not_started', 'in_progress', 'waiting_for_input', 'deferred')`,
       [contactId, queueId, description]
     );
   }

@@ -50,7 +50,7 @@ export async function executiveDashboard(app: FastifyInstance) {
     // Capacity proxy (Phase 4 builds real capacity planning): open work per staffer.
     app.db.query(
       `SELECT st.full_name, r.key AS role,
-              (SELECT count(*)::int FROM tasks t WHERE t.assigned_staff_id = st.id AND t.status IN ('open','in_progress')) AS open_tasks,
+              (SELECT count(*)::int FROM tasks t WHERE t.assigned_staff_id = st.id AND t.status IN ('not_started','in_progress','waiting_for_input','deferred')) AS open_tasks,
               (SELECT count(*)::int FROM tax_engagements te WHERE te.preparer_id = st.id AND te.stage NOT IN ('completed','withdrawn')) AS open_returns
        FROM staff st JOIN roles r ON r.id = st.role_id
        WHERE st.is_active ORDER BY st.full_name`

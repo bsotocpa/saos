@@ -38,6 +38,16 @@ async function roleIdByKey(app: FastifyInstance, key: string): Promise<{ id: str
 export function registerStaffRoutes(app: FastifyInstance): void {
   const guarded = { preHandler: [app.authenticate, requirePermission('staff.manage')] };
 
+  // Name directory for assignee pickers (v4.5 task UI) — any signed-in staff.
+  // Names only; the full roster (emails, MFA state) stays behind staff.manage.
+  app.get('/staff/directory', { preHandler: [app.authenticate] }, async () => {
+    const { rows } = await app.db.query(
+      `SELECT st.id, st.full_name, r.key AS role FROM staff st JOIN roles r ON r.id = st.role_id
+       WHERE st.is_active ORDER BY st.full_name`
+    );
+    return { staff: rows };
+  });
+
   app.get('/staff', guarded, async () => {
     const { rows } = await app.db.query(
       `SELECT st.id, st.full_name, st.email, st.is_active, st.totp_enabled, st.last_login_at, r.key AS role

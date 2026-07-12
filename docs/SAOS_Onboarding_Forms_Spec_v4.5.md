@@ -1,5 +1,6 @@
-# SAOS Onboarding Forms — Field-Level Spec (v4.4)
-### Companion to SAOS Master Prompt v4.4 | July 7, 2026 | v4.1: bridge fields renamed BR1–BR6; Module B firing rule fixed. v4.2 + v4.3: additions listed in addenda at end
+# SAOS Onboarding Forms — Field-Level Spec (v4.5)
+*(v4.5: version sync with master prompt — no forms changes)*
+### Companion to SAOS Master Prompt v4.5 | July 11, 2026 | v4.1: bridge fields renamed BR1–BR6; Module B firing rule fixed. v4.2 + v4.3: additions listed in addenda at end
 ### All forms render in English and Spanish; language selected on first screen and saved to contact record.
 
 ---

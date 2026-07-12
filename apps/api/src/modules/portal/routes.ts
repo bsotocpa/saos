@@ -116,7 +116,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     const tasks = await app.db.query(
       `SELECT id, title, description, due_date::text AS due_date, 'task' AS kind
        FROM tasks
-       WHERE contact_id = $1 AND client_visible AND status IN ('open', 'in_progress')
+       WHERE contact_id = $1 AND client_visible AND status IN ('not_started', 'in_progress', 'waiting_for_input')
        ORDER BY due_date NULLS LAST, created_at`,
       [client.contactId]
     );
@@ -144,8 +144,8 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     const client = request.client!;
     const taskId = z.uuid().parse(request.params.taskId);
     const res = await app.db.query(
-      `UPDATE tasks SET status = 'done', completed_at = now(), updated_at = now()
-       WHERE id = $1 AND contact_id = $2 AND client_visible AND status IN ('open', 'in_progress')`,
+      `UPDATE tasks SET status = 'completed', completed_at = now(), updated_at = now()
+       WHERE id = $1 AND contact_id = $2 AND client_visible AND status IN ('not_started', 'in_progress', 'waiting_for_input')`,
       [taskId, client.contactId]
     );
     if (res.rowCount === 0) throw new AppError(404, 'not_found', 'To-do not found.');

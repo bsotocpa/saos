@@ -524,7 +524,7 @@ tasks = work). Trello JSONs arriving in migration-data this week.
       rate_item_code for billing flow-through) · Trello importer BUILT +
       tested on synthetic exports (idempotent; done-list detection;
       assignee name-matching) — ⛔ RUN awaits Brian's Trello JSONs
-- [ ] LOCAL-WORK-ITEM MIGRATION (audited 2026-07-07 — modules whose work
+- [x] LOCAL-WORK-ITEM MIGRATION (audited 2026-07-07 — modules whose work
       items must become task objects):
       1. notices — notices exist w/ notifications only → owned Ana-Maria
          ticket-task per notice (v4.3 flow 1)
@@ -565,6 +565,51 @@ tasks = work). Trello JSONs arriving in migration-data this week.
       client to-do aggregation + check-off + internal-task isolation,
       notice ticket lifecycle, enrichment lifecycle, Trello idempotence,
       intern execute-own-only scope) — 129/129 total
+
+## M25.5 — v4.5 task-UX revision (Zoho parity; docs/reference = benchmark)
+- [x] Docs swapped to v4.5 (both specs + CLAUDE.md) · docs/reference/ holds
+      the 3 Zoho screenshots · lessons.md: "match the tool being replaced"
+- [x] Status set (migration 0013): open→not_started, done→completed,
+      + waiting_for_input + deferred (cancelled stays internal). RENAME
+      VALUE converts rows in place; all status literals swept (crm, portal
+      to-dos, dashboards capacity, Trello importer, StatusBody, tests)
+- [x] Waiting-for-input IS the escalation ladder: waiting_since +
+      ladder_rung per task; runLadderJob (daily, date-guarded, ladder.days
+      setting) fires D3 portal-reminder email → D7 SMS nudge (TCPA
+      consent-gated, email fallback; comms/send-sms.ts built) → D14 Rene
+      call task → D30 STALLED task for Brian; only the highest
+      newly-reached rung fires; every rung audited on the client record.
+      Client-visible tasks arm the clock at creation (v4.4 to-do ladder)
+- [x] Recurrence (recur_freq/interval): completing a repeating task spawns
+      the next occurrence (month-end clamping); reminders (remind_at →
+      assignee notification via 15-min tick, exactly-once)
+- [x] Dual Contact + Business lookups on tasks (business_id + /businesses
+      search endpoint) · tags (GIN-indexed) · parent_task_id chains
+- [x] Filter rail: /tasks/search — q, status[], priority[], owner/
+      unassigned, contact, business, tag, source, client-visible, due
+      (overdue/today/week/range), created-by/delegated-by, untouched-N-days,
+      sortable allowlist. task_views table: saved views private or shared
+      (list/kanban/calendar/timeline + filters + sort + columns + group_by)
+- [x] Record actions: general PATCH (inline edit), POST /tasks/bulk (mass
+      status/owner/priority/due/tags), duplicate, close-and-follow-up;
+      GET /tasks/layout serves the admin-editable tasks.layout setting
+- [x] Internal UI rebuilt (thin v1 replaced): view switcher List/Kanban/
+      Calendar/Timeline · filter rail · saved-views chip bar w/ system
+      views (My Open/All Open/Waiting/Overdue) · dense sortable list w/
+      inline status/priority/due/owner edits + column chooser + multi-
+      select bulk bar (incl. mass complete) · kanban group-by any picklist
+      w/ column counts + empty columns · month calendar · 4-week timeline
+      by owner · create/edit modal rendered from tasks.layout w/ Save and
+      New, dual lookups, Reminder, Repeat, Tags, Edit Page Layout
+      affordance · workload table w/ v4.5 status columns
+- [x] Meeting auto-tasks renamed to the live convention:
+      "Meeting: {Client} — {Session type}" (action item = description)
+- [x] Prove it: 137/137 green (8 new v4.5 tests: waiting stamps/clears,
+      ladder D3 + highest-rung-only + D30 rollup + date guard, recurrence
+      spawn + no double-spawn, reminder exactly-once, filter-rail combos,
+      saved-view sharing/ownership, bulk ops, duplicate/follow-up/PATCH)
+- ⛔ PENDING BRIAN: AG990-IL deadline rule · Hector Pardo + Michelle Zhang
+      roster entries ("don't seed team beyond the current table yet")
 
 ## M26 — Seven v4.3 operational flows (consume M24+M25)
 - [ ] 1. E-file rejects (Filed→Rejected re-queue, perfection-period

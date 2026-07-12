@@ -106,6 +106,37 @@ export const settings = [
       'Estimate range width: one-time quote maximums widen by this percent (scope uncertainty). Recurring prices stay exact. ⚠ Default awaits Brian’s confirmation — tune here, no deploy needed.',
   },
   {
+    key: 'ladder.days',
+    value: [3, 7, 14, 30],
+    description:
+      'Escalation ladder rungs in days from waiting_since (v4.3/v4.5): portal reminder → SMS nudge → Rene call task → STALLED flag.',
+  },
+  {
+    key: 'tasks.layout',
+    value: {
+      sections: [
+        {
+          title: 'Task Information',
+          fields: [
+            { key: 'assignedStaffId', label: 'Task Owner', required: false },
+            { key: 'title', label: 'Subject', required: true },
+            { key: 'dueDate', label: 'Due Date', required: false },
+            { key: 'contactId', label: 'Contact', required: false },
+            { key: 'businessId', label: 'Business', required: false },
+            { key: 'status', label: 'Status', required: false },
+            { key: 'priority', label: 'Priority', required: false },
+            { key: 'remindAt', label: 'Reminder', required: false },
+            { key: 'recurFreq', label: 'Repeat', required: false },
+            { key: 'tags', label: 'Tags', required: false },
+          ],
+        },
+        { title: 'Description Information', fields: [{ key: 'description', label: 'Description', required: false }] },
+      ],
+    },
+    description:
+      'v4.5 editable page layout for the task record (field order, sections, required flags). Edit here — the create/edit form renders from this. Extends the no-code module-builder pattern to tasks.',
+  },
+  {
     key: 'ops.last_restore_drill_at',
     value: null,
     description:
