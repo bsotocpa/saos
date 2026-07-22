@@ -70,7 +70,7 @@ before(async () => {
     ...base,
     TWILIO_ACCOUNT_SID: 'ACsynthetic',
     TWILIO_AUTH_TOKEN: TWILIO_TOKEN,
-    TWILIO_PHONE_NUMBER: '+17083000375',
+    TWILIO_PHONE_NUMBER: '+15005550006',
   };
   app = buildServer(config, { mailer: silentMailer });
   await app.ready();
@@ -105,7 +105,7 @@ test('Twilio SMS: matched sender lands in their thread; Rene notified; audited w
   await app.db.query(`UPDATE contacts SET phone = '(312) 555-0171', sms_consent = true WHERE id = $1`, [carla.id]);
 
   const res = await postTwilio('/webhooks/twilio/sms', {
-    From: '+13125550171', To: '+17083000375',
+    From: '+13125550171', To: '+15005550006',
     Body: 'Just dropped my W-2 in the portal', MessageSid: 'SMsynthetic1',
   });
   assert.equal(res.statusCode, 200, res.body);
@@ -136,7 +136,7 @@ test('Twilio SMS: STOP revokes consent on our side (rollup + consent event + aud
   await app.db.query(`UPDATE contacts SET phone = '+13125550172', sms_consent = true, sms_consent_at = now() WHERE id = $1`, [dora.id]);
 
   const res = await postTwilio('/webhooks/twilio/sms', {
-    From: '+13125550172', To: '+17083000375', Body: ' STOP ', MessageSid: 'SMstop1', OptOutType: 'STOP',
+    From: '+13125550172', To: '+15005550006', Body: ' STOP ', MessageSid: 'SMstop1', OptOutType: 'STOP',
   });
   assert.equal(res.statusCode, 200, res.body);
 
@@ -158,7 +158,7 @@ test('Twilio SMS: STOP revokes consent on our side (rollup + consent event + aud
 
 test('Twilio voice: TwiML greeting comes from the admin-editable template', async () => {
   const res = await postTwilio('/webhooks/twilio/voice', {
-    From: '+13125550173', To: '+17083000375', CallSid: 'CAsynthetic1',
+    From: '+13125550173', To: '+15005550006', CallSid: 'CAsynthetic1',
   });
   assert.equal(res.statusCode, 200, res.body);
   assert.match(res.headers['content-type'] as string, /text\/xml/);
