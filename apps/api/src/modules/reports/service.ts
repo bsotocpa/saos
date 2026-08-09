@@ -200,22 +200,27 @@ const sessionUtilization: ReportDef = {
   title: 'Session utilization per client',
   description: 'Sessions held, still scheduled, and cancelled per client in the period.',
   caveat:
-    'Reports sessions USED. It cannot yet compare usage against an entitlement, because the number of ' +
-    'sessions a cadence includes is not stored anywhere — that arrives with the engagement configurator. ' +
-    'The one entitlement that IS a rule is enforced here: an active S corp client is flagged below two ' +
-    'CPA sessions a year. Read low counts as candidates for a lighter cadence, not as proof of one.',
+    'Usage against ENTITLEMENT for clients whose engagement has been configured (sessions_per_year from ' +
+    'the session-cadence dial). A client with no configured recurring engagement shows "—" for entitled: ' +
+    'that is unconfigured, not zero. Low utilization is a maintenance-mode candidate — hold the prep ' +
+    'cadence, reduce the sessions — not proof that a client is over-serviced. The S corp floor column is ' +
+    'a backstop: the configurator refuses to create a sub-floor configuration, so a flag here means a ' +
+    'client whose sessions were not actually held, or one configured before the gate existed.',
   columns: [
     text('client', 'Client'),
     text('entity_types', 'Entity'),
     int('held', 'Held'),
     int('scheduled', 'Still scheduled'),
     int('cancelled', 'Cancelled'),
+    text('entitled_per_year', 'Entitled/yr'),
+    text('utilization', 'Utilization'),
     text('scorp_floor_flag', 'S corp floor'),
   ],
   async run(app, range) {
     const { rows } = await app.db.query<{
       client: string; entity_types: string | null; held: number; scheduled: number;
       cancelled: number; is_active_scorp: boolean; held_trailing_year: number;
+      entitled_per_year: number | null;
     }>(
       `SELECT c.first_name || ' ' || c.last_name AS client,
               (SELECT string_agg(DISTINCT b.entity_type::text, ', ')
@@ -230,7 +235,12 @@ const sessionUtilization: ReportDef = {
               ) AND c.soto_status = 'active' AS is_active_scorp,
               (SELECT count(*)::int FROM client_sessions s2
                WHERE s2.contact_id = c.id AND s2.status = 'completed'
-                 AND s2.starts_at >= now() - interval '1 year') AS held_trailing_year
+                 AND s2.starts_at >= now() - interval '1 year') AS held_trailing_year,
+              -- Entitlement from the configurator's session dial. NULL means no
+              -- recurring engagement has been configured — unconfigured, not zero.
+              (SELECT max(e.sessions_per_year) FROM engagements e
+               WHERE e.contact_id = c.id AND e.status = 'active'
+                 AND e.sessions_per_year IS NOT NULL) AS entitled_per_year
        FROM contacts c
        JOIN client_sessions s ON s.contact_id = c.id
          AND s.starts_at >= $1::date AND s.starts_at < ($2::date + 1)
@@ -245,6 +255,12 @@ const sessionUtilization: ReportDef = {
       held: r.held,
       scheduled: r.scheduled,
       cancelled: r.cancelled,
+      entitled_per_year: r.entitled_per_year === null ? '—' : String(r.entitled_per_year),
+      // Utilization only means something against a configured entitlement.
+      utilization:
+        r.entitled_per_year === null || r.entitled_per_year === 0
+          ? '—'
+          : `${Math.round((r.held_trailing_year / r.entitled_per_year) * 100)}%`,
       scorp_floor_flag:
         !r.is_active_scorp ? 'n/a' : r.held_trailing_year < 2 ? `BELOW FLOOR (${r.held_trailing_year}/2)` : 'ok',
     }));

@@ -87,3 +87,32 @@ key the columns don't declare and none omits one they do.
 separator, so a zero total renders as a dangling `0.` that looks truncated.
 **Rule**: use `FM990.00` when the decimals must always show. Any format string
 gets checked against its ZERO case, not just a representative value.
+
+## A hard rule is a constant, not a setting
+**Pattern**: I default to making thresholds admin-editable so Brian never needs a
+deploy to change policy. For the S corp session floor that instinct was wrong — a
+floor that can be edited down to zero is not a floor.
+**Rule**: when CLAUDE.md calls something non-negotiable, it gets a named constant
+and a comment explaining why it is NOT a setting. Store *evidence that it bound*
+(a boolean on the record), never a switch that disables it.
+
+## Gate every path that can lower a guarded value, especially the friendly one
+**Pattern**: the S corp floor was easy to enforce on create. The dangerous path
+was "maintenance mode" — a deliberately positive-sounding downgrade whose whole
+job is reducing session frequency.
+**Rule**: enumerate every write path that can move a guarded value the wrong way
+and make them all call the same guard function. Then write the test as an attempt
+to get AROUND the gate, not a demonstration that it works on the happy path.
+Assert a refused write leaves NOTHING behind — no partial columns, no history row.
+
+## Refuse, don't clamp
+**Pattern**: it's tempting to silently raise a value to satisfy a floor.
+**Rule**: clamping changes what a client is billed without anyone deciding to.
+Throw with the reason and the evidence, and let a human choose.
+
+## Test timeouts are hang-detectors, not performance budgets
+**Pattern**: a stubbed-pipeline spec polled with an 8s ceiling. Alone it finished
+in 3.2s; under the full suite, CPU contention pushed it past 8s and it flaked.
+**Rule**: a poll loop that returns on success can afford a generous ceiling.
+Size timeouts for the worst contention case, not the observed fast case — and if
+a spec flakes, root-cause it before re-running, then say so.

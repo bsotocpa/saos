@@ -872,6 +872,54 @@ only Brian can make. Regenerate after any gate clears.)
   scrolling grid of numbers on a phone is unreadable even when it fits. The
   table is replaced by one card per row under 768px.
 
+### S corp session floor — configurator-time GATE (completed 2026-08-09)
+Brian's call: the report shows violations, the gate prevents new ones. Both.
+- **Migration 0029**: the two-dial configurator the v4.2 Service Delivery Model
+  specifies — `prep_cadence` (weekly/monthly/quarterly/semi-annual),
+  `session_cadence` (weekly→annual), derived-and-stored `sessions_per_year`,
+  `scope_rung`, `maintenance_mode`, plus `engagement_config_history` so a later
+  downgrade is answerable: who reduced it, when, and what the floor did.
+- **`S_CORP_SESSION_FLOOR = 2` is a CONSTANT, not an app_setting.** Every other
+  knob is admin-editable because Brian shouldn't need a deploy to change his own
+  policy — but a floor that can be edited to zero isn't a floor. CLAUDE.md calls
+  it non-negotiable, so there is no column and no toggle for it. The
+  `s_corp_floor_applied` column is *evidence that it bound*, not a switch.
+- **Every path down runs through the same gate**, which is the whole test file:
+  configure straight to annual (409), configure legally then reconfigure down
+  (409, and the good config survives), and **maintenance mode** — the likeliest
+  real-world route down — which calls the configurator rather than going around
+  it. A refused configuration writes nothing: no columns, no history row.
+- **S election is detected two ways, either sufficient**: a business typed
+  `s_corp`, or a Form 1120-S engagement on record. A client whose entity_type was
+  never captured but who files an 1120-S still gets the floor. Safe direction for
+  a compliance floor — a missed S corp costs owner-comp calibration, a false
+  positive costs one session a year. The refusal quotes its evidence.
+- **It throws, it does not clamp.** Silently raising a client's session count to
+  satisfy the floor would change what they're billed without anyone deciding to.
+- Also enforced (same spec section, same configurator): **sessions can never be
+  more frequent than prep** — nothing to review in a session whose books haven't
+  closed.
+- **Price-book discipline held**: weekly prep is a real spec dial position with
+  NO price-book line, so configuring it is refused naming the gap ("add the item
+  in Admin → Pricing — I will not estimate a price"). Same for the session dial:
+  the book has no session-cadence item, so the UI states the sessions are priced
+  by the prep line rather than showing a misleading $0.
+  **⚠ Two price-book gaps for Brian**: no weekly accounting line, and no separate
+  session-cadence line. Neither blocks anything today.
+- `GET /contacts/:id/configurator-options` lets the UI DISABLE what the floor
+  forbids instead of letting staff pick it and be refused. Verified in the
+  browser: `annual` is the only disabled option for an S corp, and the API still
+  refuses independently — the UI check is a courtesy, never the control.
+- **The utilization report now measures against a real entitlement** (used vs
+  `sessions_per_year`), and distinguishes unconfigured ("—") from zero. Its
+  caveat was rewritten to credit the gate rather than the report.
+- 204/204 green. Configurator verified at 390×844 and 1280px.
+- **One flake, disclosed**: the meetings pipeline spec failed on the first full
+  run at 26s (passes alone in 3.2s). Root cause was an 8-second status-poll
+  budget starved by full-suite CPU contention, not a logic fault — raised to 30s
+  with a comment, since the loop exits on success and the timeout exists to catch
+  a genuine hang, not to enforce a performance budget.
+
 ### M0–M3 (completed 2026-07-05)
 - Stack as approved: Node 24 + TypeScript strict, npm workspaces, Fastify (M4),
   node-pg-migrate **v8** (upgraded from v7 during build — v7 pulled a

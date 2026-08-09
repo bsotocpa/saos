@@ -49,7 +49,12 @@ async function makeContactRow(last: string, email: string, opts: { hilo?: string
   return rows[0]!.id;
 }
 
-async function waitForStatus(meetingId: string, wanted: string[], timeoutMs = 8000): Promise<string> {
+// The loop returns the instant the status matches, so a generous ceiling costs
+// nothing on a fast run. 8s was too tight: under the FULL suite (every spec file
+// sharing this box) the stubbed pipeline queue got starved and this flaked, while
+// passing in 3s on its own. The timeout is here to eventually fail a genuine
+// hang, not to enforce a performance budget.
+async function waitForStatus(meetingId: string, wanted: string[], timeoutMs = 30_000): Promise<string> {
   const start = Date.now();
   for (;;) {
     const { rows } = await app.db.query<{ status: string }>(`SELECT status FROM meetings WHERE id = $1`, [meetingId]);

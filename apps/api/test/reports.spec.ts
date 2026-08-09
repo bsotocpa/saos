@@ -117,11 +117,14 @@ test('every catalogued report runs, and its rows only use its declared columns',
 
 test('reports state their limits instead of approximating: every caveat is real', async () => {
   const catalog = reportCatalog();
-  // Session utilization is the one that genuinely cannot measure entitlement
-  // yet — it must say so rather than inventing a denominator.
+  // Session utilization measures against the configurator's entitlement, and
+  // must distinguish "unconfigured" from zero rather than inventing a
+  // denominator. It must also not claim credit for the gate: the configurator
+  // prevents sub-floor configurations, this column is only a backstop.
   const sessions = catalog.find((r) => r.key === 'session_utilization')!;
-  assert.match(sessions.caveat!, /cannot yet compare usage against an entitlement/i);
-  assert.match(sessions.caveat!, /two\s+CPA sessions a year/i, 'the one real rule is still enforced');
+  assert.match(sessions.caveat!, /sessions_per_year from/i, 'names where the entitlement comes from');
+  assert.match(sessions.caveat!, /that is unconfigured, not zero/i);
+  assert.match(sessions.caveat!, /configurator refuses/i, 'credits the gate, not the report');
 
   // Snapshot reports must not pretend to honour a date range.
   const snapshots = catalog.filter((r) => r.snapshot).map((r) => r.key).sort();
