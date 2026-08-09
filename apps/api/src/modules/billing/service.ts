@@ -4,6 +4,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
+import { isAutomationEnabled } from '../../automations.ts';
 import { AppError } from '../../types.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
@@ -309,7 +310,7 @@ export async function markInvoicePaid(
 export async function runInvoiceOverdueJob(
   app: FastifyInstance,
   today: string
-): Promise<{ skipped: boolean; overdue: number }> {
+): Promise<{ skipped: boolean; overdue: number; suppressed?: number }> {
   const ACTION = 'job.invoice_overdue';
   const already = await app.db.query(
     `SELECT 1 FROM audit_log WHERE action = $1 AND details->>'run_date' = $2 LIMIT 1`,
@@ -335,13 +336,18 @@ export async function runInvoiceOverdueJob(
   );
 
   const rene = await firstActiveByRole(app.db, 'comms_billing');
+  // Kill switch covers the CLIENT reminder only — invoices still flip to
+  // overdue (A/R truth) and Rene still gets the flag + chase task.
+  const dunningArmed = await isAutomationEnabled(app, 'ar_dunning');
   let overdue = 0;
+  let suppressed = 0;
   for (const inv of rows) {
     await app.db.query(`UPDATE invoices SET status = 'overdue' WHERE id = $1`, [inv.id]);
     if (inv.tax_engagement_id) {
       await app.db.query(`UPDATE tax_engagements SET payment_status = 'overdue' WHERE id = $1`, [inv.tax_engagement_id]);
     }
-    if (inv.email) {
+    if (inv.email && !dunningArmed) suppressed++;
+    if (inv.email && dunningArmed) {
       await sendTemplatedEmail(app, {
         to: inv.email,
         templateKey: 'invoice_reminder',
@@ -383,7 +389,7 @@ export async function runInvoiceOverdueJob(
   await writeAudit(app.db, {
     actorType: 'system',
     action: ACTION,
-    details: { run_date: today, overdue },
+    details: { run_date: today, overdue, suppressed, automation_disabled: !dunningArmed },
   });
-  return { skipped: false, overdue };
+  return { skipped: false, overdue, suppressed };
 }

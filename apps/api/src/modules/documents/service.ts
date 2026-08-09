@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { Client as MinioClient } from 'minio';
 import { writeAudit } from '../../audit.ts';
+import { isAutomationEnabled } from '../../automations.ts';
 import { AppError } from '../../types.ts';
 import { allActiveByRoles, firstActiveByRole, notifyOnce } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
@@ -242,13 +243,17 @@ export async function afterReturnDelivered(
 export async function runDocumentChaseJob(
   app: FastifyInstance,
   today: string
-): Promise<{ skipped: boolean; reminders: number; nonResponseAlerts: number }> {
+): Promise<{ skipped: boolean; reminders: number; nonResponseAlerts: number; suppressed?: number }> {
   const ACTION = 'job.document_chase';
   const already = await app.db.query(
     `SELECT 1 FROM audit_log WHERE action = $1 AND details->>'run_date' = $2 LIMIT 1`,
     [ACTION, today]
   );
   if (already.rows.length > 0) return { skipped: true, reminders: 0, nonResponseAlerts: 0 };
+
+  // Kill switch covers the CLIENT reminder only — the internal 7-day
+  // non-response alert to leadership still fires below.
+  const chaseArmed = await isAutomationEnabled(app, 'document_chase');
 
   const settings = await app.db.query<{ key: string; value: number }>(
     `SELECT key, (value)::text::int AS value FROM app_settings
@@ -270,8 +275,10 @@ export async function runDocumentChaseJob(
     [today, reminderDays]
   );
   let reminders = 0;
+  let suppressed = 0;
   for (const r of due.rows) {
     if (!r.email) continue;
+    if (!chaseArmed) { suppressed++; continue; }
     await sendTemplatedEmail(app, {
       to: r.email,
       templateKey: 'doc_request_reminder',
@@ -340,7 +347,7 @@ export async function runDocumentChaseJob(
   await writeAudit(app.db, {
     actorType: 'system',
     action: ACTION,
-    details: { run_date: today, reminders, non_response_alerts: nonResponseAlerts },
+    details: { run_date: today, reminders, non_response_alerts: nonResponseAlerts, suppressed, automation_disabled: !chaseArmed },
   });
-  return { skipped: false, reminders, nonResponseAlerts };
+  return { skipped: false, reminders, nonResponseAlerts, suppressed };
 }

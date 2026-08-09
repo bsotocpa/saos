@@ -83,3 +83,4 @@
 - **No Laziness**: find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: only touch what's necessary. No side effects, no new bugs.
 - **Sequence discipline**: finish the current phase's checklist before proposing the next. Brian sequences deliberately — don't parallelize open tracks without asking.
+- **Client-acting automations ship OFF**: every automation that sends to a client (ladders, dunning, extension notices, late fees, chases, acks) is registered in the `automations` table, gated by `isAutomationEnabled()`, and seeded `enabled = false`. Brian arms each one in Admin → Automations as real clients reach the portal. A client-facing send without a registered toggle + gate check is a build failure. Internal alerts/tasks are never gated — only the outbound client message, and every suppression is counted in the job's run record.

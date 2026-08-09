@@ -5,6 +5,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
+import { isAutomationEnabled } from '../../automations.ts';
 import { AppError } from '../../types.ts';
 import { requirePermission } from '../../plugins/auth.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
@@ -173,7 +174,9 @@ export function registerCommsRoutes(app: FastifyInstance): void {
           app.log.warn({ err, sid: messageSid, i }, 'mms media ingest failed');
         }
       }
-      if (contact) {
+      // Ack is client-acting → kill-switch gated (the FILE is still
+      // accepted, scanned, and quarantined regardless).
+      if (contact && (await isAutomationEnabled(app, 'attachment_acks'))) {
         // Responsive ack in the sender's own exchange (transactionalReply —
         // consumer-initiated, not outreach).
         await sendSms(app, {
@@ -322,7 +325,7 @@ export function registerCommsRoutes(app: FastifyInstance): void {
     });
     // Block-and-nudge holds for email exactly as for SMS: the file is
     // accepted into quarantine, the reply teaches the portal habit.
-    if (c?.email) {
+    if (c?.email && (await isAutomationEnabled(app, 'attachment_acks'))) {
       await sendTemplatedEmail(app, {
         to: c.email, templateKey: 'attachment_received_email', language: c.language,
         contactId: c.id,

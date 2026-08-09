@@ -6,6 +6,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
+import { isAutomationEnabled } from '../../automations.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { addDays } from '../tax/deadlines.ts';
@@ -107,10 +108,14 @@ export async function runEntityComplianceJob(
     staffReminders++;
   }
 
-  // T-30: remind the client in their language.
+  // T-30: remind the client in their language (kill-switch gated; the T-60
+  // staff reminder + compliance task above are internal and always run).
   let clientReminders = 0;
+  let suppressed = 0;
+  const clientRemindersArmed = await isAutomationEnabled(app, 'annual_report_client_reminders');
   for (const r of await loadDue(addDays(today, clientDays))) {
     if (!r.email || !r.first_name) continue;
+    if (!clientRemindersArmed) { suppressed++; continue; }
     await sendTemplatedEmail(app, {
       to: r.email,
       templateKey: 'annual_report_reminder',
@@ -124,7 +129,7 @@ export async function runEntityComplianceJob(
   await writeAudit(app.db, {
     actorType: 'system',
     action: ACTION,
-    details: { run_date: today, staff_reminders: staffReminders, client_reminders: clientReminders },
+    details: { run_date: today, staff_reminders: staffReminders, client_reminders: clientReminders, suppressed, automation_disabled: !clientRemindersArmed },
   });
   return { skipped: false, staffReminders, clientReminders };
 }

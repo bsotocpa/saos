@@ -254,6 +254,42 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     return { status: 'ok' };
   });
 
+  // ── Client-acting automation kill switches (Brian's directive) ─────────────
+  // Every automation that touches a client ships DISABLED; Brian arms them
+  // here as real clients reach the portal. Each flip is audited.
+  app.get('/admin/automations', admin, async () => {
+    const { rows } = await app.db.query(
+      `SELECT a.key, a.name, a.description, a.audience, a.enabled, a.updated_at,
+              st.full_name AS updated_by
+       FROM automations a
+       LEFT JOIN staff st ON st.id = a.updated_by_staff_id
+       ORDER BY a.enabled DESC, a.key`
+    );
+    return { automations: rows };
+  });
+
+  app.patch<{ Params: { key: string } }>('/admin/automations/:key', admin, async (request) => {
+    const key = z.string().min(1).parse(request.params.key);
+    const b = z.object({ enabled: z.boolean() }).parse(request.body);
+    const actor = request.staff!;
+    const existing = await app.db.query<{ enabled: boolean; name: string }>(
+      `SELECT enabled, name FROM automations WHERE key = $1`,
+      [key]
+    );
+    if (!existing.rows[0]) throw new AppError(404, 'not_found', 'Unknown automation.');
+    await app.db.query(
+      `UPDATE automations SET enabled = $2, updated_by_staff_id = $3 WHERE key = $1`,
+      [key, b.enabled, actor.id]
+    );
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      action: b.enabled ? 'automation.enabled' : 'automation.disabled',
+      objectType: 'automation', objectId: key,
+      details: { name: existing.rows[0].name, from: existing.rows[0].enabled, to: b.enabled },
+    });
+    return { status: 'ok' };
+  });
+
   // ── Roles (for the staff admin UI) ────────────────────────────────────────
   app.get('/admin/roles', admin, async () => {
     const { rows } = await app.db.query(

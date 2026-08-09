@@ -9,6 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
+import { isAutomationEnabled } from '../../automations.ts';
 import { firstActiveByRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import {
@@ -169,7 +170,8 @@ export async function markExtensionDecision(
     recommend,
   ]);
 
-  if (recommend && te.email) {
+  // Client-acting: gated by the extension_notices kill switch.
+  if (recommend && te.email && (await isAutomationEnabled(app, 'extension_notices'))) {
     const ext = extendedDeadline(te.return_type, te.tax_year, te.fiscal_year_end_month ?? 12);
     await sendTemplatedEmail(app, {
       to: te.email,
@@ -206,7 +208,7 @@ export async function setExtensionPaymentEstimate(
     taxEngagementId,
     amountCents,
   ]);
-  if (te.email) {
+  if (te.email && (await isAutomationEnabled(app, 'extension_notices'))) {
     await sendTemplatedEmail(app, {
       to: te.email,
       templateKey: 'extension_payment_reminder',
@@ -275,7 +277,7 @@ export async function markExtensionFiled(
 export async function runSummerChaseJob(
   app: FastifyInstance,
   today: string
-): Promise<{ skipped: boolean; chased: number; atRiskAlerts: number }> {
+): Promise<{ skipped: boolean; chased: number; atRiskAlerts: number; suppressed?: number }> {
   const ACTION = 'job.extension_summer_chase';
   if (await jobAlreadyRan(app, ACTION, today)) return { skipped: true, chased: 0, atRiskAlerts: 0 };
 
@@ -310,10 +312,14 @@ export async function runSummerChaseJob(
 
   let chased = 0;
   let atRiskAlerts = 0;
+  let suppressed = 0;
+  // Kill switch covers the client chase; at-risk preparer alerts still fire.
+  const noticesArmed = await isAutomationEnabled(app, 'extension_notices');
   const templateKey = CHASE_TEMPLATES[chaseIndex] ?? CHASE_TEMPLATES[CHASE_TEMPLATES.length - 1]!;
 
   for (const r of rows) {
-    if (r.email) {
+    if (r.email && !noticesArmed) suppressed++;
+    if (r.email && noticesArmed) {
       await sendTemplatedEmail(app, {
         to: r.email,
         templateKey,
@@ -340,9 +346,9 @@ export async function runSummerChaseJob(
   await writeAudit(app.db, {
     actorType: 'system',
     action: ACTION,
-    details: { run_date: today, chase_index: chaseIndex, chased, at_risk_alerts: atRiskAlerts },
+    details: { run_date: today, chase_index: chaseIndex, chased, at_risk_alerts: atRiskAlerts, suppressed, automation_disabled: !noticesArmed },
   });
-  return { skipped: false, chased, atRiskAlerts };
+  return { skipped: false, chased, atRiskAlerts, suppressed };
 }
 
 /** Deadline dashboard data (countdowns + at-risk, MP step 6). */
@@ -443,12 +449,15 @@ export async function deadlineDashboard(app: FastifyInstance, today: string) {
 export async function runEstimateReminderJob(
   app: FastifyInstance,
   today: string
-): Promise<{ skipped: boolean; sent: number }> {
+): Promise<{ skipped: boolean; sent: number; suppressed?: number }> {
   const ACTION = 'job.estimate_reminder';
   if (await jobAlreadyRan(app, ACTION, today)) return { skipped: true, sent: 0 };
 
   const next = upcomingEstimateDates(today, 1)[0];
   let sent = 0;
+  let suppressed = 0;
+  // Firm-wide kill switch sits ON TOP of each client's own toggle.
+  const remindersArmed = await isAutomationEnabled(app, 'estimate_reminders');
   if (next && daysBetween(today, next.date) === 7) {
     const { rows } = await app.db.query<{
       id: string; first_name: string; email: string; language: 'en' | 'es';
@@ -461,6 +470,7 @@ export async function runEstimateReminderJob(
          AND NOT c.is_archived`
     );
     for (const c of rows) {
+      if (!remindersArmed) { suppressed++; continue; }
       await sendTemplatedEmail(app, {
         to: c.email,
         templateKey: 'estimated_payment_reminder',
@@ -475,9 +485,9 @@ export async function runEstimateReminderJob(
   await writeAudit(app.db, {
     actorType: 'system', actorLabel: 'daily-jobs',
     action: ACTION,
-    details: { run_date: today, estimate_date: next?.date ?? null, sent },
+    details: { run_date: today, estimate_date: next?.date ?? null, sent, suppressed, automation_disabled: !remindersArmed },
   });
-  return { skipped: false, sent };
+  return { skipped: false, sent, suppressed };
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────

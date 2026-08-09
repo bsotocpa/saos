@@ -10,6 +10,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
+import { isAutomationEnabled } from '../../automations.ts';
 import { AppError } from '../../types.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
@@ -522,13 +523,35 @@ interface LadderRow {
  * D14 call task for Rene → D30 STALLED flag on the owner rollup.
  * Every rung is audited on the client record (v4.3 flow 3).
  */
-export async function runLadderJob(app: FastifyInstance, today: string): Promise<{ skipped: boolean; rungs: number[] }> {
+export async function runLadderJob(
+  app: FastifyInstance,
+  today: string
+): Promise<{ skipped: boolean; rungs: number[]; suppressed?: number }> {
   const ACTION = 'job.escalation_ladder';
   const already = await app.db.query(
     `SELECT 1 FROM audit_log WHERE action = $1 AND details->>'run_date' = $2 LIMIT 1`,
     [ACTION, today]
   );
   if (already.rows.length > 0) return { skipped: true, rungs: [] };
+
+  // Kill switch: when disarmed, rungs DO NOT advance — otherwise arming it
+  // later would fire every client straight to D30. Count what would have
+  // gone out so the run record shows the pressure building.
+  if (!(await isAutomationEnabled(app, 'escalation_ladder'))) {
+    const waiting = await app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM tasks t
+       WHERE t.waiting_since IS NOT NULL AND t.ladder_rung < 4
+         AND (t.status = 'waiting_for_input' OR (t.client_visible AND t.status = ANY($1::task_status[])))`,
+      [OPEN_STATUSES]
+    );
+    const suppressed = waiting.rows[0]!.n;
+    await writeAudit(app.db, {
+      actorType: 'system', actorLabel: 'daily-jobs',
+      action: ACTION,
+      details: { run_date: today, automation_disabled: true, suppressed },
+    });
+    return { skipped: false, rungs: [0, 0, 0, 0], suppressed };
+  }
 
   const daysSetting = await app.db.query<{ value: number[] }>(
     `SELECT value FROM app_settings WHERE key = 'ladder.days'`

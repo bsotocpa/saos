@@ -40,6 +40,11 @@ export async function createTestConfig(dbSuffix: string): Promise<Config> {
   try {
     await seeder.query('BEGIN');
     await seedAll(seeder);
+    // Client-acting automations ship DISABLED (Brian arms them in prod as
+    // clients arrive). Tests ARM them all so behaviour is exercised; the
+    // gate itself is proven by tests that explicitly disarm one and assert
+    // the suppression (see automations.spec.ts).
+    await seeder.query(`UPDATE automations SET enabled = true`);
     await seeder.query('COMMIT');
   } finally {
     await seeder.end();
