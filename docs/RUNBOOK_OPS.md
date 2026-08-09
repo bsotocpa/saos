@@ -133,3 +133,23 @@ for the binder copy). Pulls live posture: staff MFA enrollment, session and
 lockout policy, audit-log statistics, backup + restore-drill recency, vendor
 list. Export it for the written WISP whenever the IRS checklist or an insurer
 asks.
+
+## Inbound attachments (email + MMS) — accept, never reject (2026-08-09)
+
+MMS media is live: the Twilio SMS webhook ingests every media item → virus
+scan → `saos-quarantine` bucket + `inbound_attachments` row on the client
+thread → warm ack SMS with the portal link (transactional reply — allowed
+without the standing consent flag because the client initiated the exchange).
+Staff review in ops → Inbox: file (confirm tap → client folder, origin
+audited), reassign, or discard. Infected verdicts hard-block filing.
+
+Email attachments use the same pipeline via `POST /inbound-email/ingest`
+(staff-auth). The inbound RECEIVER (Postal or SES receiving) is Phase 2 —
+until it lands, email attachments forwarded by staff can be ingested through
+the endpoint; block-and-nudge acks apply to both channels.
+
+Virus scanning: ClamAV ships as compose profile `scan` (`CLAMAV_HOST=clamav`)
+but is OFF by default — clamd wants ~1.3GB RSS and the box shares 16GB with
+Whisper/Ollama. Until enabled, scans record `skipped` and the staff confirm
+tap remains the gate. Enable after checking memory headroom:
+`docker compose --profile scan up -d clamav` + set CLAMAV_HOST in .env.

@@ -3,11 +3,18 @@
 // twilio.ts / ses-sns.ts for the authentication mechanics.
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
+import { AppError } from '../../types.ts';
+import { requirePermission } from '../../plugins/auth.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { handleMailBounce } from '../portal-auth/service.ts';
+import { makeMinioClient } from '../documents/storage.ts';
+import { sendTemplatedEmail } from '../templates/service.ts';
+import { discardAttachment, fileAttachment, ingestInboundAttachment, reassignAttachment } from './attachments.ts';
 import { escapeXml, isStopMessage, parseFormBody, validateTwilioSignature } from './twilio.ts';
+import { sendSms } from './send-sms.ts';
 import { isAmazonSnsUrl, parseSesFeedback, snsHttp, verifySnsSignature, type SnsMessage } from './ses-sns.ts';
 
 const TWIML_EMPTY = '<?xml version="1.0" encoding="UTF-8"?><Response/>';
@@ -17,8 +24,8 @@ async function contactByPhone(app: FastifyInstance, raw: string) {
   const digits = raw.replace(/\D/g, '');
   const last10 = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
   if (last10.length < 7) return null;
-  const { rows } = await app.db.query<{ id: string; first_name: string; last_name: string }>(
-    `SELECT id, first_name, last_name FROM contacts
+  const { rows } = await app.db.query<{ id: string; first_name: string; last_name: string; language: 'en' | 'es' }>(
+    `SELECT id, first_name, last_name, language FROM contacts
      WHERE right(regexp_replace(COALESCE(phone, ''), '\\D', '', 'g'), 10) = $1
         OR right(regexp_replace(COALESCE(secondary_phone, ''), '\\D', '', 'g'), 10) = $1
      ORDER BY updated_at DESC LIMIT 1`,
@@ -127,11 +134,63 @@ export function registerCommsRoutes(app: FastifyInstance): void {
       }
     }
 
+    // MMS attachments: ACCEPT, NEVER REJECT (decided 2026-08-09). Each media
+    // item is scanned + quarantined on the thread; the sender gets a warm ack
+    // pointing at the secure upload link for next time (block-and-nudge —
+    // documents still never travel by SMS into client folders directly).
+    const numMedia = Number(params['NumMedia'] ?? '0');
+    if (numMedia > 0) {
+      const threadRow = contact
+        ? await app.db.query<{ id: string }>(
+            `SELECT id FROM message_threads WHERE contact_id = $1 AND status = 'open' ORDER BY created_at LIMIT 1`,
+            [contact.id]
+          )
+        : null;
+      for (let i = 0; i < Math.min(numMedia, 10); i++) {
+        const url = params[`MediaUrl${i}`];
+        const mime = params[`MediaContentType${i}`] ?? 'application/octet-stream';
+        if (!url) continue;
+        try {
+          const auth =
+            app.config.TWILIO_ACCOUNT_SID && app.config.TWILIO_AUTH_TOKEN
+              ? { Authorization: `Basic ${Buffer.from(`${app.config.TWILIO_ACCOUNT_SID}:${app.config.TWILIO_AUTH_TOKEN}`).toString('base64')}` }
+              : undefined;
+          const media = await fetch(url, auth ? { headers: auth } : undefined);
+          if (!media.ok) throw new Error(`media fetch ${media.status}`);
+          const buffer = Buffer.from(await media.arrayBuffer());
+          const ext = mime.split('/')[1]?.split('+')[0] ?? 'bin';
+          await ingestInboundAttachment(app, {
+            channel: 'mms',
+            originRef: `${messageSid}-${i}`,
+            sender: from,
+            contactId: contact?.id ?? null,
+            threadId: threadRow?.rows[0]?.id ?? null,
+            filename: `mms-${messageSid.slice(-8)}-${i}.${ext}`,
+            mimeType: mime,
+            buffer,
+          });
+        } catch (err) {
+          app.log.warn({ err, sid: messageSid, i }, 'mms media ingest failed');
+        }
+      }
+      if (contact) {
+        // Responsive ack in the sender's own exchange (transactionalReply —
+        // consumer-initiated, not outreach).
+        await sendSms(app, {
+          contactId: contact.id,
+          templateKey: 'attachment_received_sms',
+          language: (contact as { language?: 'en' | 'es' }).language ?? 'en',
+          vars: { first_name: contact.first_name, portal_link: app.config.PORTAL_BASE_URL },
+          transactionalReply: true,
+        });
+      }
+    }
+
     // Audit carries identifiers only — the message BODY lives in messages.
     await writeAudit(app.db, {
       actorType: 'system', actorLabel: 'twilio-webhook',
       action: 'sms.received',
-      details: { message_sid: messageSid, matched: contact !== null, stop },
+      details: { message_sid: messageSid, matched: contact !== null, stop, media: numMedia },
       contactId: contact?.id ?? null,
     });
 
@@ -233,5 +292,104 @@ export function registerCommsRoutes(app: FastifyInstance): void {
     }
 
     return { status: 'ignored' };
+  });
+
+  // ── Inbound email attachments — same pipeline as MMS ──────────────────────
+  // Staff-auth'd ingest for the inbound-email receiver (Postal/SES receiving
+  // lands in Phase 2; this is the channel-ready seam). Same rules: accept,
+  // scan, quarantine on the thread, warm ack with the portal link.
+  app.post('/inbound-email/ingest', { preHandler: [app.authenticate, requirePermission('inbox.manage')] }, async (request, reply) => {
+    const b = z.object({
+      messageId: z.string().min(1),
+      sender: z.string().email(),
+      filename: z.string().min(1),
+      mimeType: z.string().optional(),
+      contentBase64: z.string().min(1),
+    }).parse(request.body);
+    const contact = await app.db.query<{ id: string; first_name: string; email: string; language: 'en' | 'es' }>(
+      `SELECT id, first_name, email, language FROM contacts WHERE lower(email) = lower($1) AND NOT is_archived LIMIT 1`,
+      [b.sender]
+    );
+    const c = contact.rows[0] ?? null;
+    const result = await ingestInboundAttachment(app, {
+      channel: 'email',
+      originRef: b.messageId,
+      sender: b.sender,
+      contactId: c?.id ?? null,
+      filename: b.filename,
+      mimeType: b.mimeType ?? null,
+      buffer: Buffer.from(b.contentBase64, 'base64'),
+    });
+    // Block-and-nudge holds for email exactly as for SMS: the file is
+    // accepted into quarantine, the reply teaches the portal habit.
+    if (c?.email) {
+      await sendTemplatedEmail(app, {
+        to: c.email, templateKey: 'attachment_received_email', language: c.language,
+        contactId: c.id,
+        vars: { first_name: c.first_name, portal_link: app.config.PORTAL_BASE_URL },
+      }).catch((err) => app.log.warn({ err }, 'attachment ack email failed'));
+    }
+    return reply.code(201).send(result);
+  });
+
+  // ── Quarantine review (unified inbox) ─────────────────────────────────────
+  const inbox = { preHandler: [app.authenticate, requirePermission('inbox.manage')] };
+
+  app.get('/inbound-attachments', inbox, async (request) => {
+    const q = z.object({ status: z.enum(['quarantined', 'filed', 'discarded']).default('quarantined') }).parse(request.query);
+    const { rows } = await app.db.query(
+      `SELECT a.id, a.channel, a.sender, a.filename, a.mime_type, a.size_bytes::int AS size_bytes,
+              a.scan_status, a.scan_detail, a.suggested_category, a.status, a.created_at,
+              a.contact_id, c.first_name || ' ' || c.last_name AS contact_name
+       FROM inbound_attachments a
+       LEFT JOIN contacts c ON c.id = a.contact_id
+       WHERE a.status = $1::inbound_attachment_status
+       ORDER BY a.created_at DESC LIMIT 200`,
+      [q.status]
+    );
+    return { attachments: rows };
+  });
+
+  // Staff preview/download for review — audit-logged like every doc access.
+  app.get<{ Params: { id: string } }>('/inbound-attachments/:id/download', inbox, async (request, reply) => {
+    const id = z.uuid().parse(request.params.id);
+    const { rows } = await app.db.query<{ minio_bucket: string; minio_key: string; filename: string; mime_type: string | null; contact_id: string | null }>(
+      `SELECT minio_bucket, minio_key, filename, mime_type, contact_id FROM inbound_attachments WHERE id = $1 AND status = 'quarantined'`,
+      [id]
+    );
+    if (!rows[0]) throw new AppError(404, 'not_found', 'Attachment not found.');
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      action: 'attachment.reviewed', objectType: 'inbound_attachment', objectId: id,
+      contactId: rows[0].contact_id, ip: request.ip,
+    });
+    const minio = makeMinioClient(app.config);
+    const stream = await minio.getObject(rows[0].minio_bucket, rows[0].minio_key);
+    void reply.header('content-type', rows[0].mime_type ?? 'application/octet-stream');
+    void reply.header('content-disposition', `inline; filename="${rows[0].filename}"`);
+    return reply.send(stream);
+  });
+
+  app.post<{ Params: { id: string } }>('/inbound-attachments/:id/file', inbox, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ category: z.string().min(1), contactId: z.uuid().optional() }).parse(request.body);
+    return fileAttachment(app, id, {
+      category: b.category, contactId: b.contactId ?? null,
+      actor: request.staff!, ip: request.ip,
+    });
+  });
+
+  app.post<{ Params: { id: string } }>('/inbound-attachments/:id/reassign', inbox, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ contactId: z.uuid() }).parse(request.body);
+    await reassignAttachment(app, id, b.contactId, request.staff!);
+    return { status: 'ok' };
+  });
+
+  app.post<{ Params: { id: string } }>('/inbound-attachments/:id/discard', inbox, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ reason: z.string().max(300).optional() }).parse(request.body ?? {});
+    await discardAttachment(app, id, request.staff!, b.reason);
+    return { status: 'ok' };
   });
 }

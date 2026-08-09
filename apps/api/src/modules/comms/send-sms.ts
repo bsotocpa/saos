@@ -17,6 +17,13 @@ export async function sendSms(
     templateKey: string;
     language: 'en' | 'es';
     vars: Record<string, string>;
+    /**
+     * ONLY for direct replies to a message the contact just sent us (e.g. the
+     * MMS-attachment ack): a consumer-initiated exchange is TCPA-permissible
+     * without the standing consent flag. Broadcast/reminder/nudge paths must
+     * never set this — the consent gate stays absolute for outreach.
+     */
+    transactionalReply?: boolean;
   }
 ): Promise<{ sent: boolean; reason: string | null }> {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER } = app.config;
@@ -30,7 +37,7 @@ export async function sendSms(
   );
   const c = contact.rows[0];
   if (!c) return { sent: false, reason: 'contact_not_found' };
-  if (!c.sms_consent) return { sent: false, reason: 'no_sms_consent' }; // TCPA gate — absolute
+  if (!c.sms_consent && !input.transactionalReply) return { sent: false, reason: 'no_sms_consent' }; // TCPA gate — absolute for outreach
   if (!c.phone) return { sent: false, reason: 'no_phone' };
 
   const tpl = await app.db.query<{ body_en: string; body_es: string | null; is_placeholder: boolean }>(

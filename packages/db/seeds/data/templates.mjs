@@ -133,6 +133,42 @@ export const templates = [
       'su portal tiene los detalles: {{portal_link}} Responda STOP para cancelar.',
   },
   {
+    key: 'attachment_received_sms',
+    name: 'Inbound attachment ack (MMS) — accept + portal nudge',
+    channel: 'sms',
+    isPlaceholder: false,
+    variables: ['first_name', 'portal_link'],
+    subjectEn: null,
+    subjectEs: null,
+    bodyEn:
+      'Hi {{first_name}}, we received your file — thank you. Our team will review and file it. ' +
+      'For your security, the fastest way to send documents is your secure portal: {{portal_link}}',
+    bodyEs:
+      'Hola {{first_name}}, recibimos su archivo — gracias. Nuestro equipo lo revisará y lo archivará. ' +
+      'Por su seguridad, la forma más rápida de enviar documentos es su portal seguro: {{portal_link}}',
+  },
+  {
+    key: 'attachment_received_email',
+    name: 'Inbound attachment ack (email) — accept + portal nudge',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'portal_link'],
+    subjectEn: 'We received your file',
+    subjectEs: 'Recibimos su archivo',
+    bodyEn:
+      'Hi {{first_name}},\n\nThanks for sending your document — we have it, and our team will review ' +
+      'and file it for you.\n\nFor your security (and the fastest turnaround), documents are best ' +
+      'uploaded through your secure portal:\n{{portal_link}}\n\nThe portal encrypts your files and ' +
+      'routes them straight to the right place — email attachments take an extra manual step on our ' +
+      'side.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}},\n\nGracias por enviar su documento — lo recibimos y nuestro equipo lo ' +
+      'revisará y archivará por usted.\n\nPor su seguridad (y para el trámite más rápido), lo mejor es ' +
+      'subir los documentos por su portal seguro:\n{{portal_link}}\n\nEl portal cifra sus archivos y ' +
+      'los dirige directamente al lugar correcto — los adjuntos por correo requieren un paso manual ' +
+      'adicional de nuestra parte.\n\n— Soto Accounting',
+  },
+  {
     key: 'estimated_payment_reminder',
     name: 'Quarterly estimated-payment reminder (T-7, toggle-gated)',
     channel: 'email',

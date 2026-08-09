@@ -62,7 +62,7 @@ services:
     entrypoint: >
       /bin/sh -c "
       mc alias set saos http://minio:9000 $${MINIO_ROOT_USER:-saos} $${MINIO_ROOT_PASSWORD:-saos_dev_password} &&
-      mc mb --ignore-existing saos/saos-documents saos/saos-returns saos/saos-signed-docs saos/saos-recordings &&
+      mc mb --ignore-existing saos/saos-documents saos/saos-returns saos/saos-signed-docs saos/saos-recordings saos/saos-quarantine &&
       echo 'MinIO buckets ready.'
       "
     environment:
@@ -231,8 +231,23 @@ services:
       - api
     networks: [saos]
 
+  # Inbound-attachment virus scanning (profile 'scan', OFF by default).
+  # ⚠ clamd wants ~1.3GB RSS — on the shared 16GB box, enable only after
+  # checking headroom against Whisper/Ollama peaks (CLAUDE.md memory rule).
+  # Wire the API to it with CLAMAV_HOST=clamav; unset = scans record 'skipped'
+  # and the staff confirm gate remains the control.
+  clamav:
+    image: clamav/clamav:1.4
+    profiles: [scan]
+    restart: unless-stopped
+    mem_limit: 1600m
+    volumes:
+      - saos_clamav_data:/var/lib/clamav
+    networks: [saos]
+
 volumes:
   saos_pg_data:
+  saos_clamav_data:
   saos_minio_data:
   saos_docuseal_data:
   saos_whisper_cache:

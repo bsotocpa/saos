@@ -94,6 +94,11 @@ const schema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_PHONE_NUMBER: z.string().optional(),
+  // ClamAV daemon (self-hosted, compose profile 'scan') for inbound
+  // attachment scanning. Unset → scans record 'skipped'; the staff confirm
+  // gate still stands between quarantine and any client document folder.
+  CLAMAV_HOST: z.string().optional(),
+  CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
   // The externally visible base URL of this API (signature schemes hash the
   // exact URL Twilio called). https://api.sotoaccounting.com in production.
   API_PUBLIC_URL: z.string().default('http://localhost:3001'),
