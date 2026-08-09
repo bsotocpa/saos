@@ -732,6 +732,11 @@ tasks = work). Trello JSONs arriving in migration-data this week.
       price = components − discount (no ad-hoc literals); surcharge
       auto-applies bundled AND unbundled
 
+## LAUNCH READINESS → see tasks/launch-readiness.md
+(Single page, generated from the live production DB: the 4 hard blockers,
+vendor state, migration state, automation arming order, and the decisions
+only Brian can make. Regenerate after any gate clears.)
+
 ## M27 — Remaining v4.4 modules (task system shipped in M25)
 - [ ] Quote builder: live-quote from price book → quote record on lead →
       portal link EN/ES → accept = engagement + deposit checkout, zero
