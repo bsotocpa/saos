@@ -12,6 +12,14 @@ import {
   runSummerChaseJob,
   setExtensionPaymentEstimate,
 } from './extension.ts';
+import {
+  approveBatch,
+  batchWithItems,
+  fileBatchItem,
+  removeBatchItem,
+  runAutoExtensionBatchJob,
+} from './extension-batch.ts';
+import { closeTasksForSource } from '../tasks/service.ts';
 
 const DecisionBody = z.object({ recommend: z.boolean() });
 const PaymentEstimateBody = z.object({ amountCents: z.number().int().positive() });
@@ -80,5 +88,49 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
   app.post('/jobs/estimate-reminder', jobs, async (request) => {
     const q = AsOfQuery.parse(request.query);
     return runEstimateReminderJob(app, q.asOf ?? todayChicago());
+  });
+
+  // ── v4.3 flow 3: auto-extension batch (owner review before filing) ────────
+  app.post('/jobs/auto-extension-batch', jobs, async (request) => {
+    const q = AsOfQuery.parse(request.query);
+    return runAutoExtensionBatchJob(app, q.asOf ?? todayChicago());
+  });
+
+  app.get('/extension-batches', read, async () => {
+    const { rows } = await app.db.query(
+      `SELECT b.id, b.tax_year, b.lane, b.cutoff_date::text AS cutoff_date, b.status, b.approved_at,
+              (SELECT count(*)::int FROM extension_batch_items i WHERE i.batch_id = b.id AND i.removed_at IS NULL) AS items,
+              (SELECT count(*)::int FROM extension_batch_items i WHERE i.batch_id = b.id AND i.filed_at IS NOT NULL) AS filed
+       FROM extension_batches b ORDER BY b.tax_year DESC, b.lane`
+    );
+    return { batches: rows };
+  });
+
+  app.get<{ Params: { id: string } }>('/extension-batches/:id', read, async (request) => {
+    return batchWithItems(app, z.uuid().parse(request.params.id));
+  });
+
+  // Approval is leadership-only — this IS the owner-review gate.
+  app.post<{ Params: { id: string } }>('/extension-batches/:id/approve', jobs, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const result = await approveBatch(app, id, request.staff!);
+    // The review task is done once the batch is approved.
+    await closeTasksForSource(app, 'extension_batch_review', id, 'batch approved');
+    return { status: 'approved', ...result };
+  });
+
+  app.delete<{ Params: { id: string; teId: string } }>('/extension-batches/:id/items/:teId', jobs, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const teId = z.uuid().parse(request.params.teId);
+    await removeBatchItem(app, id, teId, request.staff!);
+    return { status: 'ok' };
+  });
+
+  // Preparers file — refused until the batch is approved.
+  app.post<{ Params: { id: string; teId: string } }>('/extension-batches/:id/items/:teId/filed', manage, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const teId = z.uuid().parse(request.params.teId);
+    const q = AsOfQuery.parse(request.query);
+    return fileBatchItem(app, id, teId, request.staff!, q.asOf ?? todayChicago());
   });
 }

@@ -51,6 +51,12 @@ export const settings = [
     description: 'T-minus days before Mar 15 / Apr 15 when the Extension Decision List generates (automation 10).',
   },
   {
+    key: 'extension.auto_batch_cutoffs',
+    value: { business: '03-25', individual: '04-01' },
+    description:
+      'v4.3 flow 3 auto-extension cutoffs (MM-DD): engagements still missing documents on these dates sweep into that lane’s protective-extension batch. Lane derives from the return’s ORIGINAL deadline month (March filers → business, April → individual). Brian approves each batch before preparers file.',
+  },
+  {
     key: 'extension.summer_chase_dates',
     value: ['06-01', '07-15', '08-15'],
     description: 'Summer document-chase reminder dates for extended clients (MM-DD, escalating copy).',

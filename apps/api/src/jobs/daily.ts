@@ -14,6 +14,7 @@ import { runSosRecheckJob } from '../modules/entity/sos.ts';
 import { runBackupStaleCheckJob, runRestoreDrillReminderJob } from '../modules/admin/ops.ts';
 import { runLadderJob, runTaskReminderSweep } from '../modules/tasks/service.ts';
 import { runPerfectionClockJob } from '../modules/tax/pipeline.ts';
+import { runAutoExtensionBatchJob } from '../modules/tax/extension-batch.ts';
 import { makePusher, runPushSweep } from '../notify/push.ts';
 
 const TICK_MS = 15 * 60 * 1000;
@@ -38,6 +39,9 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   if (!drill.skipped) app.log.info({ job: 'restore_drill_reminder', ...drill }, 'daily job ran');
   const backup = await runBackupStaleCheckJob(app, today);
   if (!backup.skipped) app.log.info({ job: 'backup_stale_check', ...backup }, 'daily job ran');
+  // v4.3 flow 3: season auto-extension batch (Mar 25 / Apr 1 cutoffs).
+  const extBatch = await runAutoExtensionBatchJob(app, today);
+  if (!extBatch.skipped) app.log.info({ job: 'auto_extension_batch', ...extBatch }, 'daily job ran');
   // v4.3 flow 1: perfection-period clocks on rejected e-files.
   const perfection = await runPerfectionClockJob(app, today);
   if (!perfection.skipped) app.log.info({ job: 'perfection_clock', ...perfection }, 'daily job ran');

@@ -655,13 +655,20 @@ tasks = work). Trello JSONs arriving in migration-data this week.
       committed locally; deploy on Brian's word (impact note in report)
 
 ## M26 — Seven v4.3 operational flows (consume M24+M25)
+- [x] KILL SWITCHES (Brian's directive 2026-08-09, prerequisite for the rest):
+      every client-acting automation registered in  + gated by
+      isAutomationEnabled(), ALL SEEDED OFF; Admin → Automations arms them
+      individually (audited). Gate covers the client SEND only — internal
+      alerts/tasks/A-R truth keep running and each job counts what it
+      suppressed. Ladder freezes rungs while disarmed so arming later can't
+      dump everyone at D30. CLAUDE.md rule added.
 - [x] 1. E-file rejects ✅ 2026-08-09 (Filed→Rejected re-queue, perfection-period
       clocks: 10d business/5d individual) + notice tickets w/ client-
       visible plain-language status EN/ES + notice billing from price book
 - [x] 2. Entity-group workflow ✅ 2026-08-09: consolidated packet, ONE bundled Docuseal
       envelope/KBA for group 8879s, billing mode consolidated|per-entity,
       per-entity estimates + rollup
-- [ ] 3. Escalation ladder (D3 portal/D7 SMS/D14 Rene call/D30 STALLED)
+- [x] 3. Escalation ladder ✅ (v4.5) + auto-extension batch ✅ 2026-08-09 (D3 portal/D7 SMS/D14 Rene call/D30 STALLED)
       on every waiting state + auto-extension batch (Mar 25 business /
       Apr 1 individual cutoffs, Brian reviews before filing)
 - [ ] 4. AR dunning (Stripe retry ×3/10d → call task → 30d work pause) +

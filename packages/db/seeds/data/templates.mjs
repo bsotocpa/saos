@@ -133,6 +133,27 @@ export const templates = [
       'su portal tiene los detalles: {{portal_link}} Responda STOP para cancelar.',
   },
   {
+    key: 'protective_extension_notice',
+    name: 'Protective extension filed (auto-extension batch, v4.3 flow 3)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'tax_year', 'portal_link'],
+    subjectEn: 'We’re filing an extension for your {{tax_year}} return',
+    subjectEs: 'Presentaremos una extensión para su declaración {{tax_year}}',
+    bodyEn:
+      'Hi {{first_name}},\n\nWe’re filing an extension for your {{tax_year}} return. This is normal and it ' +
+      'protects you — it gives us the time to file accurately instead of rushing, and it does not increase ' +
+      'your chance of an audit.\n\nOne thing to know: an extension moves the FILING deadline, not the payment ' +
+      'deadline. If you expect to owe, we’ll tell you what to pay and when.\n\nNothing is required from you ' +
+      'right now. When you have your documents ready, your portal is here:\n{{portal_link}}\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}},\n\nPresentaremos una extensión para su declaración {{tax_year}}. Esto es normal y ' +
+      'lo protege — nos da el tiempo para presentarla correctamente en lugar de apurarnos, y no aumenta su ' +
+      'probabilidad de una auditoría.\n\nAlgo importante: una extensión mueve la fecha de PRESENTACIÓN, no la ' +
+      'de pago. Si esperamos que deba impuestos, le diremos cuánto pagar y cuándo.\n\nNo necesitamos nada de ' +
+      'usted en este momento. Cuando tenga sus documentos listos, su portal está aquí:\n{{portal_link}}\n\n— Soto Accounting',
+  },
+  {
     key: 'attachment_received_sms',
     name: 'Inbound attachment ack (MMS) — accept + portal nudge',
     channel: 'sms',
