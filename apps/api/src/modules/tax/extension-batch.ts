@@ -1,17 +1,23 @@
 // M26 flow 3: the auto-extension batch (v4.3 DECIDED).
 //
-// At the season cutoffs, engagements still missing documents are swept into a
-// batch per lane, the client is notified that a protective extension is
+// Engagements still missing documents are swept into a batch as their own
+// deadline approaches, the client is notified that a protective extension is
 // coming ("this is normal and protects you"), and BRIAN APPROVES THE BATCH
 // before any preparer files. Filing without approval is refused in code, not
 // convention. Approved-and-filed engagements re-enter the normal flow with
 // their DERIVED extended deadline (markExtensionFiled → THE_TABLE).
 //
-// Lane derivation comes from the authoritative table, never a hardcoded date
-// pair: a return whose ORIGINAL deadline falls in March sweeps at the March
-// cutoff (Mar 25 — 1065/1120-S), April filers at the April cutoff (Apr 1 —
-// 1040/1120/1041). Later filers (990 in May, fiscal-year filers) are out of
-// scope for the season batch; their own deadlines are months away.
+// THE SWEEP IS DERIVED PER ENGAGEMENT (Brian, 2026-08-09 — correcting the
+// spec's fixed Mar 25 / Apr 1 lanes, which fell AFTER the Mar 15 business
+// deadline and so protected nothing):
+//
+//     cutoff = original due date − offset      (offset: setting, default 10)
+//
+// so 1065/1120-S sweep ~Mar 5, 1040/1120 ~Apr 5, 990s ~May 5, and fiscal-year
+// filers and every future return type handle themselves with no settings
+// maintenance. Fixed dates rot; the table doesn't. A batch is keyed on the
+// DEADLINE it protects, and the sweep never fires on or after that deadline —
+// an extension filed late protects nobody.
 
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
@@ -20,10 +26,8 @@ import { isAutomationEnabled } from '../../automations.ts';
 import { firstActiveByRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
-import { AUTOMATIC_EXTENSION_TYPES, originalDeadline, type DeadlineReturnType } from './deadlines.ts';
+import { AUTOMATIC_EXTENSION_TYPES, addDays, originalDeadline, type DeadlineReturnType } from './deadlines.ts';
 import { markExtensionFiled } from './extension.ts';
-
-export type BatchLane = 'business' | 'individual';
 
 /** Stages where documents are still outstanding (pre-preparation work). */
 const PRE_INTERNAL_REVIEW = [
@@ -31,130 +35,148 @@ const PRE_INTERNAL_REVIEW = [
 ];
 
 /**
- * Which cutoff sweeps this return type — derived from its original deadline
- * month. Returns null when the type is out of season scope (May+ deadlines,
- * automatic-extension types like FBAR, or no standalone deadline).
+ * The sweep window for one engagement, derived from the deadline table.
+ * Returns null when the return type has no standalone deadline (W-7) or gets
+ * its extension automatically (FBAR — nothing to file).
  */
-export function laneFor(returnType: DeadlineReturnType, taxYear: number): BatchLane | null {
-  if (AUTOMATIC_EXTENSION_TYPES.includes(returnType)) return null; // extension needs no filing
-  const original = originalDeadline(returnType, taxYear, 12);
-  if (!original) return null;
-  const month = original.slice(5, 7);
-  if (month === '03') return 'business';
-  if (month === '04') return 'individual';
-  return null;
+export function sweepWindow(
+  returnType: DeadlineReturnType,
+  taxYear: number,
+  fiscalYearEndMonth: number,
+  offsetDays: number
+): { deadline: string; cutoff: string } | null {
+  if (AUTOMATIC_EXTENSION_TYPES.includes(returnType)) return null;
+  const deadline = originalDeadline(returnType, taxYear, fiscalYearEndMonth);
+  if (!deadline) return null;
+  return { deadline, cutoff: addDays(deadline, -offsetDays) };
 }
 
-async function cutoffSetting(app: FastifyInstance): Promise<Record<BatchLane, string>> {
-  const { rows } = await app.db.query<{ value: Record<BatchLane, string> }>(
-    `SELECT value FROM app_settings WHERE key = 'extension.auto_batch_cutoffs'`
+/** Days before the original due date that the protective sweep runs. */
+async function offsetDays(app: FastifyInstance): Promise<number> {
+  const { rows } = await app.db.query<{ value: number }>(
+    `SELECT (value)::text::int AS value FROM app_settings WHERE key = 'extension.auto_batch_offset_days'`
   );
-  return rows[0]?.value ?? { business: '03-25', individual: '04-01' };
+  return rows[0]?.value ?? 10;
 }
 
 /**
- * Daily, date-guarded. On a cutoff date, sweep that lane's still-incomplete
- * engagements into the season batch (idempotent per engagement), notify the
- * clients (kill-switch gated), and open Brian's review task.
+ * Daily, date-guarded. Sweeps every engagement whose derived cutoff window is
+ * open today into the batch for its deadline (idempotent per engagement),
+ * notifies the clients (kill-switch gated), and opens Brian's review task.
  */
 export async function runAutoExtensionBatchJob(
   app: FastifyInstance,
   today: string
-): Promise<{ skipped: boolean; lane?: BatchLane; added?: number; notified?: number; suppressed?: number }> {
+): Promise<{ skipped: boolean; added: number; notified: number; suppressed: number; batches: string[] }> {
   const ACTION = 'job.auto_extension_batch';
   const already = await app.db.query(
     `SELECT 1 FROM audit_log WHERE action = $1 AND details->>'run_date' = $2 LIMIT 1`,
     [ACTION, today]
   );
-  if (already.rows.length > 0) return { skipped: true };
+  if (already.rows.length > 0) return { skipped: true, added: 0, notified: 0, suppressed: 0, batches: [] };
 
-  const cutoffs = await cutoffSetting(app);
-  const monthDay = today.slice(5);
-  const lane = (Object.keys(cutoffs) as BatchLane[]).find((l) => cutoffs[l] === monthDay);
-  if (!lane) return { skipped: true };
+  const offset = await offsetDays(app);
 
-  // Season = the tax year whose deadlines fall in THIS calendar year.
-  const taxYear = Number(today.slice(0, 4)) - 1;
-
+  // Every engagement still waiting on documents, regardless of year or type —
+  // the deadline table decides which of them are due for a sweep TODAY.
   const { rows } = await app.db.query<{
-    id: string; return_type: DeadlineReturnType; contact_id: string;
-    first_name: string; email: string | null; language: 'en' | 'es'; preparer_id: string | null;
+    id: string; return_type: DeadlineReturnType; tax_year: number; fiscal_year_end_month: number | null;
+    contact_id: string; first_name: string; email: string | null; language: 'en' | 'es';
   }>(
-    `SELECT te.id, te.return_type, c.id AS contact_id, c.first_name, c.email, c.language, te.preparer_id
+    `SELECT te.id, te.return_type, te.tax_year, b.fiscal_year_end_month,
+            c.id AS contact_id, c.first_name, c.email, c.language
      FROM tax_engagements te
      JOIN engagements e ON e.id = te.engagement_id
      JOIN contacts c ON c.id = e.contact_id
-     WHERE te.tax_year = $1
-       AND te.docs_received_at IS NULL
+     LEFT JOIN businesses b ON b.id = e.business_id
+     WHERE te.docs_received_at IS NULL
        AND NOT te.extension_filed
-       AND te.stage = ANY($2::tax_stage[])`,
-    [taxYear, PRE_INTERNAL_REVIEW]
+       AND te.stage = ANY($1::tax_stage[])`,
+    [PRE_INTERNAL_REVIEW]
   );
-  const inLane = rows.filter((r) => laneFor(r.return_type, taxYear) === lane);
 
+  const noticesArmed = await isAutomationEnabled(app, 'extension_notices');
+  const brian = await firstActiveByRole(app.db, 'ceo');
+  const perBatch = new Map<string, { batchId: string; deadline: string; taxYear: number; added: number }>();
   let added = 0;
   let notified = 0;
   let suppressed = 0;
-  if (inLane.length > 0) {
-    const batch = await app.db.query<{ id: string }>(
-      `INSERT INTO extension_batches (tax_year, lane, cutoff_date)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (tax_year, lane) DO UPDATE SET updated_at = now()
-       RETURNING id`,
-      [taxYear, lane, today]
+
+  for (const te of rows) {
+    const window = sweepWindow(te.return_type, te.tax_year, te.fiscal_year_end_month ?? 12, offset);
+    if (!window) continue;
+    // In the window: from the cutoff up to (never on or past) the deadline. The
+    // >= makes a missed run day self-correcting; the < keeps the system from
+    // ever "protecting" a return whose deadline has already passed.
+    if (today < window.cutoff || today >= window.deadline) continue;
+
+    const key = `${te.tax_year}|${window.deadline}`;
+    let batch = perBatch.get(key);
+    if (!batch) {
+      const created = await app.db.query<{ id: string }>(
+        `INSERT INTO extension_batches (tax_year, deadline_date, cutoff_date)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (tax_year, deadline_date) DO UPDATE SET updated_at = now()
+         RETURNING id`,
+        [te.tax_year, window.deadline, window.cutoff]
+      );
+      batch = { batchId: created.rows[0]!.id, deadline: window.deadline, taxYear: te.tax_year, added: 0 };
+      perBatch.set(key, batch);
+    }
+
+    const ins = await app.db.query(
+      `INSERT INTO extension_batch_items (batch_id, tax_engagement_id)
+       VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [batch.batchId, te.id]
     );
-    const batchId = batch.rows[0]!.id;
-    const noticesArmed = await isAutomationEnabled(app, 'extension_notices');
+    if ((ins.rowCount ?? 0) === 0) continue; // already swept on an earlier day
+    added++;
+    batch.added++;
 
-    for (const te of inLane) {
-      const ins = await app.db.query(
-        `INSERT INTO extension_batch_items (batch_id, tax_engagement_id)
-         VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-        [batchId, te.id]
-      );
-      if ((ins.rowCount ?? 0) === 0) continue; // already swept
-      added++;
+    // Client notice: reassuring, not alarming (v4.3 copy intent).
+    if (!te.email) continue;
+    if (!noticesArmed) { suppressed++; continue; }
+    await sendTemplatedEmail(app, {
+      to: te.email,
+      templateKey: 'protective_extension_notice',
+      language: te.language,
+      contactId: te.contact_id,
+      vars: { first_name: te.first_name, tax_year: String(te.tax_year), portal_link: app.config.PORTAL_BASE_URL },
+    });
+    await app.db.query(
+      `UPDATE extension_batch_items SET client_notified_at = now() WHERE batch_id = $1 AND tax_engagement_id = $2`,
+      [batch.batchId, te.id]
+    );
+    notified++;
+  }
 
-      // Client notice: reassuring, not alarming (v4.3 copy intent).
-      if (!te.email) continue;
-      if (!noticesArmed) { suppressed++; continue; }
-      await sendTemplatedEmail(app, {
-        to: te.email,
-        templateKey: 'protective_extension_notice',
-        language: te.language,
-        contactId: te.contact_id,
-        vars: { first_name: te.first_name, tax_year: String(taxYear), portal_link: app.config.PORTAL_BASE_URL },
-      });
-      await app.db.query(
-        `UPDATE extension_batch_items SET client_notified_at = now() WHERE batch_id = $1 AND tax_engagement_id = $2`,
-        [batchId, te.id]
-      );
-      notified++;
-    }
-
-    // Brian's review gate is a WORK ITEM (owner rollup), one per batch.
-    const brian = await firstActiveByRole(app.db, 'ceo');
-    if (brian && added > 0) {
-      await createTask(app, {
-        title: `Review the ${taxYear} ${lane} extension batch (${added} returns) — approve before preparers file`,
-        description:
-          'Protective extensions swept at the season cutoff. Pull anything that should not be extended, then approve. ' +
-          'Preparers cannot file batch items until the batch is approved.',
-        assignedStaffId: brian,
-        priority: 2,
-        source: 'automation',
-        sourceType: 'extension_batch_review',
-        sourceId: batchId,
-      });
-    }
+  // Brian's review gate is a WORK ITEM (owner rollup), one per batch. createTask
+  // dedupes on (source_type, source_id), so a batch that grows over several
+  // days keeps ONE review task.
+  for (const batch of perBatch.values()) {
+    if (batch.added === 0 || !brian) continue;
+    await createTask(app, {
+      title: `Review the ${batch.taxYear} extension batch for the ${batch.deadline} deadline — approve before preparers file`,
+      description:
+        `Protective extensions swept ${offset} days before the ${batch.deadline} due date. Pull anything that ` +
+        'should not be extended, then approve. Preparers cannot file batch items until the batch is approved.',
+      assignedStaffId: brian,
+      priority: 2,
+      source: 'automation',
+      sourceType: 'extension_batch_review',
+      sourceId: batch.batchId,
+    });
   }
 
   await writeAudit(app.db, {
     actorType: 'system', actorLabel: 'daily-jobs',
     action: ACTION,
-    details: { run_date: today, lane, tax_year: taxYear, added, notified, suppressed },
+    details: {
+      run_date: today, offset_days: offset, added, notified, suppressed,
+      deadlines: [...perBatch.values()].map((b) => b.deadline),
+    },
   });
-  return { skipped: false, lane, added, notified, suppressed };
+  return { skipped: false, added, notified, suppressed, batches: [...perBatch.values()].map((b) => b.batchId) };
 }
 
 export async function approveBatch(
@@ -162,8 +184,8 @@ export async function approveBatch(
   batchId: string,
   actor: { id: string; email: string }
 ): Promise<{ items: number }> {
-  const batch = await app.db.query<{ status: string; tax_year: number; lane: string }>(
-    `SELECT status, tax_year, lane FROM extension_batches WHERE id = $1`,
+  const batch = await app.db.query<{ status: string; tax_year: number; deadline_date: string }>(
+    `SELECT status, tax_year, deadline_date::text AS deadline_date FROM extension_batches WHERE id = $1`,
     [batchId]
   );
   if (!batch.rows[0]) throw new AppError(404, 'not_found', 'Batch not found.');
@@ -181,7 +203,7 @@ export async function approveBatch(
   await writeAudit(app.db, {
     actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
     action: 'extension_batch.approved', objectType: 'extension_batch', objectId: batchId,
-    details: { tax_year: batch.rows[0].tax_year, lane: batch.rows[0].lane, items: count.rows[0]!.n },
+    details: { tax_year: batch.rows[0].tax_year, deadline: batch.rows[0].deadline_date, items: count.rows[0]!.n },
   });
   return { items: count.rows[0]!.n };
 }
@@ -257,7 +279,8 @@ export async function fileBatchItem(
 
 export async function batchWithItems(app: FastifyInstance, batchId: string) {
   const batch = await app.db.query(
-    `SELECT b.id, b.tax_year, b.lane, b.cutoff_date::text AS cutoff_date, b.status, b.approved_at,
+    `SELECT b.id, b.tax_year, b.deadline_date::text AS deadline_date,
+            b.cutoff_date::text AS cutoff_date, b.status, b.approved_at,
             st.full_name AS approved_by
      FROM extension_batches b LEFT JOIN staff st ON st.id = b.approved_by_staff_id
      WHERE b.id = $1`,

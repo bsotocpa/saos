@@ -675,7 +675,12 @@ tasks = work). Trello JSONs arriving in migration-data this week.
 - [x] 2. Entity-group workflow ✅ 2026-08-09: consolidated packet, ONE bundled Docuseal
       envelope/KBA for group 8879s, billing mode consolidated|per-entity,
       per-entity estimates + rollup
-- [x] 3. Escalation ladder ✅ (v4.5) + auto-extension batch ✅ 2026-08-09 (D3 portal/D7 SMS/D14 Rene call/D30 STALLED)
+- [x] 3. Escalation ladder ✅ (v4.5) + auto-extension batch ✅ 2026-08-09 —
+      sweep DERIVED per engagement (original due date − 10-day offset,
+      admin-editable; Brian corrected the spec's fixed Mar 25 / Apr 1
+      cutoffs, which fell AFTER the Mar 15 deadline and protected nothing).
+      Batches key on the deadline they protect; never sweeps on/after it
+      (D3 portal/D7 SMS/D14 Rene call/D30 STALLED)
       on every waiting state + auto-extension batch (Mar 25 business /
       Apr 1 individual cutoffs, Brian reviews before filing)
 - [x] 4. AR dunning ✅ 2026-08-09 (invoice ladder ×3/10d → call task → 30d work pause) +

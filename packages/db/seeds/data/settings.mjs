@@ -51,10 +51,10 @@ export const settings = [
     description: 'T-minus days before Mar 15 / Apr 15 when the Extension Decision List generates (automation 10).',
   },
   {
-    key: 'extension.auto_batch_cutoffs',
-    value: { business: '03-25', individual: '04-01' },
+    key: 'extension.auto_batch_offset_days',
+    value: 10,
     description:
-      'v4.3 flow 3 auto-extension cutoffs (MM-DD): engagements still missing documents on these dates sweep into that lane’s protective-extension batch. Lane derives from the return’s ORIGINAL deadline month (March filers → business, April → individual). Brian approves each batch before preparers file.',
+      'Auto-extension sweep offset: an engagement still missing documents sweeps into the protective-extension batch this many days BEFORE its own original due date (derived from the authoritative deadline table — 1065/1120-S ≈ Mar 5, 1040/1120 ≈ Apr 5, 990 ≈ May 5, fiscal-year filers automatically). Corrects the v4.3 spec’s fixed Mar 25 / Apr 1 cutoffs, which fell after the March deadline. Brian approves every batch before preparers file.',
   },
   {
     key: 'extension.summer_chase_dates',

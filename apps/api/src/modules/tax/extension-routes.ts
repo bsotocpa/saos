@@ -98,10 +98,11 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
 
   app.get('/extension-batches', read, async () => {
     const { rows } = await app.db.query(
-      `SELECT b.id, b.tax_year, b.lane, b.cutoff_date::text AS cutoff_date, b.status, b.approved_at,
+      `SELECT b.id, b.tax_year, b.deadline_date::text AS deadline_date,
+              b.cutoff_date::text AS cutoff_date, b.status, b.approved_at,
               (SELECT count(*)::int FROM extension_batch_items i WHERE i.batch_id = b.id AND i.removed_at IS NULL) AS items,
               (SELECT count(*)::int FROM extension_batch_items i WHERE i.batch_id = b.id AND i.filed_at IS NOT NULL) AS filed
-       FROM extension_batches b ORDER BY b.tax_year DESC, b.lane`
+       FROM extension_batches b ORDER BY b.deadline_date DESC`
     );
     return { batches: rows };
   });

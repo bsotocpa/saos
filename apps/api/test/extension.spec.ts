@@ -375,86 +375,133 @@ test('estimate reminders: T-7 email honors the per-client toggle (default ON)', 
   assert.equal(quiet.json().sent, 0);
 });
 
-// ── M26 flow 3: auto-extension batch (owner review gates filing) ─────────────
 
-test('auto-extension batch: sweeps the lane at its cutoff, notifies clients, and filing is BLOCKED until Brian approves', async () => {
-  const { laneFor } = await import('../src/modules/tax/extension-batch.ts');
-  // Lane derivation comes from the deadline table, not hardcoded pairs.
-  assert.equal(laneFor('1065', 2026), 'business', 'Mar 15 filer → business cutoff');
-  assert.equal(laneFor('1120s', 2026), 'business');
-  assert.equal(laneFor('1040', 2026), 'individual', 'Apr 15 filer → individual cutoff');
-  assert.equal(laneFor('1120', 2026), 'individual', '1120 is Apr 15 → April sweep');
-  assert.equal(laneFor('990', 2026), null, 'May filer is out of season scope');
-  assert.equal(laneFor('fbar', 2026), null, 'automatic extension needs no filing');
+// ── M26 flow 3: auto-extension batch, swept from the DEADLINE TABLE ──────────
+// Brian's correction (2026-08-09): cutoff = original due date − offset (default
+// 10 days), derived per engagement. No fixed dates to rot; every return type,
+// including fiscal-year filers and types that don't exist yet, sweeps correctly.
 
-  // A 2026 partnership (Mar 15) and a 2026 individual, both missing docs.
+test('sweep window derives from the deadline table: T-10 per engagement, never after the deadline', async () => {
+  const { sweepWindow } = await import('../src/modules/tax/extension-batch.ts');
+
+  // 2026 tax year, calendar filers. Deadlines are business-day rolled first,
+  // then the offset applies — so the sweep always lands 10 days before the
+  // date that actually matters.
+  assert.deepEqual(sweepWindow('1065', 2026, 12, 10), { deadline: '2027-03-15', cutoff: '2027-03-05' });
+  assert.deepEqual(sweepWindow('1120s', 2026, 12, 10), { deadline: '2027-03-15', cutoff: '2027-03-05' });
+  assert.deepEqual(sweepWindow('1040', 2026, 12, 10), { deadline: '2027-04-15', cutoff: '2027-04-05' });
+  assert.deepEqual(sweepWindow('1120', 2026, 12, 10), { deadline: '2027-04-15', cutoff: '2027-04-05' });
+  // 990s handle themselves — no settings entry, no code change.
+  assert.deepEqual(sweepWindow('990', 2026, 12, 10), { deadline: '2027-05-17', cutoff: '2027-05-07' });
+  // Fiscal-year filer: FYE June 1120 is due Oct 15 → sweeps Oct 5.
+  assert.deepEqual(sweepWindow('1120', 2026, 6, 10), { deadline: '2026-10-15', cutoff: '2026-10-05' });
+  // Admin can widen the offset without touching code.
+  assert.deepEqual(sweepWindow('1065', 2026, 12, 21), { deadline: '2027-03-15', cutoff: '2027-02-22' });
+  // Out of scope: FBAR extends automatically, W-7 has no standalone deadline.
+  assert.equal(sweepWindow('fbar', 2026, 12, 10), null);
+  assert.equal(sweepWindow('w7_itin', 2026, 12, 10), null);
+});
+
+test('auto-extension batch: sweeps per deadline, notifies clients, and filing is BLOCKED until Brian approves', async () => {
+  // A 2026 partnership (Mar 15 → sweep Mar 5) and a 2026 individual
+  // (Apr 15 → sweep Apr 5), both still missing documents.
   const partner = await makeClient('Batchbiz', 'batch-biz@example.test');
   const bizTe = await makeTaxEngagement(partner, '1065', 2026);
   const indiv = await makeClient('Batchind', 'batch-ind@example.test');
   const indTe = await makeTaxEngagement(indiv, '1040', 2026);
-  // A third with docs already in — must NOT be swept.
+  // A third with documents already in — must NEVER be swept.
   const ready = await makeClient('Batchready', 'batch-ready@example.test');
   const readyTe = await makeTaxEngagement(ready, '1065', 2026);
   await app.db.query(`UPDATE tax_engagements SET docs_received_at = now() WHERE id = $1`, [readyTe]);
 
-  // Business cutoff (Mar 25 of the filing year) sweeps only the 1065.
+  // Too early: 15 days out, nothing sweeps.
+  const early = await app.inject({
+    method: 'POST', url: '/jobs/auto-extension-batch?asOf=2027-02-28', headers: auth(ceo),
+  });
+  assert.equal(early.statusCode, 200, early.body);
+  assert.equal(early.json().added, 0, 'the window has not opened yet');
+
+  // Mar 5 (T-10 from Mar 15): the 1065 sweeps; the 1040 does not (its own
+  // window opens a month later).
   const mailBefore = sentMail.length;
   const run = await app.inject({
-    method: 'POST', url: '/jobs/auto-extension-batch?asOf=2027-03-25', headers: auth(ceo),
+    method: 'POST', url: '/jobs/auto-extension-batch?asOf=2027-03-05', headers: auth(ceo),
   });
   assert.equal(run.statusCode, 200, run.body);
-  assert.equal(run.json().lane, 'business');
-  assert.equal(run.json().added, 1, 'only the docs-missing March filer');
+  assert.equal(run.json().added, 1, 'only the March filer, and only the one missing docs');
   assert.equal(run.json().notified, 1);
   const notice = sentMail.slice(mailBefore).find((m) => m.to === 'batch-biz@example.test');
   assert.ok(notice, 'client told a protective extension is coming');
   assert.match(notice!.text, /normal/i);
 
   const batches = await app.inject({ method: 'GET', url: '/extension-batches', headers: auth(preparer) });
-  const bizBatch = batches.json().batches.find((b: { lane: string }) => b.lane === 'business');
-  assert.ok(bizBatch);
-  assert.equal(bizBatch.status, 'draft');
-  assert.equal(bizBatch.items, 1);
+  const marBatch = batches.json().batches.find((b: { deadline_date: string }) => b.deadline_date === '2027-03-15');
+  assert.ok(marBatch, 'batch is keyed on the deadline it protects');
+  assert.equal(marBatch.cutoff_date, '2027-03-05');
+  assert.equal(marBatch.status, 'draft');
+  assert.equal(marBatch.items, 1);
 
-  // Brian's review task exists and is urgent.
-  const reviewTask = await app.db.query<{ priority: number; status: string; id: string }>(
-    `SELECT id, priority, status FROM tasks WHERE source_type = 'extension_batch_review' AND source_id = $1`,
-    [bizBatch.id]
+  // Brian's review task exists, urgent, and names the deadline.
+  const reviewTask = await app.db.query<{ id: string; priority: number; title: string }>(
+    `SELECT id, priority, title FROM tasks WHERE source_type = 'extension_batch_review' AND source_id = $1`,
+    [marBatch.id]
   );
   assert.equal(reviewTask.rows.length, 1);
   assert.equal(reviewTask.rows[0]!.priority, 2);
+  assert.match(reviewTask.rows[0]!.title, /2027-03-15/);
 
   // THE GATE: a preparer cannot file while the batch is draft.
   const premature = await app.inject({
-    method: 'POST', url: `/extension-batches/${bizBatch.id}/items/${bizTe}/filed?asOf=2027-03-25`,
+    method: 'POST', url: `/extension-batches/${marBatch.id}/items/${bizTe}/filed?asOf=2027-03-05`,
     headers: auth(preparer),
   });
   assert.equal(premature.statusCode, 409, premature.body);
   assert.equal(premature.json().error, 'batch_not_approved');
 
-  // Same-day rerun is date-guarded; the individual lane is a different date.
-  const rerun = await app.inject({
-    method: 'POST', url: '/jobs/auto-extension-batch?asOf=2027-03-25', headers: auth(ceo),
+  // Same-day rerun is date-guarded. A LATER day inside the window re-runs and
+  // adds nothing new (idempotent per engagement) — a missed day self-corrects.
+  assert.equal(
+    (await app.inject({ method: 'POST', url: '/jobs/auto-extension-batch?asOf=2027-03-05', headers: auth(ceo) })).json().skipped,
+    true
+  );
+  const midWindow = await app.inject({
+    method: 'POST', url: '/jobs/auto-extension-batch?asOf=2027-03-09', headers: auth(ceo),
   });
-  assert.equal(rerun.json().skipped, true);
-  const aprRun = await app.inject({
-    method: 'POST', url: '/jobs/auto-extension-batch?asOf=2027-04-01', headers: auth(ceo),
-  });
-  assert.equal(aprRun.json().lane, 'individual');
-  assert.equal(aprRun.json().added, 1, 'the 1040 sweeps in the April lane');
+  assert.equal(midWindow.json().added, 0, 'already swept — never double-added');
+  const oneReviewTask = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'extension_batch_review' AND source_id = $1`,
+    [marBatch.id]
+  );
+  assert.equal(oneReviewTask.rows[0]!.n, 1, 'one review task per batch, however many days it grows over');
 
-  // Brian approves → the review task closes and filing opens.
+  // THE CORRECTION: on/after the deadline the sweep refuses — a protective
+  // extension filed late protects nobody.
+  const tooLate = await app.inject({
+    method: 'POST', url: '/jobs/auto-extension-batch?asOf=2027-03-15', headers: auth(ceo),
+  });
+  assert.equal(tooLate.json().added, 0, 'never sweeps on or after the deadline');
+
+  // The 1040's own window opens Apr 5 → its own batch, keyed on Apr 15.
+  const aprRun = await app.inject({
+    method: 'POST', url: '/jobs/auto-extension-batch?asOf=2027-04-05', headers: auth(ceo),
+  });
+  assert.equal(aprRun.json().added, 1, 'the individual filer sweeps on its own clock');
+  const aprBatch = (await app.inject({ method: 'GET', url: '/extension-batches', headers: auth(preparer) }))
+    .json().batches.find((b: { deadline_date: string }) => b.deadline_date === '2027-04-15');
+  assert.ok(aprBatch, 'a separate batch per deadline');
+
+  // Brian approves the March batch → review task closes, filing opens.
   const approve = await app.inject({
-    method: 'POST', url: `/extension-batches/${bizBatch.id}/approve`, headers: auth(ceo),
+    method: 'POST', url: `/extension-batches/${marBatch.id}/approve`, headers: auth(ceo),
   });
   assert.equal(approve.statusCode, 200, approve.body);
   assert.equal(approve.json().items, 1);
   const closedTask = await app.db.query<{ status: string }>(`SELECT status FROM tasks WHERE id = $1`, [reviewTask.rows[0]!.id]);
   assert.equal(closedTask.rows[0]!.status, 'completed', 'approval closes the review work item');
 
-  // Now the preparer files → DERIVED extended deadline, batch completes.
+  // Preparer files → DERIVED extended deadline, batch completes.
   const filed = await app.inject({
-    method: 'POST', url: `/extension-batches/${bizBatch.id}/items/${bizTe}/filed?asOf=2027-03-25`,
+    method: 'POST', url: `/extension-batches/${marBatch.id}/items/${bizTe}/filed?asOf=2027-03-06`,
     headers: auth(preparer),
   });
   assert.equal(filed.statusCode, 200, filed.body);
@@ -466,32 +513,30 @@ test('auto-extension batch: sweeps the lane at its cutoff, notifies clients, and
   );
   assert.equal(teRow.rows[0]!.extension_filed, true);
   assert.equal(teRow.rows[0]!.extended_deadline, '2027-09-15');
-  const batchRow = await app.db.query<{ status: string }>(`SELECT status FROM extension_batches WHERE id = $1`, [bizBatch.id]);
+  const batchRow = await app.db.query<{ status: string }>(`SELECT status FROM extension_batches WHERE id = $1`, [marBatch.id]);
   assert.equal(batchRow.rows[0]!.status, 'filed');
 
-  // Brian can pull an engagement OUT of the April batch before filing.
-  const aprBatch = (await app.inject({ method: 'GET', url: '/extension-batches', headers: auth(preparer) }))
-    .json().batches.find((b: { lane: string }) => b.lane === 'individual');
+  // Brian can pull an engagement OUT before filing; a pulled item can't file.
   const pulled = await app.inject({
     method: 'DELETE', url: `/extension-batches/${aprBatch.id}/items/${indTe}`, headers: auth(ceo),
   });
   assert.equal(pulled.statusCode, 200, pulled.body);
   await app.inject({ method: 'POST', url: `/extension-batches/${aprBatch.id}/approve`, headers: auth(ceo) });
   const refiled = await app.inject({
-    method: 'POST', url: `/extension-batches/${aprBatch.id}/items/${indTe}/filed?asOf=2027-04-01`,
+    method: 'POST', url: `/extension-batches/${aprBatch.id}/items/${indTe}/filed?asOf=2027-04-06`,
     headers: auth(preparer),
   });
   assert.equal(refiled.statusCode, 404, 'a pulled engagement cannot be filed through the batch');
 });
 
-test('auto-extension batch respects the extension_notices kill switch (sweep still happens)', async () => {
+test('auto-extension batch respects the extension_notices kill switch (the sweep still happens)', async () => {
   await app.db.query(`UPDATE automations SET enabled = false WHERE key = 'extension_notices'`);
   const quiet = await makeClient('Batchquiet', 'batch-quiet@example.test');
-  await makeTaxEngagement(quiet, '1065', 2027);
+  await makeTaxEngagement(quiet, '1065', 2027); // deadline 2028-03-15 → sweep 2028-03-05
 
   const mailBefore = sentMail.length;
   const run = await app.inject({
-    method: 'POST', url: '/jobs/auto-extension-batch?asOf=2028-03-25', headers: auth(ceo),
+    method: 'POST', url: '/jobs/auto-extension-batch?asOf=2028-03-05', headers: auth(ceo),
   });
   assert.equal(run.statusCode, 200, run.body);
   assert.equal(run.json().added, 1, 'the engagement is still swept into the batch');
