@@ -66,3 +66,24 @@ sufficient — look at the image.
 Conversion metrics would have counted real clients as open leads and lost deals.
 **Rule**: pipeline stages describe LEADS. Terminal-forward states are sticky:
 record the attempted move in history, skip it on the record, and say so.
+
+## A CSV that leaves the system is untrusted input somewhere else
+**Pattern**: report exports carry client names and notes. A cell starting with
+`=`, `+`, `-`, or `@` is a formula to Excel and Sheets, so exported client data
+becomes executable content in whoever opens it.
+**Rule**: any CSV/TSV writer prefixes formula-triggering text cells with an
+apostrophe, quotes per RFC 4180, and converts cents to decimal dollars — raw
+cents under a money header reads 100× too large.
+
+## Generate the export from the same definition as the screen
+**Pattern**: it is easy to write a report query for the UI and a second, similar
+query for the CSV. They drift, and the numbers still look plausible.
+**Rule**: one registry per report — columns, rows, and caveats — with the CSV
+serializer consuming exactly what the JSON returned. Test that no row carries a
+key the columns don't declare and none omits one they do.
+
+## `to_char(0, 'FM990.99')` is `0.`
+**Pattern**: the FM modifier strips the fractional zeros but leaves the decimal
+separator, so a zero total renders as a dangling `0.` that looks truncated.
+**Rule**: use `FM990.00` when the decimals must always show. Any format string
+gets checked against its ZERO case, not just a representative value.

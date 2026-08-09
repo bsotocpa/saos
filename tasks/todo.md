@@ -745,9 +745,12 @@ only Brian can make. Regenerate after any gate clears.)
       metrics by stage/referral source ✅ 2026-08-09
       (migration 0027; quotes.ts + pipeline.ts + quote-routes.ts;
       /pipeline internal board+builder; portal /quote/[token] public page)
-- [ ] Reports & KPIs: revenue by line/month, AR aging, pipeline
+- [x] Reports & KPIs: revenue by line/month, AR aging, pipeline
       conversion, session utilization, team throughput, client counts,
       referral-source performance — CSV export, configurable tiles
+      ✅ 2026-08-09 (migration 0028; reports/service.ts registry +
+      csv.ts + routes.ts; /reports internal page, table on desktop /
+      cards at 390px)
 - [ ] Announcements + review requests: segmented broadcast (SES/Twilio,
       EN/ES) w/ CAN-SPAM unsubscribe + TCPA opt-out + suppression at
       send + approval gate; milestone-triggered Google-review asks
@@ -828,6 +831,46 @@ only Brian can make. Regenerate after any gate clears.)
   `input { width: 100% }` rule was stretching inline checkboxes on both the
   portal proposal and the internal builder, and the builder's 5-column
   picked-lines table clipped on a phone (now stacked rows).
+
+### M27 reports & KPIs (completed 2026-08-09)
+- **Seven reports, one registry.** The catalog the UI lists, the JSON the tiles
+  render, and the CSV columns all come from the same definition, so an export
+  cannot disagree with the screen. A test walks every report and fails if a row
+  carries a key the columns don't declare, or omits one they do.
+- **CSV is spreadsheet-honest**: money exports as decimal dollars (raw cents
+  under a "Collected" header reads 100× too large), RFC 4180 quoting, CRLF, and
+  any text cell starting with `= + - @` gets a leading apostrophe. That last one
+  matters because client names and notes reach these files — a client called
+  "-Smith" should not become a formula in the recipient's spreadsheet.
+- **Every export is audited** by report key, range, and row count. Reading the
+  JSON on screen is not an export and is not logged as one.
+- **Caveats are part of the data, not fine print.** Each report states what it
+  is and isn't, rendered with the numbers:
+  - revenue counts money COLLECTED, not billed
+  - A/R aging and client counts are snapshots and say the date range doesn't
+    apply (the date inputs disable themselves)
+  - throughput reports **returns filed and returns accepted as separate
+    columns**, because Filed is not the finish line — a rejected return would
+    otherwise inflate the filed number
+  - session utilization admits it cannot compare usage to an entitlement,
+    because the sessions-per-cadence number isn't stored anywhere yet. It does
+    enforce the one entitlement that IS a rule: an active S corp below two CPA
+    sessions a year is flagged BELOW FLOOR. (The configurator-time gate on that
+    floor is still open — this is a report, not the gate.)
+  - revenue that can't be attributed to a service line is reported as
+    `unattributed`; a test asserts the lines sum to everything collected
+- **Tiles**: `staff.dashboard_tiles` jsonb. NULL and `[]` deliberately differ —
+  never-configured gets a default board, deliberately-cleared stays empty.
+  Pinning an unknown report key is refused rather than rendering a blank card.
+- **Leadership-only** (`dashboards.executive`); a preparer gets 403. Per-staff
+  own-only scorecards are Phase 4 and deliberately not faked here.
+- Two defects caught from screenshots: zero hours rendered as `0.` with a
+  dangling decimal (`FM990.99` → `FM990.00`, now regression-tested), and
+  "Unpin from dashboard" was styled destructive-red for a preference toggle.
+- 195/195 tests green. 14/14 screens verified — all seven reports at 390×844
+  AND at 1280px, because a report is mostly numbers and a horizontally
+  scrolling grid of numbers on a phone is unreadable even when it fits. The
+  table is replaced by one card per row under 768px.
 
 ### M0–M3 (completed 2026-07-05)
 - Stack as approved: Node 24 + TypeScript strict, npm workspaces, Fastify (M4),

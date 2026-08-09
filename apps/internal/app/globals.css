@@ -260,3 +260,25 @@ label.inline-check input[type='checkbox'],
 .quote-line .ctl { display: flex; gap: 6px; align-items: center; font-weight: 500; }
 .quote-line .ctl input[type='number'] { width: 62px; margin: 0; }
 .quote-line .amt { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* Reports (M27). One dataset, two presentations: the dense table on a desktop,
+   one card per row on a phone. A report is mostly numbers, and a horizontally
+   scrolling grid of numbers on a phone is unreadable even when it technically
+   fits. */
+.report-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.report-cards { display: none; }
+.report-card {
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  margin-bottom: 8px; font-size: 13px;
+}
+.report-card .rc-line {
+  display: flex; gap: 10px; justify-content: space-between; align-items: baseline;
+  padding: 3px 0;
+}
+.report-card .rc-label { color: var(--muted); font-size: 12px; flex: 0 1 auto; }
+.report-card .rc-value { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+
+@media (max-width: 767px) {
+  .report-table { display: none; }
+  .report-cards { display: block; }
+}

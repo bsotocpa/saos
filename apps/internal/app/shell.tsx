@@ -10,6 +10,7 @@ const NAV = [
   { href: '/tasks', label: 'My Tasks' },
   { href: '/inbox', label: 'Inbox' },
   { href: '/pipeline', label: 'Pipeline' },
+  { href: '/reports', label: 'Reports' },
   { href: '/hilo', label: 'Hilo Ops' },
   { href: '/alerts', label: 'Alerts' },
   { href: '/upload-return', label: 'Deliver Return' },
