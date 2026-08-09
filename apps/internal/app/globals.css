@@ -33,6 +33,10 @@ body {
   color: var(--ink);
   font-size: 14px;
   line-height: 1.5;
+  /* Hard rule: the PAGE never scrolls horizontally. Wide content scrolls
+     inside its own container (cards get overflow-x below) — this clip is the
+     backstop, the per-cause fixes are the cure. */
+  overflow-x: clip;
 }
 
 .wordmark { font-weight: 800; font-size: 18px; color: #fff; text-decoration: none; }
@@ -49,7 +53,15 @@ body {
   border-radius: 999px; padding: 3px 12px; font: inherit; font-size: 12px; cursor: pointer;
 }
 
-.nav { display: flex; gap: 4px; overflow-x: auto; background: var(--forest-deep); padding: 5px 12px; }
+.nav {
+  display: flex; gap: 4px; overflow-x: auto; background: var(--forest-deep); padding: 5px 12px;
+  /* Scrollable tabs with a fade affordance — the fade says "more that way". */
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 34px), transparent);
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 34px), transparent);
+}
+.nav::-webkit-scrollbar { display: none; }
 .nav a {
   color: rgba(255,255,255,0.82); text-decoration: none; font-size: 12.5px;
   padding: 5px 10px; border-radius: 8px; white-space: nowrap;
@@ -82,6 +94,9 @@ tr:last-child td { border-bottom: none; }
 .btn {
   display: inline-block; background: var(--forest); color: #fff; border: none; border-radius: 9px;
   padding: 8px 14px; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: none;
+  /* Unbreakable tokens (long client emails in search results) must wrap, not
+     widen the page — the Deliver Return 390px horizontal-scroll root cause. */
+  max-width: 100%; overflow-wrap: anywhere;
 }
 .btn.accent { background: var(--electric); color: var(--forest-deep); }
 .btn.ghost { background: transparent; color: var(--forest); border: 1px solid var(--line); }
@@ -166,3 +181,53 @@ table.dense .title-cell { max-width: 340px; overflow: hidden; text-overflow: ell
 
 .colmenu { position: absolute; right: 0; top: 100%; z-index: 6; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; box-shadow: 0 6px 16px rgba(9,42,40,0.12); }
 .rung { font-size: 10.5px; font-weight: 700; border-radius: 4px; padding: 1px 4px; background: var(--warn-soft); color: var(--warn); }
+
+/* ── phone width (≤767px): defect-pass rules — NO page-level h-scroll ────── */
+
+/* Wide content scrolls inside its own container, never the page. */
+.scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 767px) {
+  main { padding: 12px 10px 80px; }
+
+  /* Any table wider than the phone scrolls within its card, not the page. */
+  section.card { overflow-x: auto; }
+
+  /* Task workspace: the rail NEVER renders inline at phone width — it lives
+     in the bottom sheet (kills the interleaving/stacking defect wholesale). */
+  .task-layout { display: block; }
+  .task-layout > .rail { display: none; }
+
+  .modal { max-width: none; border-radius: 12px; padding: 14px; }
+  .overlay { padding: 12px 8px; align-items: stretch; }
+
+  .cal-cell { min-height: 56px; font-size: 10px; padding: 2px 3px; }
+  .kanban { grid-auto-columns: 82vw; }
+}
+
+/* Filter bottom sheet (phone): "Filters · n" opens it; chips stay on-page. */
+.sheet-overlay {
+  position: fixed; inset: 0; background: rgba(9,42,40,0.45); z-index: 60;
+  display: flex; align-items: flex-end;
+}
+.sheet {
+  background: var(--card); width: 100%; max-height: 82vh; overflow-y: auto;
+  border-radius: 16px 16px 0 0; padding: 8px 16px 18px;
+  animation: sheet-up 160ms ease-out;
+}
+@keyframes sheet-up { from { transform: translateY(30%); opacity: 0.6; } }
+.sheet .grabber { width: 40px; height: 4px; border-radius: 2px; background: var(--line); margin: 4px auto 10px; }
+.sheet .rail { position: static; max-height: none; border: none; padding: 0; overflow: visible; display: block; }
+.sheet-actions { display: flex; gap: 8px; position: sticky; bottom: 0; background: var(--card); padding-top: 10px; }
+.sheet-actions .btn { flex: 1; text-align: center; }
+
+/* Phone task cards (the table doesn't ship at 390px). */
+.tcard {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 8px; font-size: 13px;
+}
+.tcard .trow { display: flex; gap: 8px; align-items: flex-start; }
+.tcard .ttitle { flex: 1; font-weight: 600; overflow-wrap: anywhere; cursor: pointer; }
+.tcard .tmeta { color: var(--muted); font-size: 12px; margin: 4px 0 6px; overflow-wrap: anywhere; }
+.tcard .tctl { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.tcard .tctl select { display: inline-block; width: auto; margin: 0; padding: 3px 8px; font-size: 12px; }

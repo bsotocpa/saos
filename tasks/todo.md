@@ -619,14 +619,14 @@ tasks = work). Trello JSONs arriving in migration-data this week.
         Trello/Zoho migration maps their historical items to unassigned
         (importer already does; ruling documented in trello.ts) or Brian
 
-## M25.6 — Task dependencies (v4.6 — lands inside the task-system work; schema)
-- [ ] task_dependencies table (blocked_task_id ↔ blocker_task_id, no
+## M25.6 — Task dependencies (v4.6 — lands inside the task-system work; schema) ✅ 2026-07-12 deployed
+- [x] task_dependencies table (blocked_task_id ↔ blocker_task_id, no
       self/cycles); blocked tasks CANNOT complete before their blockers
       (status route + portal check-off + bulk both refuse); completing or
       cancelling a blocker cascades unblock notifications to assignees
-- [ ] Blocked tasks visually distinct (list badge + kanban); manage
+- [x] Blocked tasks visually distinct (list badge + kanban); manage
       blockers from the task modal; open_blockers in search payload
-- [ ] Prove it: block/refuse/unblock-notify/cycle-reject tests
+- [x] Prove it: block/refuse/unblock-notify/cycle-reject tests
       (oldest-year-first auto-chaining is resolution-lane scope → M26.5)
 
 ## M26 — Seven v4.3 operational flows (consume M24+M25)

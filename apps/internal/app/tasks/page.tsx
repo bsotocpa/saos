@@ -20,6 +20,40 @@ import type { TaskLayout } from './task-form';
 
 type ViewType = 'list' | 'kanban' | 'calendar' | 'timeline';
 
+/** Phone-width detection — drives the card list + filter bottom sheet. */
+function useIsPhone(): boolean {
+  const [isPhone, setIsPhone] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsPhone(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  return isPhone;
+}
+
+/** How many filters deviate from "nothing" — the n in "Filters · n". */
+function activeFilterCount(f: Filters): number {
+  let n = 0;
+  if (f.q.trim()) n++;
+  if (f.status.length) n++;
+  if (f.priority.length) n++;
+  if (f.assignee) n++;
+  if (f.unassigned) n++;
+  if (f.contactId) n++;
+  if (f.businessId) n++;
+  if (f.tag.trim()) n++;
+  if (f.sourceType) n++;
+  if (f.clientVisible) n++;
+  if (f.due) n++;
+  if (f.createdByMe) n++;
+  if (f.delegatedByMe) n++;
+  if (f.untouchedDays) n++;
+  if (f.includeDone) n++;
+  return n;
+}
+
 interface Me { id: string; fullName: string; permissions: string[] }
 interface Workload {
   id: string; full_name: string; role: string;
@@ -47,6 +81,8 @@ export default function TasksPage() {
   const [showWorkload, setShowWorkload] = useState(false);
   const [workload, setWorkload] = useState<Workload[]>([]);
   const [error, setError] = useState('');
+  const isPhone = useIsPhone();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // ── bootstrap ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -194,6 +230,11 @@ export default function TasksPage() {
             </select>
           </label>
         ) : null}
+        {isPhone ? (
+          <button className="chip" type="button" onClick={() => setSheetOpen(true)}>
+            Filters{activeFilterCount(filters) > 0 ? ` · ${activeFilterCount(filters)}` : ''}
+          </button>
+        ) : null}
         <span style={{ flex: 1 }} />
         <Link className="btn ghost" href="/tasks/boards">Project boards</Link>
         <button className="btn ghost" type="button" onClick={() => setShowWorkload((s) => !s)}>Workload</button>
@@ -251,7 +292,15 @@ export default function TasksPage() {
 
           {loading ? <p className="muted small">Loading…</p> : null}
 
-          {viewType === 'list' ? (
+          {viewType === 'list' && isPhone ? (
+            <ListCards
+              tasks={tasks} selected={selected} setSelected={setSelected} canManage={canManage} staff={staff}
+              onStatus={(id, s) => void setStatus(id, s)}
+              onPatch={(id, b) => void patchTask(id, b)}
+              onEdit={setEditing} onDuplicate={(id) => void duplicate(id)} onFollowUp={(id) => void followUp(id)}
+            />
+          ) : null}
+          {viewType === 'list' && !isPhone ? (
             <ListView
               tasks={tasks} columns={columns} setColumns={setColumns} filters={filters} sortBy={sortBy}
               selected={selected} setSelected={setSelected} canManage={canManage} staff={staff}
@@ -282,6 +331,23 @@ export default function TasksPage() {
         </div>
       </div>
 
+      {sheetOpen ? (
+        <div className="sheet-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setSheetOpen(false); }}>
+          <div className="sheet">
+            <div className="grabber" />
+            <FilterRail filters={filters} setFilters={(f) => { setActiveViewId(''); setFilters(f); }} staff={staff} />
+            <div className="sheet-actions">
+              <button className="btn ghost" type="button" onClick={() => { setActiveViewId(''); setFilters({ ...EMPTY_FILTERS }); }}>
+                Clear all
+              </button>
+              <button className="btn" type="button" onClick={() => setSheetOpen(false)}>
+                Show {tasks.length} task{tasks.length === 1 ? '' : 's'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {(creating || editing) ? (
         <TaskFormModal
           task={editing} layout={layout} staff={staff} meId={me.id}
@@ -291,6 +357,66 @@ export default function TasksPage() {
         />
       ) : null}
     </>
+  );
+}
+
+// ── phone card list (the dense table doesn't ship at 390px) ──────────────────
+
+function ListCards(props: {
+  tasks: Task[];
+  selected: Set<string>; setSelected: (s: Set<string>) => void;
+  canManage: boolean; staff: StaffEntry[];
+  onStatus: (id: string, s: TaskStatus) => void;
+  onPatch: (id: string, body: Record<string, unknown>) => void;
+  onEdit: (t: Task) => void; onDuplicate: (id: string) => void; onFollowUp: (id: string) => void;
+}) {
+  const toggleOne = (id: string, checked: boolean) => {
+    const next = new Set(props.selected);
+    if (checked) next.add(id); else next.delete(id);
+    props.setSelected(next);
+  };
+  return (
+    <div>
+      {props.tasks.map((t) => (
+        <div className="tcard" key={t.id}>
+          <div className="trow">
+            <input type="checkbox" style={{ width: 'auto', margin: '3px 0 0' }}
+              checked={props.selected.has(t.id)} onChange={(e) => toggleOne(t.id, e.target.checked)} />
+            <span className="ttitle" onClick={() => props.onEdit(t)}>
+              {t.title}
+              {t.open_blockers > 0 ? <span className="badge warn" style={{ marginLeft: 6 }}>⛔ blocked</span> : null}
+              {t.client_visible ? <span className="badge" style={{ marginLeft: 6 }}>client</span> : null}
+              {isOverdue(t) ? <span className="badge danger" style={{ marginLeft: 6 }}>overdue</span> : null}
+            </span>
+          </div>
+          <div className="tmeta">
+            {t.client_name ? `${t.client_name} · ` : ''}
+            {t.business_name ? `${t.business_name} · ` : ''}
+            {t.due_date ? `due ${t.due_date} · ` : ''}
+            {t.assignee_name ?? 'unassigned'}
+            {t.tags.length ? ` · ${t.tags.join(', ')}` : ''}
+          </div>
+          <div className="tctl">
+            {props.canManage ? (
+              <>
+                <select value={t.status} onChange={(e) => props.onStatus(t.id, e.target.value as TaskStatus)}>
+                  {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  {t.status === 'cancelled' ? <option value="cancelled">Cancelled</option> : null}
+                </select>
+                <select value={t.priority} onChange={(e) => props.onPatch(t.id, { priority: Number(e.target.value) })}>
+                  {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                </select>
+                <button className="chip" type="button" title="Duplicate" onClick={() => props.onDuplicate(t.id)}>⧉</button>
+                <button className="chip" type="button" title="Follow-up" onClick={() => props.onFollowUp(t.id)}>↳</button>
+              </>
+            ) : (
+              <span className="muted small">{STATUS_LABEL[t.status]} · {PRIORITY_LABEL[t.priority]}</span>
+            )}
+          </div>
+        </div>
+      ))}
+      {props.tasks.length === 0 ? <p className="muted small">No tasks match these filters.</p> : null}
+    </div>
   );
 }
 
@@ -774,7 +900,10 @@ function TimelineView(props: { tasks: Task[]; onEdit: (t: Task) => void }) {
   }, [props.tasks, days]);
 
   return (
-    <section className="card">
+    // scroll-x + min-width: on phones the 4-week grid scrolls inside the
+    // card instead of squeezing to nothing (page never scrolls sideways).
+    <section className="card scroll-x">
+      <div style={{ minWidth: 560 }}>
       <div className="tl-row" style={{ borderBottom: '2px solid var(--line)' }}>
         <strong className="small">Owner</strong>
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${TIMELINE_DAYS}, 1fr)`, fontSize: 10 }} className="muted">
@@ -807,6 +936,7 @@ function TimelineView(props: { tasks: Task[]; onEdit: (t: Task) => void }) {
           </div>
         </div>
       ))}
+      </div>
     </section>
   );
 }
