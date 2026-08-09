@@ -56,8 +56,10 @@ before(async () => {
     );
     return rows[0]!.id;
   };
-  const green = await mkContact('Dashgreen', 'dash-green@example.test', 'health_score', [85]);
-  const red = await mkContact('Dashred', 'dash-red@example.test', 'health_score', [25]);
+  // 2026-08-09 baseline: bands are STORED by the health job — fabricate them
+  // the way the job would (score informs red; signals inform yellow/green).
+  const green = await mkContact('Dashgreen', 'dash-green@example.test', 'health_score, health_band', [85, 'green']);
+  const red = await mkContact('Dashred', 'dash-red@example.test', 'health_score, health_band', [25, 'red']);
 
   // Tax engagements at stages with fees.
   for (const [contactId, stage, fee] of [

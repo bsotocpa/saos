@@ -310,3 +310,46 @@ test('attest independence: blocked with active bookkeeping; Brian-only documente
   assert.equal(cleanAttest.statusCode, 201);
   assert.equal(cleanAttest.json().independenceOverridden, false);
 });
+
+test('health baseline (2026-08-09): never-engaged = gray; yellow only on signals; active+clean = green', async () => {
+  // Migrated, never engaged: no logins, engagements, doc requests, messages.
+  const dormant = await app.db.query<{ id: string }>(
+    `INSERT INTO contacts (first_name, last_name, email, soto_status, source)
+     VALUES ('Synthetic', 'Dormant', 'dormant-hb@example.test', 'active', 'zoho') RETURNING id`
+  );
+  const dormantId = dormant.rows[0]!.id;
+
+  // Engaged + one ACTUAL signal (overdue document request).
+  const signal = await app.db.query<{ id: string }>(
+    `INSERT INTO contacts (first_name, last_name, email, soto_status)
+     VALUES ('Synthetic', 'Signal', 'signal-hb@example.test', 'active') RETURNING id`
+  );
+  const signalId = signal.rows[0]!.id;
+  await app.db.query(
+    `INSERT INTO document_requests (contact_id, title_en, status, due_date)
+     VALUES ($1, 'Overdue docs', 'open', CURRENT_DATE - 5)`,
+    [signalId]
+  );
+
+  // Engaged + clean: a portal login on record, nothing negative.
+  const clean = await app.db.query<{ id: string }>(
+    `INSERT INTO contacts (first_name, last_name, email, soto_status)
+     VALUES ('Synthetic', 'Clean', 'clean-hb@example.test', 'active') RETURNING id`
+  );
+  const cleanId = clean.rows[0]!.id;
+  await app.db.query(
+    `INSERT INTO audit_log (actor_type, action, contact_id) VALUES ('client', 'portal.login', $1)`,
+    [cleanId]
+  );
+
+  await runHealthRefresh(app);
+
+  const bands = await app.db.query<{ id: string; health_band: string }>(
+    `SELECT id, health_band FROM contacts WHERE id = ANY($1::uuid[])`,
+    [[dormantId, signalId, cleanId]]
+  );
+  const byId = Object.fromEntries(bands.rows.map((r) => [r.id, r.health_band]));
+  assert.equal(byId[dormantId], 'gray', 'migrated-but-never-engaged is NEUTRAL, not a warning');
+  assert.equal(byId[signalId], 'yellow', 'yellow is reserved for actual signals (overdue docs)');
+  assert.equal(byId[cleanId], 'green', 'active and clean is green even at a middling score');
+});

@@ -37,13 +37,10 @@ export async function executiveDashboard(app: FastifyInstance) {
        FROM invoices WHERE status IN ('sent', 'overdue')
        GROUP BY 1 ORDER BY 1`
     ),
+    // 2026-08-09 baseline: bands are STORED by the health job (gray =
+    // never-engaged neutral, yellow = actual signal, green = active+clean).
     app.db.query(
-      `SELECT CASE
-                WHEN health_score IS NULL THEN 'unscored'
-                WHEN health_score < (SELECT (value)::text::int FROM app_settings WHERE key = 'health.red_below') THEN 'red'
-                WHEN health_score >= (SELECT (value)::text::int FROM app_settings WHERE key = 'health.green_at_or_above') THEN 'green'
-                ELSE 'yellow' END AS band,
-              count(*)::int AS count
+      `SELECT COALESCE(health_band, 'unscored') AS band, count(*)::int AS count
        FROM contacts WHERE soto_status = 'active' AND NOT is_archived
        GROUP BY 1`
     ),

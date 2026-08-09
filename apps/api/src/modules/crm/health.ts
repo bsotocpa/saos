@@ -92,13 +92,76 @@ export async function computeHealth(
   return { score, components };
 }
 
-async function band(db: Db, score: number): Promise<'red' | 'yellow' | 'green'> {
-  const { rows } = await db.query<{ key: string; value: number }>(
-    `SELECT key, (value)::text::int AS value FROM app_settings WHERE key IN ('health.red_below', 'health.green_at_or_above')`
+export type HealthBand = 'gray' | 'red' | 'yellow' | 'green';
+
+export interface HealthSignals {
+  overdue_docs: boolean;
+  failed_payment: boolean;
+  stalled_ladder: boolean;
+  red_clock: boolean;
+}
+
+/**
+ * Baseline (decided 2026-08-09): a migrated contact with NO interaction
+ * data is NEUTRAL, not at-risk. "Engaged" = any portal login, engagement,
+ * document request, or inbound message.
+ */
+async function isEngaged(db: Db, contactId: string): Promise<boolean> {
+  const { rows } = await db.query<{ engaged: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM audit_log WHERE action = 'portal.login' AND contact_id = $1)
+        OR EXISTS (SELECT 1 FROM engagements WHERE contact_id = $1)
+        OR EXISTS (SELECT 1 FROM document_requests WHERE contact_id = $1)
+        OR EXISTS (SELECT 1 FROM messages m JOIN message_threads t ON t.id = m.thread_id
+                   WHERE t.contact_id = $1 AND m.direction = 'inbound') AS engaged`,
+    [contactId]
   );
-  const redBelow = rows.find((r) => r.key === 'health.red_below')?.value ?? 40;
-  const greenAt = rows.find((r) => r.key === 'health.green_at_or_above')?.value ?? 70;
-  return score < redBelow ? 'red' : score >= greenAt ? 'green' : 'yellow';
+  return rows[0]!.engaged;
+}
+
+/** The ACTUAL warning signals — yellow is reserved for these. */
+export async function healthSignals(db: Db, contactId: string): Promise<HealthSignals> {
+  const { rows } = await db.query<HealthSignals>(
+    `SELECT
+       EXISTS (SELECT 1 FROM document_requests
+               WHERE contact_id = $1 AND status IN ('open', 'partially_received')
+                 AND due_date IS NOT NULL AND due_date < CURRENT_DATE) AS overdue_docs,
+       (EXISTS (SELECT 1 FROM invoices WHERE contact_id = $1 AND status = 'overdue')
+        OR EXISTS (SELECT 1 FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
+                   WHERE e.contact_id = $1 AND te.payment_status = 'overdue')) AS failed_payment,
+       EXISTS (SELECT 1 FROM tasks
+               WHERE contact_id = $1
+                 AND status IN ('not_started', 'in_progress', 'waiting_for_input', 'deferred')
+                 AND (ladder_rung >= 3 OR source_type = 'stalled_flag')) AS stalled_ladder,
+       EXISTS (SELECT 1 FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
+               WHERE e.contact_id = $1
+                 AND te.stage NOT IN ('filed', 'completed', 'withdrawn', 'on_hold')
+                 AND te.docs_received_at IS NULL
+                 AND COALESCE(te.extended_deadline, te.original_deadline) IS NOT NULL
+                 AND COALESCE(te.extended_deadline, te.original_deadline) < CURRENT_DATE + 14) AS red_clock`,
+    [contactId]
+  );
+  return rows[0]!;
+}
+
+/**
+ * Band assignment: gray = never engaged (neutral) · red = severe compound
+ * score · yellow = an actual signal · green = active and clean. The score
+ * still informs red; it no longer defaults anyone into yellow.
+ */
+async function assignBand(
+  db: Db,
+  contactId: string,
+  score: number
+): Promise<{ band: HealthBand; signals: HealthSignals | null }> {
+  if (!(await isEngaged(db, contactId))) return { band: 'gray', signals: null };
+  const { rows } = await db.query<{ value: number }>(
+    `SELECT (value)::text::int AS value FROM app_settings WHERE key = 'health.red_below'`
+  );
+  const redBelow = rows[0]?.value ?? 40;
+  const signals = await healthSignals(db, contactId);
+  if (score < redBelow) return { band: 'red', signals };
+  const any = signals.overdue_docs || signals.failed_payment || signals.stalled_ladder || signals.red_clock;
+  return { band: any ? 'yellow' : 'green', signals };
 }
 
 /**
@@ -111,10 +174,11 @@ export async function runHealthRefresh(app: FastifyInstance): Promise<{ scored: 
     first_name: string;
     last_name: string;
     health_score: number | null;
+    health_band: HealthBand | null;
     assigned_manager_id: string | null;
     client_since: Date | null;
   }>(
-    `SELECT id, first_name, last_name, health_score, assigned_manager_id, client_since
+    `SELECT id, first_name, last_name, health_score, health_band, assigned_manager_id, client_since
      FROM contacts WHERE soto_status = 'active' AND NOT is_archived`
   );
 
@@ -123,13 +187,13 @@ export async function runHealthRefresh(app: FastifyInstance): Promise<{ scored: 
 
   for (const c of contacts.rows) {
     const { score, components } = await computeHealth(app.db, c.id);
+    const { band: newBand, signals } = await assignBand(app.db, c.id, score);
     await app.db.query(
-      `UPDATE contacts SET health_score = $2, health_components = $3::jsonb, health_computed_at = now() WHERE id = $1`,
-      [c.id, score, JSON.stringify(components)]
+      `UPDATE contacts SET health_score = $2, health_band = $3, health_components = $4::jsonb, health_computed_at = now() WHERE id = $1`,
+      [c.id, score, newBand, JSON.stringify({ ...components, signals })]
     );
 
-    const newBand = await band(app.db, score);
-    const oldBand = c.health_score === null ? null : await band(app.db, c.health_score);
+    const oldBand = c.health_band;
     const name = `${c.first_name} ${c.last_name}`;
 
     if (newBand === 'red' && oldBand !== 'red') {

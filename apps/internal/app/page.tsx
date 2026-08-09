@@ -110,6 +110,7 @@ export default function ExecutivePage() {
             <div><div className="stat" style={{ color: 'var(--ok)' }}>{bands.green ?? 0}</div><div className="muted small">Green</div></div>
             <div><div className="stat" style={{ color: 'var(--warn)' }}>{bands.yellow ?? 0}</div><div className="muted small">Yellow</div></div>
             <div><div className="stat" style={{ color: 'var(--danger)' }}>{bands.red ?? 0}</div><div className="muted small">Red</div></div>
+            <div><div className="stat" style={{ color: 'var(--muted)' }}>{(bands.gray ?? 0) + (bands.unscored ?? 0)}</div><div className="muted small">Neutral</div></div>
           </div>
         </section>
 
