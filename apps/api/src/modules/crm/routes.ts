@@ -10,6 +10,8 @@ import { requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
 import { refreshEnrichmentGaps } from './service.ts';
 import { runHealthRefresh } from './health.ts';
+import { startGroupRemote8879 } from '../signatures/service.ts';
+import { createInvoice } from '../billing/service.ts';
 
 const ContactCreateBody = z.object({
   firstName: z.string().min(1),
@@ -71,6 +73,7 @@ function meta(request: FastifyRequest) {
 export function registerCrmRoutes(app: FastifyInstance): void {
   const read = { preHandler: [app.authenticate, requirePermission('contacts.read')] };
   const write = { preHandler: [app.authenticate, requirePermission('contacts.write')] };
+  const taxManage = { preHandler: [app.authenticate, requirePermission('engagements.tax.manage')] };
 
   // ── Contacts ────────────────────────────────────────────────────────────
   app.get('/contacts', read, async (request) => {
@@ -341,6 +344,141 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       [id]
     );
     return { group: group.rows[0], members: members.rows };
+  });
+
+  // ── v4.3 flow 2: entity-group workflow ────────────────────────────────────
+
+  // Billing mode: consolidated (one invoice, line-itemed per entity) or
+  // per_entity. Changeable anytime; takes effect next billing cycle.
+  app.patch<{ Params: { id: string } }>('/entity-groups/:id', write, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({
+      name: z.string().min(1).optional(),
+      notes: z.string().nullable().optional(),
+      billingMode: z.enum(['consolidated', 'per_entity']).optional(),
+    }).parse(request.body);
+    const sets: string[] = [];
+    const params: unknown[] = [id];
+    if (b.name !== undefined) { params.push(b.name); sets.push(`name = $${params.length}`); }
+    if (b.notes !== undefined) { params.push(b.notes); sets.push(`notes = $${params.length}`); }
+    if (b.billingMode !== undefined) { params.push(b.billingMode); sets.push(`billing_mode = $${params.length}`); }
+    if (sets.length === 0) throw new AppError(400, 'empty_update', 'No fields to update.');
+    const res = await app.db.query(`UPDATE entity_groups SET ${sets.join(', ')} WHERE id = $1`, params);
+    if (res.rowCount === 0) throw new AppError(404, 'not_found', 'Entity group not found.');
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      action: 'entity_group.updated', objectType: 'entity_group', objectId: id,
+      details: { fields: sets.map((s) => s.split(' =')[0]) },
+    });
+    return { status: 'ok' };
+  });
+
+  // Consolidated packet: members + per-entity engagements for the year with
+  // ESTIMATES and a rollup (the group view Brian preps from).
+  app.get<{ Params: { id: string } }>('/entity-groups/:id/packet', read, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const q = z.object({ taxYear: z.coerce.number().int().optional() }).parse(request.query);
+    const group = await app.db.query(
+      `SELECT id, name, notes, billing_mode FROM entity_groups WHERE id = $1`, [id]
+    );
+    if (!group.rows[0]) throw new AppError(404, 'not_found', 'Entity group not found.');
+    const params: unknown[] = [id];
+    let yearClause = '';
+    if (q.taxYear) { params.push(q.taxYear); yearClause = `AND te.tax_year = $${params.length}`; }
+    const entities = await app.db.query<{
+      business_id: string; business_name: string; te_id: string | null; tax_year: number | null;
+      return_type: string | null; stage: string | null;
+      estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null;
+      final_fee_cents: number | null; f8879_signed_at: Date | null; invoice_number: string | null;
+    }>(
+      `SELECT b.id AS business_id, b.name AS business_name,
+              te.id AS te_id, te.tax_year, te.return_type, te.stage,
+              te.estimated_fee_min_cents, te.estimated_fee_max_cents, te.final_fee_cents,
+              te.f8879_signed_at, te.invoice_number
+       FROM entity_group_members gm
+       JOIN businesses b ON b.id = gm.business_id
+       LEFT JOIN engagements e ON e.business_id = b.id AND e.service_line = 'tax'
+       LEFT JOIN tax_engagements te ON te.engagement_id = e.id ${yearClause}
+       WHERE gm.group_id = $1
+       ORDER BY b.name, te.tax_year DESC`,
+      params
+    );
+    const withTe = entities.rows.filter((r) => r.te_id);
+    const rollup = {
+      entities: new Set(entities.rows.map((r) => r.business_id)).size,
+      engagements: withTe.length,
+      estimatedMinCents: withTe.reduce((a, r) => a + (r.estimated_fee_min_cents ?? 0), 0),
+      estimatedMaxCents: withTe.reduce((a, r) => a + (r.estimated_fee_max_cents ?? 0), 0),
+      finalFeeCents: withTe.reduce((a, r) => a + (r.final_fee_cents ?? 0), 0),
+      awaiting8879: withTe.filter((r) => !r.f8879_signed_at && r.stage !== 'completed' && r.stage !== 'withdrawn').length,
+      byStage: withTe.reduce<Record<string, number>>((acc, r) => {
+        if (r.stage) acc[r.stage] = (acc[r.stage] ?? 0) + 1;
+        return acc;
+      }, {}),
+    };
+    return { group: group.rows[0], entities: entities.rows, rollup };
+  });
+
+  // ONE bundled envelope + ONE KBA for every group 8879 still unsigned.
+  app.post<{ Params: { id: string } }>('/entity-groups/:id/f8879-envelope', taxManage, async (request, reply) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ taxYear: z.number().int().min(2000).max(2100) }).parse(request.body);
+    const result = await startGroupRemote8879(app, { id: request.staff!.id, label: request.staff!.email }, id, b.taxYear);
+    return reply.code(201).send(result);
+  });
+
+  // Consolidated invoice: ONE invoice, line-itemed per entity from each
+  // engagement's final fee (which came from the price-book estimate flow).
+  app.post<{ Params: { id: string } }>('/entity-groups/:id/invoice', taxManage, async (request, reply) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ taxYear: z.number().int().min(2000).max(2100) }).parse(request.body);
+    const group = await app.db.query<{ billing_mode: string }>(
+      `SELECT billing_mode FROM entity_groups WHERE id = $1`, [id]
+    );
+    if (!group.rows[0]) throw new AppError(404, 'not_found', 'Entity group not found.');
+    if (group.rows[0].billing_mode !== 'consolidated') {
+      throw new AppError(409, 'per_entity_mode', 'This group bills per entity — invoice each engagement individually.');
+    }
+    const billable = await app.db.query<{
+      te_id: string; business_name: string; return_type: string; tax_year: number;
+      final_fee_cents: number; contact_id: string;
+    }>(
+      `SELECT te.id AS te_id, b.name AS business_name, te.return_type, te.tax_year,
+              te.final_fee_cents, e.contact_id
+       FROM entity_group_members gm
+       JOIN businesses b ON b.id = gm.business_id
+       JOIN engagements e ON e.business_id = b.id AND e.service_line = 'tax'
+       JOIN tax_engagements te ON te.engagement_id = e.id
+       WHERE gm.group_id = $1 AND te.tax_year = $2
+         AND te.final_fee_cents IS NOT NULL AND te.invoice_number IS NULL
+         AND te.stage IN ('filed', 'rejected', 'completed')`,
+      [id, b.taxYear]
+    );
+    if (billable.rows.length === 0) {
+      throw new AppError(400, 'nothing_billable', 'No filed group engagements with a final fee are awaiting an invoice.');
+    }
+    const invoice = await createInvoice(
+      app,
+      { type: 'staff', id: request.staff!.id, label: request.staff!.email },
+      {
+        contactId: billable.rows[0]!.contact_id,
+        lines: billable.rows.map((r) => ({
+          description: `${r.business_name} — ${r.tax_year} ${r.return_type.toUpperCase()} preparation`,
+          qty: 1,
+          unitCents: r.final_fee_cents,
+        })),
+      }
+    );
+    await app.db.query(
+      `UPDATE tax_engagements SET invoice_number = $2, invoice_amount_cents = final_fee_cents WHERE id = ANY($1::uuid[])`,
+      [billable.rows.map((r) => r.te_id), invoice.invoiceNumber]
+    );
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      action: 'entity_group.consolidated_invoice', objectType: 'entity_group', objectId: id,
+      details: { invoice_number: invoice.invoiceNumber, engagements: billable.rows.length, total_cents: invoice.totalCents },
+    });
+    return reply.code(201).send({ ...invoice, engagements: billable.rows.length });
   });
 
   // ── Jobs ────────────────────────────────────────────────────────────────

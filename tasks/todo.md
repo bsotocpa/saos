@@ -658,7 +658,7 @@ tasks = work). Trello JSONs arriving in migration-data this week.
 - [x] 1. E-file rejects ✅ 2026-08-09 (Filed→Rejected re-queue, perfection-period
       clocks: 10d business/5d individual) + notice tickets w/ client-
       visible plain-language status EN/ES + notice billing from price book
-- [ ] 2. Entity-group workflow: consolidated packet, ONE bundled Docuseal
+- [x] 2. Entity-group workflow ✅ 2026-08-09: consolidated packet, ONE bundled Docuseal
       envelope/KBA for group 8879s, billing mode consolidated|per-entity,
       per-entity estimates + rollup
 - [ ] 3. Escalation ladder (D3 portal/D7 SMS/D14 Rene call/D30 STALLED)

@@ -299,3 +299,129 @@ test('portal Sign Documents list is scoped to the session contact', async () => 
   assert.equal(res.statusCode, 200);
   assert.equal(res.json().envelopes.length, 1, 'only own envelopes visible');
 });
+
+// ── M26 flow 2: entity-group workflow — ONE envelope/KBA, packet, billing ────
+
+test('entity group: one bundled envelope + one KBA signs EVERY group 8879; packet rolls up; consolidated invoice', async () => {
+  const brian = await staffWithToken('brian-group@example.test', 'ceo');
+  const owner = await makeClient('Groupowner', 'group-owner@example.test');
+
+  // Two entities in the group, each with a 2025 return.
+  const bizIds: string[] = [];
+  const teIds: string[] = [];
+  for (const name of ['Synthetic Alpha LLC', 'Synthetic Beta Inc']) {
+    const biz = await app.db.query<{ id: string }>(
+      `INSERT INTO businesses (name) VALUES ($1) RETURNING id`, [name]
+    );
+    bizIds.push(biz.rows[0]!.id);
+    const te = await app.inject({
+      method: 'POST', url: '/tax-engagements', headers: auth(ana),
+      payload: { contactId: owner, businessId: biz.rows[0]!.id, taxYear: 2025, returnType: '1120s' },
+    });
+    assert.equal(te.statusCode, 201, te.body);
+    teIds.push(te.json().id as string);
+    await app.db.query(
+      `UPDATE tax_engagements SET estimated_fee_min_cents = 70000, estimated_fee_max_cents = 90000 WHERE id = $1`,
+      [te.json().id]
+    );
+  }
+  const group = await app.db.query<{ id: string }>(
+    `INSERT INTO entity_groups (name) VALUES ('Synthetic Family Group') RETURNING id`
+  );
+  const groupId = group.rows[0]!.id;
+  for (const bizId of bizIds) {
+    await app.db.query(`INSERT INTO entity_group_members (group_id, business_id) VALUES ($1, $2)`, [groupId, bizId]);
+  }
+  await app.db.query(
+    `INSERT INTO entity_group_members (group_id, contact_id, member_role) VALUES ($1, $2, 'owner')`,
+    [groupId, owner]
+  );
+
+  // Packet BEFORE signatures: 2 entities, 2 awaiting 8879, estimates rolled up.
+  const before8879 = await app.inject({
+    method: 'GET', url: `/entity-groups/${groupId}/packet?taxYear=2025`, headers: auth(ana),
+  });
+  assert.equal(before8879.statusCode, 200, before8879.body);
+  assert.equal(before8879.json().rollup.entities, 2);
+  assert.equal(before8879.json().rollup.awaiting8879, 2);
+  assert.equal(before8879.json().rollup.estimatedMinCents, 140000);
+  assert.equal(before8879.json().rollup.estimatedMaxCents, 180000);
+
+  // ONE bundled envelope + ONE KBA for both 8879s.
+  const started = await app.inject({
+    method: 'POST', url: `/entity-groups/${groupId}/f8879-envelope`, headers: auth(ana),
+    payload: { taxYear: 2025 },
+  });
+  assert.equal(started.statusCode, 201, started.body);
+  assert.equal(started.json().covered, 2, 'one envelope covers both entities');
+  const { envelopeId, kbaId } = started.json();
+
+  const passed = await app.inject({
+    method: 'POST', url: `/kba/${kbaId}/simulate`, headers: auth(ana), payload: { outcome: 'passed' },
+  });
+  assert.equal(passed.statusCode, 200, passed.body);
+  const env = await app.db.query<{ docuseal_submission_id: string }>(
+    `SELECT docuseal_submission_id FROM signature_envelopes WHERE id = $1`, [envelopeId]
+  );
+  await docusealComplete(env.rows[0]!.docuseal_submission_id);
+
+  // BOTH engagements stamped by the single completion.
+  for (const teId of teIds) {
+    const row = await app.db.query(
+      `SELECT f8879_signed_at, f8879_signature_method FROM tax_engagements WHERE id = $1`, [teId]
+    );
+    assert.ok(row.rows[0].f8879_signed_at, 'bundled envelope stamps every covered 8879');
+    assert.equal(row.rows[0].f8879_signature_method, 'remote_kba');
+  }
+  const afterPacket = await app.inject({
+    method: 'GET', url: `/entity-groups/${groupId}/packet?taxYear=2025`, headers: auth(ana),
+  });
+  assert.equal(afterPacket.json().rollup.awaiting8879, 0);
+
+  // Nothing left to sign → a second bundle refuses.
+  const again = await app.inject({
+    method: 'POST', url: `/entity-groups/${groupId}/f8879-envelope`, headers: auth(ana),
+    payload: { taxYear: 2025 },
+  });
+  assert.equal(again.statusCode, 400);
+
+  // Billing: per_entity mode refuses the consolidated invoice…
+  const modeSet = await app.inject({
+    method: 'PATCH', url: `/entity-groups/${groupId}`, headers: auth(brian),
+    payload: { billingMode: 'per_entity' },
+  });
+  assert.equal(modeSet.statusCode, 200, modeSet.body);
+  for (const teId of teIds) {
+    await app.db.query(
+      `UPDATE tax_engagements SET stage = 'filed', filed_date = CURRENT_DATE, final_fee_cents = 80000 WHERE id = $1`,
+      [teId]
+    );
+  }
+  const refused = await app.inject({
+    method: 'POST', url: `/entity-groups/${groupId}/invoice`, headers: auth(ana), payload: { taxYear: 2025 },
+  });
+  assert.equal(refused.statusCode, 409);
+
+  // …consolidated mode produces ONE invoice, line-itemed per entity.
+  await app.inject({
+    method: 'PATCH', url: `/entity-groups/${groupId}`, headers: auth(brian),
+    payload: { billingMode: 'consolidated' },
+  });
+  const invoiced = await app.inject({
+    method: 'POST', url: `/entity-groups/${groupId}/invoice`, headers: auth(ana), payload: { taxYear: 2025 },
+  });
+  assert.equal(invoiced.statusCode, 201, invoiced.body);
+  assert.equal(invoiced.json().engagements, 2);
+  assert.equal(invoiced.json().totalCents, 160000, 'sum of both entity final fees');
+  const stamped = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tax_engagements WHERE id = ANY($1::uuid[]) AND invoice_number = $2`,
+    [teIds, invoiced.json().invoiceNumber]
+  );
+  assert.equal(stamped.rows[0]!.n, 2, 'both engagements share the consolidated invoice number');
+
+  // Idempotence: nothing left to bill.
+  const rebill = await app.inject({
+    method: 'POST', url: `/entity-groups/${groupId}/invoice`, headers: auth(ana), payload: { taxYear: 2025 },
+  });
+  assert.equal(rebill.statusCode, 400);
+});
