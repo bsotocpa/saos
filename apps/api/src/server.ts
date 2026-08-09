@@ -29,6 +29,7 @@ import { registerBookingRoutes } from './modules/booking/routes.ts';
 import { registerBookkeepingRoutes } from './modules/bookkeeping/routes.ts';
 import { registerGrantVoucherRoutes } from './modules/grants/routes.ts';
 import { registerResolutionRoutes } from './modules/tax/resolution-routes.ts';
+import { registerQuoteRoutes } from './modules/pricing/quote-routes.ts';
 import { registerDashboardRoutes } from './modules/dashboards/routes.ts';
 import { registerAdminRoutes } from './modules/admin/routes.ts';
 import { registerCommsRoutes } from './modules/comms/routes.ts';
@@ -137,6 +138,7 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   registerBookkeepingRoutes(app);
   registerGrantVoucherRoutes(app);
   registerResolutionRoutes(app);
+  registerQuoteRoutes(app);
   registerDashboardRoutes(app);
   registerAdminRoutes(app);
   registerCommsRoutes(app);

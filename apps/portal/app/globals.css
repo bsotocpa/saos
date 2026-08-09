@@ -186,3 +186,22 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--electric); 
 .alert { border-radius: 10px; padding: 10px 14px; font-size: 14px; margin-bottom: 12px; }
 .alert.info { background: var(--electric-soft); color: var(--forest); }
 .alert.error { background: var(--danger-soft); color: var(--danger); }
+
+/* Quote / proposal (M27). Line rows wrap at phone width rather than letting a
+   long service name push the amount off the canvas. */
+.quote-lines { list-style: none; margin: 0; padding: 0; }
+.quote-lines > li {
+  display: flex; gap: 10px; align-items: baseline; justify-content: space-between;
+  padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px;
+}
+.quote-lines > li:last-child { border-bottom: none; }
+.quote-desc { flex: 1 1 60%; min-width: 0; overflow-wrap: anywhere; }
+.quote-amount { flex: 0 0 auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The global input rule stretches every control to 100%; a checkbox must not
+   take the whole line or it shoves its own label to the middle of the card. */
+.quote-lines input[type='checkbox'] {
+  width: 20px; height: 20px; flex: 0 0 auto; margin: 1px 0 0; padding: 0; display: inline-block;
+}
+.quote-lines > li.quote-total { border-top: 2px solid var(--forest); border-bottom: none; font-size: 16px; }
+.quote-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 16px; }
+.quote-actions .btn { flex: 1 1 auto; min-width: 180px; text-align: center; }

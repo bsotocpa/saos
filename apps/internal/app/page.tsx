@@ -31,6 +31,21 @@ interface Executive {
     onboardingStalled: number;
     workPaused: number;
   };
+  pipeline: {
+    openQuotes: number;
+    openValueCents: number;
+    acceptedValueCents: number;
+    winRatePercent: number | null;
+    byStage: Array<{ stage: string; count: number }>;
+  };
+  dubsadoRetirement: {
+    migratedLoggedIn: number;
+    migratedLoginTarget: number;
+    closesCompleted: number;
+    conditionA: boolean;
+    conditionB: boolean;
+    ready: boolean;
+  };
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -166,6 +181,70 @@ export default function ExecutivePage() {
                 <span className={`badge ${urgent ? 'danger' : ''}`}>{n}</span> {label}
               </p>
             ));
+          })()}
+        </section>
+
+        <section className="card">
+          <h2>Pipeline</h2>
+          {(() => {
+            const p = data.pipeline;
+            if (!p) return <p className="muted">—</p>;
+            if (p.openQuotes === 0 && p.acceptedValueCents === 0) {
+              return <p className="muted">No quotes out yet.</p>;
+            }
+            return (
+              <>
+                <p className="small" style={{ margin: '3px 0' }}>
+                  <span className="badge">{p.openQuotes}</span> open quotes · {formatMoney(p.openValueCents)} in play
+                </p>
+                <p className="small" style={{ margin: '3px 0' }}>
+                  <span className="badge ok">{formatMoney(p.acceptedValueCents)}</span> accepted to date
+                </p>
+                <p className="muted small">
+                  {p.winRatePercent === null
+                    ? 'No quote has been decided yet — win rate needs a decision to measure.'
+                    : `${p.winRatePercent}% win rate on decided quotes.`}
+                </p>
+              </>
+            );
+          })()}
+        </section>
+
+        <section className="card">
+          <h2>Dubsado retirement</h2>
+          {(() => {
+            const d = data.dubsadoRetirement;
+            if (!d) return <p className="muted">—</p>;
+            if (d.ready) {
+              return (
+                <>
+                  <p className="small">
+                    <span className="badge ok">READY</span> Both conditions you set are met.
+                  </p>
+                  <p className="muted small">
+                    {d.migratedLoggedIn} migrated clients have signed in and {d.closesCompleted} month-end
+                    close{d.closesCompleted === 1 ? '' : 's'} ran in SAOS. The retirement task is in your queue.
+                  </p>
+                </>
+              );
+            }
+            return (
+              <>
+                <p className="small" style={{ margin: '3px 0' }}>
+                  <span className={`badge ${d.conditionA ? 'ok' : ''}`}>
+                    {d.migratedLoggedIn}/{d.migratedLoginTarget}
+                  </span>{' '}
+                  migrated clients signed in
+                </p>
+                <p className="small" style={{ margin: '3px 0' }}>
+                  <span className={`badge ${d.conditionB ? 'ok' : ''}`}>{d.closesCompleted}/1</span>{' '}
+                  month-end close completed in SAOS
+                </p>
+                <p className="muted small">
+                  Your trigger: both, then stop dual-running. You&apos;ll get one alert — no daily nag.
+                </p>
+              </>
+            );
           })()}
         </section>
 

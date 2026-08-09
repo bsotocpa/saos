@@ -679,6 +679,35 @@ export const templates = [
       'CONSENTIMIENTO §7216 PARA LA DIVULGACIÓN DE INFORMACIÓN DE LA DECLARACIÓN (provisional)\n' +
       'El texto de consentimiento exigido por el IRS será proporcionado por Brian.',
   },
+  {
+    // M27 quote builder. Copy addresses a capable professional deciding on a
+    // proposal — not someone being sold to, and not someone being rescued.
+    key: 'quote_ready',
+    name: 'Quote ready for review (M27 quote builder)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'amount', 'quote_link'],
+    subjectEn: 'Your proposal from Soto Accounting',
+    subjectEs: 'Su propuesta de Soto Accounting',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Your proposal is ready to review: {{amount}}.\n\n' +
+      'It lists exactly what is included, and anything optional is marked so you can decide ' +
+      'what you want. Accepting it starts the work — nothing is charged until you do.\n\n' +
+      '{{quote_link}}\n\n' +
+      'If something in it does not fit, reply and tell us what to change. We would rather ' +
+      'adjust the scope than have you agree to work you did not want.\n\n' +
+      '— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Su propuesta está lista para revisar: {{amount}}.\n\n' +
+      'Detalla exactamente qué incluye, y lo opcional está marcado para que usted decida qué ' +
+      'desea. Al aceptarla comienza el trabajo — no se cobra nada hasta entonces.\n\n' +
+      '{{quote_link}}\n\n' +
+      'Si algo no le corresponde, responda y díganos qué cambiar. Preferimos ajustar el ' +
+      'alcance antes que usted acepte un trabajo que no quería.\n\n' +
+      '— Soto Accounting',
+  },
 ];
 
 export async function seedTemplates(client) {

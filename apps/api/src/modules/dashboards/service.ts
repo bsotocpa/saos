@@ -7,9 +7,11 @@
 import type { FastifyInstance } from 'fastify';
 import { deadlineDashboard } from '../tax/extension.ts';
 import { todayChicago } from '../tax/deadlines.ts';
+import { retirementReadiness } from '../admin/dubsado-retirement.ts';
+import { pipelineMetrics } from '../pricing/pipeline.ts';
 
 export async function executiveDashboard(app: FastifyInstance) {
-  const [byStage, revenue, ar, health, capacity, deadlines, m26] = await Promise.all([
+  const [byStage, revenue, ar, health, capacity, deadlines, retirement, pipeline, m26] = await Promise.all([
     // Open returns by stage + value (estimate top until a final fee exists).
     app.db.query(
       `SELECT te.stage::text, count(*)::int AS count,
@@ -53,6 +55,11 @@ export async function executiveDashboard(app: FastifyInstance) {
        WHERE st.is_active ORDER BY st.full_name`
     ),
     deadlineDashboard(app, todayChicago()),
+    // Brian's Dubsado retirement trigger — the distance shown as numbers, so
+    // "can we switch it off yet" never needs a guess.
+    retirementReadiness(app),
+    // M27: quote pipeline value in play.
+    pipelineMetrics(app),
     // M26 flow counters — one round trip, all of them.
     app.db.query<{
       batches_draft: string; rejects_open: string; perfection_soon: string; close_open: string;
@@ -99,6 +106,15 @@ export async function executiveDashboard(app: FastifyInstance) {
       onboardingStalled: Number(m26.rows[0]!.onboarding_stalled),
       workPaused: Number(m26.rows[0]!.work_paused),
     },
+    // M27 pipeline: what is in play, and how often we win.
+    pipeline: {
+      openQuotes: pipeline.quotesOpen,
+      openValueCents: pipeline.openValueCents,
+      acceptedValueCents: pipeline.acceptedValueCents,
+      winRatePercent: pipeline.winRatePercent,
+      byStage: pipeline.byStage,
+    },
+    dubsadoRetirement: retirement,
   };
 }
 

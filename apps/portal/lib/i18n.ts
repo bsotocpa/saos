@@ -204,6 +204,55 @@ const dict = {
   trans_done_body: ['Your portal sign-in link is on its way by email. Brian’s team already has your details.', 'Su enlace de acceso al portal va en camino por correo. El equipo de Brian ya tiene sus datos.'],
   trans_invalid: ['This link is invalid, expired, or already used.', 'Este enlace es inválido, venció o ya fue usado.'],
 
+  // Quote (M27). The reader is deciding on a proposal, not being sold to.
+  quote_title: ['Your proposal', 'Su propuesta'],
+  quote_intro: [
+    'Here is exactly what we would do and what it costs. Nothing is charged until you accept.',
+    'Esto es exactamente lo que haríamos y cuánto cuesta. No se cobra nada hasta que usted acepte.',
+  ],
+  quote_included: ['Included', 'Incluido'],
+  quote_optional: ['Optional — your choice', 'Opcional — usted decide'],
+  quote_optional_hint: [
+    'Tick anything you want added. Leave it unticked and it is not part of the price.',
+    'Marque lo que desee agregar. Si no lo marca, no forma parte del precio.',
+  ],
+  quote_passthrough: ['Billed by the software provider, not by us', 'Lo cobra el proveedor del software, no nosotros'],
+  quote_subtotal: ['Subtotal', 'Subtotal'],
+  quote_discount: ['Package discount', 'Descuento del paquete'],
+  quote_total: ['Total', 'Total'],
+  quote_estimate_note: [
+    'One-time work is quoted as a range. The final invoice lands inside it, or we talk before it does not.',
+    'El trabajo puntual se cotiza como un rango. La factura final queda dentro del rango, o hablamos antes.',
+  ],
+  quote_expires: ['This proposal is good through', 'Esta propuesta es válida hasta'],
+  quote_accept: ['Accept and start the work', 'Aceptar y comenzar el trabajo'],
+  quote_decline: ['This is not right for me', 'Esto no me conviene'],
+  quote_decline_prompt: [
+    'Tell us what did not fit. It genuinely helps — and if it is the scope or the timing, we can requote.',
+    'Cuéntenos qué no le convino. De verdad nos ayuda — y si es el alcance o el momento, podemos recotizar.',
+  ],
+  quote_decline_send: ['Send', 'Enviar'],
+  quote_accepted_title: ['You’re all set', 'Todo listo'],
+  quote_accepted_body: [
+    'The work is open on our side. Watch your email for your portal sign-in link and the engagement letter.',
+    'El trabajo ya está abierto de nuestro lado. Revise su correo para el enlace de acceso al portal y la carta de compromiso.',
+  ],
+  quote_accepted_deposit: [
+    'Your deposit invoice is on its way by email. The work is already queued.',
+    'Su factura de depósito va en camino por correo. El trabajo ya está en cola.',
+  ],
+  quote_declined_title: ['Thank you for telling us', 'Gracias por decírnoslo'],
+  quote_declined_body: [
+    'Nothing is owed and nothing is scheduled. If anything changes, reply to our email and we will pick it up from here.',
+    'No hay nada que pagar ni nada programado. Si algo cambia, responda a nuestro correo y seguimos desde aquí.',
+  ],
+  quote_expired_title: ['This proposal has expired', 'Esta propuesta ya venció'],
+  quote_expired_body: [
+    'Prices move, so proposals do not sit open forever. Reply to our email and we will send you a current one.',
+    'Los precios cambian, así que las propuestas no quedan abiertas para siempre. Responda a nuestro correo y le enviamos una vigente.',
+  ],
+  quote_invalid: ['This link is invalid or has already been used.', 'Este enlace es inválido o ya fue usado.'],
+
   loading: ['Loading…', 'Cargando…'],
   error_generic: ['Something went wrong. Please try again.', 'Algo salió mal. Intente de nuevo.'],
 } satisfies Record<string, [string, string]>;

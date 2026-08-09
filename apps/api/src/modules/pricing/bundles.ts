@@ -3,9 +3,10 @@
 // carry an ad-hoc amount (CLAUDE.md). The discount is percent, fixed, or an
 // explicit override — one of the three at most, enforced by a CHECK.
 //
-// The prior-year surcharge (+$100/return more than two years back) is itself a
-// price-book item, applied automatically wherever a prior-year return is
-// quoted — bundled or not.
+// The prior-year surcharge is itself a price-book item
+// (PRIOR_YEAR_SURCHARGE), applied automatically per return more than two years
+// back wherever a prior-year return is quoted — bundled or not. Its rate lives
+// in the book, so it is deliberately not restated here.
 
 import type { FastifyInstance } from 'fastify';
 import { AppError } from '../../types.ts';

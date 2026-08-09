@@ -146,6 +146,17 @@ test('executive dashboard aggregates trace to the scenario rows; leadership-only
   assert.equal(anaRow.open_returns, 2);
 
   assert.ok(d.deadlines.next.length >= 1, 'deadline countdown feeds from M8');
+
+  // M27: pipeline value in play, and the Dubsado retirement distance as
+  // numbers. Both must read honestly on an empty pipeline rather than
+  // implying progress that has not happened.
+  assert.equal(d.pipeline.openQuotes, 0);
+  assert.equal(d.pipeline.openValueCents, 0);
+  assert.equal(d.pipeline.winRatePercent, null, 'no decided quote → no win rate, not 0%');
+  assert.equal(d.dubsadoRetirement.migratedLoggedIn, 0);
+  assert.equal(d.dubsadoRetirement.closesCompleted, 0);
+  assert.equal(d.dubsadoRetirement.ready, false);
+  assert.ok(d.dubsadoRetirement.migratedLoginTarget > 0, 'the target is stated, not implied');
 });
 
 test('hilo dashboard: statuses, sessions, queues, summaries, funder metrics (pro bono valued from the price book)', async () => {

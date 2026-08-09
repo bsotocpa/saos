@@ -13,10 +13,12 @@ import { runInvoiceOverdueJob } from '../modules/billing/service.ts';
 import { runDunningJob } from '../modules/billing/dunning.ts';
 import { runSosRecheckJob } from '../modules/entity/sos.ts';
 import { runBackupStaleCheckJob, runRestoreDrillReminderJob } from '../modules/admin/ops.ts';
+import { runDubsadoRetirementCheckJob } from '../modules/admin/dubsado-retirement.ts';
 import { runLadderJob, runTaskReminderSweep } from '../modules/tasks/service.ts';
 import { runPerfectionClockJob } from '../modules/tax/pipeline.ts';
 import { runAutoExtensionBatchJob } from '../modules/tax/extension-batch.ts';
 import { runVoucherReminderJob } from '../modules/grants/vouchers.ts';
+import { runQuoteExpiryJob } from '../modules/pricing/quotes.ts';
 import { runOnboardingRescueJob } from '../modules/portal-auth/onboarding-rescue.ts';
 import { makePusher, runPushSweep } from '../notify/push.ts';
 
@@ -46,15 +48,22 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   if (!drill.skipped) app.log.info({ job: 'restore_drill_reminder', ...drill }, 'daily job ran');
   const backup = await runBackupStaleCheckJob(app, today);
   if (!backup.skipped) app.log.info({ job: 'backup_stale_check', ...backup }, 'daily job ran');
+  // Brian's trigger: alert once when Dubsado can be switched off.
+  const dubsado = await runDubsadoRetirementCheckJob(app, today);
+  if (!dubsado.skipped && dubsado.alerted) app.log.info({ job: 'dubsado_retirement', ...dubsado.readiness }, 'retirement trigger met');
   // v4.3 flow 6: funder-deadline reminders on open voucher periods.
   const vouchers = await runVoucherReminderJob(app, today);
   if (!vouchers.skipped) app.log.info({ job: 'voucher_reminders', ...vouchers }, 'daily job ran');
   // v4.3 flow 7: stalled-onboarding rescue (Day-60 decisions to Brian).
   const rescue = await runOnboardingRescueJob(app, today);
   if (!rescue.skipped) app.log.info({ job: 'onboarding_rescue', ...rescue }, 'daily job ran');
-  // v4.3 flow 3: season auto-extension batch (Mar 25 / Apr 1 cutoffs).
+  // v4.3 flow 3: season auto-extension batch. The sweep window is DERIVED per
+  // engagement — original due date minus the admin offset (default 10 days).
   const extBatch = await runAutoExtensionBatchJob(app, today);
   if (!extBatch.skipped) app.log.info({ job: 'auto_extension_batch', ...extBatch }, 'daily job ran');
+  // M27: expire quotes past their date, back to the pipeline with a reason.
+  const quoteExpiry = await runQuoteExpiryJob(app, today);
+  if (!quoteExpiry.skipped) app.log.info({ job: 'quote_expiry', ...quoteExpiry }, 'daily job ran');
   // v4.3 flow 1: perfection-period clocks on rejected e-files.
   const perfection = await runPerfectionClockJob(app, today);
   if (!perfection.skipped) app.log.info({ job: 'perfection_clock', ...perfection }, 'daily job ran');

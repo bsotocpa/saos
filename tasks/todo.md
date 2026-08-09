@@ -738,11 +738,13 @@ vendor state, migration state, automation arming order, and the decisions
 only Brian can make. Regenerate after any gate clears.)
 
 ## M27 — Remaining v4.4 modules (task system shipped in M25)
-- [ ] Quote builder: live-quote from price book → quote record on lead →
+- [x] Quote builder: live-quote from price book → quote record on lead →
       portal link EN/ES → accept = engagement + deposit checkout, zero
       re-entry; declined/expired → leads pipeline w/ reason; pipeline
       stages Call booked→Quoted→Deposit→Onboarding→Client + conversion
-      metrics by stage/referral source
+      metrics by stage/referral source ✅ 2026-08-09
+      (migration 0027; quotes.ts + pipeline.ts + quote-routes.ts;
+      /pipeline internal board+builder; portal /quote/[token] public page)
 - [ ] Reports & KPIs: revenue by line/month, AR aging, pipeline
       conversion, session utilization, team throughput, client counts,
       referral-source performance — CSV export, configurable tiles
@@ -770,6 +772,62 @@ only Brian can make. Regenerate after any gate clears.)
 - [ ] Prove it: per-persona walkthrough vs wireframes with Brian
 
 ## Review
+
+### M27 quote builder + leads pipeline (completed 2026-08-09)
+- **Migration 0027**: `quotes` (pins `price_book_version_id`, stores ONLY the
+  SHA-256 of the client link token, range min/max, deposit item, decline
+  reason, conversion links), `quote_line_items` (both `description_en` and
+  `description_es` frozen per line), `contacts.lead_stage/lead_stage_at/
+  lost_reason`, `lead_stage_history`.
+- **Zero re-entry proven**: accepting the client link creates the engagement
+  from the accepted lines and issues the deposit invoice from the price-book
+  deposit item. Nobody retypes a scope or a number.
+- **Version pinning proven**: a test raises the live book price by $50 AFTER
+  the quote is sent and asserts the client still sees the quoted figure.
+- **Range from a setting, not a literal**: one-time work quotes as a range
+  whose width is `pricing.estimate_band_percent` (15, admin-tunable). The
+  portal re-derives the band from max÷min so ticking an add-on keeps the
+  range a range instead of silently becoming an exact number.
+- **The funnel refuses to lie** (design rule, tested): once a contact reaches
+  `client`, quote-driven stage moves are RECORDED IN HISTORY BUT SKIPPED.
+  Quoting extra work to a current client used to be able to demote them to
+  `quoted` — and an expired add-on quote would have marked a paying client
+  `lost`. Win rate is measured against DECIDED quotes only; open proposals
+  are not losses, and `null` (not 0%) shows before the first decision.
+- **Two defects found and fixed during the build**, not after:
+  1. `sendQuote` marked the quote 'sent' with a token hash BEFORE the email;
+     a failed send (placeholder gate, bad address) stranded a link nobody
+     had, and re-sending was refused because the quote was no longer a draft.
+     Now a failed send rolls status/sent_at/token_hash back to draft, audits
+     `quote.send_failed`, and rethrows — staff fix the cause and resend the
+     same quote. Caught by actually sending in dev, then covered by a test.
+  2. Spanish readers saw Spanish chrome around ENGLISH service names, because
+     the line description was frozen in one language. Migration 0027 was
+     amended (not yet deployed, so no patch migration needed) to carry both.
+- **Client-facing page is public by design**: the emailed token is the
+  credential, so a prospect reads and accepts a proposal without an account.
+  A wrong token is a 404; only the hash is at rest (same rule as magic links).
+- **Also shipped**: `GET /quotes/catalog` so building a quote needs
+  `engagements.read`, not the Admin→Pricing permission that can CHANGE
+  prices; nightly `runQuoteExpiryJob` (date-guarded) expires quotes with
+  "expired without a response" recorded as the reason.
+- **Dubsado retirement trigger** (Brian's accepted ruling) built and tested:
+  25 migrated clients with a `portal.login` audit row AND ≥1 completed
+  monthly close. Counts DISTINCT contacts (not login events), ignores native
+  signups, ignores unfinished closes, and alerts exactly once — proven by a
+  test that walks all four states. Readiness shows on the Executive
+  dashboard as `0/25` and `0/1` so the distance is a number.
+- **Price guard regression caught**: `npm test` was failing `check:prices` on
+  code committed at M26.5 — a comment in `bundles.ts` restated the surcharge
+  as a dollar figure. My earlier "172/172 green" came from running the
+  workspace tests directly, which skips the guard. Comment fixed; the guard
+  passes; full `npm test` is the standard from here.
+- 187/187 tests green (14 new quote tests, 1 new retirement test, dashboards
+  extended). 13/13 screens pass 390×844 with no horizontal page scroll.
+- Two 390px layout defects fixed from screenshot evidence: the global
+  `input { width: 100% }` rule was stretching inline checkboxes on both the
+  portal proposal and the internal builder, and the builder's 5-column
+  picked-lines table clipped on a phone (now stacked rows).
 
 ### M0–M3 (completed 2026-07-05)
 - Stack as approved: Node 24 + TypeScript strict, npm workspaces, Fastify (M4),

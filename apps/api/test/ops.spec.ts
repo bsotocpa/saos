@@ -12,6 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import { headerSafe } from '../src/notify/push.ts';
 import { runBackupStaleCheckJob, runRestoreDrillReminderJob } from '../src/modules/admin/ops.ts';
+import { MIGRATED_LOGIN_TARGET, runDubsadoRetirementCheckJob } from '../src/modules/admin/dubsado-retirement.ts';
 import { createTestConfig, makeStaff, auditRows, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 
@@ -225,4 +226,97 @@ test('backup staleness: silent while unconfigured, critical alert once stale', a
   assert.equal(s.backups.configured, true);
   assert.equal(s.backups.snapshot_id, 'abc123def456');
   assert.equal(s.backups.stale, true);
+});
+
+test('Dubsado retirement: measured, not guessed — and alerts exactly once', async () => {
+  // Nothing migrated has logged in and no close has run: silent, with progress
+  // visible so the distance is a number rather than a feeling.
+  const cold = await runDubsadoRetirementCheckJob(app, '2026-08-10');
+  assert.equal(cold.skipped, false);
+  assert.equal(cold.ready, false);
+  assert.equal(cold.readiness.migratedLoggedIn, 0);
+  assert.equal(cold.readiness.closesCompleted, 0);
+  assert.equal(cold.alerted, false);
+  assert.equal(await notificationCount('dubsado_retirement_ready'), 0);
+
+  // Same date again → date-guarded.
+  assert.equal((await runDubsadoRetirementCheckJob(app, '2026-08-10')).skipped, true);
+
+  // Condition A only: the target number of MIGRATED clients logs in.
+  // A native signup logging in must not count — it says nothing about whether
+  // the old system can be switched off.
+  const native = await app.db.query<{ id: string }>(
+    `INSERT INTO contacts (first_name, last_name, email, source)
+     VALUES ('Synthetic', 'Native', 'native-retire@example.test', 'native') RETURNING id`
+  );
+  await app.db.query(
+    `INSERT INTO audit_log (actor_type, actor_label, action, contact_id)
+     VALUES ('client', 'Synthetic Native', 'portal.login', $1)`,
+    [native.rows[0]!.id]
+  );
+  const migratedIds: string[] = [];
+  for (let i = 0; i < MIGRATED_LOGIN_TARGET; i += 1) {
+    const c = await app.db.query<{ id: string }>(
+      `INSERT INTO contacts (first_name, last_name, email, source)
+       VALUES ('Synthetic', $2, $1, 'dubsado') RETURNING id`,
+      [`migrated-${i}@example.test`, `Migrated${i}`]
+    );
+    migratedIds.push(c.rows[0]!.id);
+    // Two logins for one of them — DISTINCT contacts, not login events.
+    await app.db.query(
+      `INSERT INTO audit_log (actor_type, actor_label, action, contact_id)
+       VALUES ('client', 'Synthetic Migrated', 'portal.login', $1)`,
+      [c.rows[0]!.id]
+    );
+    if (i === 0) {
+      await app.db.query(
+        `INSERT INTO audit_log (actor_type, actor_label, action, contact_id)
+         VALUES ('client', 'Synthetic Migrated', 'portal.login', $1)`,
+        [c.rows[0]!.id]
+      );
+    }
+  }
+
+  const halfway = await runDubsadoRetirementCheckJob(app, '2026-08-11');
+  assert.equal(halfway.readiness.migratedLoggedIn, MIGRATED_LOGIN_TARGET, 'counts contacts, not login rows');
+  assert.equal(halfway.readiness.conditionA, true);
+  assert.equal(halfway.readiness.conditionB, false);
+  assert.equal(halfway.ready, false, 'both conditions or nothing');
+  assert.equal(await notificationCount('dubsado_retirement_ready'), 0);
+
+  // A close cycle that is still OPEN does not count either.
+  await app.db.query(
+    `INSERT INTO close_cycles (contact_id, cadence, period_start, period_end)
+     VALUES ($1, 'monthly', '2026-07-01', '2026-07-31')`,
+    [migratedIds[0]]
+  );
+  const stillOpen = await runDubsadoRetirementCheckJob(app, '2026-08-12');
+  assert.equal(stillOpen.readiness.closesCompleted, 0, 'an unfinished close is not a close');
+  assert.equal(stillOpen.ready, false);
+
+  // Condition B lands: the close finishes.
+  await app.db.query(
+    `UPDATE close_cycles SET closed_at = now() WHERE contact_id = $1 AND period_start = '2026-07-01'`,
+    [migratedIds[0]]
+  );
+  const ready = await runDubsadoRetirementCheckJob(app, '2026-08-13');
+  assert.equal(ready.ready, true);
+  assert.equal(ready.alerted, true);
+  assert.equal(await notificationCount('dubsado_retirement_ready'), 1);
+
+  const task = await app.db.query<{ title: string; description: string }>(
+    `SELECT title, description FROM tasks WHERE source_type = 'dubsado_retirement'`
+  );
+  assert.equal(task.rows.length, 1);
+  assert.match(task.rows[0]!.description, /export anything you still want/i, 'the task carries the pre-cancellation checklist');
+
+  // Later days: still ready, but NO second alert and no duplicate task.
+  const laterDay = await runDubsadoRetirementCheckJob(app, '2026-08-14');
+  assert.equal(laterDay.ready, true);
+  assert.equal(laterDay.alerted, false, 'once-ever, not a daily nag');
+  assert.equal(await notificationCount('dubsado_retirement_ready'), 1);
+  const tasksAgain = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'dubsado_retirement'`
+  );
+  assert.equal(tasksAgain.rows[0]!.n, 1);
 });

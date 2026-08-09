@@ -231,3 +231,32 @@ table.dense .title-cell { max-width: 340px; overflow: hidden; text-overflow: ell
 .tcard .tmeta { color: var(--muted); font-size: 12px; margin: 4px 0 6px; overflow-wrap: anywhere; }
 .tcard .tctl { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .tcard .tctl select { display: inline-block; width: auto; margin: 0; padding: 3px 8px; font-size: 12px; }
+
+/* Pipeline (M27): lead cards inside a stage column, and the two alert
+   variants the quote builder needs (a good outcome, and a soft warning). */
+.alert.ok { background: var(--ok-soft); color: var(--ok); }
+.alert.warn { background: var(--warn-soft); color: var(--warn); }
+.lead-card {
+  border-top: 1px solid var(--line); padding: 8px 0; font-size: 13px; min-width: 0;
+}
+.lead-card:first-of-type { border-top: none; }
+
+/* The global input rule stretches every control to 100%. A checkbox sitting
+   inline with its own label must not take the whole row. */
+label.inline-check { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; }
+label.inline-check input[type='checkbox'],
+.quote-line input[type='checkbox'] {
+  width: 18px; height: 18px; flex: 0 0 auto; margin: 1px 0 0; padding: 0;
+}
+
+/* Picked quote lines. A 5-column table clips at 390px, so the lines stack:
+   name on its own row, controls beneath, wrapping as needed. */
+.quote-line {
+  border-top: 1px solid var(--line); padding: 8px 0; font-size: 13px;
+  display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+}
+.quote-line:first-of-type { border-top: none; }
+.quote-line .name { flex: 1 1 100%; font-weight: 600; overflow-wrap: anywhere; }
+.quote-line .ctl { display: flex; gap: 6px; align-items: center; font-weight: 500; }
+.quote-line .ctl input[type='number'] { width: 62px; margin: 0; }
+.quote-line .amt { margin-left: auto; font-variant-numeric: tabular-nums; }
