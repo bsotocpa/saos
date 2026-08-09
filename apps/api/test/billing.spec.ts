@@ -13,6 +13,7 @@ import type { Mailer, MailMessage } from '../src/mailer.ts';
 import { generateToken } from '../src/crypto.ts';
 import { createTestConfig, makeStaff, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
+import { todayChicago } from '../src/modules/tax/deadlines.ts';
 
 let app: FastifyInstance;
 let config: Config;
@@ -273,11 +274,14 @@ test('automation 17: unpaid past the window → overdue + reminder + Rene flag, 
   const invoiceId = created.json().id as string;
   await app.db.query(`UPDATE invoices SET sent_at = now() - interval '15 days' WHERE id = $1`, [invoiceId]);
 
-  const run = await app.inject({ method: 'POST', url: '/jobs/invoice-overdue?asOf=2026-07-20', headers: auth(ana) });
+  // asOf tracks the real clock — the fixture above is now()-relative, so a
+  // fixed date here rots as the calendar advances (learned the hard way).
+  const asOf = todayChicago();
+  const run = await app.inject({ method: 'POST', url: `/jobs/invoice-overdue?asOf=${asOf}`, headers: auth(ana) });
   assert.equal(run.statusCode, 403, 'preparer cannot trigger jobs'); // jobs.run is leadership-only
 
   const brian = await staffWithToken('brian-bill@example.test', 'ceo');
-  const run2 = await app.inject({ method: 'POST', url: '/jobs/invoice-overdue?asOf=2026-07-20', headers: auth(brian) });
+  const run2 = await app.inject({ method: 'POST', url: `/jobs/invoice-overdue?asOf=${asOf}`, headers: auth(brian) });
   assert.equal(run2.statusCode, 200, run2.body);
   assert.equal(run2.json().overdue, 1);
 
@@ -292,7 +296,7 @@ test('automation 17: unpaid past the window → overdue + reminder + Rene flag, 
   assert.equal(flag.rows[0].n, 1, 'Rene flagged');
 
   // Same-date re-run: date guard skips; Rene's flag never duplicates.
-  const run3 = await app.inject({ method: 'POST', url: '/jobs/invoice-overdue?asOf=2026-07-20', headers: auth(brian) });
+  const run3 = await app.inject({ method: 'POST', url: `/jobs/invoice-overdue?asOf=${asOf}`, headers: auth(brian) });
   assert.equal(run3.json().skipped, true);
   const stillOne = await app.db.query(
     `SELECT count(*)::int AS n FROM notifications WHERE type = 'invoice_overdue' AND staff_id = $1`,

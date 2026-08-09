@@ -13,6 +13,7 @@ import type { Mailer, MailMessage } from '../src/mailer.ts';
 import { generateToken } from '../src/crypto.ts';
 import { createTestConfig, makeStaff, multipartBody, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
+import { addDays, todayChicago } from '../src/modules/tax/deadlines.ts';
 
 let app: FastifyInstance;
 let config: Config;
@@ -249,9 +250,16 @@ test('chase job: recurring reminders + one-time 7-day non-response alert (automa
     method: 'POST', url: '/document-requests', headers: auth(ana),
     payload: { taxEngagementId: teId, titleEn: 'Everything', items: [{ labelEn: '1099s' }] },
   });
+  // Backdate the request 4 days and the engagement's docs-requested stamp 8
+  // days, then run asOf TODAY — everything stays now()-relative so the test
+  // can't rot as the calendar advances (the job stamps last_reminder_at with
+  // now(), so fixed past asOf dates break the recurrence assertion).
+  const asOf = todayChicago();
+  await app.db.query(`UPDATE document_requests SET created_at = now() - interval '4 days' WHERE contact_id = $1`, [eli.contactId]);
+  await app.db.query(`UPDATE tax_engagements SET docs_requested_at = now() - interval '8 days' WHERE id = $1`, [teId]);
 
   // 4+ days later: reminder #1 + non-response alert (docs requested > 7d before asOf).
-  const run1 = await app.inject({ method: 'POST', url: '/jobs/document-chase?asOf=2026-07-20', headers: auth(brian) });
+  const run1 = await app.inject({ method: 'POST', url: `/jobs/document-chase?asOf=${asOf}`, headers: auth(brian) });
   assert.equal(run1.statusCode, 200, run1.body);
   assert.ok(run1.json().reminders >= 1, 'reminder sent');
   assert.ok(run1.json().nonResponseAlerts >= 1, 'non-response alert fired');
@@ -262,7 +270,7 @@ test('chase job: recurring reminders + one-time 7-day non-response alert (automa
   assert.equal(req.rows[0].reminder_count, 1);
 
   // Same date re-run → date guard.
-  const rerun = await app.inject({ method: 'POST', url: '/jobs/document-chase?asOf=2026-07-20', headers: auth(brian) });
+  const rerun = await app.inject({ method: 'POST', url: `/jobs/document-chase?asOf=${asOf}`, headers: auth(brian) });
   assert.equal(rerun.json().skipped, true);
 
   // Non-response alert reached both leaders, and never duplicates.
@@ -273,7 +281,7 @@ test('chase job: recurring reminders + one-time 7-day non-response alert (automa
     );
     assert.equal(n.rows[0].n, 1, `alert for ${leader.email}`);
   }
-  const run2 = await app.inject({ method: 'POST', url: '/jobs/document-chase?asOf=2026-07-24', headers: auth(brian) });
+  const run2 = await app.inject({ method: 'POST', url: `/jobs/document-chase?asOf=${addDays(asOf, 4)}`, headers: auth(brian) });
   assert.ok(run2.json().reminders >= 1, 'reminders recur every N days');
   const stillOne = await app.db.query(
     `SELECT count(*)::int AS n FROM notifications WHERE type = 'client_non_response' AND contact_id = $1`,

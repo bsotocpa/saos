@@ -55,12 +55,17 @@ async function makeClient(last: string, email: string, language: 'en' | 'es' = '
   return rows[0]!.id;
 }
 
-async function notifications(type: string, staffId?: string): Promise<number> {
+// relatedId scopes the count to ONE notice — earlier tests in this suite
+// create notices whose auto-deadlines (notice date + 30d) drift into the
+// escalation window as the real calendar advances; global counts rot.
+async function notifications(type: string, staffId?: string, relatedId?: string): Promise<number> {
+  const clauses = [`type = $1`];
+  const params: unknown[] = [type];
+  if (staffId) { params.push(staffId); clauses.push(`staff_id = $${params.length}`); }
+  if (relatedId) { params.push(relatedId); clauses.push(`related_object_id = $${params.length}`); }
   const { rows } = await app.db.query<{ n: number }>(
-    staffId
-      ? `SELECT count(*)::int AS n FROM notifications WHERE type = $1 AND staff_id = $2`
-      : `SELECT count(*)::int AS n FROM notifications WHERE type = $1`,
-    staffId ? [type, staffId] : [type]
+    `SELECT count(*)::int AS n FROM notifications WHERE ${clauses.join(' AND ')}`,
+    params
   );
   return rows[0]!.n;
 }
@@ -150,10 +155,10 @@ test('escalations: 48h unactioned → Brian+Jackson; <14d deadline → Brian; bo
   assert.ok(run.json().deadline >= 1);
 
   // A → both leaders alerted.
-  assert.equal(await notifications('irs_notice_unactioned', brian.id), 1);
-  assert.equal(await notifications('irs_notice_unactioned', jackson.id), 1);
+  assert.equal(await notifications('irs_notice_unactioned', brian.id, aId), 1);
+  assert.equal(await notifications('irs_notice_unactioned', jackson.id, aId), 1);
   // B → Brian only, status escalated + stamped.
-  assert.equal(await notifications('irs_notice_deadline_escalation', brian.id), 1);
+  assert.equal(await notifications('irs_notice_deadline_escalation', brian.id, bId), 1);
   const bRow = await app.db.query(`SELECT status, escalated_at FROM irs_notices WHERE id = $1`, [bId]);
   assert.equal(bRow.rows[0].status, 'escalated');
   assert.ok(bRow.rows[0].escalated_at);
@@ -163,8 +168,8 @@ test('escalations: 48h unactioned → Brian+Jackson; <14d deadline → Brian; bo
 
   // Re-run: nothing duplicates.
   await app.inject({ method: 'POST', url: '/jobs/notice-escalations', headers: auth(brian) });
-  assert.equal(await notifications('irs_notice_unactioned', brian.id), 1);
-  assert.equal(await notifications('irs_notice_deadline_escalation', brian.id), 1);
+  assert.equal(await notifications('irs_notice_unactioned', brian.id, aId), 1);
+  assert.equal(await notifications('irs_notice_deadline_escalation', brian.id, bId), 1);
 });
 
 test('annual-report due-date rule: IL = first day of anniversary month, strictly future', () => {
