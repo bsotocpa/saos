@@ -629,6 +629,31 @@ tasks = work). Trello JSONs arriving in migration-data this week.
 - [x] Prove it: block/refuse/unblock-notify/cycle-reject tests
       (oldest-year-first auto-chaining is resolution-lane scope → M26.5)
 
+## Ops interlude ✅ 2026-08-09 (Brian's resume directives, worked in order)
+- [x] Formal green on the Twilio fixture swap (143/143 after fixing three
+      calendar-rotted job tests: now()-relative fixtures vs fixed asOf)
+- [x] Restore drill: FIRST REAL PASS (15/15 vs B2 snapshot 77f4aa09) —
+      exposed that the backup cron was NEVER INSTALLED on prod (zero
+      backups since launch). Cron installed + env-loader fixed + exec
+      bits set + deploy.sh now (re)installs it every deploy; drill pass
+      recorded (prod+dev); quarterly drill task auto-closes on a
+      recorded pass (creation already existed, assigned to CEO)
+- [x] Mobile defect pass: no page-level h-scroll at 390px on all 14 ops
+      routes (probed + screenshotted); filter bottom sheet ("Filters·n",
+      chips stay visible); task cards at phone width; nav fade
+      affordance; lessons.md: phone screenshots ship with every UI
+      milestone
+- [x] Inbound attachment policy (email+MMS): accept→scan→quarantine on
+      thread→warm ack w/ portal link (block-and-nudge, both channels)→
+      Inbox review→confirm-tap filing w/ origin audit; unmatched =
+      triage-only; infected hard-blocked; ClamAV profile OFF by default
+      (~1.3GB flagged); email receiver seam until Phase-2 inbound mail
+- [x] Client-health baseline: stored bands — gray never-engaged /
+      yellow only on real signals / green active+clean; dev recompute
+      426 gray · 1 yellow · 0 red (prod recompute lands with deploy)
+- ⛔ NOT YET DEPLOYED: migrations 0016+0017 + all of the above are
+      committed locally; deploy on Brian's word (impact note in report)
+
 ## M26 — Seven v4.3 operational flows (consume M24+M25)
 - [ ] 1. E-file rejects (Filed→Rejected re-queue, perfection-period
       clocks: 10d business/5d individual) + notice tickets w/ client-
