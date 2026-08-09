@@ -9,7 +9,7 @@ import { deadlineDashboard } from '../tax/extension.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 
 export async function executiveDashboard(app: FastifyInstance) {
-  const [byStage, revenue, ar, health, capacity, deadlines] = await Promise.all([
+  const [byStage, revenue, ar, health, capacity, deadlines, m26] = await Promise.all([
     // Open returns by stage + value (estimate top until a final fee exists).
     app.db.query(
       `SELECT te.stage::text, count(*)::int AS count,
@@ -53,6 +53,25 @@ export async function executiveDashboard(app: FastifyInstance) {
        WHERE st.is_active ORDER BY st.full_name`
     ),
     deadlineDashboard(app, todayChicago()),
+    // M26 flow counters — one round trip, all of them.
+    app.db.query<{
+      batches_draft: string; rejects_open: string; perfection_soon: string; close_open: string;
+      vouchers_due: string; vouchers_overdue: string; onboarding_stalled: string; work_paused: string;
+    }>(
+      `SELECT
+         (SELECT count(*) FROM extension_batches WHERE status = 'draft') AS batches_draft,
+         (SELECT count(*) FROM tax_engagements WHERE stage = 'rejected') AS rejects_open,
+         (SELECT count(*) FROM tax_engagements
+           WHERE stage = 'rejected' AND perfection_deadline IS NOT NULL
+             AND perfection_deadline <= CURRENT_DATE + 2) AS perfection_soon,
+         (SELECT count(*) FROM close_cycles WHERE closed_at IS NULL) AS close_open,
+         (SELECT count(*) FROM grant_voucher_periods WHERE status IN ('due', 'in_progress')) AS vouchers_due,
+         (SELECT count(*) FROM grant_voucher_periods
+           WHERE status IN ('due', 'in_progress') AND funder_due_date < CURRENT_DATE) AS vouchers_overdue,
+         (SELECT count(*) FROM portal_onboarding
+           WHERE completed_at IS NULL AND stalled_flagged_at IS NOT NULL) AS onboarding_stalled,
+         (SELECT count(*) FROM engagements WHERE work_paused_at IS NOT NULL) AS work_paused`
+    ),
   ]);
 
   return {
@@ -68,6 +87,17 @@ export async function executiveDashboard(app: FastifyInstance) {
       next: deadlines.engagements.filter((e) => e.daysLeft !== null && e.daysLeft >= 0).slice(0, 5),
       // v4.5: AG990-IL rows for the IL charity cluster, on their own clock.
       ag990Next: deadlines.ag990.slice(0, 3),
+    },
+    // M26 tiles: the flows that need Brian's eye, not Brian's clicking.
+    flows: {
+      extensionBatchesAwaitingApproval: Number(m26.rows[0]!.batches_draft),
+      efileRejectsOpen: Number(m26.rows[0]!.rejects_open),
+      perfectionWindowClosing: Number(m26.rows[0]!.perfection_soon),
+      openCloseCycles: Number(m26.rows[0]!.close_open),
+      vouchersDue: Number(m26.rows[0]!.vouchers_due),
+      vouchersOverdue: Number(m26.rows[0]!.vouchers_overdue),
+      onboardingStalled: Number(m26.rows[0]!.onboarding_stalled),
+      workPaused: Number(m26.rows[0]!.work_paused),
     },
   };
 }

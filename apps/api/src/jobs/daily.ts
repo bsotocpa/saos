@@ -16,6 +16,8 @@ import { runBackupStaleCheckJob, runRestoreDrillReminderJob } from '../modules/a
 import { runLadderJob, runTaskReminderSweep } from '../modules/tasks/service.ts';
 import { runPerfectionClockJob } from '../modules/tax/pipeline.ts';
 import { runAutoExtensionBatchJob } from '../modules/tax/extension-batch.ts';
+import { runVoucherReminderJob } from '../modules/grants/vouchers.ts';
+import { runOnboardingRescueJob } from '../modules/portal-auth/onboarding-rescue.ts';
 import { makePusher, runPushSweep } from '../notify/push.ts';
 
 const TICK_MS = 15 * 60 * 1000;
@@ -44,6 +46,12 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   if (!drill.skipped) app.log.info({ job: 'restore_drill_reminder', ...drill }, 'daily job ran');
   const backup = await runBackupStaleCheckJob(app, today);
   if (!backup.skipped) app.log.info({ job: 'backup_stale_check', ...backup }, 'daily job ran');
+  // v4.3 flow 6: funder-deadline reminders on open voucher periods.
+  const vouchers = await runVoucherReminderJob(app, today);
+  if (!vouchers.skipped) app.log.info({ job: 'voucher_reminders', ...vouchers }, 'daily job ran');
+  // v4.3 flow 7: stalled-onboarding rescue (Day-60 decisions to Brian).
+  const rescue = await runOnboardingRescueJob(app, today);
+  if (!rescue.skipped) app.log.info({ job: 'onboarding_rescue', ...rescue }, 'daily job ran');
   // v4.3 flow 3: season auto-extension batch (Mar 25 / Apr 1 cutoffs).
   const extBatch = await runAutoExtensionBatchJob(app, today);
   if (!extBatch.skipped) app.log.info({ job: 'auto_extension_batch', ...extBatch }, 'daily job ran');

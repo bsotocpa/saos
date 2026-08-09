@@ -140,6 +140,23 @@ export const templates = [
       'su portal tiene los detalles: {{portal_link}} Responda STOP para cancelar.',
   },
   {
+    key: 'statements_posted',
+    name: 'Monthly/period statements posted to the portal (books close, v4.3 flow 5)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'period', 'portal_link'],
+    subjectEn: 'Your {{period}} statements are ready',
+    subjectEs: 'Sus estados financieros de {{period}} están listos',
+    bodyEn:
+      'Hi {{first_name}},\n\nYour books for {{period}} are closed and your statements are in your portal:\n' +
+      '{{portal_link}}\n\nHave a look before our next conversation — the numbers are yours, and questions are ' +
+      'always welcome.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}},\n\nSus libros de {{period}} están cerrados y sus estados financieros están en su portal:\n' +
+      '{{portal_link}}\n\nRevíselos antes de nuestra próxima conversación — los números son suyos, y sus preguntas ' +
+      'siempre son bienvenidas.\n\n— Soto Accounting',
+  },
+  {
     key: 'protective_extension_notice',
     name: 'Protective extension filed (auto-extension batch, v4.3 flow 3)',
     channel: 'email',

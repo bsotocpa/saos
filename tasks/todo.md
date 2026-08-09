@@ -661,7 +661,7 @@ tasks = work). Trello JSONs arriving in migration-data this week.
 - ⛔ NOT YET DEPLOYED: migrations 0016+0017 + all of the above are
       committed locally; deploy on Brian's word (impact note in report)
 
-## M26 — Seven v4.3 operational flows (consume M24+M25)
+## M26 — Seven v4.3 operational flows ✅ ALL SEVEN 2026-08-09 (consume M24+M25)
 - [x] KILL SWITCHES (Brian's directive 2026-08-09, prerequisite for the rest):
       every client-acting automation registered in `automations` + gated by
       isAutomationEnabled(), ALL SEEDED OFF; Admin → Automations arms them
@@ -687,16 +687,16 @@ tasks = work). Trello JSONs arriving in migration-data this week.
       late fees 1.5%/mo 30d+ (price-book rate, engagement-letter
       disclosure GATE, deposits/credits net first) + late-fee disclosure
       block added to all engagement-letter templates (stay placeholder)
-- [ ] 5. Books close cycle (Marian workbench): per-cadence checklists,
+- [x] 5. Books close cycle ✅ 2026-08-09 (Marian workbench): per-cadence checklists,
       statements AUTO-POST to portal on close, calendar cross-check
       (attach to existing session; task only when none)
-- [ ] 6. Grant vouchering tracker: Brian-operated, status-only
+- [x] 6. Grant vouchering tracker ✅ 2026-08-09: Brian-operated, status-only
       (Due→In progress→Submitted→Reimbursed), period reminders + T-7
       funder-deadline, dashboard tile — NEVER generates files
-- [ ] 7. Stalled-onboarding rescue: Deposit→Questionnaire→Docs→Complete
+- [x] 7. Stalled-onboarding rescue ✅ 2026-08-09: Deposit→Questionnaire→Docs→Complete
       pipeline + ladder; deposits held as credit, Day-60 to Brian, never
       auto-refunded
-- [ ] Prove it: per-flow integration tests incl. reject re-queue clock,
+- [x] Prove it ✅ 163/163: per-flow integration tests incl. reject re-queue clock,
       group envelope bundling, ladder timing, letter-gated late fee
       refusal, close cross-check both branches, Day-60 surfacing
 

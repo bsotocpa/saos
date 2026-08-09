@@ -13,6 +13,7 @@ export const BUCKET_BY_CATEGORY: Record<string, string> = {
   id_verification: 'saos-documents',
   irs_notices: 'saos-documents',
   other: 'saos-documents',
+  financial_statements: 'saos-documents', // books-close statements (v4.3 flow 5)
   signed_authorizations: 'saos-signed-docs',
   return_deliverable: 'saos-returns',
   recording: 'saos-recordings',

@@ -21,6 +21,16 @@ interface Executive {
     next: Array<{ client: string; deadline: string; daysLeft: number }>;
     ag990Next: Array<{ business: string; deadline: string; daysLeft: number }>;
   };
+  flows: {
+    extensionBatchesAwaitingApproval: number;
+    efileRejectsOpen: number;
+    perfectionWindowClosing: number;
+    openCloseCycles: number;
+    vouchersDue: number;
+    vouchersOverdue: number;
+    onboardingStalled: number;
+    workPaused: number;
+  };
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -131,6 +141,32 @@ export default function ExecutivePage() {
               ))}
             </>
           ) : null}
+        </section>
+
+        <section className="card">
+          <h2>Operational flows</h2>
+          {(() => {
+            // Defensive: a dashboard must not blank out because one payload
+            // field is missing (e.g. mid-deploy, API older than the UI).
+            const f = data.flows ?? ({} as Executive['flows']);
+            const rows: Array<[string, number, boolean]> = [
+              ['Extension batches to approve', f.extensionBatchesAwaitingApproval ?? 0, (f.extensionBatchesAwaitingApproval ?? 0) > 0],
+              ['E-file rejects open', f.efileRejectsOpen ?? 0, (f.efileRejectsOpen ?? 0) > 0],
+              ['Perfection window closing', f.perfectionWindowClosing ?? 0, (f.perfectionWindowClosing ?? 0) > 0],
+              ['Books closes open', f.openCloseCycles ?? 0, false],
+              ['Vouchers due', f.vouchersDue ?? 0, false],
+              ['Vouchers past funder date', f.vouchersOverdue ?? 0, (f.vouchersOverdue ?? 0) > 0],
+              ['Onboarding stalled (Day 60)', f.onboardingStalled ?? 0, (f.onboardingStalled ?? 0) > 0],
+              ['Work paused — non-payment', f.workPaused ?? 0, (f.workPaused ?? 0) > 0],
+            ];
+            const live = rows.filter(([, n]) => n > 0);
+            if (live.length === 0) return <p className="muted">Nothing outstanding across the seven flows.</p>;
+            return live.map(([label, n, urgent]) => (
+              <p key={label} className="small" style={{ margin: '3px 0' }}>
+                <span className={`badge ${urgent ? 'danger' : ''}`}>{n}</span> {label}
+              </p>
+            ));
+          })()}
         </section>
 
         <section className="card span">

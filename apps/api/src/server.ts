@@ -26,6 +26,8 @@ import { registerFormRoutes } from './modules/forms/routes.ts';
 import { registerReferralRoutes } from './modules/referrals/routes.ts';
 import { registerMeetingRoutes } from './modules/meetings/routes.ts';
 import { registerBookingRoutes } from './modules/booking/routes.ts';
+import { registerBookkeepingRoutes } from './modules/bookkeeping/routes.ts';
+import { registerGrantVoucherRoutes } from './modules/grants/routes.ts';
 import { registerDashboardRoutes } from './modules/dashboards/routes.ts';
 import { registerAdminRoutes } from './modules/admin/routes.ts';
 import { registerCommsRoutes } from './modules/comms/routes.ts';
@@ -131,6 +133,8 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   registerReferralRoutes(app);
   registerMeetingRoutes(app);
   registerBookingRoutes(app);
+  registerBookkeepingRoutes(app);
+  registerGrantVoucherRoutes(app);
   registerDashboardRoutes(app);
   registerAdminRoutes(app);
   registerCommsRoutes(app);
