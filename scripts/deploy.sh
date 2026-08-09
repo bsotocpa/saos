@@ -33,7 +33,7 @@ echo "deploy: [1c/5] ensuring the nightly backup cron is installed..."
 "${SSH[@]}" 'mkdir -p /var/lib/saos/backup-staging && (crontab -l 2>/dev/null | grep -v "scripts/backup.sh"; echo "15 2 * * * cd /opt/saos && ENV_FILE=/opt/saos/.env bash scripts/backup.sh >> /var/log/saos-backup.log 2>&1") | crontab - && crontab -l | grep -q "scripts/backup.sh"'
 
 echo "deploy: [2/5] building + starting the FULL stack incl. intel + booking (first build takes minutes)..."
-"${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking -f docker-compose.yml -f docker-compose.prod.yml up -d --build --quiet-pull'
+"${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml up -d --build --quiet-pull'
 
 echo "deploy: [3/5] running migrations..."
 "${SSH[@]}" 'cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api node packages/db/scripts/migrate.cjs up'
@@ -42,5 +42,5 @@ echo "deploy: [4/5] seeding (idempotent — roles, settings, templates, price bo
 "${SSH[@]}" 'cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api node packages/db/seeds/run.mjs'
 
 echo "deploy: [5/5] service status:"
-"${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking -f docker-compose.yml -f docker-compose.prod.yml ps --format "table {{.Name}}\t{{.Status}}"'
+"${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml ps --format "table {{.Name}}\t{{.Status}}"'
 echo "deploy: done. Smoke-check the subdomains next (curl -sI https://portal.sotoaccounting.com)."
