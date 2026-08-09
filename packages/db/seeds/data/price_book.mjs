@@ -23,6 +23,7 @@ const item = (code, serviceLine, nameEn, nameEs, amountCents, opts = {}) => ({
   confirmationNote: opts.confirmationNote ?? null,
   descEn: opts.descEn ?? null,
   descEs: opts.descEs ?? null,
+  metadata: opts.metadata ?? {},
 });
 
 export const PRICE_BOOK_V1 = {
@@ -210,6 +211,23 @@ export const items = [
     needsConfirmation: true,
     confirmationNote: '⚠ Observed $300 discovery deposit — confirm one standard discovery deposit vs a per-service deposit schedule.',
   }),
+
+  // ── Late fee (v4.3 flow 4) ──────────────────────────────────────────────────
+  // The RATE lives here, never in code (CLAUDE.md). Percent-per-month sits in
+  // metadata because it is a rate, not a dollar amount; edit it through the
+  // normal versioned price-book flow. amount_cents stays null — a fee amount is
+  // always computed from the overdue balance.
+  // amount_cents = 0 because a late fee has NO fixed price — the amount is
+  // always computed from metadata.monthly_rate_percent × the overdue balance.
+  // (The table requires a price or a range; 0 is the honest "not a fixed fee",
+  // and display_on_quote = false keeps it off every quote.)
+  item('LATE_FEE_MONTHLY', 'specialized_cpa', 'Late fee — monthly rate on past-due balances', 'Cargo por mora — tasa mensual sobre saldos vencidos', 0, {
+    unit: 'per_month',
+    displayOnQuote: false,
+    metadata: { monthly_rate_percent: 1.5, grace_days: 30 },
+    descEn: '1.5%/month (18% APR) on balances 30+ days past due. Applies ONLY to clients whose signed engagement letter carries the late-fee disclosure.',
+    descEs: '1.5% mensual (18% anual) sobre saldos con 30+ días de atraso. Solo aplica a clientes cuya carta de compromiso firmada incluye la cláusula de cargo por mora.',
+  }),
 ];
 
 export const bundleRules = [
@@ -263,8 +281,8 @@ export async function seedPriceBook(client) {
          version_id, item_code, service_line, name_en, name_es,
          description_en, description_es, amount_cents, price_min_cents,
          price_max_cents, unit, is_pass_through, display_on_quote,
-         needs_confirmation, confirmation_note, sort_order
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         needs_confirmation, confirmation_note, sort_order, metadata
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb)
        ON CONFLICT (version_id, item_code) DO UPDATE SET
          service_line = EXCLUDED.service_line,
          name_en = EXCLUDED.name_en,
@@ -279,12 +297,13 @@ export async function seedPriceBook(client) {
          display_on_quote = EXCLUDED.display_on_quote,
          needs_confirmation = EXCLUDED.needs_confirmation,
          confirmation_note = EXCLUDED.confirmation_note,
-         sort_order = EXCLUDED.sort_order`,
+         sort_order = EXCLUDED.sort_order,
+         metadata = EXCLUDED.metadata`,
       [
         versionId, it.code, it.serviceLine, it.nameEn, it.nameEs,
         it.descEn, it.descEs, it.amountCents, it.minCents,
         it.maxCents, it.unit, it.passThrough, it.displayOnQuote,
-        it.needsConfirmation, it.confirmationNote, sort,
+        it.needsConfirmation, it.confirmationNote, sort, JSON.stringify(it.metadata),
       ]
     );
   }

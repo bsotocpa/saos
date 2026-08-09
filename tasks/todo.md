@@ -446,6 +446,13 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
         ⛔ Brian: create the 8 DNS records (list in .env.production notes /
         provision script output). Then: LUKS data volume decision, Caddy +
         stack deploy, staging clone, smoke suite
+- [ ] LAUNCH GATE (new 2026-08-09): the 5 engagement-letter templates must
+      carry the late-fee disclosure block AND have has_late_fee_disclosure
+      set in Admin → Templates before any late fee can ever apply. The seed
+      added the block to the placeholder bodies, but existing rows were left
+      untouched (admin edits win) — so today every letter reads
+      disclosure = false and fees are impossible. Flip it with the final
+      legal text, not before.
 - [ ] Launch-gate checklist (verified counts as of 2026-07-07):
       · 7 PLACEHOLDER templates (§7216 use/disclose + 5 engagement letters)
         remain BLOCKED from production sends — gate enforced in code + test;
@@ -656,7 +663,7 @@ tasks = work). Trello JSONs arriving in migration-data this week.
 
 ## M26 — Seven v4.3 operational flows (consume M24+M25)
 - [x] KILL SWITCHES (Brian's directive 2026-08-09, prerequisite for the rest):
-      every client-acting automation registered in  + gated by
+      every client-acting automation registered in `automations` + gated by
       isAutomationEnabled(), ALL SEEDED OFF; Admin → Automations arms them
       individually (audited). Gate covers the client SEND only — internal
       alerts/tasks/A-R truth keep running and each job counts what it
@@ -671,7 +678,7 @@ tasks = work). Trello JSONs arriving in migration-data this week.
 - [x] 3. Escalation ladder ✅ (v4.5) + auto-extension batch ✅ 2026-08-09 (D3 portal/D7 SMS/D14 Rene call/D30 STALLED)
       on every waiting state + auto-extension batch (Mar 25 business /
       Apr 1 individual cutoffs, Brian reviews before filing)
-- [ ] 4. AR dunning (Stripe retry ×3/10d → call task → 30d work pause) +
+- [x] 4. AR dunning ✅ 2026-08-09 (invoice ladder ×3/10d → call task → 30d work pause) +
       late fees 1.5%/mo 30d+ (price-book rate, engagement-letter
       disclosure GATE, deposits/credits net first) + late-fee disclosure
       block added to all engagement-letter templates (stay placeholder)

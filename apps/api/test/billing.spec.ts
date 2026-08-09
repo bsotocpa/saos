@@ -321,3 +321,141 @@ test('invoice guardrails: pass-throughs not invoiceable; range items need explic
   assert.equal(rangeItem.statusCode, 400);
   assert.equal(rangeItem.json().error, 'requires_custom_amount');
 });
+
+// ── M26 flow 4: dunning ladder + late fees ───────────────────────────────────
+
+test('dunning ladder: 3 reminders over 10 days → Rene call task → 30-day work pause → payment resumes', async () => {
+  const { runDunningJob } = await import('../src/modules/billing/dunning.ts');
+  const brian = await staffWithToken('brian-dun@example.test', 'ceo');
+  void brian;
+  const lila = await makeClient('Dunlila', 'dun-lila@example.test');
+
+  // An engagement + its invoice, overdue as of the ladder start.
+  const eng = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, status) VALUES ($1, 'tax', 'active') RETURNING id`,
+    [lila.contactId]
+  );
+  const created = await app.inject({
+    method: 'POST', url: '/invoices', headers: auth(rene),
+    payload: { contactId: lila.contactId, engagementId: eng.rows[0]!.id, lines: [{ code: 'ENTITY_BOI' }] },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const invoiceId = created.json().id as string;
+  await app.db.query(
+    `UPDATE invoices SET status = 'overdue', overdue_since = '2030-01-01' WHERE id = $1`,
+    [invoiceId]
+  );
+
+  // Attempt 1 (day 0).
+  const attempts = async () => (await app.db.query<{ n: number }>(
+    `SELECT dunning_attempts AS n FROM invoices WHERE id = $1`, [invoiceId])).rows[0]!.n;
+  const mailTo = () => sentMail.filter((m) => m.to === 'dun-lila@example.test' && /reminder|recordatorio/i.test(m.subject)).length;
+
+  await runDunningJob(app, '2030-01-01');
+  assert.equal(await attempts(), 1, 'first reminder attempt recorded');
+  assert.equal(mailTo(), 1, 'client emailed once');
+  // Same day → date-guarded.
+  assert.equal((await runDunningJob(app, '2030-01-01')).skipped, true);
+  // Day 3: too soon for attempt 2 (spacing is 5 days).
+  await runDunningJob(app, '2030-01-04');
+  assert.equal(await attempts(), 1, 'attempts are spaced 5 days, not daily');
+  // Attempt 2 (day 6) and attempt 3 (day 11) → the call task lands on Rene.
+  await runDunningJob(app, '2030-01-07');
+  assert.equal(await attempts(), 2);
+  await runDunningJob(app, '2030-01-12');
+  assert.equal(await attempts(), 3, 'third and final reminder');
+  assert.equal(mailTo(), 3, 'exactly three client emails');
+  const callTask = await app.db.query<{ assigned_staff_id: string; priority: number; id: string }>(
+    `SELECT id, assigned_staff_id, priority FROM tasks WHERE source_type = 'dunning_call' AND source_id = $1`,
+    [invoiceId]
+  );
+  assert.equal(callTask.rows.length, 1);
+  assert.equal(callTask.rows[0]!.assigned_staff_id, rene.id);
+  assert.equal(callTask.rows[0]!.priority, 2);
+  // A fourth reminder never goes out.
+  await runDunningJob(app, '2030-01-20');
+  assert.equal(await attempts(), 3, 'capped at 3 attempts');
+  assert.equal(mailTo(), 3, 'no fourth email');
+
+  // Day 31 → work pauses with a CLIENT-VISIBLE reason.
+  await runDunningJob(app, '2030-02-01');
+  const paused = await app.db.query<{ work_paused_at: Date | null; work_pause_reason: string }>(
+    `SELECT work_paused_at, work_pause_reason FROM engagements WHERE id = $1`,
+    [eng.rows[0]!.id]
+  );
+  assert.ok(paused.rows[0]!.work_paused_at);
+  assert.equal(paused.rows[0]!.work_pause_reason, 'account needs attention');
+  // Pausing twice is a no-op (the pause timestamp does not move).
+  const firstPause = paused.rows[0]!.work_paused_at;
+  await runDunningJob(app, '2030-02-02');
+  const stillPaused = await app.db.query<{ work_paused_at: Date }>(
+    `SELECT work_paused_at FROM engagements WHERE id = $1`, [eng.rows[0]!.id]);
+  assert.deepEqual(stillPaused.rows[0]!.work_paused_at, firstPause);
+
+  // Payment lifts the pause and closes the call task.
+  const { markInvoicePaid } = await import('../src/modules/billing/service.ts');
+  await markInvoicePaid(app, invoiceId, {});
+  const resumed = await app.db.query<{ work_paused_at: Date | null }>(
+    `SELECT work_paused_at FROM engagements WHERE id = $1`, [eng.rows[0]!.id]
+  );
+  assert.equal(resumed.rows[0]!.work_paused_at, null, 'payment resumes work');
+  const closed = await app.db.query<{ status: string }>(`SELECT status FROM tasks WHERE id = $1`, [callTask.rows[0]!.id]);
+  assert.equal(closed.rows[0]!.status, 'completed');
+});
+
+test('late fees: BLOCKED without a signed disclosure; rate comes from the price book; deposits net first', async () => {
+  const { runDunningJob, lateFeeTerms } = await import('../src/modules/billing/dunning.ts');
+
+  // The rate is data, not code.
+  const terms = await lateFeeTerms(app);
+  assert.deepEqual(terms, { ratePercent: 1.5, graceDays: 30 }, 'rate + grace from LATE_FEE_MONTHLY metadata');
+
+  const nora = await makeClient('Feenora', 'fee-nora@example.test');
+  const created = await app.inject({
+    method: 'POST', url: '/invoices', headers: auth(rene),
+    payload: { contactId: nora.contactId, lines: [{ code: 'BIZ_1120S' }] }, // $700.00
+  });
+  const invoiceId = created.json().id as string;
+  const total = created.json().totalCents as number;
+  assert.equal(total, 70000);
+  await app.db.query(`UPDATE invoices SET status = 'overdue', overdue_since = '2031-01-01' WHERE id = $1`, [invoiceId]);
+
+  // Past the grace period, but NO signed disclosure → refused, and counted.
+  const blocked = await runDunningJob(app, '2031-02-05');
+  assert.ok(blocked.feesBlockedNoDisclosure >= 1, 'the block is visible in the run record');
+  const noFee = await app.db.query<{ late_fee_cents: number }>(`SELECT late_fee_cents FROM invoices WHERE id = $1`, [invoiceId]);
+  assert.equal(noFee.rows[0]!.late_fee_cents, 0);
+
+  // Sign a letter carrying the disclosure → the stamp opens the gate.
+  await app.db.query(`UPDATE contacts SET late_fee_disclosure_signed_at = now() WHERE id = $1`, [nora.contactId]);
+  // A $100 deposit/credit nets against the balance BEFORE the fee computes.
+  await app.db.query(`UPDATE invoices SET credit_cents = 10000 WHERE id = $1`, [invoiceId]);
+  const assessed = await runDunningJob(app, '2031-02-06');
+  assert.ok(assessed.feesAssessed >= 1);
+  const fee = await app.db.query<{ basis_cents: number; rate_percent: string; fee_cents: number }>(
+    `SELECT basis_cents, rate_percent::text AS rate_percent, fee_cents FROM invoice_late_fees WHERE invoice_id = $1`,
+    [invoiceId]
+  );
+  assert.equal(fee.rows[0]!.basis_cents, 60000, 'basis is net of the credit ($700 − $100)');
+  assert.equal(fee.rows[0]!.fee_cents, 900, '1.5% of $600 = $9.00');
+  const invAfter = await app.db.query<{ late_fee_cents: number; total_cents: number }>(
+    `SELECT late_fee_cents, total_cents FROM invoices WHERE id = $1`, [invoiceId]
+  );
+  assert.equal(invAfter.rows[0]!.late_fee_cents, 900, 'itemized on the invoice');
+  assert.equal(invAfter.rows[0]!.total_cents, 70900);
+
+  // Not charged twice inside the same 30-day period.
+  await runDunningJob(app, '2031-02-20');
+  const oneFee = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM invoice_late_fees WHERE invoice_id = $1`, [invoiceId]);
+  assert.equal(oneFee.rows[0]!.n, 1, 'monthly, not daily');
+
+  // Kill switch: late_fees OFF suppresses assessment entirely.
+  await app.db.query(`UPDATE automations SET enabled = false WHERE key = 'late_fees'`);
+  const disarmed = await runDunningJob(app, '2031-04-01');
+  assert.equal(disarmed.feesAssessed, 0, 'kill switch beats everything');
+  const stillOneFee = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM invoice_late_fees WHERE invoice_id = $1`, [invoiceId]);
+  assert.equal(stillOneFee.rows[0]!.n, 1);
+  await app.db.query(`UPDATE automations SET enabled = true WHERE key = 'late_fees'`);
+});

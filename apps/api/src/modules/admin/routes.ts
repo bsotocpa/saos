@@ -27,6 +27,9 @@ const NewVersionBody = z.object({
         priceMinCents: z.number().int().nonnegative().optional(),
         priceMaxCents: z.number().int().nonnegative().optional(),
         isActive: z.boolean().optional(),
+        // Rate-carrying items (e.g. the late-fee percent) keep their value in
+        // metadata — editable through this same versioned, audited flow.
+        metadata: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .min(1),
@@ -39,6 +42,9 @@ const TemplateBody = z
     bodyEn: z.string().min(1).optional(),
     bodyEs: z.string().nullable().optional(),
     isPlaceholder: z.boolean().optional(),
+    // v4.3 flow 4: set this ONLY when the body actually carries the late-fee
+    // disclosure — it is the gate the fee job reads (CLAUDE.md).
+    hasLateFeeDisclosure: z.boolean().optional(),
   })
   .refine((b) => Object.keys(b).length > 0, { message: 'Nothing to update.' });
 
@@ -134,6 +140,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         if (change.priceMinCents !== undefined) { params.push(change.priceMinCents); sets.push(`price_min_cents = $${params.length}`); }
         if (change.priceMaxCents !== undefined) { params.push(change.priceMaxCents); sets.push(`price_max_cents = $${params.length}`); }
         if (change.isActive !== undefined) { params.push(change.isActive); sets.push(`is_active = $${params.length}`); }
+        if (change.metadata !== undefined) { params.push(JSON.stringify(change.metadata)); sets.push(`metadata = $${params.length}::jsonb`); }
         if (sets.length === 0) continue;
         // An admin-set price is a deliberate decision — confirmation clears.
         sets.push(`needs_confirmation = false`, `confirmation_note = NULL`);
@@ -215,6 +222,10 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       if (val !== undefined) { params.push(val); sets.push(`${col} = $${params.length}`); }
     }
     if (b.isPlaceholder !== undefined) { params.push(b.isPlaceholder); sets.push(`is_placeholder = $${params.length}`); }
+    if (b.hasLateFeeDisclosure !== undefined) {
+      params.push(b.hasLateFeeDisclosure);
+      sets.push(`has_late_fee_disclosure = $${params.length}`);
+    }
     await app.db.query(`UPDATE templates SET ${sets.join(', ')} WHERE key = $1`, params);
 
     // The launch-gate moment: placeholder → live means final legal text landed.

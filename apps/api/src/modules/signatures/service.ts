@@ -379,6 +379,17 @@ export async function completeEnvelopeBySubmission(
       );
     }
     await app.db.query(`UPDATE contacts SET engagement_letter_status = 'signed' WHERE id = $1`, [env.contact_id]);
+    // v4.3 flow 4 GATE: late fees are only ever applied to clients whose
+    // SIGNED letter carries the late-fee disclosure. Stamp it here — the fee
+    // job reads this stamp and nothing else (CLAUDE.md hard rule).
+    if (env.template_key) {
+      await app.db.query(
+        `UPDATE contacts SET late_fee_disclosure_signed_at = COALESCE(late_fee_disclosure_signed_at, now())
+         WHERE id = $1
+           AND EXISTS (SELECT 1 FROM templates t WHERE t.key = $2 AND t.has_late_fee_disclosure)`,
+        [env.contact_id, env.template_key]
+      );
+    }
   } else if (env.type === 'consent_7216') {
     await record7216Consent(app, {
       contactId: env.contact_id,

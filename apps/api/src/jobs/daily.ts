@@ -10,6 +10,7 @@ import { runNoticeEscalations } from '../modules/notices/service.ts';
 import { runEntityComplianceJob } from '../modules/entity/service.ts';
 import { runDocumentChaseJob } from '../modules/documents/service.ts';
 import { runInvoiceOverdueJob } from '../modules/billing/service.ts';
+import { runDunningJob } from '../modules/billing/dunning.ts';
 import { runSosRecheckJob } from '../modules/entity/sos.ts';
 import { runBackupStaleCheckJob, runRestoreDrillReminderJob } from '../modules/admin/ops.ts';
 import { runLadderJob, runTaskReminderSweep } from '../modules/tasks/service.ts';
@@ -33,6 +34,10 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   if (!docs.skipped) app.log.info({ job: 'document_chase', ...docs }, 'daily job ran');
   const invoices = await runInvoiceOverdueJob(app, today);
   if (!invoices.skipped) app.log.info({ job: 'invoice_overdue', ...invoices }, 'daily job ran');
+  // v4.3 flow 4: dunning ladder + late fees (runs AFTER the overdue flip so
+  // freshly-overdue invoices enter the ladder the same day).
+  const dunning = await runDunningJob(app, today);
+  if (!dunning.skipped) app.log.info({ job: 'ar_dunning', ...dunning }, 'daily job ran');
   const sos = await runSosRecheckJob(app, today);
   if (!sos.skipped) app.log.info({ job: 'sos_recheck', ...sos }, 'daily job ran');
   const drill = await runRestoreDrillReminderJob(app, today);

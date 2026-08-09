@@ -93,7 +93,7 @@ test('THE prove-it: price edit → new version; pinned engagements keep v1; calc
             (SELECT count(*)::int FROM bundle_rules WHERE version_id = $1) AS rules`,
     [v2.rows[0]!.id]
   );
-  assert.equal(counts.rows[0].items, 73);
+  assert.equal(counts.rows[0].items, 74); // 74th = LATE_FEE_MONTHLY (v4.3 flow 4 rate)
   assert.equal(counts.rows[0].rules, 3);
 
   const prices = await app.db.query(

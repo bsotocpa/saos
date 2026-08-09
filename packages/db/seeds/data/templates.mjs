@@ -29,6 +29,9 @@ const letter = (serviceEn, serviceEs) => ({
     'Parties: Soto Accounting LLC and {{client_name}}.\n' +
     'Scope of services: {{service_scope}}.\n' +
     'Fees: {{fee_summary}} (from the engagement’s locked price book version; deposit/true-up terms per the current pricing sheet).\n' +
+    'Late payment: balances unpaid 30 days past the invoice date accrue a late fee of ' +
+    '{{late_fee_rate}} per month (18% APR), itemized on the invoice. Deposits and credits ' +
+    'apply to the balance first. (v4.3 required disclosure block — final wording from Brian.)\n' +
     'Signatures collected via Docuseal; executed copy filed to the client record.',
   bodyEs:
     PLACEHOLDER_BANNER_ES +
@@ -36,6 +39,9 @@ const letter = (serviceEn, serviceEs) => ({
     'Partes: Soto Accounting LLC y {{client_name}}.\n' +
     'Alcance de los servicios: {{service_scope}}.\n' +
     'Honorarios: {{fee_summary}} (según la versión del libro de precios fijada en el compromiso; términos de depósito y ajuste según la hoja de precios vigente).\n' +
+    'Pago atrasado: los saldos con 30 días de atraso acumulan un cargo por mora de ' +
+    '{{late_fee_rate}} mensual (18% anual), detallado en la factura. Los depósitos y créditos ' +
+    'se aplican primero al saldo. (Bloque de divulgación requerido v4.3 — redacción final de Brian.)\n' +
     'Firmas mediante Docuseal; la copia firmada se archiva en el expediente del cliente.',
 });
 
@@ -51,7 +57,8 @@ export const templates = [
     name,
     channel: 'document',
     isPlaceholder: true,
-    variables: ['client_name', 'service_scope', 'fee_summary'],
+    variables: ['client_name', 'service_scope', 'fee_summary', 'late_fee_rate'],
+    hasLateFeeDisclosure: true, // v4.3 flow 4: THE late-fee gate reads this
     ...letter(en, es),
   })),
   {
@@ -661,8 +668,8 @@ export async function seedTemplates(client) {
   let inserted = 0;
   for (const t of templates) {
     const res = await client.query(
-      `INSERT INTO templates (key, name, channel, subject_en, subject_es, body_en, body_es, is_placeholder, variables)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+      `INSERT INTO templates (key, name, channel, subject_en, subject_es, body_en, body_es, is_placeholder, variables, has_late_fee_disclosure)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
        ON CONFLICT (key) DO NOTHING`,
       [
         t.key,
@@ -674,6 +681,7 @@ export async function seedTemplates(client) {
         t.bodyEs,
         t.isPlaceholder,
         JSON.stringify(t.variables),
+        t.hasLateFeeDisclosure ?? false,
       ]
     );
     inserted += res.rowCount;

@@ -5,6 +5,7 @@ import { AppError } from '../../types.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import { makeStripeAdapter } from './stripe.ts';
 import { createInvoice, markInvoicePaid, runInvoiceOverdueJob } from './service.ts';
+import { runDunningJob } from './dunning.ts';
 
 const CreateInvoiceBody = z.object({
   contactId: z.uuid(),
@@ -132,6 +133,12 @@ export function registerBillingRoutes(app: FastifyInstance): void {
       });
       return reply.send({ status: 'ok', alreadyPaid: result.alreadyPaid });
     });
+  });
+
+  // v4.3 flow 4: the dunning ladder + late-fee assessment.
+  app.post('/jobs/ar-dunning', { preHandler: [app.authenticate, requirePermission('jobs.run')] }, async (request) => {
+    const q = z.object({ asOf: z.iso.date().optional() }).parse(request.query);
+    return runDunningJob(app, q.asOf ?? todayChicago());
   });
 
   app.post('/jobs/invoice-overdue', { preHandler: [app.authenticate, requirePermission('jobs.run')] }, async (request) => {

@@ -65,6 +65,21 @@ export async function sendTemplatedEmail(
     contactId?: string | null;
   }
 ): Promise<void> {
+  // THE COMPLIANCE GATE FIRST: a placeholder template is refused before any
+  // rendering is attempted. Order matters — otherwise a missing variable in
+  // placeholder copy throws a DIFFERENT error and the gate never speaks.
+  const flag = await app.db.query<{ is_placeholder: boolean }>(
+    `SELECT is_placeholder FROM templates WHERE key = $1`,
+    [opts.templateKey]
+  );
+  if (flag.rows[0]?.is_placeholder) {
+    throw new AppError(
+      409,
+      'template_placeholder_blocked',
+      `Template '${opts.templateKey}' is flagged PLACEHOLDER and cannot be sent to a client. Final copy must be entered in Admin → Templates first.`
+    );
+  }
+
   const rendered = await renderTemplate(app, opts.templateKey, opts.language, opts.vars);
 
   if (rendered.isPlaceholder) {

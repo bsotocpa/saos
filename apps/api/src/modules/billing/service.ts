@@ -293,8 +293,12 @@ export async function markInvoicePaid(
       },
     });
   }
-  // M25: payment closes the collection work item automatically.
+  // M25: payment closes the collection work items automatically.
   await closeTasksForSource(app, 'invoice_overdue', invoiceId, 'invoice paid');
+  // v4.3 flow 4: payment ends the dunning ladder and LIFTS any work pause.
+  await closeTasksForSource(app, 'dunning_call', invoiceId, 'invoice paid');
+  const { resumeAfterPayment } = await import('./dunning.ts');
+  await resumeAfterPayment(app, invoiceId);
   await writeAudit(app.db, {
     actorType: 'system',
     action: 'invoice.paid',
@@ -342,7 +346,10 @@ export async function runInvoiceOverdueJob(
   let overdue = 0;
   let suppressed = 0;
   for (const inv of rows) {
-    await app.db.query(`UPDATE invoices SET status = 'overdue' WHERE id = $1`, [inv.id]);
+    await app.db.query(
+      `UPDATE invoices SET status = 'overdue', overdue_since = COALESCE(overdue_since, $2::date) WHERE id = $1`,
+      [inv.id, today]
+    );
     if (inv.tax_engagement_id) {
       await app.db.query(`UPDATE tax_engagements SET payment_status = 'overdue' WHERE id = $1`, [inv.tax_engagement_id]);
     }
