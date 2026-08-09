@@ -26,6 +26,12 @@ scp -q -i "$SSH_KEY" .env.production "root@$IP:/opt/saos/.env"
 echo "deploy: [1b/5] ensuring the encrypted data volume is mounted..."
 "${SSH[@]}" 'mountpoint -q /mnt/saos-data || bash /opt/saos/scripts/setup-encrypted-volume.sh "$(ls /dev/disk/by-id/scsi-0HC_Volume_* | head -1)"'
 
+# Enforced here, not in a runbook: the drill of 2026-08 found the nightly
+# backup cron had never been installed — prod ran with ZERO backups. Every
+# deploy now (re)installs it idempotently so it can't silently be missing.
+echo "deploy: [1c/5] ensuring the nightly backup cron is installed..."
+"${SSH[@]}" 'mkdir -p /var/lib/saos/backup-staging && (crontab -l 2>/dev/null | grep -v "scripts/backup.sh"; echo "15 2 * * * cd /opt/saos && ENV_FILE=/opt/saos/.env bash scripts/backup.sh >> /var/log/saos-backup.log 2>&1") | crontab - && crontab -l | grep -q "scripts/backup.sh"'
+
 echo "deploy: [2/5] building + starting the FULL stack incl. intel + booking (first build takes minutes)..."
 "${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking -f docker-compose.yml -f docker-compose.prod.yml up -d --build --quiet-pull'
 

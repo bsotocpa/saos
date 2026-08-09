@@ -151,13 +151,24 @@ test('restore-drill reminder: nags once per quarter until a drill is recorded', 
   assert.deepEqual(newQuarter, { skipped: false, reminded: true });
   assert.equal(await notificationCount('restore_drill_due'), 2);
 
-  // Recording a passing drill silences it.
+  // The quarterly task exists while overdue…
+  const open = await app.db.query(
+    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'restore_drill' AND status <> 'completed'`
+  );
+  assert.ok(open.rows[0].n >= 1, 'quarter drill task created for the CEO');
+
+  // Recording a passing drill silences it AND auto-closes the open task —
+  // recording the pass IS completing the work.
   await app.db.query(
     `UPDATE app_settings SET value = to_jsonb('2026-10-02T03:00:00Z'::text) WHERE key = 'ops.last_restore_drill_at'`
   );
   const afterDrill = await runRestoreDrillReminderJob(app, '2026-10-03');
   assert.deepEqual(afterDrill, { skipped: false, reminded: false });
   assert.equal(await notificationCount('restore_drill_due'), 2);
+  const closed = await app.db.query(
+    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'restore_drill' AND status <> 'completed'`
+  );
+  assert.equal(closed.rows[0].n, 0, 'drill tasks auto-closed on recorded pass');
 });
 
 test('backup staleness: silent while unconfigured, critical alert once stale', async () => {

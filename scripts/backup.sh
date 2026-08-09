@@ -29,6 +29,25 @@ set -euo pipefail
 # paths unless told not to. No-op elsewhere.
 export MSYS_NO_PATHCONV=1
 
+# Load ENV_FILE (default: /opt/saos/.env when present, i.e. cron on the
+# server). Parsed literally, line by line — NEVER `source`d: dotenv values
+# aren't shell, and the file may carry a UTF-8 BOM. Existing environment wins.
+ENV_FILE="${ENV_FILE:-}"
+[ -z "$ENV_FILE" ] && [ -f /opt/saos/.env ] && ENV_FILE=/opt/saos/.env
+if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#$'\xEF\xBB\xBF'}"
+    line="${line%$'\r'}"
+    case "$line" in ''|\#*) continue ;; esac
+    case "$line" in
+      [A-Za-z_]*=*)
+        key="${line%%=*}"
+        [ -n "${!key:-}" ] || export "$key=${line#*=}"
+        ;;
+    esac
+  done < "$ENV_FILE"
+fi
+
 RESTIC_IMAGE="restic/restic:0.19.1"
 TAR_IMAGE="alpine:3.23"
 BUCKETS="saos-documents saos-returns saos-signed-docs saos-recordings"

@@ -255,6 +255,22 @@ export async function runRestoreDrillReminderJob(
         sourceId: quarter,
       });
     }
+  } else {
+    // Drill is current → any open drill task (this quarter's or a stale
+    // earlier one) auto-closes; recording the pass IS completing the work.
+    const closed = await app.db.query<{ id: string }>(
+      `UPDATE tasks SET status = 'completed', completed_at = now(), updated_at = now()
+       WHERE source_type = 'restore_drill' AND status = ANY($1::task_status[])
+       RETURNING id`,
+      [['not_started', 'in_progress', 'waiting_for_input', 'deferred']]
+    );
+    if (closed.rows.length > 0) {
+      await writeAudit(app.db, {
+        actorType: 'system', actorLabel: 'daily-jobs',
+        action: 'task.auto_closed',
+        details: { source_type: 'restore_drill', count: closed.rows.length, note: `drill recorded ${lastDrill}` },
+      });
+    }
   }
 
   await writeAudit(app.db, {
