@@ -12,6 +12,7 @@ const NAV = [
   { href: '/pipeline', label: 'Pipeline' },
   { href: '/reports', label: 'Reports' },
   { href: '/configurator', label: 'Configurator' },
+  { href: '/announcements', label: 'Announcements' },
   { href: '/hilo', label: 'Hilo Ops' },
   { href: '/alerts', label: 'Alerts' },
   { href: '/upload-return', label: 'Deliver Return' },

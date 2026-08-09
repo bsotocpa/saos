@@ -253,6 +253,27 @@ const dict = {
   ],
   quote_invalid: ['This link is invalid or has already been used.', 'Este enlace es inválido o ya fue usado.'],
 
+  // Unsubscribe (M27). Says plainly what stopped and what did not — a client who
+  // believes they switched off "your return is ready" is worse off, not better.
+  unsub_done_title: ['You’re unsubscribed', 'Suscripción cancelada'],
+  unsub_done_body: [
+    'You won’t receive firm announcements from Soto Accounting any more. No need to do anything else.',
+    'Ya no recibirá anuncios de la firma de Soto Accounting. No necesita hacer nada más.',
+  ],
+  unsub_still_get: [
+    'You will still get messages about your own work — returns, invoices, document requests, and sign-in links. Those aren’t announcements.',
+    'Seguirá recibiendo mensajes sobre su propio trabajo — declaraciones, facturas, solicitudes de documentos y enlaces de acceso. Esos no son anuncios.',
+  ],
+  unsub_undo: [
+    'Changed your mind? Reply to any email from us and we’ll turn announcements back on.',
+    '¿Cambió de opinión? Responda a cualquiera de nuestros correos y volvemos a activarlos.',
+  ],
+  unsub_invalid_title: ['This link didn’t work', 'Este enlace no funcionó'],
+  unsub_invalid_body: [
+    'The link may be incomplete. Reply to any email from us and we’ll take you off the announcement list by hand.',
+    'El enlace puede estar incompleto. Responda a cualquiera de nuestros correos y lo quitamos de la lista de anuncios manualmente.',
+  ],
+
   loading: ['Loading…', 'Cargando…'],
   error_generic: ['Something went wrong. Please try again.', 'Algo salió mal. Intente de nuevo.'],
 } satisfies Record<string, [string, string]>;

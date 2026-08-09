@@ -42,6 +42,10 @@ const schema = z.object({
   MAGIC_LINK_TTL_MINUTES: z.coerce.number().int().positive().default(30),
   PORTAL_SESSION_DAYS: z.coerce.number().int().positive().default(30),
   PORTAL_BASE_URL: z.url().default('http://localhost:3000'),
+  // Google Business Profile review link (M27 review asks). Defaults to the GBP
+  // search-redirect form so the automation is never sending a broken link; Brian
+  // pastes the short g.page link once the profile is verified.
+  GOOGLE_REVIEW_URL: z.url().default('https://search.google.com/local/writereview?placeid=PLACEHOLDER'),
   // Shared secret for inbound delivery-status webhooks (bounce fallback).
   WEBHOOK_SECRET: z.string().min(8).default('dev-webhook-secret'),
   // Daily job scheduler (extension decision list, summer chase, health).

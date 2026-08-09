@@ -116,3 +116,28 @@ in 3.2s; under the full suite, CPU contention pushed it past 8s and it flaked.
 **Rule**: a poll loop that returns on success can afford a generous ceiling.
 Size timeouts for the worst contention case, not the observed fast case — and if
 a spec flakes, root-cause it before re-running, then say so.
+
+## Compliance text must be appended by the sender, not authored in the template
+**Pattern**: an unsubscribe footer or STOP line living in editable copy can be
+deleted by whoever edits the copy — and the edit looks harmless.
+**Rule**: legally-required text is concatenated at send time by the send function.
+Then test it by authoring a body that deliberately omits it and asserting it
+arrives anyway.
+
+## Marketing opt-out is not transactional opt-out
+**Pattern**: it's tempting to have one "do not contact" flag.
+**Rule**: keep announcement opt-out separate from service delivery, and TELL the
+client which one they just used. A client who thinks they switched off "your
+return is ready" is worse off than before they clicked.
+
+## Read the test harness defaults before asserting on gated behavior
+**Pattern**: `createTestConfig` enables every automation so ON-path specs work.
+My kill-switch test inherited that and "proved" the opposite of prod behavior.
+**Rule**: a spec asserting a gate's OFF state sets the state itself. Never infer
+prod defaults from harness defaults.
+
+## Order suppression checks by how badly getting it wrong would land
+**Pattern**: a review-request gate could check its cheapest condition first.
+**Rule**: for anything client-facing, evaluate the most embarrassing condition
+first (open notice, dispute) so the reason surfaced is the one a human would give.
+And record the suppressed attempts — a rule is only provable from its near-misses.

@@ -55,6 +55,12 @@ export const automations = [
     description:
       'Warm reply when a client emails/texts a file, pointing at the secure portal link. Transactional (a reply to something they just sent) — recommended ON once client intake begins. OFF: the file is still accepted, scanned, and quarantined for review.',
   },
+  {
+    key: 'review_requests',
+    name: 'Google review asks (milestone-triggered)',
+    description:
+      'Asks for a Google review after an ACCEPTED return or a completed onboarding. Throttled to one ask per client per 180 days, and never sent to a client with an open or recent IRS notice, an overdue invoice, paused work, or a stalled onboarding — a review ask at those moments invites the review you least want. OFF: the decision still runs and every skip is recorded, so you can see what arming it would send.',
+  },
 ];
 
 export async function seedAutomations(client) {

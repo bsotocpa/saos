@@ -751,11 +751,13 @@ only Brian can make. Regenerate after any gate clears.)
       ✅ 2026-08-09 (migration 0028; reports/service.ts registry +
       csv.ts + routes.ts; /reports internal page, table on desktop /
       cards at 390px)
-- [ ] Announcements + review requests: segmented broadcast (SES/Twilio,
+- [x] Announcements + review requests: segmented broadcast (SES/Twilio,
       EN/ES) w/ CAN-SPAM unsubscribe + TCPA opt-out + suppression at
       send + approval gate; milestone-triggered Google-review asks
       (throttled, opt-out, never post-notice/dispute); portal broadcast-
-      consent settings beside the estimate toggle
+      consent settings beside the estimate toggle ✅ 2026-08-09
+      (migration 0030; comms/broadcast.ts + review-requests.ts;
+      /announcements internal, portal /unsubscribe/[id]/[token])
 - [ ] SOP knowledge base: versioned searchable wiki per role/process;
       task types carry "how to do this" links (CLAUDE.md: task-generating
       features without SOP hooks are incomplete); Whisper-seeded drafts
@@ -919,6 +921,53 @@ Brian's call: the report shows violations, the gate prevents new ones. Both.
   budget starved by full-suite CPU contention, not a logic fault — raised to 30s
   with a comment, since the loop exits on success and the timeout exists to catch
   a genuine hang, not to enforce a performance budget.
+
+### M27 announcements + review requests (completed 2026-08-09)
+Every compliance clause made STRUCTURAL, and the test file is written as
+attempts to violate each one rather than demonstrations of the happy path.
+- **Approval is a database CHECK**, not service-layer convention: a `broadcasts`
+  row cannot reach `status='sent'` without a named approver. A test proves even
+  direct SQL is refused. Approving is also a leadership permission and the
+  author cannot approve their own — a bulk client send gets a second pair of eyes.
+- **The unsubscribe footer is appended by the SENDER, not the template.** An
+  admin editing announcement copy cannot delete what they never had. Test sends a
+  body containing no unsubscribe language and asserts the footer, the postal
+  identification, and the contact's own token all arrive anyway.
+- **Suppression is evaluated at SEND, per contact.** Test approves a broadcast,
+  has a recipient opt out *during the approval wait*, then sends and asserts that
+  person was skipped with the reason recorded as a row.
+- **Every intended recipient gets a row, including suppressions, with the
+  reason.** A send that quietly reaches 300 of 400 teaches nothing; "88
+  suppressed: opted out" is an audit trail. Same shape in the audit log.
+- **Marketing opt-out ≠ transactional.** `broadcast_opt_out_at` is separate from
+  `sms_consent` and the §7216 consents: a client who mutes firm news still gets
+  "your return is ready". The unsubscribe page says so in both languages, because
+  a client who believes they switched off service messages is worse off.
+- **No unsubscribe token at rest** — an HMAC of the contact id keyed by
+  APP_ENCRYPTION_KEY. Stable for the 30+ days CAN-SPAM wants, verifiable without
+  a lookup, nothing extra stored. One-click, no login, idempotent (a second click
+  or a mail-client prefetch does not error or move the opt-out date).
+- **Review asks refuse the embarrassing moment.** Ordered by how badly it would
+  land: open IRS notice → notice within 90 days → overdue invoice → paused work →
+  stalled onboarding → opted out → archived → no email → already asked in 180
+  days. Resolving a notice is *not* enough; "we fixed your CP2000 last month,
+  please review us" is exactly the wrong ask. Every suppressed attempt is a row,
+  so the rule is provable from the near-misses.
+- **Review asks fire on ACCEPTED returns, never merely filed** — consistent with
+  Filed-is-not-terminal. Registered as automation #9, ships OFF, and while
+  disarmed the decision still runs and the skip is counted.
+- The review email routes a *bad* experience back to us ("if something fell
+  short, reply to this email instead") rather than to Google.
+- `sendSms` gained a narrow `bodyOverride` for broadcast copy (authored
+  per-send, so there is no template row). It replaces the template LOOKUP only —
+  consent gate, phone check, thread logging and audit all still run — and the
+  combination of override + `transactionalReply` is refused outright, since that
+  pairing is the shape of an accidental consent bypass.
+- **⚠ Worth knowing from live dev data**: of 433 active clients, 433 are
+  emailable and **0 have SMS consent**. An SMS announcement to the migrated book
+  would suppress 100% today. Email announcements work; SMS needs consent captured
+  at onboarding first. Not a bug — the TCPA gate doing its job.
+- 215/215 green. Announcements + unsubscribe verified at 390×844 and 1280px.
 
 ### M0–M3 (completed 2026-07-05)
 - Stack as approved: Node 24 + TypeScript strict, npm workspaces, Fastify (M4),

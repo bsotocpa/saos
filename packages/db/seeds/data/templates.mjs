@@ -708,6 +708,35 @@ export const templates = [
       'alcance antes que usted acepte un trabajo que no quería.\n\n' +
       '— Soto Accounting',
   },
+  {
+    // M27 review asks. Asks once, plainly, and makes "no" costless — a review
+    // request that pressures is worse than none.
+    key: 'review_request',
+    name: 'Google review request (milestone-triggered)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'review_link'],
+    subjectEn: 'One small favor, if you have two minutes',
+    subjectEs: 'Un pequeño favor, si tiene dos minutos',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'That work is done and filed. Thank you for trusting us with it.\n\n' +
+      'If the experience was a good one, a short Google review helps other business owners find ' +
+      'a CPA who actually returns their calls:\n\n' +
+      '{{review_link}}\n\n' +
+      'And if something fell short, reply to this email instead — we would rather hear it directly ' +
+      'and fix it.\n\n' +
+      '— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Ese trabajo ya está terminado y presentado. Gracias por confiarnos su caso.\n\n' +
+      'Si la experiencia fue buena, una breve reseña en Google ayuda a otros dueños de negocio a ' +
+      'encontrar un CPA que de verdad contesta:\n\n' +
+      '{{review_link}}\n\n' +
+      'Y si algo no estuvo a la altura, mejor responda a este correo — preferimos escucharlo ' +
+      'directamente y corregirlo.\n\n' +
+      '— Soto Accounting',
+  },
 ];
 
 export async function seedTemplates(client) {

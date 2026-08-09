@@ -18,6 +18,18 @@ export async function sendSms(
     language: 'en' | 'es';
     vars: Record<string, string>;
     /**
+     * Broadcast announcements ONLY (M27). Their copy is authored per-send in the
+     * broadcast record rather than in a reusable template, so there is no
+     * template row to read — but the copy is still admin-authored without a
+     * deploy, which is what the templates rule is protecting.
+     *
+     * This replaces the template LOOKUP and nothing else: the TCPA consent gate,
+     * the phone check, the Twilio config check, the thread logging and the audit
+     * row all still run. It must never be used to route around the consent gate,
+     * which is why `transactionalReply` is not settable alongside it.
+     */
+    bodyOverride?: string;
+    /**
      * ONLY for direct replies to a message the contact just sent us (e.g. the
      * MMS-attachment ack): a consumer-initiated exchange is TCPA-permissible
      * without the standing consent flag. Broadcast/reminder/nudge paths must
@@ -40,14 +52,24 @@ export async function sendSms(
   if (!c.sms_consent && !input.transactionalReply) return { sent: false, reason: 'no_sms_consent' }; // TCPA gate — absolute for outreach
   if (!c.phone) return { sent: false, reason: 'no_phone' };
 
-  const tpl = await app.db.query<{ body_en: string; body_es: string | null; is_placeholder: boolean }>(
-    `SELECT body_en, body_es, is_placeholder FROM templates WHERE key = $1 AND channel = 'sms'`,
-    [input.templateKey]
-  );
-  const t = tpl.rows[0];
-  if (!t) return { sent: false, reason: 'template_missing' };
-  if (t.is_placeholder) return { sent: false, reason: 'template_placeholder_blocked' }; // same gate as email
-  const body = render(input.language === 'es' && t.body_es ? t.body_es : t.body_en, input.vars);
+  let body: string;
+  if (input.bodyOverride !== undefined) {
+    if (input.transactionalReply) {
+      // A caller supplying its own copy AND claiming consumer-initiated exemption
+      // is the exact shape of an accidental consent bypass. Refuse the combination.
+      return { sent: false, reason: 'override_with_transactional_reply' };
+    }
+    body = render(input.bodyOverride, input.vars);
+  } else {
+    const tpl = await app.db.query<{ body_en: string; body_es: string | null; is_placeholder: boolean }>(
+      `SELECT body_en, body_es, is_placeholder FROM templates WHERE key = $1 AND channel = 'sms'`,
+      [input.templateKey]
+    );
+    const t = tpl.rows[0];
+    if (!t) return { sent: false, reason: 'template_missing' };
+    if (t.is_placeholder) return { sent: false, reason: 'template_placeholder_blocked' }; // same gate as email
+    body = render(input.language === 'es' && t.body_es ? t.body_es : t.body_en, input.vars);
+  }
 
   const digits = c.phone.replace(/\D/g, '');
   const to = digits.length === 10 ? `+1${digits}` : `+${digits}`;

@@ -19,6 +19,7 @@ import { runPerfectionClockJob } from '../modules/tax/pipeline.ts';
 import { runAutoExtensionBatchJob } from '../modules/tax/extension-batch.ts';
 import { runVoucherReminderJob } from '../modules/grants/vouchers.ts';
 import { runQuoteExpiryJob } from '../modules/pricing/quotes.ts';
+import { runReviewRequestJob } from '../modules/comms/review-requests.ts';
 import { runOnboardingRescueJob } from '../modules/portal-auth/onboarding-rescue.ts';
 import { makePusher, runPushSweep } from '../notify/push.ts';
 
@@ -64,6 +65,10 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   // M27: expire quotes past their date, back to the pipeline with a reason.
   const quoteExpiry = await runQuoteExpiryJob(app, today);
   if (!quoteExpiry.skipped) app.log.info({ job: 'quote_expiry', ...quoteExpiry }, 'daily job ran');
+  // M27: review asks off accepted returns / completed onboardings. Client-acting,
+  // so gated by the review_requests kill switch; every skip is recorded.
+  const reviews = await runReviewRequestJob(app, today);
+  if (!reviews.skipped) app.log.info({ job: 'review_requests', ...reviews }, 'daily job ran');
   // v4.3 flow 1: perfection-period clocks on rejected e-files.
   const perfection = await runPerfectionClockJob(app, today);
   if (!perfection.skipped) app.log.info({ job: 'perfection_clock', ...perfection }, 'daily job ran');
