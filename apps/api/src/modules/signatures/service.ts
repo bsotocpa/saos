@@ -20,7 +20,10 @@ import { uploadDocument } from '../documents/service.ts';
 import type { DocusealAdapter } from './docuseal.ts';
 import { makeKbaVerifier, assertKbaUsable } from './kba.ts';
 
-export type EnvelopeType = 'engagement_letter' | 'consent_7216' | 'f8879' | 'w9' | 'grant_agreement' | 'other';
+export type EnvelopeType =
+  | 'engagement_letter' | 'consent_7216' | 'f8879' | 'w9' | 'grant_agreement'
+  | 'f8821' | 'f2848'   // v4.6 resolution lane: transcripts vs representation
+  | 'other';
 
 /** DB template key per envelope type (engagement letters are per service line). */
 export function templateKeyFor(type: EnvelopeType, serviceLine?: string | null): string | null {
@@ -398,6 +401,10 @@ export async function completeEnvelopeBySubmission(
       documentId: doc.id,
       envelopeId: env.id,
     });
+  } else if (env.type === 'f8821') {
+    // v4.6: transcripts are now authorized — the request task appears itself.
+    const { onF8821Signed } = await import('../tax/resolution-case.ts');
+    await onF8821Signed(app, env.id);
   } else if (env.type === 'f8879') {
     // Single OR bundled (entity group): stamp EVERY engagement the envelope
     // covers — the direct link plus signature_envelope_items.

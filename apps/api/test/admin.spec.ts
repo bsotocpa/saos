@@ -93,7 +93,9 @@ test('THE prove-it: price edit → new version; pinned engagements keep v1; calc
             (SELECT count(*)::int FROM bundle_rules WHERE version_id = $1) AS rules`,
     [v2.rows[0]!.id]
   );
-  assert.equal(counts.rows[0].items, 74); // 74th = LATE_FEE_MONTHLY (v4.3 flow 4 rate)
+  // Item count is asserted so a stray seed addition is noticed; 78 = the v1
+  // book + LATE_FEE_MONTHLY (flow 4) + the four v4.6 resolution items.
+  assert.equal(counts.rows[0].items, 78);
   assert.equal(counts.rows[0].rules, 3);
 
   const prices = await app.db.query(

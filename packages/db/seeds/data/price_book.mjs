@@ -212,6 +212,33 @@ export const items = [
     confirmationNote: '⚠ Observed $300 discovery deposit — confirm one standard discovery deposit vs a per-service deposit schedule.',
   }),
 
+  // ── Tax resolution lane (v4.6) ──────────────────────────────────────────────
+  // The prior-year surcharge is a PRICE-BOOK ITEM so the +$100 never appears
+  // as a literal in code. It applies automatically to any return more than two
+  // years back, bundled or not (CLAUDE.md).
+  item('PRIOR_YEAR_SURCHARGE', 'individual_tax', 'Prior-year surcharge (returns 3+ years back)', 'Recargo por año anterior (declaraciones de 3+ años)', 10000, {
+    unit: 'per_form',
+    descEn: 'Applied automatically per return more than two tax years back — older years mean paper filing, transcript work, and reconstructed records.',
+    descEs: 'Se aplica automáticamente por declaración de más de dos años atrás — los años antiguos requieren presentación en papel, transcripciones y reconstrucción de registros.',
+  }),
+  item('RES_PENALTY_ABATEMENT', 'specialized_cpa', 'Penalty abatement (first-time or reasonable cause)', 'Reducción de multas (primera vez o causa razonable)', 50000, {
+    needsConfirmation: true,
+    confirmationNote: '⚠ v4.6 seeds penalty abatement at the Specialized $500 rate — Brian confirms before launch.',
+    descEn: 'Requires an active Form 2848 covering the year in question.',
+    descEs: 'Requiere un Formulario 2848 vigente que cubra el año en cuestión.',
+  }),
+  item('RES_INSTALLMENT_AGREEMENT', 'specialized_cpa', 'Installment agreement setup', 'Configuración de plan de pagos', 50000, {
+    needsConfirmation: true,
+    confirmationNote: '⚠ v4.6 seeds installment-agreement setup at the Specialized $500 rate — Brian confirms before launch.',
+    descEn: 'Requires an active Form 2848 covering the year in question.',
+    descEs: 'Requiere un Formulario 2848 vigente que cubra el año en cuestión.',
+  }),
+  item('RES_BOOKS_RECONSTRUCTION', 'recurring_accounting', 'Books reconstruction (per year, hourly)', 'Reconstrucción de libros (por año, por hora)', 7500, {
+    unit: 'per_hour',
+    descEn: 'Paired automatically with any resolution year whose books are partial or missing.',
+    descEs: 'Se combina automáticamente con cualquier año de resolución cuyos libros estén incompletos o no existan.',
+  }),
+
   // ── Late fee (v4.3 flow 4) ──────────────────────────────────────────────────
   // The RATE lives here, never in code (CLAUDE.md). Percent-per-month sits in
   // metadata because it is a rate, not a dollar amount; edit it through the
