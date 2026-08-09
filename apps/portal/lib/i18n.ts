@@ -58,6 +58,9 @@ const dict = {
   stage_client_review: ['Ready for your review', 'Lista para su revisión'],
   stage_ready_to_file: ['Ready to file', 'Lista para presentar'],
   stage_filed: ['Filed', 'Presentada'],
+  // v4.3 flow 1: honest, calm, no-action-needed — a reject is a transmission
+  // hiccup we own, not a client problem.
+  stage_rejected: ['Fixing a transmission issue — we’re re-filing for you', 'Corrigiendo un problema de transmisión — volveremos a presentarla por usted'],
   stage_completed: ['Completed', 'Completada'],
   stage_on_hold: ['On hold', 'En pausa'],
 

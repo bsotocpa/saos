@@ -11,7 +11,7 @@ import { AppError } from '../../types.ts';
 import { createEngagement } from '../engagements/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { computeComplexityScore } from './complexity.ts';
-import { TAX_STAGES, markDocumentsRequested, transitionStage } from './pipeline.ts';
+import { TAX_STAGES, markDocumentsRequested, recordEfileResult, transitionStage } from './pipeline.ts';
 
 const CreateBody = z.object({
   contactId: z.uuid(),
@@ -179,6 +179,22 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     const b = TransitionBody.parse(request.body);
     const result = await transitionStage(app, actorOf(request), id, b.toStage, { note: b.note, ...meta(request) });
     return { status: 'ok', ...result };
+  });
+
+  // v4.3 flow 1: record the IRS acknowledgement. Accepted → completed;
+  // rejected → re-queued with the perfection clock + owned fix task.
+  app.post<{ Params: { id: string } }>('/tax-engagements/:id/efile-result', manage, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({
+      result: z.enum(['accepted', 'rejected']),
+      rejectCode: z.string().max(40).optional(),
+      rejectReason: z.string().max(1000).optional(),
+      asOf: z.iso.date().optional(), // clock injection for tests
+    }).parse(request.body);
+    const out = await recordEfileResult(app, actorOf(request), id, {
+      result: b.result, rejectCode: b.rejectCode, rejectReason: b.rejectReason, today: b.asOf,
+    });
+    return { status: 'ok', ...out };
   });
 
   // Estimate range + lock (automation 8: locked estimate unlocks preparation).

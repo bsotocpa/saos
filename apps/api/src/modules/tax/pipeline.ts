@@ -11,19 +11,22 @@
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
+import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { closeTasksForSource, createTask } from '../tasks/service.ts';
+import { addDays, daysBetween, todayChicago } from './deadlines.ts';
 import { invoiceForFiledEngagement } from '../billing/service.ts';
 
 export const TAX_STAGES = [
   'intake_started', 'scheduled', 'documents_requested', 'pending_client_response',
   'in_preparation', 'internal_review', 'client_review', 'ready_to_file',
-  'filed', 'completed', 'on_hold', 'withdrawn',
+  'filed', 'rejected', 'completed', 'on_hold', 'withdrawn',
 ] as const;
 export type TaxStage = (typeof TAX_STAGES)[number];
 
 const ORDER: Partial<Record<TaxStage, number>> = {
   intake_started: 0, scheduled: 1, documents_requested: 2, pending_client_response: 3,
   in_preparation: 4, internal_review: 5, client_review: 6, ready_to_file: 7,
-  filed: 8, completed: 9,
+  filed: 8, rejected: 8, completed: 9,
 };
 
 const RESUMABLE: TaxStage[] = [
@@ -41,7 +44,11 @@ const TRANSITIONS: Record<TaxStage, TaxStage[]> = {
   internal_review: ['in_preparation', 'client_review'],
   client_review: ['in_preparation', 'ready_to_file'],
   ready_to_file: ['client_review', 'filed'],
-  filed: ['completed'],
+  // v4.3 flow 1: Filed is NOT terminal — acceptance completes it, a reject
+  // re-queues it. From rejected the fix path is re-file (ready_to_file) or
+  // back into preparation for a substantive fix.
+  filed: ['completed', 'rejected'],
+  rejected: ['ready_to_file', 'in_preparation'],
   completed: [],
   on_hold: RESUMABLE,
   withdrawn: [],
@@ -144,12 +151,170 @@ export async function transitionStage(
   });
 
   // Automation 12: Filed → invoice generated (or an exception to Rene when
-  // the final fee is missing — never a silent skip).
+  // the final fee is missing — never a silent skip). Re-files after a reject
+  // don't re-invoice (COALESCE(filed_date) keeps the original date; the
+  // invoice hook is idempotent per engagement via its own dedupe).
   if (toStage === 'filed') {
     await invoiceForFiledEngagement(app, actor, taxEngagementId);
+    // Re-queue resolved: reaching 'filed' with a perfection clock running
+    // means the reject was fixed (path is rejected → ready_to_file → filed,
+    // so check the clock, not the immediate `from`). Task closes with it.
+    const cleared = await app.db.query(
+      `UPDATE tax_engagements SET perfection_deadline = NULL WHERE id = $1 AND perfection_deadline IS NOT NULL`,
+      [taxEngagementId]
+    );
+    if ((cleared.rowCount ?? 0) > 0) {
+      await closeTasksForSource(app, 'efile_reject', taxEngagementId, 're-filed within the perfection window');
+    }
   }
 
   return { from, to: toStage };
+}
+
+// ── v4.3 flow 1: e-file acceptance / rejection ──────────────────────────────
+
+/** Individual returns get 5 perfection days; business returns get 10. */
+export function perfectionDays(returnType: string): number {
+  return returnType === '1040' || returnType === '1040_expat' ? 5 : 10;
+}
+
+export async function recordEfileResult(
+  app: FastifyInstance,
+  actor: { staffId: string | null; label: string },
+  taxEngagementId: string,
+  input: { result: 'accepted' | 'rejected'; rejectCode?: string | undefined; rejectReason?: string | undefined; today?: string | undefined }
+): Promise<{ stage: TaxStage; perfectionDeadline: string | null }> {
+  const { rows } = await app.db.query<{
+    id: string; stage: TaxStage; return_type: string; tax_year: number;
+    preparer_id: string | null; contact_id: string; first_name: string; last_name: string;
+  }>(
+    `SELECT te.id, te.stage, te.return_type, te.tax_year, te.preparer_id,
+            c.id AS contact_id, c.first_name, c.last_name
+     FROM tax_engagements te
+     JOIN engagements e ON e.id = te.engagement_id
+     JOIN contacts c ON c.id = e.contact_id
+     WHERE te.id = $1`,
+    [taxEngagementId]
+  );
+  const te = rows[0];
+  if (!te) throw new AppError(404, 'not_found', 'Tax engagement not found.');
+  if (te.stage !== 'filed') {
+    throw new AppError(409, 'not_filed', `E-file results apply to filed returns — this one is '${te.stage}'.`);
+  }
+
+  if (input.result === 'accepted') {
+    await app.db.query(`UPDATE tax_engagements SET efile_accepted_at = now() WHERE id = $1`, [taxEngagementId]);
+    await transitionStage(app, actor, taxEngagementId, 'completed', { note: 'e-file ACCEPTED' });
+    return { stage: 'completed', perfectionDeadline: null };
+  }
+
+  const today = input.today ?? todayChicago();
+  const deadline = addDays(today, perfectionDays(te.return_type));
+  await app.db.query(
+    `UPDATE tax_engagements
+     SET rejected_at = now(), reject_code = $2, reject_reason = $3, perfection_deadline = $4
+     WHERE id = $1`,
+    [taxEngagementId, input.rejectCode ?? null, input.rejectReason ?? null, deadline]
+  );
+  await transitionStage(app, actor, taxEngagementId, 'rejected', {
+    note: `e-file REJECTED${input.rejectCode ? ` (${input.rejectCode})` : ''}`,
+  });
+
+  // Owned work item — never a dead end. Urgent, clocked to the perfection window.
+  const owner = te.preparer_id ?? (await firstActiveByRole(app.db, 'tax_preparer'));
+  await createTask(app, {
+    title: `E-file REJECTED: ${te.first_name} ${te.last_name} ${te.tax_year} ${te.return_type.toUpperCase()} — fix & re-file by ${deadline}`,
+    description:
+      `Reject code: ${input.rejectCode ?? 'n/a'}. ${input.rejectReason ?? ''}\n` +
+      `Perfection window: re-file by ${deadline} (${perfectionDays(te.return_type)} days) to keep the original filing date.`,
+    assignedStaffId: owner,
+    contactId: te.contact_id,
+    dueDate: deadline,
+    priority: 2,
+    source: 'automation',
+    sourceType: 'efile_reject',
+    sourceId: taxEngagementId,
+  });
+  if (owner) {
+    await notifyOnce(app.db, {
+      staffId: owner,
+      type: 'efile_rejected',
+      severity: 'critical',
+      title: `E-file rejected — ${te.first_name} ${te.last_name} ${te.tax_year} ${te.return_type.toUpperCase()}, perfection ends ${deadline}`,
+      contactId: te.contact_id,
+      relatedObjectType: 'efile_reject',
+      relatedObjectId: taxEngagementId,
+    });
+  }
+  return { stage: 'rejected', perfectionDeadline: deadline };
+}
+
+/**
+ * Daily perfection-clock sweep: T-2 warning to the owner, past-deadline
+ * critical to Brian (the original filing date is now at risk). notifyOnce
+ * keys keep each alert to exactly one firing per engagement.
+ */
+export async function runPerfectionClockJob(
+  app: FastifyInstance,
+  today: string
+): Promise<{ skipped: boolean; warnings: number; overdue: number }> {
+  const ACTION = 'job.perfection_clock';
+  const already = await app.db.query(
+    `SELECT 1 FROM audit_log WHERE action = $1 AND details->>'run_date' = $2 LIMIT 1`,
+    [ACTION, today]
+  );
+  if (already.rows.length > 0) return { skipped: true, warnings: 0, overdue: 0 };
+
+  const { rows } = await app.db.query<{
+    id: string; perfection_deadline: string; preparer_id: string | null;
+    contact_id: string; first_name: string; last_name: string; tax_year: number; return_type: string;
+  }>(
+    `SELECT te.id, te.perfection_deadline::text AS perfection_deadline, te.preparer_id,
+            c.id AS contact_id, c.first_name, c.last_name, te.tax_year, te.return_type
+     FROM tax_engagements te
+     JOIN engagements e ON e.id = te.engagement_id
+     JOIN contacts c ON c.id = e.contact_id
+     WHERE te.stage = 'rejected' AND te.perfection_deadline IS NOT NULL`
+  );
+
+  let warnings = 0;
+  let overdue = 0;
+  const brian = await firstActiveByRole(app.db, 'ceo');
+  for (const te of rows) {
+    const label = `${te.first_name} ${te.last_name} ${te.tax_year} ${te.return_type.toUpperCase()}`;
+    if (te.perfection_deadline < today) {
+      if (brian) {
+        const fired = await notifyOnce(app.db, {
+          staffId: brian,
+          type: 'perfection_overdue',
+          severity: 'critical',
+          title: `PERFECTION WINDOW MISSED: ${label} (was ${te.perfection_deadline}) — original filing date at risk`,
+          contactId: te.contact_id,
+          relatedObjectType: 'perfection_overdue',
+          relatedObjectId: te.id,
+        });
+        if (fired) overdue++;
+      }
+    } else if (daysBetween(today, te.perfection_deadline) <= 2 && te.preparer_id) {
+      const fired = await notifyOnce(app.db, {
+        staffId: te.preparer_id,
+        type: 'perfection_closing',
+        severity: 'warning',
+        title: `Perfection window closes ${te.perfection_deadline}: ${label} — re-file now`,
+        contactId: te.contact_id,
+        relatedObjectType: 'perfection_closing',
+        relatedObjectId: te.id,
+      });
+      if (fired) warnings++;
+    }
+  }
+
+  await writeAudit(app.db, {
+    actorType: 'system', actorLabel: 'daily-jobs',
+    action: ACTION,
+    details: { run_date: today, warnings, overdue },
+  });
+  return { skipped: false, warnings, overdue };
 }
 
 /**

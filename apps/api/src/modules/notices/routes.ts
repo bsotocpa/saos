@@ -5,6 +5,7 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { createIrsNotice, runNoticeEscalations } from './service.ts';
 import { closeTasksForSource } from '../tasks/service.ts';
+import { createInvoice } from '../billing/service.ts';
 
 const CreateBody = z.object({
   contactId: z.uuid(),
@@ -101,6 +102,35 @@ export function registerNoticeRoutes(app: FastifyInstance): void {
       details: { fields: sets.map((s) => s.split(' =')[0]) },
     });
     return { status: 'ok' };
+  });
+
+  // v4.3 flow 1: notice-response work bills FROM THE PRICE BOOK — the tier
+  // items (IND/BIZ_NOTICE_SUPPORT), never an ad-hoc amount in code.
+  app.post<{ Params: { id: string } }>('/irs-notices/:id/bill', manage, async (request, reply) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ tier: z.enum(['individual', 'business']).default('individual') }).parse(request.body ?? {});
+    const notice = await app.db.query<{ contact_id: string; notice_type: string; invoice_id: string | null }>(
+      `SELECT contact_id, notice_type, invoice_id FROM irs_notices WHERE id = $1`,
+      [id]
+    );
+    if (!notice.rows[0]) throw new AppError(404, 'not_found', 'Notice not found.');
+    if (notice.rows[0].invoice_id) throw new AppError(409, 'already_billed', 'This notice already has an invoice.');
+    const invoice = await createInvoice(
+      app,
+      { type: 'staff', id: request.staff!.id, label: request.staff!.email },
+      {
+        contactId: notice.rows[0].contact_id,
+        lines: [{ code: b.tier === 'business' ? 'BIZ_NOTICE_SUPPORT' : 'IND_NOTICE_SUPPORT' }],
+      }
+    );
+    await app.db.query(`UPDATE irs_notices SET invoice_id = $2 WHERE id = $1`, [id, invoice.id]);
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      action: 'irs_notice.billed', objectType: 'irs_notice', objectId: id,
+      contactId: notice.rows[0].contact_id,
+      details: { invoice_id: invoice.id, tier: b.tier, total_cents: invoice.totalCents },
+    });
+    return reply.code(201).send(invoice);
   });
 
   app.post('/jobs/notice-escalations', { preHandler: [app.authenticate, requirePermission('jobs.run')] }, async () => {

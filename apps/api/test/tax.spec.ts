@@ -248,3 +248,120 @@ test('complexity endpoint stores score + inputs', async () => {
   assert.equal(Number(row.rows[0].complexity_score), 4);
   assert.equal(row.rows[0].complexity_inputs.schEProperties, 2);
 });
+
+// ── M26 flow 1: e-file rejects — Filed is not terminal until acceptance ──────
+
+test('e-file result: accepted completes; rejected re-queues with perfection clock + owned fix task', async () => {
+  // Fabricate a filed 1040 (gates satisfied) — the individual lane: 5 days.
+  const accepted = await newTaxEngagement();
+  await app.db.query(
+    `UPDATE tax_engagements
+     SET stage = 'filed', engagement_letter_signed_at = now(), estimate_locked_at = now(),
+         f8879_signed_at = now(), filed_date = '2026-08-01', invoice_number = 'INV-SYNTH-1'
+     WHERE id = $1`,
+    [accepted]
+  );
+  const ok = await app.inject({
+    method: 'POST', url: `/tax-engagements/${accepted}/efile-result`, headers: auth(preparer),
+    payload: { result: 'accepted' },
+  });
+  assert.equal(ok.statusCode, 200, ok.body);
+  assert.equal(ok.json().stage, 'completed');
+  const acc = await app.db.query(`SELECT stage, efile_accepted_at FROM tax_engagements WHERE id = $1`, [accepted]);
+  assert.equal(acc.rows[0].stage, 'completed');
+  assert.ok(acc.rows[0].efile_accepted_at);
+
+  // Rejected: 1040 → 5-day perfection window from asOf.
+  const rejected = await newTaxEngagement();
+  await app.db.query(
+    `UPDATE tax_engagements
+     SET stage = 'filed', engagement_letter_signed_at = now(), estimate_locked_at = now(),
+         f8879_signed_at = now(), filed_date = '2026-08-01', invoice_number = 'INV-SYNTH-2'
+     WHERE id = $1`,
+    [rejected]
+  );
+  const rej = await app.inject({
+    method: 'POST', url: `/tax-engagements/${rejected}/efile-result`, headers: auth(preparer),
+    payload: { result: 'rejected', rejectCode: 'IND-181', rejectReason: 'Prior-year AGI mismatch', asOf: '2026-08-05' },
+  });
+  assert.equal(rej.statusCode, 200, rej.body);
+  assert.equal(rej.json().stage, 'rejected');
+  assert.equal(rej.json().perfectionDeadline, '2026-08-10', '1040 = 5 perfection days');
+
+  const row = await app.db.query(
+    `SELECT stage, reject_code, perfection_deadline::text AS pd FROM tax_engagements WHERE id = $1`,
+    [rejected]
+  );
+  assert.equal(row.rows[0].stage, 'rejected');
+  assert.equal(row.rows[0].reject_code, 'IND-181');
+  assert.equal(row.rows[0].pd, '2026-08-10');
+
+  // Owned fix task, urgent, due at the perfection deadline.
+  const task = await app.db.query<{ id: string; priority: number; due_date: string; status: string }>(
+    `SELECT id, priority, due_date::text AS due_date, status FROM tasks
+     WHERE source_type = 'efile_reject' AND source_id = $1`,
+    [rejected]
+  );
+  assert.equal(task.rows.length, 1, 'rejects are OWNED, never dead-ended');
+  assert.equal(task.rows[0]!.priority, 2);
+  assert.equal(task.rows[0]!.due_date, '2026-08-10');
+
+  // E-file results only apply to filed returns.
+  const notFiled = await newTaxEngagement();
+  const nope = await app.inject({
+    method: 'POST', url: `/tax-engagements/${notFiled}/efile-result`, headers: auth(preparer),
+    payload: { result: 'accepted' },
+  });
+  assert.equal(nope.statusCode, 409);
+
+  // Re-queue: rejected → ready_to_file → filed clears the clock + closes the task.
+  await move(rejected, 'ready_to_file');
+  await move(rejected, 'filed');
+  const after = await app.db.query(`SELECT perfection_deadline FROM tax_engagements WHERE id = $1`, [rejected]);
+  assert.equal(after.rows[0].perfection_deadline, null, 'clock stops on re-file');
+  const closed = await app.db.query(`SELECT status FROM tasks WHERE id = $1`, [task.rows[0]!.id]);
+  assert.equal(closed.rows[0].status, 'completed', 'fix task auto-closed');
+});
+
+test('perfection clock job: T-2 warns the preparer, past-deadline escalates to Brian, date-guarded', async () => {
+  const brianTok = await staffToken('brian-tax-perf@example.test', 'ceo');
+  void brianTok;
+  const brianRow = await app.db.query<{ id: string }>(
+    `SELECT id FROM staff WHERE email = 'brian-tax-perf@example.test'`
+  );
+  const preparerRow = await app.db.query<{ id: string }>(
+    `SELECT id FROM staff WHERE email = 'anamaria-test@example.test'`
+  );
+
+  const closing = await newTaxEngagement();
+  await app.db.query(
+    `UPDATE tax_engagements SET stage = 'rejected', perfection_deadline = '2026-08-11', preparer_id = $2 WHERE id = $1`,
+    [closing, preparerRow.rows[0]!.id]
+  );
+  const missed = await newTaxEngagement();
+  await app.db.query(
+    `UPDATE tax_engagements SET stage = 'rejected', perfection_deadline = '2026-08-01', preparer_id = $2 WHERE id = $1`,
+    [missed, preparerRow.rows[0]!.id]
+  );
+
+  const { runPerfectionClockJob } = await import('../src/modules/tax/pipeline.ts');
+  const run = await runPerfectionClockJob(app, '2026-08-09');
+  assert.equal(run.skipped, false);
+  assert.ok(run.warnings >= 1, 'T-2 warning fired');
+  assert.ok(run.overdue >= 1, 'missed window escalated');
+
+  const warn = await app.db.query(
+    `SELECT 1 FROM notifications WHERE type = 'perfection_closing' AND related_object_id = $1`,
+    [closing]
+  );
+  assert.equal(warn.rows.length, 1);
+  const esc = await app.db.query(
+    `SELECT 1 FROM notifications WHERE type = 'perfection_overdue' AND staff_id = $1 AND related_object_id = $2`,
+    [brianRow.rows[0]!.id, missed]
+  );
+  assert.equal(esc.rows.length, 1);
+
+  // Same-day rerun: date guard.
+  const rerun = await runPerfectionClockJob(app, '2026-08-09');
+  assert.equal(rerun.skipped, true);
+});

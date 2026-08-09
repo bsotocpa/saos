@@ -655,7 +655,7 @@ tasks = work). Trello JSONs arriving in migration-data this week.
       committed locally; deploy on Brian's word (impact note in report)
 
 ## M26 — Seven v4.3 operational flows (consume M24+M25)
-- [ ] 1. E-file rejects (Filed→Rejected re-queue, perfection-period
+- [x] 1. E-file rejects ✅ 2026-08-09 (Filed→Rejected re-queue, perfection-period
       clocks: 10d business/5d individual) + notice tickets w/ client-
       visible plain-language status EN/ES + notice billing from price book
 - [ ] 2. Entity-group workflow: consolidated packet, ONE bundled Docuseal
