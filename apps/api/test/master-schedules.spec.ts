@@ -105,17 +105,15 @@ test('the Master is final, carries the late-fee disclosure, and the old letters 
     'the late-fee disclosure now lives on the Master — the fee job reads this stamp'
   );
 
-  // THE LAUNCH GATE, with exactly one known exception. Schedule F ships flagged
-  // because the attorney document Brian supplied is headed "FOR ATTORNEY REDLINE"
-  // and he has not yet confirmed that header is stale. Asserting the precise set
-  // rather than "empty" keeps the gate sharp: any OTHER active placeholder fails
-  // here, and when Brian confirms, this list becomes empty.
+  // THE LAUNCH GATE. Schedule F's flag cleared 2026-08-10 on Brian's ruling that
+  // its "FOR ATTORNEY REDLINE" header is a stale draft banner, so the set is empty
+  // again — every piece of client-facing legal copy is final and sendable.
   const activePlaceholders = await app.db.query<{ key: string }>(
     `SELECT key FROM templates WHERE is_placeholder AND is_active ORDER BY key`
   );
   assert.deepEqual(
-    activePlaceholders.rows.map((r) => r.key), ['schedule_f_attest'],
-    'the only active placeholder is Schedule F, pending Brian confirming the attorney clearance'
+    activePlaceholders.rows.map((r) => r.key), [],
+    'no ACTIVE template is still a placeholder — that is the launch gate'
   );
 
   const retired = await app.db.query<{ n: number }>(

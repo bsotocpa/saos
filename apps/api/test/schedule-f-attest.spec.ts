@@ -102,6 +102,7 @@ test('Schedule F is loaded, mapped to attest, and queued for Spanish approval', 
   assert.equal(f.is_active, true);
   assert.equal(f.needs_es_review, true, 'English controls until Brian approves the translation');
   assert.equal(f.body_es, null, 'no unapproved Spanish ships');
+  assert.equal(f.is_placeholder, false, 'final: flag cleared 2026-08-10 on Brian’s ruling');
 
   const mapped = await app.db.query<{ lines: string[] }>(
     `SELECT service_lines::text[] AS lines FROM service_schedules WHERE schedule_code = 'F'`
@@ -118,10 +119,11 @@ test('Schedule F is loaded, mapped to attest, and queued for Spanish approval', 
   assert.match(body.rows[0]!.body_en, /signed representation letter/);
 });
 
-test('Schedule F ships flagged PLACEHOLDER, and a flagged schedule cannot ride in a packet', async () => {
-  // The document Brian supplied is headed "FOR ATTORNEY REDLINE", so the flag is
-  // left set pending his confirmation. This test proves the flag actually protects
-  // a client rather than just sitting there.
+test('a schedule flagged PLACEHOLDER cannot ride in a packet at all', async () => {
+  // Schedule F is final now, so flag it deliberately: the point is that the gate
+  // protects a client whenever ANY schedule goes under review, not just today.
+  // Before this, the placeholder gate checked only the Master — a packet could
+  // carry an under-review schedule and a Master signature would record acceptance.
   await app.db.query(`UPDATE templates SET is_placeholder = true WHERE schedule_code = 'F'`);
   const { contactId } = await attestClient('FlaggedF');
   await assert.rejects(

@@ -214,17 +214,10 @@ test('legal package v3: final text seeded, nothing active still a placeholder', 
   // landed, so the launch-gate assertion inverts: the gate is now that no ACTIVE
   // template is a placeholder, and the retired letters keep their flag and their
   // reason for the record.
-  // Exactly one known exception: Schedule F ships flagged because the attorney
-  // document is headed "FOR ATTORNEY REDLINE" and Brian has not yet confirmed that
-  // header is stale. Asserting the precise set keeps the gate sharp — any OTHER
-  // active placeholder fails here — and this list empties when he confirms.
   const active = await client.query(
     `SELECT key FROM templates WHERE is_placeholder AND is_active ORDER BY key`
   );
-  assert.deepEqual(
-    active.rows.map((r) => r.key), ['schedule_f_attest'],
-    'the only active placeholder may be Schedule F, pending Brian on the attorney clearance'
-  );
+  assert.deepEqual(active.rows.map((r) => r.key), [], 'no active template may be a placeholder');
 
   const legal = await client.query(`
     SELECT key, kind::text AS kind, is_active, needs_es_review, body_es IS NOT NULL AS has_spanish

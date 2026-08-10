@@ -1,22 +1,12 @@
 // SCHEDULE F — ATTEST (SOTO_Schedule_F_Attest_FINALFORM.docx), loaded verbatim.
 //
-// ⚠ THE PLACEHOLDER FLAG IS DELIBERATELY LEFT SET. Brian said the document is
-// attorney-cleared with no redlines. The document's own first two lines say:
+// FINAL — placeholder flag cleared 2026-08-10 on Brian's ruling.
 //
-//     "SOTO ACCOUNTING LLC — SCHEDULE F (ATTEST) — FOR ATTORNEY REDLINE"
-//     "... No open items — ready for redline."
-//
-// "ready FOR redline" is not "redlined and cleared". That may simply be stale
-// header text on the draft he sent to the attorney — the filename does say
-// FINALFORM — but the two readings differ on whether an attorney has actually
-// signed off on the terms governing the firm's highest-liability work.
-//
-// Clearing the flag is a one-word confirmation from Brian and a one-line change
-// here. Loading the text with the flag ON gets everything else built and tested
-// now, and the gate guarantees nothing reaches a client in the meantime.
-//
-// Everything else Brian asked for IS done: Schedule F exists, attest is
-// assemblable, the Addendum is required, and the Spanish translation is queued.
+// The source document is headed "FOR ATTORNEY REDLINE" and says "ready for
+// redline", which read as not-yet-cleared. I flagged that before clearing
+// anything; Brian's ruling: the banner is a stale draft header, and the attorney
+// cleared this exact document. Recorded here because the header still says
+// otherwise and the next person to read the file will wonder.
 
 const SCHEDULE_F = `SCHEDULE F — ATTEST SERVICES (CPA REVIEW AND AUDIT)
 
@@ -79,7 +69,8 @@ export async function seedScheduleF(client) {
     await client.query(
       `UPDATE templates
        SET body_en = $2, variables = $3::jsonb, kind = 'schedule', schedule_code = 'F',
-           is_active = true, needs_es_review = true, version = version + 1
+           is_active = true, is_placeholder = false, needs_es_review = true,
+           version = version + 1
        WHERE key = $1`,
       [KEY, SCHEDULE_F, JSON.stringify(variables)]
     );
@@ -89,7 +80,7 @@ export async function seedScheduleF(client) {
          (key, name, channel, body_en, body_es, is_placeholder, variables,
           kind, schedule_code, is_active, needs_es_review)
        VALUES ($1, 'Schedule F — Attest (CPA Review and Audit)', 'document', $2, NULL,
-               true, $3::jsonb, 'schedule', 'F', true, true)`,
+               false, $3::jsonb, 'schedule', 'F', true, true)`,
       [KEY, SCHEDULE_F, JSON.stringify(variables)]
     );
   }
@@ -106,5 +97,5 @@ export async function seedScheduleF(client) {
   );
 
   const flag = await client.query(`SELECT is_placeholder FROM templates WHERE key = $1`, [KEY]);
-  return `Schedule F: loaded (${flag.rows[0].is_placeholder ? 'PLACEHOLDER still set — awaiting Brian on the "FOR ATTORNEY REDLINE" header' : 'final'}), mapped to the attest service line, ES queued`;
+  return `Schedule F: loaded (${flag.rows[0].is_placeholder ? 'PLACEHOLDER' : 'final'}), mapped to the attest service line, ES queued`;
 }
