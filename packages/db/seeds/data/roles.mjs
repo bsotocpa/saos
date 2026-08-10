@@ -10,7 +10,13 @@ export const roles = [
     key: 'ceo',
     name: 'CEO / CPA',
     description: 'Brian. Full access; approval gate for pricing/scope commitments.',
-    permissions: ['*'], // '*' includes referrals.approve (Jackson too)
+    // 'deposits.override' is listed EXPLICITLY even though this role holds '*':
+    // it is an explicit-only permission (see EXPLICIT_ONLY_PERMISSIONS in
+    // plugins/auth.ts), so the wildcard does not reach it. That is deliberate —
+    // Brian asked for deposit waivers to be his alone, and Jackson also holds
+    // '*'. Without the explicit-only carve-out there would be no way to say
+    // "Brian only" at all.
+    permissions: ['*', 'deposits.override'], // '*' includes referrals.approve (Jackson too)
   },
   {
     key: 'ed_coo',

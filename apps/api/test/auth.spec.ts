@@ -117,7 +117,11 @@ test('wrong password fails, wrong TOTP fails, correct pair logs in (all audited)
   });
   assert.equal(me.statusCode, 200);
   assert.equal(me.json().role, 'ceo');
-  assert.deepEqual(me.json().permissions, ['*']);
+  // '*' plus the explicit-only grants. `deposits.override` is listed by name on
+  // purpose: the wildcard deliberately does NOT confer it, so that Brian can hold
+  // it while Jackson — who also has '*' — does not. See EXPLICIT_ONLY_PERMISSIONS
+  // in plugins/auth.ts and deposit-override.spec.ts.
+  assert.deepEqual(me.json().permissions, ['*', 'deposits.override']);
 });
 
 test('failed-login lockout engages at the limit and blocks even correct credentials', async () => {

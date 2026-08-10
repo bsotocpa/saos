@@ -90,27 +90,39 @@ const arAging: ReportDef = {
   title: 'A/R aging',
   description: 'Open invoices by age since sending, with the balance still owed.',
   snapshot: true,
-  caveat: 'A point-in-time snapshot of what is owed today — the date range does not apply.',
+  caveat:
+    'A point-in-time snapshot of what is owed today — the date range does not apply. ' +
+    'The last two columns isolate invoices belonging to engagements whose deposit was REDUCED OR WAIVED, ' +
+    'which is the question behind deposit flexibility: do those engagements collect worse? Read them as a ' +
+    'share of the bucket, not as a total — a small waived population can look alarming in absolute terms.',
   columns: [
     text('bucket', 'Age'),
     int('invoices', 'Invoices'),
     money('owed_cents', 'Owed'),
     int('clients', 'Clients'),
     text('oldest_sent', 'Oldest sent'),
+    int('waived_deposit_invoices', 'Of which: deposit reduced/waived'),
+    money('waived_deposit_owed_cents', 'Owed on those'),
   ],
   async run(app) {
     const { rows } = await app.db.query(
       `SELECT CASE
-                WHEN now() - sent_at <= interval '30 days' THEN '0-30'
-                WHEN now() - sent_at <= interval '60 days' THEN '31-60'
-                WHEN now() - sent_at <= interval '90 days' THEN '61-90'
+                WHEN now() - i.sent_at <= interval '30 days' THEN '0-30'
+                WHEN now() - i.sent_at <= interval '60 days' THEN '31-60'
+                WHEN now() - i.sent_at <= interval '90 days' THEN '61-90'
                 ELSE '90+' END AS bucket,
               count(*)::int AS invoices,
-              COALESCE(sum(total_cents - amount_paid_cents), 0)::int AS owed_cents,
-              count(DISTINCT contact_id)::int AS clients,
-              to_char(min(sent_at), 'YYYY-MM-DD') AS oldest_sent
-       FROM invoices
-       WHERE status IN ('sent', 'overdue') AND sent_at IS NOT NULL
+              COALESCE(sum(i.total_cents - i.amount_paid_cents), 0)::int AS owed_cents,
+              count(DISTINCT i.contact_id)::int AS clients,
+              to_char(min(i.sent_at), 'YYYY-MM-DD') AS oldest_sent,
+              count(*) FILTER (WHERE e.deposit_treatment IN ('reduced', 'waived'))::int
+                AS waived_deposit_invoices,
+              COALESCE(sum(i.total_cents - i.amount_paid_cents)
+                FILTER (WHERE e.deposit_treatment IN ('reduced', 'waived')), 0)::int
+                AS waived_deposit_owed_cents
+       FROM invoices i
+       LEFT JOIN engagements e ON e.id = i.engagement_id
+       WHERE i.status IN ('sent', 'overdue') AND i.sent_at IS NOT NULL
        GROUP BY 1 ORDER BY 1`
     );
     return rows;

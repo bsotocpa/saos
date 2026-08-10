@@ -92,6 +92,12 @@ export default function PipelinePage() {
   const [expiresInDays, setExpiresInDays] = useState(30);
   const [notes, setNotes] = useState('');
   const [sentLink, setSentLink] = useState('');
+  // A saved draft awaiting a deliberate deposit decision, then sending.
+  const [draftQuoteId, setDraftQuoteId] = useState('');
+  const [depositOverride, setDepositOverride] = useState<
+    { standardCents: number; chargeCents: number; treatment: string } | null
+  >(null);
+  const [canOverrideDeposit, setCanOverrideDeposit] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -103,6 +109,10 @@ export default function PipelinePage() {
       setMetrics(p.metrics);
       setCatalog(c.items);
       setBundles(c.bundles);
+      // `deposits.override` is explicit-only, so a '*' role does NOT imply it —
+      // check for the key itself, exactly as the API does.
+      const me = await api<{ permissions: string[] }>('/auth/me');
+      setCanOverrideDeposit(me.permissions.includes('deposits.override'));
     } catch (err) {
       setError((err as Error).message);
     }
@@ -150,9 +160,73 @@ export default function PipelinePage() {
     );
   };
 
+  /**
+   * Deposit override. Deliberately NOT an inline editable field on the builder:
+   * the standard deposit is what happens unless someone chooses otherwise, and
+   * that choice needs a confirm step and a reason. Only visible to staff who hold
+   * `deposits.override` — and the API refuses it regardless of what the UI shows.
+   */
+  const overrideDeposit = async (quoteId: string, waive: boolean) => {
+    const standard = deposits.find((d) => d.item_code === depositItemCode)?.amount_cents ?? 0;
+    let amountCents = 0;
+    if (!waive) {
+      const entered = window.prompt(
+        `Reduced deposit in dollars (standard is ${money(standard)}). Enter 0 to waive entirely.`,
+        ''
+      );
+      if (entered === null) return;
+      const parsed = Number(entered.replace(/[^0-9.]/g, ''));
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        setError('Enter a dollar amount of 0 or more.');
+        return;
+      }
+      amountCents = Math.round(parsed * 100);
+    }
+    const reason = window.prompt(
+      waive
+        ? 'Why is this deposit being waived? (recorded against the engagement, min 10 characters)'
+        : 'Why is this deposit being reduced? (recorded against the engagement, min 10 characters)',
+      ''
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 10) {
+      setError('The reason is the record — please write at least a few words.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const r = await api<{ standardCents: number; chargeCents: number; treatment: string }>(
+        `/quotes/${quoteId}/deposit-override`,
+        { method: 'POST', body: { amountCents, reason: reason.trim() } }
+      );
+      setDepositOverride(r);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const resetBuilder = () => {
     setContact(null); setSearch(''); setBundleSlug(''); setPicked([]);
     setDepositItemCode(''); setNotes(''); setSentLink(''); setItemFilter('');
+    setDraftQuoteId(''); setDepositOverride(null);
+  };
+
+  const sendDraft = async () => {
+    if (!draftQuoteId) return;
+    setBusy(true);
+    setError('');
+    try {
+      const r = await api<{ url: string }>(`/quotes/${draftQuoteId}/send`, { method: 'POST' });
+      setSentLink(r.url);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const buildAndSend = async (send: boolean) => {
@@ -176,12 +250,13 @@ export default function PipelinePage() {
       if (send) {
         const r = await api<{ url: string }>(`/quotes/${created.id}/send`, { method: 'POST' });
         setSentLink(r.url);
+      } else {
+        // Saving a draft keeps the composer open so the deposit can be adjusted
+        // deliberately before the client ever sees the quote.
+        setDraftQuoteId(created.id);
+        setDepositOverride(null);
       }
       await load();
-      if (!send) {
-        setOpen(false);
-        resetBuilder();
-      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -411,6 +486,63 @@ export default function PipelinePage() {
                   Save as draft
                 </button>
               </div>
+
+              {/* Deposit decision on a saved draft. The standard deposit is what
+                  happens by default — this panel only appears once a draft
+                  exists, and only for staff holding deposits.override. */}
+              {draftQuoteId ? (
+                <div className="alert info" style={{ marginTop: 4 }}>
+                  <strong>Draft saved.</strong>{' '}
+                  {depositItemCode ? (
+                    depositOverride ? (
+                      <>
+                        Deposit is{' '}
+                        <strong>
+                          {depositOverride.treatment === 'waived'
+                            ? 'WAIVED'
+                            : `${money(depositOverride.chargeCents)} (standard ${money(depositOverride.standardCents)})`}
+                        </strong>{' '}
+                        — recorded against the engagement for A/R.
+                      </>
+                    ) : (
+                      <>Standard deposit applies.</>
+                    )
+                  ) : (
+                    <>No deposit on this quote.</>
+                  )}
+                  <div className="chipbar" style={{ marginTop: 8, marginBottom: 0 }}>
+                    <button type="button" className="btn accent" disabled={busy} onClick={() => void sendDraft()}>
+                      Send to client
+                    </button>
+                    {canOverrideDeposit && depositItemCode ? (
+                      <>
+                        <button
+                          type="button"
+                          className="chip"
+                          disabled={busy}
+                          onClick={() => void overrideDeposit(draftQuoteId, false)}
+                        >
+                          Reduce deposit…
+                        </button>
+                        <button
+                          type="button"
+                          className="chip"
+                          disabled={busy}
+                          onClick={() => void overrideDeposit(draftQuoteId, true)}
+                        >
+                          Waive deposit…
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                  {canOverrideDeposit && depositItemCode ? (
+                    <p className="muted small" style={{ marginBottom: 0 }}>
+                      Reducing or waiving requires a reason and is logged with your name. The engagement is
+                      stamped so A/R can see how it was set up to pay.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </>
           )}
         </section>

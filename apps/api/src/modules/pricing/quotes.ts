@@ -288,9 +288,11 @@ export async function quoteByToken(app: FastifyInstance, token: string) {
     range_min_cents: number | null; range_max_cents: number | null;
     expires_at: Date | null; bundle_slug: string | null; notes: string | null;
     first_name: string; last_name: string;
+    deposit_item_code: string | null; deposit_override_cents: number | null;
   }>(
     `SELECT q.id, q.status::text, q.language, q.contact_id, q.subtotal_cents, q.discount_cents, q.total_cents,
             q.range_min_cents, q.range_max_cents, q.expires_at, q.bundle_slug, q.notes,
+            q.deposit_item_code, q.deposit_override_cents,
             c.first_name, c.last_name
      FROM quotes q JOIN contacts c ON c.id = q.contact_id
      WHERE q.public_token_hash = $1`,
@@ -305,7 +307,161 @@ export async function quoteByToken(app: FastifyInstance, token: string) {
     [quote.id]
   );
   const expired = quote.expires_at !== null && quote.expires_at.getTime() < Date.now();
-  return { quote: { ...quote, expired }, lines: lines.rows };
+  // The deposit the client will actually be asked for. Resolved rather than read
+  // raw so a waiver reads as "waived", not as a silently missing line.
+  const deposit = await resolveDeposit(app, quote.deposit_item_code, quote.deposit_override_cents);
+  return {
+    quote: { ...quote, expired },
+    lines: lines.rows,
+    deposit: {
+      standardCents: deposit.standardCents,
+      dueCents: deposit.chargeCents,
+      treatment: deposit.treatment,
+      // The client is told the deposit was adjusted; the internal REASON is
+      // never shipped to them.
+      waived: deposit.treatment === 'waived',
+      reduced: deposit.treatment === 'reduced',
+    },
+  };
+}
+
+export interface ResolvedDeposit {
+  /** The price-book deposit, or null when the quote carries no deposit item. */
+  standardCents: number | null;
+  /** What to actually charge: null = no deposit at all, 0 = waived. */
+  chargeCents: number | null;
+  isOverridden: boolean;
+  treatment: 'standard' | 'reduced' | 'waived' | null;
+  label: string;
+}
+
+/**
+ * Work out the deposit for a quote. The STANDARD figure is always read from the
+ * price book; an override replaces the amount and nothing else.
+ *
+ * Treatment is derived by comparing the two, not asserted by the caller — so an
+ * "override" that happens to equal the standard deposit is honestly recorded as
+ * standard rather than flagged as an exception for A/R to chase.
+ */
+export async function resolveDeposit(
+  app: FastifyInstance,
+  depositItemCode: string | null,
+  overrideCents: number | null
+): Promise<ResolvedDeposit> {
+  if (!depositItemCode) {
+    // No deposit item on the quote at all. An override cannot invent one — that
+    // would be a price with no book entry behind it.
+    return { standardCents: null, chargeCents: null, isOverridden: false, treatment: null, label: 'Deposit' };
+  }
+  const version = await currentVersion(app);
+  const { rows } = await app.db.query<{ name_en: string; amount_cents: number | null }>(
+    `SELECT name_en, amount_cents FROM price_book_items
+     WHERE version_id = $1 AND item_code = $2 AND is_active`,
+    [version.id, depositItemCode]
+  );
+  const item = rows[0];
+  if (!item || item.amount_cents === null) {
+    throw new AppError(
+      400,
+      'deposit_not_priced',
+      `${depositItemCode} is not a priced deposit item in the price book in force.`
+    );
+  }
+  const standardCents = item.amount_cents;
+  if (overrideCents === null) {
+    return {
+      standardCents,
+      chargeCents: standardCents,
+      isOverridden: false,
+      treatment: 'standard',
+      label: item.name_en,
+    };
+  }
+  const treatment = overrideCents === 0 ? 'waived' : overrideCents < standardCents ? 'reduced' : 'standard';
+  return {
+    standardCents,
+    chargeCents: overrideCents,
+    // An override equal to (or above) standard is not an exception to track.
+    isOverridden: overrideCents !== standardCents,
+    treatment,
+    label: overrideCents === 0 ? `${item.name_en} — waived` : `${item.name_en} (adjusted)`,
+  };
+}
+
+/**
+ * Set (or clear) the deposit override on a quote. Guarded by the explicit-only
+ * `deposits.override` permission at the route.
+ *
+ * Refused once the quote is accepted: the deposit invoice already exists by then,
+ * and silently changing the figure behind an issued invoice would put the books
+ * and the client's copy out of step. Adjust the invoice instead.
+ */
+export async function overrideQuoteDeposit(
+  app: FastifyInstance,
+  quoteId: string,
+  input: { amountCents: number | null; reason: string },
+  actor: AuthedStaff
+): Promise<ResolvedDeposit & { quoteId: string }> {
+  const { rows } = await app.db.query<{ status: string; deposit_item_code: string | null; contact_id: string }>(
+    `SELECT status::text, deposit_item_code, contact_id FROM quotes WHERE id = $1`,
+    [quoteId]
+  );
+  const quote = rows[0];
+  if (!quote) throw new AppError(404, 'not_found', 'Quote not found.');
+  if (!['draft', 'sent'].includes(quote.status)) {
+    throw new AppError(
+      409,
+      'quote_closed',
+      `This quote is '${quote.status}'. A deposit can only be adjusted before the quote is accepted — ` +
+        `after that the deposit invoice exists and must be adjusted directly.`
+    );
+  }
+  if (!quote.deposit_item_code) {
+    throw new AppError(
+      400,
+      'no_deposit_on_quote',
+      'This quote has no deposit. Add the deposit item first — an override adjusts an amount, it does not create one.'
+    );
+  }
+  if (input.amountCents !== null && input.amountCents < 0) {
+    throw new AppError(400, 'invalid_amount', 'A deposit cannot be negative.');
+  }
+
+  if (input.amountCents === null) {
+    // Back to the price-book deposit. The CHECK requires all four columns to
+    // clear together.
+    await app.db.query(
+      `UPDATE quotes
+       SET deposit_override_cents = NULL, deposit_override_reason = NULL,
+           deposit_override_by_staff_id = NULL, deposit_override_at = NULL
+       WHERE id = $1`,
+      [quoteId]
+    );
+  } else {
+    await app.db.query(
+      `UPDATE quotes
+       SET deposit_override_cents = $2, deposit_override_reason = $3,
+           deposit_override_by_staff_id = $4, deposit_override_at = now()
+       WHERE id = $1`,
+      [quoteId, input.amountCents, input.reason.trim(), actor.id]
+    );
+  }
+
+  const resolved = await resolveDeposit(app, quote.deposit_item_code, input.amountCents);
+  await writeAudit(app.db, {
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    action: input.amountCents === null ? 'quote.deposit_override_cleared' : 'quote.deposit_overridden',
+    objectType: 'quote', objectId: quoteId,
+    contactId: quote.contact_id,
+    details: {
+      standard_cents: resolved.standardCents,
+      override_cents: input.amountCents,
+      treatment: resolved.treatment,
+      reason: input.amountCents === null ? null : input.reason.trim(),
+      approver: actor.email,
+    },
+  });
+  return { ...resolved, quoteId };
 }
 
 /**
@@ -337,8 +493,15 @@ export async function acceptQuote(
      FROM quote_line_items WHERE quote_id = $1 AND chosen AND NOT is_pass_through`,
     [quote.id]
   );
-  const q = await app.db.query<{ discount_cents: number; contact_id: string; business_id: string | null; deposit_item_code: string | null; bundle_slug: string | null }>(
-    `SELECT discount_cents, contact_id, business_id, deposit_item_code, bundle_slug FROM quotes WHERE id = $1`,
+  const q = await app.db.query<{
+    discount_cents: number; contact_id: string; business_id: string | null;
+    deposit_item_code: string | null; bundle_slug: string | null;
+    deposit_override_cents: number | null; deposit_override_reason: string | null;
+    deposit_override_by_staff_id: string | null;
+  }>(
+    `SELECT discount_cents, contact_id, business_id, deposit_item_code, bundle_slug,
+            deposit_override_cents, deposit_override_reason, deposit_override_by_staff_id
+     FROM quotes WHERE id = $1`,
     [quote.id]
   );
   const row = q.rows[0]!;
@@ -366,14 +529,45 @@ export async function acceptQuote(
     {}
   );
 
+  // ── DEPOSIT (standard, reduced, or waived) ──────────────────────────────────
+  // The standard figure always comes from the price book. An override replaces
+  // the AMOUNT only, and is stamped onto the engagement so A/R can later ask
+  // whether non-standard deposits collect worse.
+  const deposit = await resolveDeposit(app, row.deposit_item_code, row.deposit_override_cents);
+
   let depositInvoiceId: string | null = null;
-  if (row.deposit_item_code) {
+  if (deposit.chargeCents !== null && deposit.chargeCents > 0) {
     const invoice = await createInvoice(
       app,
       { type: 'system', label: 'quote acceptance' },
-      { contactId: row.contact_id, engagementId: engagement.id, lines: [{ code: row.deposit_item_code }] }
+      {
+        contactId: row.contact_id,
+        engagementId: engagement.id,
+        // A reduced deposit is a custom-amount line: the price book holds the
+        // STANDARD deposit, and quoting its code would re-charge that figure.
+        // The amount comes from the override record (runtime data), not code.
+        lines: deposit.isOverridden
+          ? [{ description: deposit.label, unitCents: deposit.chargeCents }]
+          : [{ code: row.deposit_item_code! }],
+      }
     );
     depositInvoiceId = invoice.id;
+  }
+
+  if (deposit.treatment) {
+    await app.db.query(
+      `UPDATE engagements
+       SET deposit_treatment = $2::deposit_treatment,
+           deposit_standard_cents = $3,
+           deposit_charged_cents = $4,
+           deposit_override_reason = $5,
+           deposit_override_by_staff_id = $6
+       WHERE id = $1`,
+      [
+        engagement.id, deposit.treatment, deposit.standardCents, deposit.chargeCents ?? 0,
+        row.deposit_override_reason, row.deposit_override_by_staff_id,
+      ]
+    );
   }
 
   await app.db.query(

@@ -8,7 +8,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
-import { acceptQuote, createQuote, declineQuote, quoteByToken, sendQuote } from './quotes.ts';
+import {
+  acceptQuote, createQuote, declineQuote, overrideQuoteDeposit, quoteByToken, sendQuote,
+} from './quotes.ts';
 import { pipelineBoard, pipelineMetrics, setLeadStage } from './pipeline.ts';
 
 const LineInput = z.object({
@@ -81,6 +83,28 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
     reply.code(201);
     return result;
   });
+
+  /**
+   * Adjust or waive the deposit on a quote. Guarded by `deposits.override`,
+   * which is EXPLICIT-ONLY: a role holding '*' does not get it, so this is
+   * Brian's alone until he grants it to someone else. The reason is required by
+   * the schema, not just by this handler.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/quotes/:id/deposit-override',
+    { preHandler: [app.authenticate, requirePermission('deposits.override')] },
+    async (request) => {
+      const id = z.uuid().parse(request.params.id);
+      const b = z
+        .object({
+          // null = revert to the price-book deposit.
+          amountCents: z.number().int().min(0).nullable(),
+          reason: z.string().trim().min(10, 'Say why in at least a few words — this is the record.').max(1000),
+        })
+        .parse(request.body);
+      return overrideQuoteDeposit(app, id, b, request.staff!);
+    }
+  );
 
   /** Send it: mints the client link, pins the version, moves the lead to 'quoted'. */
   app.post<{ Params: { id: string } }>('/quotes/:id/send', manage, async (request) => {

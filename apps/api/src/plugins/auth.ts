@@ -70,7 +70,25 @@ export function buildAuthenticate(app: FastifyInstance) {
   };
 }
 
-/** RBAC guard. '*' (Brian, Jackson) grants everything; everyone else needs the named permission. */
+/**
+ * Permissions the wildcard does NOT confer — they must be granted by name.
+ *
+ * '*' exists so Brian and Jackson don't need every key enumerated, and that is
+ * right for operational access. It is wrong for narrow authority over money: a
+ * role holding '*' should not silently acquire the power to waive a deposit
+ * because someone added a feature. `deposits.override` is seeded to the CEO role
+ * alone, and Jackson's '*' does not reach it — which is exactly what Brian asked
+ * for ("seed it to me only") and would otherwise have been impossible to express.
+ *
+ * Keep this set small and financial. Anything added here needs an explicit grant
+ * in the roles seed, or nobody can do it at all.
+ */
+export const EXPLICIT_ONLY_PERMISSIONS: ReadonlySet<string> = new Set(['deposits.override']);
+
+/**
+ * RBAC guard. '*' (Brian, Jackson) grants everything EXCEPT the explicit-only
+ * permissions above; everyone else needs the named permission.
+ */
 export function requirePermission(permission: string) {
   return async function check(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const staff = request.staff;
@@ -78,7 +96,9 @@ export function requirePermission(permission: string) {
       await reply.code(401).send({ error: 'unauthorized' });
       return;
     }
-    if (!staff.permissions.includes('*') && !staff.permissions.includes(permission)) {
+    const wildcardApplies =
+      staff.permissions.includes('*') && !EXPLICIT_ONLY_PERMISSIONS.has(permission);
+    if (!wildcardApplies && !staff.permissions.includes(permission)) {
       await reply.code(403).send({ error: 'forbidden', permission });
       return;
     }

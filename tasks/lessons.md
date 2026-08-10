@@ -177,3 +177,20 @@ route's 500 surfaced as an opaque `internal_error` in the test.
 **Rule**: for any enum-typed insert, query `enum_range` first. And assert the
 response status on EVERY write in a test, even setup writes — an unasserted
 setup call that 500s silently makes a later assertion fail for the wrong reason.
+
+## "Only me" is inexpressible if two roles hold the wildcard
+**Pattern**: Brian asked for a permission seeded to him alone. Both the ceo and
+ed_coo roles hold `'*'`, so any ordinary permission key would have granted it to
+Jackson too — silently, and the seed would have looked correct.
+**Rule**: for narrow authority over money, use an EXPLICIT-ONLY permission the
+wildcard does not satisfy (`EXPLICIT_ONLY_PERMISSIONS` in plugins/auth.ts). Then
+test the premise, not just the outcome: assert the other wildcard holder really
+has `'*'` AND still gets a 403. Keep the set small and financial.
+
+## Derive the exception flag, don't let the caller assert it
+**Pattern**: a deposit "override" set equal to the standard amount is not an
+exception, but a caller-supplied flag would have marked it as one and sent A/R
+chasing a normal engagement.
+**Rule**: compute the classification by comparing to the source of truth
+(standard vs charged), and store BOTH numbers. A flag alone answers "was this
+unusual"; the pair answers "unusual compared to what", which is the actual question.
