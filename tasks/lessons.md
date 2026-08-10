@@ -283,3 +283,32 @@ meant `rm -rf .next` could not fully clear it either.
 locked `cache/` subdir and restart) before starting dev in the same workspace. If
 the dev server returns Internal Server Error immediately after a build, suspect the
 tree, not the code.
+
+## A deploy that asserts local state over server state destroys secrets silently
+**Pattern**: `deploy.sh` did `scp .env.production -> /opt/saos/.env`. Brian pasted the
+Docuseal API token directly on the server; my next deploy overwrote the file and the
+token became an empty string. The symptom was a 401 from a service that had worked
+ten minutes earlier — and because nothing announced the overwrite, the first
+diagnosis was "he must have installed it wrong". He rotated and reinstalled it twice
+for a bug that was mine.
+**Rule**: shipping config must MERGE, never overwrite: a blank in the shipped file
+cannot beat a non-empty value on the server, while a non-blank local value still
+wins so rotation works. Same shape as the price-book confirmation fix — machine
+defaults must never overwrite a human's deliberate value. Guarded by
+`scripts/check-env-merge.mjs` in root `npm test`.
+**Corollary**: before telling a user their credential install "didn't take", check
+whether your own tooling ate it. `.env.production` had exactly two blank keys —
+`DOCUSEAL_API_TOKEN` and `STRIPE_WEBHOOK_SECRET` — so the Stripe secret was next.
+
+## Check the signing artifact against the data model before anyone signs
+**Pattern**: the packet model says "Master + only the schedules this client needs",
+and the §7216 consents must be presented separately AFTER signature. The Docuseal
+template Brian uploaded was one static PDF of the entire legal package: Master +
+all five Schedules + both consent forms, one signature on page 2. Signing it would
+have (a) had the client physically accept schedules the database says they never
+accepted, and (b) captured §7216 consent bundled with the engagement document —
+the exact conditioning the package's own instructions forbid.
+**Rule**: when a document is assembled dynamically in code but signed as a fixed
+vendor template, verify the vendor artifact's CONTENTS against the model before the
+first signature. `GET /api/templates` answered it in one call, before any client
+touched it — cheaper than discovering it from a signed PDF.

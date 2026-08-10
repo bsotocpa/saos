@@ -15,13 +15,14 @@
     "migrate": "npm run migrate --workspace=@saos/db",
     "migrate:down": "npm run migrate:down --workspace=@saos/db",
     "seed": "npm run seed --workspace=@saos/db",
-    "test": "npm run check:prices && npm run check:sops && npm run test --workspaces --if-present",
+    "test": "npm run check:prices && npm run check:sops && npm run check:env-merge && npm run test --workspaces --if-present",
     "test:db": "npm run test:db --workspace=@saos/db",
     "check:prices": "node scripts/check-no-hardcoded-prices.mjs",
     "staging:up": "docker compose -p saos-staging -f docker-compose.yml -f docker-compose.staging.yml up -d",
     "staging:down": "docker compose -p saos-staging -f docker-compose.yml -f docker-compose.staging.yml down",
     "import:legacy": "npm run import:legacy --workspace=@saos/api --",
-    "check:sops": "node scripts/check-task-sop-hooks.mjs"
+    "check:sops": "node scripts/check-task-sop-hooks.mjs",
+    "check:env-merge": "node scripts/check-env-merge.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

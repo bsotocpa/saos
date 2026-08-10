@@ -21,7 +21,14 @@ SSH=(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "root@$IP")
 echo "deploy: [1/5] shipping tracked sources to root@$IP:/opt/saos ..."
 "${SSH[@]}" 'mkdir -p /opt/saos'
 git archive HEAD | "${SSH[@]}" 'tar -x -C /opt/saos'
-scp -q -i "$SSH_KEY" .env.production "root@$IP:/opt/saos/.env"
+
+# .env is MERGED, not overwritten. A blank key in .env.production must never
+# destroy a secret Brian pasted directly on the server — that is how the Docuseal
+# API token vanished mid-rehearsal on 2026-08-10, presenting as a 401 from a
+# service that had worked minutes earlier. A non-blank local value still wins, so
+# rotating a secret from .env.production works exactly as before.
+scp -q -i "$SSH_KEY" .env.production "root@$IP:/opt/saos/.env.incoming"
+"${SSH[@]}" 'cd /opt/saos && sh scripts/merge-env.sh .env.incoming .env && rm -f .env.incoming'
 
 echo "deploy: [1b/5] ensuring the encrypted data volume is mounted..."
 "${SSH[@]}" 'mountpoint -q /mnt/saos-data || bash /opt/saos/scripts/setup-encrypted-volume.sh "$(ls /dev/disk/by-id/scsi-0HC_Volume_* | head -1)"'
