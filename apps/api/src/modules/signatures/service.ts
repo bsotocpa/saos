@@ -348,6 +348,83 @@ export async function resolveKba(
   return { envelopeId: kba.envelope_id, sent: false };
 }
 
+/**
+ * Send a PACKET envelope: SAOS generates the document (Master + only this packet's
+ * schedules, §7216 consents excluded), then Docuseal signs THAT.
+ *
+ * Same three gates as sendEnvelope, plus the reason this exists: an engagement
+ * packet must never be a pre-built Docuseal template again.
+ */
+export async function sendPacketEnvelope(
+  app: FastifyInstance,
+  docuseal: DocusealAdapter,
+  actor: { type: 'staff' | 'system'; id?: string | null; label?: string | null },
+  packetId: string,
+  envelopeId: string,
+  language: 'en' | 'es' = 'en'
+): Promise<{
+  result: { submissionId: string };
+  sections: Array<{ kind: string; code: string | null; templateKey: string; templateVersion: number }>;
+  excludedConsents: string[];
+}> {
+  const env = await loadEnvelope(app, envelopeId);
+  if (!['draft', 'kba_required', 'kba_pending'].includes(env.status)) {
+    throw new AppError(409, 'invalid_envelope_status', `Envelope is '${env.status}' — cannot send.`);
+  }
+  if (!env.recipient_email) {
+    throw new AppError(400, 'recipient_missing', 'Contact has no email address for signing.');
+  }
+  if (env.docuseal_template_id) {
+    throw new AppError(
+      500,
+      'packet_envelope_templated',
+      'This packet envelope carries a Docuseal template id. A packet is generated per client — the static all-in-one template bundled schedules the client had not engaged and both §7216 consents.'
+    );
+  }
+  if (app.config.NODE_ENV === 'production' && docuseal.mode === 'stub') {
+    throw new AppError(503, 'docuseal_not_configured', 'Docuseal is not configured (DOCUSEAL_MODE=stub in production).');
+  }
+
+  // Building the document applies the placeholder gate to every schedule in it and
+  // refuses if a §7216 consent ever reaches the signing document.
+  const { buildPacketDocument } = await import('../engagements/packet-document.ts');
+  const doc = await buildPacketDocument(app, packetId, language);
+
+  const sent = await docuseal.createSubmissionFromHtml({
+    html: doc.html,
+    documentName: `Engagement packet ${packetId}`,
+    envelopeId,
+    recipientEmail: env.recipient_email,
+    recipientName: `${env.first_name} ${env.last_name}`,
+  });
+
+  await app.db.query(
+    `UPDATE signature_envelopes SET status = 'sent', docuseal_submission_id = $2, sent_at = now() WHERE id = $1`,
+    [envelopeId, sent.submissionId]
+  );
+  await writeAudit(app.db, {
+    actorType: actor.type, actorId: actor.id ?? null, actorLabel: actor.label ?? null,
+    action: 'packet.sent', objectType: 'signature_envelope', objectId: envelopeId,
+    contactId: env.contact_id,
+    details: {
+      packet_id: packetId,
+      // WHAT the client was asked to sign, recorded per section with its version.
+      sections: doc.sections.map((s) => ({ kind: s.kind, code: s.code, key: s.templateKey, version: s.templateVersion })),
+      excluded_consents: doc.deliberatelyExcluded.map((e) => e.templateKey),
+      docuseal_mode: docuseal.mode,
+      generated_template_id: sent.generatedTemplateId,
+    },
+  });
+
+  return {
+    result: { submissionId: sent.submissionId },
+    sections: doc.sections.map((s) => ({
+      kind: s.kind, code: s.code, templateKey: s.templateKey, templateVersion: s.templateVersion,
+    })),
+    excludedConsents: doc.deliberatelyExcluded.map((e) => e.templateKey),
+  };
+}
+
 /** Docuseal completion: store the signed PDF, link everything, feed the M7 gates. */
 export async function completeEnvelopeBySubmission(
   app: FastifyInstance,

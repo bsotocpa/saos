@@ -21,7 +21,7 @@ import { consentsToPresent, recordConsentAnswer } from '../compliance/consent-pr
 import { createAttestAddendum } from './attest-addendum.ts';
 import { buildPacketDocument } from './packet-document.ts';
 import { makeDocusealAdapter } from '../signatures/docuseal.ts';
-import { sendEnvelope } from '../signatures/service.ts';
+import { sendPacketEnvelope } from '../signatures/service.ts';
 
 const SERVICE_LINES = [
   'tax', 'bookkeeping', 'payroll', 'sales_tax', 'advisory',
@@ -89,13 +89,22 @@ export function registerPacketRoutes(app: FastifyInstance): void {
    */
   app.post<{ Params: { id: string } }>('/packets/:id/send', write, async (request) => {
     const packetId = z.uuid().parse(request.params.id);
-    const b = z.object({ docusealTemplateId: z.string().min(1).optional() }).parse(request.body ?? {});
-    const env = await envelopeForPacket(app, packetId, request.staff!, { docusealTemplateId: b.docusealTemplateId });
-    const sent = await sendEnvelope(
-      app, docuseal, { type: 'staff', id: request.staff!.id, label: request.staff!.email }, env.envelopeId
+    const language = z.object({ language: z.enum(['en', 'es']).optional() })
+      .parse(request.body ?? {}).language ?? 'en';
+
+    // The document is BUILT here, per client, from our own templates. There is no
+    // docusealTemplateId parameter any more — that was the shape that bundled every
+    // schedule and both §7216 consents into one signature.
+    const env = await envelopeForPacket(app, packetId, request.staff!);
+    const sent = await sendPacketEnvelope(
+      app, docuseal, { type: 'staff', id: request.staff!.id, label: request.staff!.email },
+      packetId, env.envelopeId, language
     );
     await markPacketSent(app, packetId);
-    return { packetId, envelopeId: env.envelopeId, envelopeReused: env.reused, ...sent };
+    return {
+      packetId, envelopeId: env.envelopeId, envelopeReused: env.reused,
+      sections: sent.sections, excludedConsents: sent.excludedConsents, ...sent.result,
+    };
   });
 
   /**
