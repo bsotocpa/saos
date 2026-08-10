@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../lib/api';
 import { useSession } from '../lib/session';
+import { SmsOptIn } from './sms-optin';
 import type { DictKey } from '../lib/i18n';
 
 interface Todo { id: string; title: string; description: string | null; due_date: string | null; kind: 'task' | 'upload' | 'signature' }
@@ -33,7 +34,7 @@ const STEPS = [
 ] as const;
 
 export default function Dashboard() {
-  const { t, me, nextEstimate, ready, lang } = useSession();
+  const { t, me, nextEstimate, ready, lang, refresh } = useSession();
   const router = useRouter();
   const [onboarding, setOnboarding] = useState<Onboarding | null>(null);
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -125,6 +126,13 @@ export default function Dashboard() {
           ))}
         </ul>
       </section>
+
+      {/* SMS opt-in rides with the welcome flow while the checklist is up, then
+          stays reachable in My Info. The migrated book has no SMS consent on
+          record, so first login is the only place it can realistically backfill. */}
+      {showChecklist && me ? (
+        <SmsOptIn smsConsent={me.sms_consent} phone={me.phone} onChange={() => void refresh()} />
+      ) : null}
 
       {showChecklist ? (
         <section className="card" data-testid="checklist">

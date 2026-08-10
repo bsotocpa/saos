@@ -38,11 +38,13 @@ export async function sendSms(
     transactionalReply?: boolean;
   }
 ): Promise<{ sent: boolean; reason: string | null }> {
-  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER } = app.config;
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-    return { sent: false, reason: 'twilio_not_configured' };
-  }
-
+  // PERMISSION BEFORE CAPABILITY. The consent gate is evaluated before the
+  // vendor-config check on purpose: "are we allowed to text this person?" is a
+  // different question from "can we reach Twilio right now?", and answering the
+  // second one first made the compliance gate unreachable — and therefore
+  // untestable — in every environment without Twilio credentials. Order also
+  // gives a truer reason: 'no_sms_consent' is the real blocker for a client who
+  // never opted in, whatever the vendor state.
   const contact = await app.db.query<{ phone: string | null; sms_consent: boolean }>(
     `SELECT phone, sms_consent FROM contacts WHERE id = $1 AND NOT is_archived`,
     [input.contactId]
@@ -51,6 +53,11 @@ export async function sendSms(
   if (!c) return { sent: false, reason: 'contact_not_found' };
   if (!c.sms_consent && !input.transactionalReply) return { sent: false, reason: 'no_sms_consent' }; // TCPA gate — absolute for outreach
   if (!c.phone) return { sent: false, reason: 'no_phone' };
+
+  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER } = app.config;
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+    return { sent: false, reason: 'twilio_not_configured' };
+  }
 
   let body: string;
   if (input.bodyOverride !== undefined) {

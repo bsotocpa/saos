@@ -159,3 +159,21 @@ pre-existing latent flakes that had just entered their trigger window.
 **Rule**: when a spec fails after a change, `git stash` and run it on HEAD before
 diagnosing. It costs one command and it decides whether you are fixing your bug
 or someone else's — and it stops you "fixing" working code.
+
+## Check permission before capability, so the compliance gate is testable
+**Pattern**: `sendSms` checked Twilio credentials BEFORE the TCPA consent gate.
+In any environment without credentials — dev, CI, every test — it returned
+`twilio_not_configured` and the consent gate was never reached. The gate was
+correct but unreachable, so nothing could prove it worked.
+**Rule**: evaluate "are we ALLOWED to do this?" before "CAN we do this?". It
+makes the compliance decision observable without a live vendor, and it reports
+the truer reason: a client who never opted in is blocked by consent, whatever the
+vendor state.
+
+## Read the enum before writing the value
+**Pattern**: I wrote `status = 'granted'` into `consents` from memory. The enum is
+requested / signed / declined / revoked. It cost two debug cycles because the
+route's 500 surfaced as an opaque `internal_error` in the test.
+**Rule**: for any enum-typed insert, query `enum_range` first. And assert the
+response status on EVERY write in a test, even setup writes — an unasserted
+setup call that 500s silently makes a later assertion fail for the wrong reason.

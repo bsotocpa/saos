@@ -274,6 +274,33 @@ const dict = {
     'El enlace puede estar incompleto. Responda a cualquiera de nuestros correos y lo quitamos de la lista de anuncios manualmente.',
   ],
 
+  // SMS opt-in, offered in the welcome flow (M27). The disclosure is the
+  // TCPA-required content: who is texting, what about, that consent is not a
+  // condition of service, that rates may apply, and how to stop. Versioned as
+  // sms-portal-optin-v1 in the consents row.
+  sms_optin_title: ['Text messages (optional)', 'Mensajes de texto (opcional)'],
+  sms_optin_body: [
+    'We can text you short nudges — a document we’re waiting on, a deadline coming up, your return is ready. Never documents, and never anything sensitive.',
+    'Podemos enviarle avisos breves por texto — un documento que esperamos, una fecha límite próxima, su declaración está lista. Nunca documentos, y nunca información delicada.',
+  ],
+  sms_optin_disclosure: [
+    'By turning this on, you agree that Soto Accounting LLC may send you account and service text messages at the number below. Message frequency varies. Message and data rates may apply. Consent is NOT a condition of any service — everything still reaches you by email and in this portal. Reply STOP any time to stop, or switch this off here.',
+    'Al activarlo, usted acepta que Soto Accounting LLC le envíe mensajes de texto sobre su cuenta y servicios al número de abajo. La frecuencia varía. Pueden aplicar tarifas de mensajes y datos. El consentimiento NO es condición para ningún servicio — todo le llega igual por correo y en este portal. Responda STOP en cualquier momento para detenerlos, o desactívelo aquí.',
+  ],
+  sms_optin_phone: ['Mobile number for texts', 'Número de celular para textos'],
+  sms_optin_agree: ['Yes, text me about my account', 'Sí, envíenme textos sobre mi cuenta'],
+  sms_optin_on: ['Texts are on', 'Los textos están activados'],
+  sms_optin_turn_off: ['Turn texts off', 'Desactivar los textos'],
+  sms_optin_skip: ['No thanks', 'No, gracias'],
+  sms_optin_off_note: [
+    'Texts are off. Everything still reaches you by email and here in the portal.',
+    'Los textos están desactivados. Todo le llega igual por correo y aquí en el portal.',
+  ],
+  sms_optin_phone_required: [
+    'Add a mobile number first so we know where to text.',
+    'Agregue primero un número de celular para saber a dónde enviar.',
+  ],
+
   loading: ['Loading…', 'Cargando…'],
   error_generic: ['Something went wrong. Please try again.', 'Algo salió mal. Intente de nuevo.'],
 } satisfies Record<string, [string, string]>;

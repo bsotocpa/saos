@@ -20,6 +20,9 @@ export interface Me {
   state: string | null;
   zip: string | null;
   estimate_reminders_enabled: boolean;
+  /** TCPA consent for text nudges (M27 welcome-flow opt-in). */
+  sms_consent: boolean;
+  sms_consent_at: string | null;
 }
 
 export interface NextEstimate {

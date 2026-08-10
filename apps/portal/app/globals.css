@@ -205,3 +205,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--electric); 
 .quote-lines > li.quote-total { border-top: 2px solid var(--forest); border-bottom: none; font-size: 16px; }
 .quote-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 16px; }
 .quote-actions .btn { flex: 1 1 auto; min-width: 180px; text-align: center; }
+
+/* Inline tick-boxes (SMS opt-in, consent checks): the global input rule stretches
+   controls to 100%, which would push a consent label to the middle of the card. */
+.tickbox { width: 20px; height: 20px; flex: 0 0 auto; margin: 1px 0 0; padding: 0; display: inline-block; }

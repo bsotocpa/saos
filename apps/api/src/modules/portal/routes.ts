@@ -64,7 +64,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     const { rows } = await app.db.query(
       `SELECT id, first_name, last_name, email, phone, secondary_phone, preferred_contact_method, language,
               address_line1, address_line2, city, state, zip, soto_status, hilo_status,
-              estimate_reminders_enabled
+              estimate_reminders_enabled, sms_consent, sms_consent_at
        FROM contacts WHERE id = $1`,
       [client.contactId]
     );
@@ -106,6 +106,76 @@ export function registerPortalRoutes(app: FastifyInstance): void {
       details: { fields: sets.map((s) => s.split(' =')[0]) },
     });
     return { status: 'ok' };
+  });
+
+  /**
+   * SMS consent, offered in the portal welcome flow (Brian's addition,
+   * 2026-08-09). The migrated book has 433 active clients and ZERO SMS consent
+   * on record, so without a backfill path that number only moves through new
+   * onboarding — and every text nudge stays permanently suppressed for existing
+   * clients.
+   *
+   * TCPA discipline:
+   *  · consent is EXPRESS and affirmative — the client posts `true`; there is no
+   *    pre-ticked box and no consent-by-silence
+   *  · a phone number is required, because consent without a number is not
+   *    consent to anything
+   *  · the exact disclosure text the client saw is versioned into the consents
+   *    row, so what they agreed to is reconstructable years later
+   *  · revocation is symmetric and immediate, and does NOT require STOP by text
+   */
+  app.post('/portal/sms-consent', scoped, async (request) => {
+    const client = request.client!;
+    const b = z
+      .object({
+        consent: z.boolean(),
+        phone: z.string().min(7).max(40).optional(),
+        policyVersion: z.string().min(1).max(64).default('sms-portal-optin-v1'),
+      })
+      .parse(request.body);
+
+    if (b.consent) {
+      const existing = await app.db.query<{ phone: string | null }>(
+        `SELECT phone FROM contacts WHERE id = $1`,
+        [client.contactId]
+      );
+      const phone = b.phone ?? existing.rows[0]?.phone ?? null;
+      if (!phone) {
+        throw new AppError(
+          400,
+          'phone_required',
+          'A mobile number is needed before text messages can be turned on.'
+        );
+      }
+      await app.db.query(
+        `UPDATE contacts SET sms_consent = true, sms_consent_at = now(), phone = $2 WHERE id = $1`,
+        [client.contactId, phone]
+      );
+      await app.db.query(
+        `INSERT INTO consents (contact_id, type, status, method, policy_version, signed_at)
+         VALUES ($1, 'sms', 'signed', 'portal_checkbox', $2, now())`,
+        [client.contactId, b.policyVersion]
+      );
+    } else {
+      await app.db.query(
+        `UPDATE contacts SET sms_consent = false, sms_consent_at = NULL WHERE id = $1`,
+        [client.contactId]
+      );
+      await app.db.query(
+        `INSERT INTO consents (contact_id, type, status, method, policy_version, revoked_at)
+         VALUES ($1, 'sms', 'revoked', 'portal_checkbox', $2, now())`,
+        [client.contactId, b.policyVersion]
+      );
+    }
+
+    await writeAudit(app.db, {
+      actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
+      action: b.consent ? 'sms.consent_granted' : 'sms.consent_revoked',
+      objectType: 'contact', objectId: client.contactId,
+      contactId: client.contactId, ip: request.ip,
+      details: { policy_version: b.policyVersion, source: 'portal_welcome' },
+    });
+    return { smsConsent: b.consent };
   });
 
   // ── Client to-dos (v4.4): ONE standing list — staff-added client-visible
