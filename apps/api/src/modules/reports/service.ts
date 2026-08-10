@@ -72,10 +72,13 @@ const revenueByLineMonth: ReportDef = {
               count(*)::int AS invoices,
               COALESCE(sum(i.amount_paid_cents), 0)::int AS collected_cents
        FROM invoices i
+       JOIN contacts c ON c.id = i.contact_id
        LEFT JOIN engagements e ON e.id = i.engagement_id
        LEFT JOIN tax_engagements te ON te.id = i.tax_engagement_id
        LEFT JOIN engagements e2 ON e2.id = te.engagement_id
-       WHERE i.status = 'paid' AND i.paid_at IS NOT NULL
+       -- A rehearsal deposit is not revenue.
+       WHERE NOT c.is_test
+         AND i.status = 'paid' AND i.paid_at IS NOT NULL
          AND i.paid_at >= $1::date AND i.paid_at < ($2::date + 1)
        GROUP BY 1, 2
        ORDER BY 1 DESC, 4 DESC`,
@@ -121,8 +124,9 @@ const arAging: ReportDef = {
                 FILTER (WHERE e.deposit_treatment IN ('reduced', 'waived')), 0)::int
                 AS waived_deposit_owed_cents
        FROM invoices i
+       JOIN contacts c ON c.id = i.contact_id
        LEFT JOIN engagements e ON e.id = i.engagement_id
-       WHERE i.status IN ('sent', 'overdue') AND i.sent_at IS NOT NULL
+       WHERE NOT c.is_test AND i.status IN ('sent', 'overdue') AND i.sent_at IS NOT NULL
        GROUP BY 1 ORDER BY 1`
     );
     return rows;
@@ -256,7 +260,7 @@ const sessionUtilization: ReportDef = {
        FROM contacts c
        JOIN client_sessions s ON s.contact_id = c.id
          AND s.starts_at >= $1::date AND s.starts_at < ($2::date + 1)
-       WHERE NOT c.is_archived
+       WHERE NOT c.is_archived AND NOT c.is_test
        GROUP BY c.id, c.first_name, c.last_name, c.soto_status
        ORDER BY 3 DESC, 1`,
       [range.from, range.to]
@@ -359,7 +363,7 @@ const clientCounts: ReportDef = {
          SELECT cc.cadence FROM close_cycles cc
          WHERE cc.contact_id = c.id ORDER BY cc.period_start DESC LIMIT 1
        ) cad ON true
-       WHERE c.soto_status = 'active' AND NOT c.is_archived
+       WHERE c.soto_status = 'active' AND NOT c.is_archived AND NOT c.is_test
        GROUP BY 1, 2 ORDER BY 3 DESC, 1, 2`
     );
     return rows;

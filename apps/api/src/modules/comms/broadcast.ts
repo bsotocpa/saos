@@ -80,7 +80,11 @@ const SMS_OPT_OUT_ES = ' Responda STOP para no recibir más.';
 // ------------------------------------------------------------------- segments
 
 function segmentSql(segment: Segment): { where: string; params: unknown[] } {
-  const clauses = ['NOT c.is_archived'];
+  // NOT c.is_test is not negotiable and is not a segment option: a rehearsal or
+  // test client must never be able to receive a real announcement, whatever
+  // segment someone builds. This is the single place every broadcast audience is
+  // resolved, which is why the rule lives here rather than in each caller.
+  const clauses = ['NOT c.is_archived', 'NOT c.is_test'];
   const params: unknown[] = [];
   if (segment.sotoStatus) {
     params.push(segment.sotoStatus);

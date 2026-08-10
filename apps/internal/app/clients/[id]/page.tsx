@@ -24,6 +24,7 @@ interface Contact {
   health_score: number | null; health_components: Record<string, unknown> | null;
   sms_consent: boolean; source: string; ssn_status: string | null; ssn_last4: string | null;
   notes: string | null;
+  is_test: boolean; test_note: string | null;
 }
 interface Business {
   id: string; name: string; ein: string | null; entity_type: string | null;
@@ -107,6 +108,17 @@ export default function ClientPacketPage() {
         {c.client_since ? ` · client since ${c.client_since}` : ''}
         {' · from '}{c.source}
       </p>
+
+      {/* A test client announces itself before anything else on the page, so
+          nobody works a rehearsal thinking it is a real engagement. */}
+      {c.is_test ? (
+        <div className="alert warn">
+          <strong>TEST CLIENT — not a real engagement.</strong> Excluded from every report, dashboard,
+          health score, funder metric and broadcast audience. Everything else works normally so the
+          record can be exercised end to end.
+          {c.test_note ? <><br /><span className="small">{c.test_note}</span></> : null}
+        </div>
+      ) : null}
 
       {/* The gates come first: a return prepared without these cannot be delivered. */}
       <section className="card" style={{ marginBottom: 12, borderColor: consentOk && letterOk ? undefined : 'var(--warn)' }}>

@@ -84,6 +84,7 @@ export default function IntakePage() {
   const [answers, setAnswers] = useState<Answers>({});
   const [screenIndex, setScreenIndex] = useState(0);
   const [state, setState] = useState<'loading' | 'ready' | 'invalid' | 'done'>('loading');
+  const [rehearsalBanner, setRehearsalBanner] = useState<{ en: string | null; es: string | null }>({ en: null, es: null });
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -95,12 +96,13 @@ export default function IntakePage() {
   useEffect(() => {
     void (async () => {
       try {
-        const d = await api<{ definition: Definition }>(`/public/forms/${formKey}`);
+        const d = await api<{ definition: Definition; rehearsalBannerEn: string | null; rehearsalBannerEs: string | null }>(`/public/forms/${formKey}`);
         const started = await api<{ submissionId: string; resumeToken: string }>(
           `/public/forms/${formKey}/start`,
           { method: 'POST', body: { language: lang, source: 'portal' } }
         );
         setDefinition(d.definition);
+        setRehearsalBanner({ en: d.rehearsalBannerEn, es: d.rehearsalBannerEs });
         setSubmissionId(started.submissionId);
         setResumeToken(started.resumeToken);
         setState('ready');
@@ -232,6 +234,14 @@ export default function IntakePage() {
       <div className="progress" aria-hidden="true">
         <div style={{ width: `${((screenIndex + 1) / total) * 100}%` }} />
       </div>
+
+      {/* Self-removing: keyed off the §7216 templates still being placeholders, so
+          it disappears the moment Brian clears those flags. */}
+      {(lang === 'es' ? rehearsalBanner.es : rehearsalBanner.en) ? (
+        <div className="alert error">
+          <strong>{lang === 'es' ? rehearsalBanner.es : rehearsalBanner.en}</strong>
+        </div>
+      ) : null}
 
       {error ? <div className="alert error">{error}</div> : null}
 

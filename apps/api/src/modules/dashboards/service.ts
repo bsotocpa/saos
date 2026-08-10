@@ -26,7 +26,7 @@ export async function executiveDashboard(app: FastifyInstance) {
     app.db.query<{ mtd_cents: string; ytd_cents: string }>(
       `SELECT COALESCE(sum(amount_paid_cents) FILTER (WHERE paid_at >= date_trunc('month', now())), 0)::bigint AS mtd_cents,
               COALESCE(sum(amount_paid_cents) FILTER (WHERE paid_at >= date_trunc('year', now())), 0)::bigint AS ytd_cents
-       FROM invoices WHERE status = 'paid'`
+       FROM invoices i JOIN contacts c ON c.id = i.contact_id WHERE NOT c.is_test AND i.status = 'paid'`
     ),
     app.db.query(
       `SELECT CASE
@@ -36,14 +36,14 @@ export async function executiveDashboard(app: FastifyInstance) {
                 ELSE '90+' END AS bucket,
               count(*)::int AS count,
               COALESCE(sum(total_cents - amount_paid_cents), 0)::bigint AS owed_cents
-       FROM invoices WHERE status IN ('sent', 'overdue')
+       FROM invoices i JOIN contacts c ON c.id = i.contact_id WHERE NOT c.is_test AND i.status IN ('sent', 'overdue')
        GROUP BY 1 ORDER BY 1`
     ),
     // 2026-08-09 baseline: bands are STORED by the health job (gray =
     // never-engaged neutral, yellow = actual signal, green = active+clean).
     app.db.query(
       `SELECT COALESCE(health_band, 'unscored') AS band, count(*)::int AS count
-       FROM contacts WHERE soto_status = 'active' AND NOT is_archived
+       FROM contacts WHERE soto_status = 'active' AND NOT is_archived AND NOT is_test
        GROUP BY 1`
     ),
     // Capacity proxy (Phase 4 builds real capacity planning): open work per staffer.
@@ -131,7 +131,7 @@ export async function hiloDashboard(app: FastifyInstance) {
   const [byStatus, sessions, referrals, summaries, funder] = await Promise.all([
     app.db.query(
       `SELECT hilo_status::text, count(*)::int AS count
-       FROM contacts WHERE hilo_status <> 'none' AND NOT is_archived
+       FROM contacts WHERE hilo_status <> 'none' AND NOT is_archived AND NOT is_test
        GROUP BY hilo_status ORDER BY count DESC`
     ),
     app.db.query<{ this_month: number }>(
@@ -153,11 +153,11 @@ export async function hiloDashboard(app: FastifyInstance) {
     ),
     Promise.all([
       app.db.query<{ n: number }>(
-        `SELECT count(*)::int AS n FROM contacts WHERE hilo_status IN ('exploring','active','referral','alumni') AND NOT is_archived`
+        `SELECT count(*)::int AS n FROM contacts WHERE hilo_status IN ('exploring','active','referral','alumni') AND NOT is_archived AND NOT is_test`
       ),
       app.db.query(
         `SELECT COALESCE(zip, 'unknown') AS zip, count(*)::int AS count
-         FROM contacts WHERE hilo_status IN ('exploring','active','referral','alumni') AND NOT is_archived
+         FROM contacts WHERE hilo_status IN ('exploring','active','referral','alumni') AND NOT is_archived AND NOT is_test
          GROUP BY 1 ORDER BY count DESC LIMIT 10`
       ),
       app.db.query<{ hours: string }>(

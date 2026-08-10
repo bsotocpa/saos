@@ -54,7 +54,33 @@ export function registerFormRoutes(app: FastifyInstance): void {
     const key = z.string().parse(request.params.key);
     if (!PUBLIC_FORMS.has(key)) throw new AppError(404, 'form_not_found', 'Form not found.');
     const def = await loadDefinition(app, key);
-    return { key, version: def.version, definition: def.definition };
+    // REHEARSAL BANNER (Brian's dress rehearsal, 2026-08-09). The intake collects
+    // §7216 consent, and that consent text is still placeholder. The send path
+    // already refuses to SEND a placeholder template in every environment, but a
+    // form that COLLECTS consent needs to say out loud that the consent it is
+    // collecting is not legally effective yet.
+    //
+    // It keys off the template flag rather than a setting, so the banner
+    // disappears by itself the moment Brian clears the placeholder flags — there
+    // is nothing to remember to switch off, which is exactly what you want from a
+    // warning that must not outlive its reason.
+    const consent = await app.db.query<{ pending: number }>(
+      `SELECT count(*)::int AS pending FROM templates
+       WHERE key IN ('consent_7216_use', 'consent_7216_disclose') AND is_placeholder`
+    );
+    const consentTextPending = (consent.rows[0]?.pending ?? 0) > 0;
+    return {
+      key,
+      version: def.version,
+      definition: def.definition,
+      consentTextPending,
+      rehearsalBannerEn: consentTextPending
+        ? 'REHEARSAL — the consent language on this form is placeholder text and is NOT legally effective. Do not use this form with a real client.'
+        : null,
+      rehearsalBannerEs: consentTextPending
+        ? 'ENSAYO — el texto de consentimiento de este formulario es provisional y NO tiene efecto legal. No use este formulario con un cliente real.'
+        : null,
+    };
   });
 
   app.post<{ Params: { key: string } }>('/public/forms/:key/start', async (request, reply) => {

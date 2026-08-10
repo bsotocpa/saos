@@ -179,7 +179,7 @@ export async function runHealthRefresh(app: FastifyInstance): Promise<{ scored: 
     client_since: Date | null;
   }>(
     `SELECT id, first_name, last_name, health_score, health_band, assigned_manager_id, client_since
-     FROM contacts WHERE soto_status = 'active' AND NOT is_archived`
+     FROM contacts WHERE soto_status = 'active' AND NOT is_archived AND NOT is_test`
   );
 
   let redAlerts = 0;

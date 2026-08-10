@@ -477,3 +477,27 @@ test('M28 renderer contract: every question has bilingual text, and the TCPA dis
     assert.ok((d.helpEs ?? '').length > 0, `${d.key}: Spanish note missing`);
   }
 });
+
+test('the rehearsal banner keys off the placeholder flag, so it removes itself', async () => {
+  // While §7216 consent text is placeholder, a form that COLLECTS consent must say
+  // out loud that the consent is not legally effective.
+  const pending = await app.inject({ method: 'GET', url: '/public/forms/soto_intake' });
+  assert.equal(pending.json().consentTextPending, true, 'the seeded consents are placeholders');
+  assert.match(pending.json().rehearsalBannerEn, /NOT legally effective/);
+  assert.match(pending.json().rehearsalBannerEs, /NO tiene efecto legal/);
+
+  // Clearing the flags — what Brian does the day final text lands — removes the
+  // banner with no separate switch to remember.
+  await app.db.query(
+    `UPDATE templates SET is_placeholder = false WHERE key IN ('consent_7216_use', 'consent_7216_disclose')`
+  );
+  const cleared = await app.inject({ method: 'GET', url: '/public/forms/soto_intake' });
+  assert.equal(cleared.json().consentTextPending, false);
+  assert.equal(cleared.json().rehearsalBannerEn, null, 'gone by itself');
+  assert.equal(cleared.json().rehearsalBannerEs, null);
+
+  // Restore, so the rest of the suite sees the real production state.
+  await app.db.query(
+    `UPDATE templates SET is_placeholder = true WHERE key IN ('consent_7216_use', 'consent_7216_disclose')`
+  );
+});

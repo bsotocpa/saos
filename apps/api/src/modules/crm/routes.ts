@@ -145,6 +145,9 @@ export function registerCrmRoutes(app: FastifyInstance): void {
               c.consent_7216_status, c.engagement_letter_status,
               c.health_score, c.health_components, c.health_computed_at,
               c.sms_consent, c.source, c.ssn_status, c.ssn_last4, c.notes,
+              -- A test client must ANNOUNCE itself wherever staff look at it,
+              -- or someone treats the rehearsal as a real engagement.
+              c.is_test, c.test_note,
               c.br1_referred_by_hilo, c.br3_referred_by_jackson, c.br4_hilo_program_participant
        FROM contacts c WHERE c.id = $1 AND NOT c.is_archived`,
       [id]

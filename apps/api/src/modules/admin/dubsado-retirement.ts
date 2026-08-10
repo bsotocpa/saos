@@ -38,7 +38,9 @@ export async function retirementReadiness(app: FastifyInstance): Promise<Retirem
        (SELECT count(DISTINCT c.id)::int
         FROM contacts c
         JOIN audit_log a ON a.contact_id = c.id AND a.action = 'portal.login'
-        WHERE c.source IN ('dubsado', 'zoho')) AS migrated_logged_in,
+        -- NOT is_test: a rehearsal client logging into the portal must never
+        -- count toward "25 migrated clients have logged in".
+        WHERE c.source IN ('dubsado', 'zoho') AND NOT c.is_test) AS migrated_logged_in,
        (SELECT count(*)::int
         FROM close_cycles
         WHERE closed_at IS NOT NULL AND cadence = 'monthly') AS closes_completed`

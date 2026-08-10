@@ -125,7 +125,7 @@ export interface PipelineMetrics {
 export async function pipelineMetrics(app: FastifyInstance): Promise<PipelineMetrics> {
   const stages = await app.db.query<{ stage: LeadStage; count: number }>(
     `SELECT lead_stage AS stage, count(*)::int AS count
-     FROM contacts WHERE lead_stage IS NOT NULL GROUP BY lead_stage`
+     FROM contacts WHERE lead_stage IS NOT NULL AND NOT is_test GROUP BY lead_stage`
   );
   const byStage = STAGE_ORDER.concat('lost').map((stage) => ({
     stage,
@@ -187,7 +187,7 @@ export async function pipelineBoard(app: FastifyInstance) {
        SELECT id, status, total_cents, range_min_cents, range_max_cents, sent_at, expires_at
        FROM quotes WHERE contact_id = c.id ORDER BY created_at DESC LIMIT 1
      ) q ON true
-     WHERE c.lead_stage IS NOT NULL AND c.lead_stage <> 'client'
+     WHERE c.lead_stage IS NOT NULL AND c.lead_stage <> 'client' AND NOT c.is_test
      ORDER BY c.lead_stage, c.lead_stage_at DESC NULLS LAST`
   );
   return rows;
