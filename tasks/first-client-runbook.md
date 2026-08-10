@@ -12,24 +12,47 @@ Part A was not finished.
 
 ---
 
-## Where things actually stand (verified in production 2026-08-09)
+## Where things actually stand (verified in production 2026-08-10, post-deploy)
 
 | | State |
 |---|---|
-| Migrations | 37 |
+| Migrations | **38** — 0038 deployed |
+| Legal text | ✅ **0 active placeholders**. Master + Schedules A–E + both §7216 consents live |
+| Late-fee disclosure flag | ✅ on `engagement_master` |
 | Automations armed | **1 of 11** — `attachment_acks` only |
 | SES | Production access, 50k/day, us-east-2 |
-| Stripe | `STRIPE_MODE=stub` — fail-closed |
-| Docuseal | Container up 4+ weeks, **first-boot not done** |
+| Docuseal | First-boot ✅ done. **API token not yet in SAOS `.env`** → `GET /api/templates` returns 401 |
+| Stripe | `STRIPE_MODE=stub` — fail-closed. Rehearsal deliberately avoids it |
 | KBA vendor | `KBA_MODE=sandbox` — blocks remote 8879 only |
-| Placeholder templates | **7** — blocks every client-facing send |
-| Late-fee disclosure flag | 0 templates — no late fee can be assessed |
-| Price confirmations | 13 open (Brian working these now) |
+| Price confirmations | 13 open — **none touched by a 1040 + Schedule C** (verified) |
+| Rehearsal test client | ✅ created, `is_test = true` |
 | Portal invitations sent | 0 |
 
-**The rehearsal needs none of those blockers cleared.** That is the point: it
-exercises every path that is *not* waiting on legal text, so the day the text
-lands there is nothing left to discover.
+**One blocker remains for the signature step**: the Docuseal API token. Everything
+else in the rehearsal is unblocked.
+
+## Who clicks what, and why it is not all me
+
+The runbook originally marked the quote and deposit steps "MINE". That was written
+before `deposits.override` existed as a CEO-only permission, and it is wrong for a
+reason worth keeping:
+
+**Production has exactly one staff account — Brian's.** Every staff-attributed
+write stamps `created_by_staff_id` and an audit row with that identity. For me to
+build the quote or apply the $0 override, I would have to act as Brian — which
+would put his name on decisions he did not make, and would hollow out the very
+control he asked for when he scoped `deposits.override` to himself alone.
+
+So the split is:
+
+| | Who | Why |
+|---|---|---|
+| Test client, verification, diagnosis, tear-down | me | legitimately system actions; audited as `system` |
+| Quote build, quote send, deposit override, recap approval | **Brian** | the schema attributes these to a named person, and that person is him |
+| Playing the client (intake, upload, signing) | **Brian** | it is his inbox |
+| Docuseal token, Stripe keys, passwords | **Brian** | credentials are never mine |
+
+I verify after every step and report what the database actually recorded.
 
 ---
 
@@ -57,53 +80,90 @@ it is not in the audience at all.
 
 # Part A — the dress rehearsal
 
-### A0. What I need from you before I can start
+### A0. ✅ Answered
 
-1. **Your personal email address** for the test client. I have not created the
-   record, because using `BRIAN@sotoaccounting.com` would be the firm address and
-   a verified SES identity — which would prove less than a real external inbox
-   does, now that SES is out of the sandbox. Tell me the address and I create the
-   flagged record immediately.
-2. **Docuseal first-boot** — steps A1 below. This is yours because it means
-   setting an admin password, and I do not create accounts or enter credentials.
-3. **A decision on the deposit path** — A4 below. Two options, both fine.
+1. **Test client email** → `brian3712@gmail.com`, via the `+rehearsal` alias (see A2).
+2. **Docuseal first-boot** → done 2026-08-10. One step remains: A1b below.
+3. **Deposit path** → $0 override.
 
-Everything else in Part A I can drive.
+### A1. Docuseal first-boot — ✅ DONE 2026-08-10
 
-### A1. Docuseal first-boot — YOURS (~10 min)
+Admin created, template uploaded with signature and date fields.
 
-1. Open `https://sign.sotoaccounting.com`.
-2. Create the admin account. Put the password straight into Vaultwarden.
-3. Upload one template: the tax engagement letter (the placeholder is fine for
-   the rehearsal — see the watermark note in A5).
-4. Add the signature and date fields; name the role `client`.
-5. Tell me it is done. I will confirm SAOS can reach it and that
-   `DOCUSEAL_MODE=http` is talking to a real instance rather than erroring.
+### A1b. Paste the Docuseal API token into SAOS — YOURS (~2 min) ⛔
+
+**This is the only thing blocking the signature step.** Diagnosed precisely:
+
+| Check | Result |
+|---|---|
+| SAOS → Docuseal network | ✅ `GET http://docuseal:3000/` → **200** |
+| SAOS → Docuseal API auth | ⛔ `GET /api/templates` → **401 `{"error":"Not authenticated"}"` |
+| `DOCUSEAL_API_TOKEN` as the app sees it | **empty (length 0)** |
+
+So the container is up and reachable and the app is in real `http` mode — it just
+has no credential. In Docuseal: **Settings → API**, copy the token. Then on the
+server:
+
+```bash
+ssh -i ~/.ssh/saos_hetzner_ed25519 root@SERVER_IPV4-in-env-production
+```
+
+Edit `/opt/saos/.env`, set `DOCUSEAL_API_TOKEN=<the token>`, then:
+
+```bash
+cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api
+```
+
+Tell me when it is in and I will re-run the same three checks plus list the
+template you uploaded and confirm its fields, before anything is sent.
+
+I am not doing this one because the token is a credential behind your admin login.
 
 **Rehearsal question this answers:** does an envelope actually reach a real inbox
 and come back signed, or does something in the Caddy/Docuseal path break?
 
-### A2. Create the flagged test client — MINE (~1 min)
+### A2. Flagged test client — ✅ DONE 2026-08-10 (mine)
 
-Once I have the email, I create:
-- Contact: `Rehearsal Client`, your personal email, `is_test = true`, note
-  explaining what it is, `soto_status = 'lead'`, language EN.
-- Nothing else. The rest of the rehearsal creates its own records, which is the
-  test.
+`Rehearsal Client` · `brian3712+rehearsal@gmail.com` · `is_test = true` ·
+id `788f2add-3305-4cd7-ad13-841c96513d7c`
 
-**Verify with me:** open `/clients/<id>` and confirm the TEST CLIENT banner shows.
+**Why the `+rehearsal` alias and not the bare address:** `brian3712@gmail.com`
+already exists in production as a real migrated record — *Brian Soto, lead*, with
+a task and a business link attached. Flagging that record `is_test` would pull a
+genuine record out of every measured number and hang rehearsal invoices off it.
+The alias delivers to the same inbox and leaves that record untouched.
 
-### A3. Quote → the client link — MINE, you receive it (~5 min)
+Verified: production `is_test` count = 1, active client count still **426** — the
+rehearsal client is invisible to measurement exactly as designed.
 
-1. I build a quote in `/pipeline` from the price book: a 1040 + Schedule C, with
-   `DEPOSIT_1040` attached.
-2. I send it. **You get a real email** at your personal address with the proposal
-   link.
-3. You open it on your phone. Check: is the range readable, does the optional
-   line make sense, does the Spanish toggle read correctly?
+*Separate small decision for you, not blocking:* your own personal lead record
+(`brian3712@gmail.com`) is sitting in the CRM as a lead. Archive it, merge it, or
+leave it — your call.
 
-**Rehearsal questions:** does SES deliver to an ordinary inbox (not spam)? Does
-the proposal read like something you would send a client?
+### A3. Quote → the client link — YOURS to click, ~2 min (I pre-flighted it)
+
+Pre-flight against the live price book, read-only, so there are no surprises:
+
+| Line | Price | Confirmed? |
+|---|---|---|
+| `IND_BASE_MFJ` | $200.00 | ✅ |
+| `IND_BASE_SINGLE` | $150.00 | ✅ |
+| `IND_SCH_C` | $180.00 / form | ✅ |
+| `DEPOSIT_1040` | $250.00 | ✅ |
+
+**A 1040 + Schedule C quote touches zero unconfirmed prices** — so none of your 13
+open confirmations block client #1. (`DEPOSIT_BUSINESS_TAX` at $300 is still ⚠,
+but that only binds if client #1 is a business.)
+
+The clicks: `/pipeline` → **New quote** → search `Rehearsal Client` → add
+`IND_BASE_MFJ` + `IND_SCH_C` → attach deposit `DEPOSIT_1040` → **Send**.
+
+**You then get a real email** at your personal inbox with the proposal link. Open
+it on your phone: is the total readable, does the optional line make sense, does
+the Spanish toggle read correctly?
+
+**Rehearsal questions:** does SES deliver to an ordinary Gmail inbox (not spam)?
+Does the proposal read like something you would actually send?
 
 ### A4. Deposit — YOUR DECISION, then MINE (~5 min)
 
@@ -112,18 +172,23 @@ Two paths. Pick one:
 - **Option A — Stripe test mode.** You put test keys in `.env.production` and set
   `STRIPE_MODE=test`. Proves the real checkout flow. Requires you to handle keys;
   I will not.
-- **Option B — $0 override.** I use the `deposits.override` permission (yours
-  alone) to waive the deposit with a reason. Proves the override path, the audit
-  trail, and the `deposit_treatment` stamp — but not Stripe.
+- **Option B — $0 override.** ✅ **CHOSEN.** Stripe live stays a separate later
+  test so a payment failure can never be confused with a legal-text failure.
 
-**My recommendation: Option B for the rehearsal, and leave Stripe for its own
-separate test before you charge anyone.** Reason: Stripe live mode blocks
-*charging*, not onboarding, so it is not on the critical path to invite #1. Doing
-both at once muddies which thing broke.
+**This one is yours to click, and by design.** `deposits.override` is
+explicit-only — the `'*'` wildcard does not confer it, precisely so that "Brian
+only" is expressible. If I applied the override using your identity, the audit row
+would name you for a decision you did not make, and the control would be
+decorative. It is also deliberately not an inline field: in `/pipeline`, on the
+draft quote, use **Waive deposit** and type a reason.
 
-Either way I accept the quote from the client side and we watch: engagement
-created, deposit treatment stamped, Rene's onboarding task raised, pipeline moved
-to `deposit_paid` or `onboarding`.
+The reason string matters — it is stored and it is what AR reporting reads later.
+Something like `Dress rehearsal — no payment collected` is honest and useful.
+
+Then **you accept the quote from the client side** (the link in your inbox) and I
+verify: engagement created, `deposit_treatment` stamped as waived, onboarding task
+raised, pipeline moved to `onboarding`, and the override row carrying amount,
+approver, reason, and timestamp.
 
 ### A5. Intake + questionnaire — MINE to send, YOURS to fill (~10 min)
 
@@ -131,17 +196,38 @@ to `deposit_paid` or `onboarding`.
 2. **You fill it in as a client would**, on your phone, in Spanish for at least
    one screen.
 
-**⚠ The placeholder watermark.** The §7216 consent text in the intake is still
-placeholder. The system already refuses to *send* any placeholder-flagged
-template — that gate is in code and fires in every environment. But the intake
-*collects* consent, so for the rehearsal I will add a visible banner to the
-consent screen reading **"REHEARSAL — this consent text is not final and is not
-legally effective."** in both languages, so there is zero chance a rehearsal
-consent is ever mistaken for a real one.
+**The placeholder watermark is now GONE, and that is correct.** It keyed off
+`is_placeholder`, and the v3 text is final — so the intake you fill will carry the
+real §7216 language, not a watermarked draft. Two consequences worth naming:
 
-I will build that banner as part of the rehearsal (it keys off the template's
-`is_placeholder` flag, so it disappears by itself the day you paste final text —
-nothing to remember to remove).
+- Nothing about the rehearsal is legally ambiguous any more: the consent you give
+  as the test client is a real consent, on a record flagged `is_test`, which is
+  yours. That is fine, and it is more faithful to what client #1 will see.
+- The banner mechanism still works and is still tested — flag a consent template
+  and it returns. It is the protection for any future round of legal review.
+
+**Note on ordering (new in v3):** the §7216 consents are no longer part of the
+intake screens. They are presented in the portal **after** the Master signature,
+because a consent handed over alongside the document you must sign to be served is
+the conditioning §7216 prohibits. So A5 tests the intake questions; the consents
+appear at A5b once the Master is signed.
+
+### A5b. §7216 consents in the portal — YOURS to answer (~2 min, after signing)
+
+Open the portal → **Sign**. After the Master signature you should see exactly one
+offer: the **USE** consent, benefit-framed ("Want us to look for savings you have
+not asked about?"), with *Yes, you have my permission* / *No, thank you*.
+
+What must be true, and what I will verify in the database straight after:
+
+- The **DISCLOSE** consent must **not** appear — the rehearsal client has no Hilo
+  relationship, so there is nothing that disclosure would serve.
+- Nothing should have been offered *before* the signature.
+- Whichever you answer is recorded with the policy version you read
+  (`v3-t<n>`), method `portal_checkbox`, and a decline is never re-asked.
+
+Try answering **No** on purpose if you want to see the decline path — it will not
+revoke anything and it will not ask again.
 
 **Rehearsal questions:** do the questions read well? Is anything asked that you
 would not ask? Does the conditional logic skip what it should?
@@ -160,11 +246,32 @@ inbox with the confirm tap.
 **Rehearsal questions:** does ClamAV actually scan (not "skipped")? Does the
 auto-reply read right? Does the confirm-tap flow feel like one action?
 
+### A6b. The Master packet — YOURS to send and sign (~5 min, needs A1b)
+
+Once the Docuseal token is in:
+
+1. `/clients/<id>` → the packet panel shows which schedules the system resolved.
+   For a tax client with no return type on file yet, that is **Schedule A** alone.
+2. Send the packet. One envelope: Master + Schedule A.
+3. **Sign it from your inbox** as the client.
+
+What I verify immediately after: `engagement_packets` goes to `signed`, one
+`schedule_acceptances` row for A with `via = 'master_signature'` pointing at that
+packet, `contacts.engagement_letter_status = 'signed'`, and
+`late_fee_disclosure_signed_at` stamped — because the Master carries the
+disclosure. Then the §7216 USE consent should appear in the portal (A5b).
+
+**Rehearsal question:** does the packet PDF actually contain the Master *and* the
+schedule, with the attached-schedule sentence filled in — or does Docuseal send
+only the one template you uploaded? This is the single most likely surprise in the
+whole rehearsal, and it is why the signature step exists.
+
 ### A7. A session recap — MINE to draft, YOURS to approve (~5 min)
 
 1. I create a session record for the test client with a summary and action items
    (a real Zoom recording is optional; the recap drafts from the summary).
-2. I draft the recap.
+2. I draft the recap. *(Drafting is `meetings.read`, so this one genuinely is mine
+   — but if the draft has to be attributed to you, you will see it and can say so.)*
 3. **You open `/approvals`** and read both language drafts.
 4. Arm `session_recaps` in Admin → Automations, then tap **Approve & send**.
 5. Check your inbox and the portal thread.
