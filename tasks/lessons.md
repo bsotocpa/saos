@@ -194,3 +194,35 @@ chasing a normal engagement.
 **Rule**: compute the classification by comparing to the source of truth
 (standard vs charged), and store BOTH numbers. A flag alone answers "was this
 unusual"; the pair answers "unusual compared to what", which is the actual question.
+
+## Enforce "incomplete" rules with a build check, not a comment
+**Pattern**: CLAUDE.md said a task-generating feature without an SOP hook is
+incomplete. That is unenforceable prose until something fails.
+**Rule**: for rules of the shape "X must always have Y", write a script that greps
+for X and fails without Y, and wire it into `npm test` beside check:prices. Allow an
+explicit opt-out WITH a required reason, so the rule is "decide in writing", not
+"do the work now". Mine caught a genuine gap on its first run (f8821_send) and a
+second the moment Hilo events added a task type — which is the whole return on it.
+
+## RETURNING gives the NEW row, so read before you clear
+**Pattern**: `UPDATE … SET seat_number = NULL … RETURNING seat_number` returned
+NULL, so the freed seat was never handed to the waitlist. Silent: the cancellation
+worked, the promotion just never happened.
+**Rule**: when the OLD value drives the next step, SELECT it first (or use a CTE).
+Any `RETURNING` of a column the same statement overwrites is a bug.
+
+## Hold capacity with a constraint, not a count-then-insert
+**Pattern**: two people registering for the last workshop seat is the normal case,
+not an edge case. Counting rows and then inserting oversells under concurrency.
+**Rule**: give each unit of capacity an identity (seat_number) with a partial
+unique index, claim the lowest free one, and treat the unique violation as "lost
+the race" — routing the loser to a waitlist. Then TEST it with concurrent requests;
+a sequential test passes either implementation and proves nothing.
+
+## Don't sign the machine's work with a person's name
+**Pattern**: my first SOP seeder attributed 23 generated skeletons to Brian because
+a CHECK required an approver on anything published. That would have put his name on
+procedure he never wrote.
+**Rule**: when a constraint pushes you toward a false attribution, the constraint is
+wrong. Require the timestamp, leave the approver NULL, and surface "not yet reviewed
+by a person" in the UI.

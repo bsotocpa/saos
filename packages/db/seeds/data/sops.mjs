@@ -201,6 +201,21 @@ A referral is waiting on approval.
 3. Approve or decline with a note. Silence is not a decision.
 `),
 
+  sop('jackson-event-followup', 'Post-workshop follow-up', 'ed_coo', 'Hilo events', `
+## Why you have this task
+A workshop was closed out. No-shows are recorded, and the out-survey has gone to
+everyone who attended.
+
+1. Attendees are **members of the public**, not contacts. Nothing was imported into
+   the CRM — link the ones who want ongoing help, deliberately, one at a time.
+2. Any referral to Soto stays **§7216-gated** and needs the alternatives-exist
+   disclosure on record. The database will refuse a referral without it.
+3. Survey replies come back by email. Record them against the registration so the
+   satisfaction and NPS averages feed the funder report.
+4. Attendance rate matters to funders as much as headcount — the no-show number is
+   already there, do not quietly drop it.
+`),
+
   // ── Brian (owner decisions) ────────────────────────────────────────────────
   sop('brian-stalled-onboarding', 'Stalled onboarding', 'ceo', 'Onboarding', `
 ## Why you have this task

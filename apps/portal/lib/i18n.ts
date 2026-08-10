@@ -301,6 +301,40 @@ const dict = {
     'Agregue primero un número de celular para saber a dónde enviar.',
   ],
 
+  // Hilo workshops (M27). A full workshop offers the waitlist, never a dead end.
+  event_register: ['Register', 'Inscribirse'],
+  event_join_waitlist: ['Join the waitlist', 'Unirse a la lista de espera'],
+  event_seats_left: ['Seats left', 'Lugares disponibles'],
+  event_full: [
+    'This workshop is full — join the waitlist and we’ll tell you if a seat opens.',
+    'Este taller está lleno — únase a la lista de espera y le avisamos si se abre un lugar.',
+  ],
+  event_virtual: ['online', 'en línea'],
+  event_cancelled: ['This workshop has been cancelled.', 'Este taller fue cancelado.'],
+  event_first_name: ['First name', 'Nombre'],
+  event_last_name: ['Last name', 'Apellido'],
+  event_email: ['Email', 'Correo electrónico'],
+  event_phone: ['Phone (optional)', 'Teléfono (opcional)'],
+  event_sms_optin: [
+    'Text me a reminder the day before. Message and data rates may apply; reply STOP any time. Not required to attend.',
+    'Envíenme un recordatorio por texto el día anterior. Pueden aplicar tarifas de mensajes y datos; responda STOP en cualquier momento. No es obligatorio para asistir.',
+  ],
+  event_confirmed_title: ['You’re registered', 'Está inscrito(a)'],
+  event_confirmed_body: [
+    'We emailed your confirmation. If you can’t make it, reply to that email and we’ll free your seat for someone else.',
+    'Le enviamos la confirmación por correo. Si no puede asistir, responda a ese correo y liberamos su lugar para otra persona.',
+  ],
+  event_waitlisted_title: ['You’re on the waitlist', 'Está en la lista de espera'],
+  event_waitlisted_body: [
+    'The workshop is full, but we’ll email you if a seat opens. Your position:',
+    'El taller está lleno, pero le avisamos por correo si se abre un lugar. Su lugar en la lista:',
+  ],
+  event_not_found_title: ['We couldn’t find that workshop', 'No encontramos ese taller'],
+  event_not_found_body: [
+    'The link may be old, or the workshop may not be open for registration yet.',
+    'El enlace puede estar vencido, o el taller todavía no está abierto para inscripciones.',
+  ],
+
   loading: ['Loading…', 'Cargando…'],
   error_generic: ['Something went wrong. Please try again.', 'Algo salió mal. Intente de nuevo.'],
 } satisfies Record<string, [string, string]>;

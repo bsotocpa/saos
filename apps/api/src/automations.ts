@@ -28,6 +28,7 @@ export const AUTOMATION_KEYS = [
   'annual_report_client_reminders',
   'attachment_acks',
   'review_requests',
+  'event_reminders',
 ] as const;
 
 export type AutomationKey = (typeof AUTOMATION_KEYS)[number];

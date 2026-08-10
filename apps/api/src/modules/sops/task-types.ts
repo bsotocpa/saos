@@ -50,6 +50,9 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   // ── Nonprofit / grants (Jackson) ──────────────────────────────────────────
   voucher_period: { sop: 'jackson-grant-voucher-period' },
   referral_approval: { sop: 'jackson-referral-approval' },
+  // Caught by the build check the moment Hilo events added it — which is the
+  // whole point of the guard.
+  event_followup: { sop: 'jackson-event-followup' },
 
   // ── Onboarding & health (Brian) ───────────────────────────────────────────
   onboarding_stalled: { sop: 'brian-stalled-onboarding' },

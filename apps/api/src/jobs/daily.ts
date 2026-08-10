@@ -20,6 +20,7 @@ import { runAutoExtensionBatchJob } from '../modules/tax/extension-batch.ts';
 import { runVoucherReminderJob } from '../modules/grants/vouchers.ts';
 import { runQuoteExpiryJob } from '../modules/pricing/quotes.ts';
 import { runReviewRequestJob } from '../modules/comms/review-requests.ts';
+import { runEventReminderJob } from '../modules/events/service.ts';
 import { runOnboardingRescueJob } from '../modules/portal-auth/onboarding-rescue.ts';
 import { makePusher, runPushSweep } from '../notify/push.ts';
 
@@ -69,6 +70,11 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   // so gated by the review_requests kill switch; every skip is recorded.
   const reviews = await runReviewRequestJob(app, today);
   if (!reviews.skipped) app.log.info({ job: 'review_requests', ...reviews }, 'daily job ran');
+  // M27: T-1 reminders for tomorrow's Hilo workshops. Client-acting, so gated by
+  // the event_reminders kill switch; the SMS half additionally needs the
+  // registrant's own opt-in plus the standing TCPA consent gate.
+  const eventReminders = await runEventReminderJob(app, today);
+  if (!eventReminders.skipped) app.log.info({ job: 'event_reminders', ...eventReminders }, 'daily job ran');
   // v4.3 flow 1: perfection-period clocks on rejected e-files.
   const perfection = await runPerfectionClockJob(app, today);
   if (!perfection.skipped) app.log.info({ job: 'perfection_clock', ...perfection }, 'daily job ran');

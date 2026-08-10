@@ -61,6 +61,12 @@ export const automations = [
     description:
       'Asks for a Google review after an ACCEPTED return or a completed onboarding. Throttled to one ask per client per 180 days, and never sent to a client with an open or recent IRS notice, an overdue invoice, paused work, or a stalled onboarding — a review ask at those moments invites the review you least want. OFF: the decision still runs and every skip is recorded, so you can see what arming it would send.',
   },
+  {
+    key: 'event_reminders',
+    name: 'Hilo workshop reminders (T-1)',
+    description:
+      'The day-before reminder for Hilo workshops — email, plus SMS only where the registrant ticked the box at signup AND the contact carries standing TCPA consent. OFF: the registration CONFIRMATION still goes out (that is transactional, a reply to something they just did), the check-in list is unaffected, and every suppressed reminder is counted in the job record.',
+  },
 ];
 
 export async function seedAutomations(client) {
