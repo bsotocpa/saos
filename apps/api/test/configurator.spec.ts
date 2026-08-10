@@ -90,10 +90,11 @@ test('cadence maths: the floor is a constant and sessions-per-year derive from t
   // only cadence an S corp can never have.
   assert.ok(SESSIONS_PER_YEAR.semi_annual >= S_CORP_SESSION_FLOOR);
   assert.ok(SESSIONS_PER_YEAR.annual < S_CORP_SESSION_FLOOR);
-  // Weekly prep is a spec dial position with no price-book line — deliberately
-  // unpriced rather than guessed.
-  assert.equal(PREP_ITEM.weekly, undefined);
-  assert.equal(PREP_ITEM.monthly, 'ACCT_MONTHLY');
+  // Brian's pricing ruling (2026-08-09) priced the weekly dial position, so every
+  // cadence now maps to a prep COMPONENT. (Before the ruling weekly was
+  // deliberately unpriced and refused; see pricing-rulings.spec.ts.)
+  assert.equal(PREP_ITEM.weekly, 'ACCT_PREP_WEEKLY');
+  assert.equal(PREP_ITEM.monthly, 'ACCT_PREP_MONTHLY');
 });
 
 test('a NON-S-corp client can be configured to annual sessions', async () => {
@@ -108,13 +109,21 @@ test('a NON-S-corp client can be configured to annual sessions', async () => {
   const cfg = res.json();
   assert.equal(cfg.sessionsPerYear, 1);
   assert.equal(cfg.sCorpFloorApplied, false, 'the floor did not bind — there is no S election');
-  // Prices came from the book: semi-annual accounting over 6 months.
-  assert.ok(cfg.monthlyEquivalentCents > 0);
-  const book = await app.db.query<{ amount_cents: number }>(
-    `SELECT amount_cents FROM price_book_items i JOIN price_book_versions v ON v.id = i.version_id
-     WHERE i.item_code = 'ACCT_SEMI_ANNUAL' ORDER BY v.version_number DESC LIMIT 1`
+
+  // Price derives from the book's components: semi-annual prep × 2 close periods
+  // + 1 annual session. Nothing here is a literal — both figures are read back.
+  const book = await app.db.query<{ item_code: string; amount_cents: number }>(
+    `SELECT i.item_code, i.amount_cents FROM price_book_items i
+     JOIN price_book_versions v ON v.id = i.version_id
+     WHERE v.effective_to IS NULL AND i.item_code = ANY($1)`,
+    [['ACCT_PREP_SEMI_ANNUAL', 'CPA_SESSION']]
   );
-  assert.equal(cfg.monthlyEquivalentCents, Math.round(book.rows[0]!.amount_cents / 6));
+  const cents = Object.fromEntries(book.rows.map((r) => [r.item_code, r.amount_cents]));
+  const expectedAnnual = cents.ACCT_PREP_SEMI_ANNUAL! * 2 + 1 * cents.CPA_SESSION!;
+  assert.equal(cfg.annualCents, expectedAnnual);
+  assert.equal(cfg.monthlyEquivalentCents, Math.round(expectedAnnual / 12));
+  // One annual session ≠ the semi-annual package, so this is a derived figure.
+  assert.equal(cfg.clientFacing.fromPackageItem, false);
 });
 
 test('THE GATE: an active S corp cannot be configured below the floor, on any path', async () => {
@@ -260,16 +269,31 @@ test('sessions can never be more frequent than prep, and unpriced cadences are r
   });
   assert.equal(equal.statusCode, 200, equal.body);
 
-  // Weekly prep is a real spec option with no price-book line. Refused with the
-  // gap named, rather than priced by guesswork.
-  const unpriced = await app.inject({
+  // Weekly prep is priced as of Brian's ruling, so this now succeeds.
+  const weekly = await app.inject({
     method: 'POST', url: `/engagements/${engId}/configure`, headers: auth(brian),
     payload: { prepCadence: 'weekly', sessionCadence: 'monthly' },
+  });
+  assert.equal(weekly.statusCode, 200, weekly.body);
+
+  // The refusal for an UNPRICEABLE cadence still stands, though — deactivate the
+  // component and the configurator declines rather than estimating. This is the
+  // guard that made the weekly gap visible in the first place, so it stays tested.
+  await app.db.query(
+    `UPDATE price_book_items SET is_active = false
+     WHERE item_code = 'ACCT_PREP_QUARTERLY'
+       AND version_id = (SELECT id FROM price_book_versions WHERE effective_to IS NULL
+                         ORDER BY version_number DESC LIMIT 1)`
+  );
+  const unpriced = await app.inject({
+    method: 'POST', url: `/engagements/${engId}/configure`, headers: auth(brian),
+    payload: { prepCadence: 'quarterly', sessionCadence: 'quarterly' },
   });
   assert.equal(unpriced.statusCode, 400, unpriced.body);
   assert.equal(unpriced.json().error, 'cadence_not_priced');
   assert.match(unpriced.json().message, /Admin → Pricing/);
   assert.match(unpriced.json().message, /will not estimate/);
+  await app.db.query(`UPDATE price_book_items SET is_active = true WHERE item_code = 'ACCT_PREP_QUARTERLY'`);
 });
 
 test('tax engagements have no cadence dials', async () => {
@@ -301,11 +325,14 @@ test('the options endpoint tells the UI what the floor forbids, before anyone pi
   const annual = o.sessionCadences.find((s: { value: string }) => s.value === 'annual');
   assert.match(annual.reason, /below the 2-session floor/i);
 
-  // Weekly prep is offered by the spec but flagged unpriced, so the UI can
-  // disable it instead of surfacing a 400 later.
+  // Every prep cadence is priced as of Brian's ruling, weekly included — so the
+  // UI offers all four rather than disabling one.
+  for (const p of o.prepCadences) {
+    assert.equal(p.priced, true, `${p.value} should be priced`);
+    assert.ok(p.itemCode, `${p.value} should name its component item`);
+  }
   const weekly = o.prepCadences.find((p: { value: string }) => p.value === 'weekly');
-  assert.equal(weekly.priced, false);
-  assert.equal(weekly.itemCode, null);
+  assert.equal(weekly.itemCode, 'ACCT_PREP_WEEKLY');
 
   // A client with no S election has every cadence available.
   const plain = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Plain', email: 'plain-cfg@example.test' });

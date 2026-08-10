@@ -30,8 +30,28 @@ interface Configured {
   maintenanceMode: boolean;
   sCorpFloorApplied: boolean;
   monthlyEquivalentCents: number;
-  lines: Array<{ itemCode: string; label: string; amountCents: number | null; note: string }>;
+  annualCents: number;
+  clientFacing: { label: string; amountCents: number; unit: string; fromPackageItem: boolean };
+  internalBreakdown: {
+    prepItemCode: string;
+    prepPerPeriodCents: number;
+    prepPeriodsPerYear: number;
+    sessionItemCode: string;
+    sessionCents: number;
+    sessionsPerYear: number;
+    scopeItemCode: string | null;
+    scopeAnnualCents: number;
+  };
 }
+
+const UNIT_LABEL: Record<string, string> = {
+  per_week: '/week',
+  per_month: '/month',
+  per_quarter: '/quarter',
+  per_6_months: '/6 months',
+  per_year: '/year',
+  flat: '',
+};
 
 const RUNGS = [
   { value: '', label: '— no scope rung —' },
@@ -272,16 +292,64 @@ export default function ConfiguratorPage() {
             {result.sessionsPerYear === 1 ? '' : 's'} a year ({pretty(result.sessionCadence)})
             {result.scopeRung ? ` · ${pretty(result.scopeRung)}` : ''}
           </p>
-          <p className="small">
-            <strong>{formatMoney(result.monthlyEquivalentCents)}/month equivalent</strong>
-          </p>
-          {result.lines.map((l) => (
-            <div className="quote-line" key={`${l.itemCode}-${l.label}`}>
-              <span className="name">{l.label}</span>
-              <span className="muted small" style={{ flex: '1 1 100%' }}>{l.note}</span>
-              <span className="amt">{l.amountCents === null ? '—' : formatMoney(l.amountCents)}</span>
+          {/* THE CLIENT-FACING PRICE — one bundled figure, exactly as a quote or
+              invoice will present it. Never a broken-out session fee. */}
+          <div className="alert ok" style={{ marginTop: 8 }}>
+            <span className="muted small">What the client sees</span>
+            <br />
+            <strong style={{ fontSize: 18 }}>
+              {result.clientFacing.label}, {formatMoney(result.clientFacing.amountCents)}
+              {UNIT_LABEL[result.clientFacing.unit] ?? ''}
+            </strong>
+            <br />
+            <span className="muted small">
+              {result.clientFacing.fromPackageItem
+                ? 'Priced by the matched-cadence package item in the price book.'
+                : 'Derived from the price book for this cadence combination — still quoted as one figure.'}
+            </span>
+          </div>
+
+          <details style={{ marginTop: 4 }}>
+            <summary className="muted small" style={{ cursor: 'pointer' }}>
+              Internal derivation (never shown to a client)
+            </summary>
+            <div className="quote-line">
+              <span className="name">Prep component · {result.internalBreakdown.prepItemCode}</span>
+              <span className="muted small" style={{ flex: '1 1 100%' }}>
+                {formatMoney(result.internalBreakdown.prepPerPeriodCents)} ×{' '}
+                {result.internalBreakdown.prepPeriodsPerYear} close periods
+              </span>
+              <span className="amt">
+                {formatMoney(result.internalBreakdown.prepPerPeriodCents * result.internalBreakdown.prepPeriodsPerYear)}
+              </span>
             </div>
-          ))}
+            <div className="quote-line">
+              <span className="name">Session component · {result.internalBreakdown.sessionItemCode}</span>
+              <span className="muted small" style={{ flex: '1 1 100%' }}>
+                {formatMoney(result.internalBreakdown.sessionCents)} × {result.internalBreakdown.sessionsPerYear} sessions
+              </span>
+              <span className="amt">
+                {formatMoney(result.internalBreakdown.sessionCents * result.internalBreakdown.sessionsPerYear)}
+              </span>
+            </div>
+            {result.internalBreakdown.scopeItemCode ? (
+              <div className="quote-line">
+                <span className="name">Scope rung · {result.internalBreakdown.scopeItemCode}</span>
+                <span className="amt">{formatMoney(result.internalBreakdown.scopeAnnualCents)}</span>
+              </div>
+            ) : null}
+            <div className="quote-line">
+              <span className="name">
+                <strong>Annual</strong>
+              </span>
+              <span className="muted small" style={{ flex: '1 1 100%' }}>
+                {formatMoney(result.monthlyEquivalentCents)}/month equivalent
+              </span>
+              <span className="amt">
+                <strong>{formatMoney(result.annualCents)}</strong>
+              </span>
+            </div>
+          </details>
         </section>
       ) : null}
     </>

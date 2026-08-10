@@ -55,9 +55,9 @@ export async function createInvoice(
   const items = codes.length
     ? await app.db.query<{
         item_code: string; name_en: string; name_es: string;
-        amount_cents: number | null; is_pass_through: boolean;
+        amount_cents: number | null; is_pass_through: boolean; display_on_quote: boolean;
       }>(
-        `SELECT item_code, name_en, name_es, amount_cents, is_pass_through
+        `SELECT item_code, name_en, name_es, amount_cents, is_pass_through, display_on_quote
          FROM price_book_items WHERE version_id = $1 AND item_code = ANY($2) AND is_active`,
         [version.id, codes]
       )
@@ -72,6 +72,16 @@ export async function createInvoice(
       if (!item) throw new AppError(400, 'unknown_price_items', `Unknown price book item: ${line.code}.`);
       if (item.is_pass_through) {
         throw new AppError(400, 'pass_through_not_invoiceable', `${line.code} is a software pass-through — billed by the vendor, not Soto.`);
+      }
+      // PRESENTATION RULING (Brian, 2026-08-09): an invoice shows the bundled
+      // plan, never a broken-out session component. Refused at the builder so it
+      // cannot happen through any caller.
+      if (item.display_on_quote === false) {
+        throw new AppError(
+          400,
+          'not_invoiceable',
+          `${line.code} is a derivation component, not a billable line. Invoice the bundled plan price instead.`
+        );
       }
       if (item.amount_cents === null) {
         throw new AppError(400, 'requires_custom_amount', `${line.code} is range-priced — provide unitCents explicitly.`);

@@ -26,6 +26,22 @@ const item = (code, serviceLine, nameEn, nameEs, amountCents, opts = {}) => ({
   metadata: opts.metadata ?? {},
 });
 
+/**
+ * Shared shape for derivation-only components (Brian's pricing ruling,
+ * 2026-08-09). displayOnQuote:false is not decoration — the quote builder and
+ * the invoice builder both REFUSE an item flagged this way, so a component
+ * cannot reach a client-facing surface even if a staffer picks it by item code.
+ */
+const COMPONENT = {
+  displayOnQuote: false,
+  descEn:
+    'Derivation component for the engagement configurator. Never quoted or invoiced on its own — ' +
+    'clients see one bundled plan price.',
+  descEs:
+    'Componente de derivación para el configurador de compromisos. Nunca se cotiza ni se factura por ' +
+    'separado — el cliente ve un solo precio de plan.',
+};
+
 export const PRICE_BOOK_V1 = {
   versionNumber: 1,
   effectiveFrom: '2026-07-05',
@@ -96,14 +112,39 @@ export const items = [
   item('BIZ_NOTICE_SUPPORT', 'business_tax', 'Notice support (business)', 'Apoyo con avisos (negocios)', 30000),
 
   // ── Recurring accounting (Full Management) ───────────────────────────────────
-  item('ACCT_MONTHLY', 'recurring_accounting', 'Accounting — monthly (full management)', 'Contabilidad mensual — gestión completa', 25000, { unit: 'per_month' }),
-  item('ACCT_QUARTERLY', 'recurring_accounting', 'Accounting — quarterly (full management)', 'Contabilidad trimestral — gestión completa', 60000, { unit: 'per_quarter' }),
-  item('ACCT_SEMI_ANNUAL', 'recurring_accounting', 'Accounting — semi-annual (full management)', 'Contabilidad semestral — gestión completa', 100000, {
+  //
+  // BRIAN'S PRICING RULING, 2026-08-09. Two layers, deliberately:
+  //
+  //  1. BUNDLED PLANS (these four) are the CLIENT-FACING prices — one figure,
+  //     matched cadences, quotable. "Monthly bookkeeping with monthly CPA
+  //     session, $250/mo" is exactly how a client sees it.
+  //  2. COMPONENTS (below) exist ONLY so the two-dial configurator can derive a
+  //     price for cadence combinations that have no package — monthly books with
+  //     quarterly sessions, say. They are displayOnQuote:false and the code
+  //     REFUSES them on any quote or invoice line: presenting a broken-out
+  //     session fee to a client is a defect, per the ruling.
+  //
+  // The two layers must agree to the cent — bundled = prep + (1 × session) at
+  // matched cadence — and a test asserts it, so drift is a build failure rather
+  // than a discrepancy a client notices.
+  item('ACCT_WEEKLY', 'recurring_accounting', 'Accounting — weekly (full management, weekly CPA session)', 'Contabilidad semanal — gestión completa, sesión CPA semanal', 30000, { unit: 'per_week' }),
+  item('ACCT_MONTHLY', 'recurring_accounting', 'Accounting — monthly (full management, monthly CPA session)', 'Contabilidad mensual — gestión completa, sesión CPA mensual', 25000, { unit: 'per_month' }),
+  item('ACCT_QUARTERLY', 'recurring_accounting', 'Accounting — quarterly (full management, quarterly CPA session)', 'Contabilidad trimestral — gestión completa, sesión CPA trimestral', 60000, { unit: 'per_quarter' }),
+  item('ACCT_SEMI_ANNUAL', 'recurring_accounting', 'Accounting — semi-annual (full management, semi-annual CPA session)', 'Contabilidad semestral — gestión completa, sesión CPA semestral', 100000, {
     unit: 'per_6_months',
-    needsConfirmation: true,
-    confirmationNote: '⚠ Service sheet $900, workbook $800, most recent verbal $1,000 — seeded at $1,000 (most recent verbal wins per spec); Brian confirms.',
+    // CONFIRMED by Brian 2026-08-09: $1,000 all-in is the ruling; the
+    // sheet/workbook conflict ($900 / $800) is resolved.
   }),
   item('ACCT_CATCHUP_HOURLY', 'recurring_accounting', 'Catch-up / cleanup (hourly)', 'Puesta al día / limpieza (por hora)', 7500, { unit: 'per_hour' }),
+
+  // ── Derivation components — NEVER client-facing ──────────────────────────────
+  // Prep component = bookkeeper labour for one close period.
+  // Session component = one CPA session with Brian.
+  item('ACCT_PREP_WEEKLY', 'recurring_accounting', 'Prep component — weekly close', 'Componente de preparación — cierre semanal', 20000, { unit: 'per_week', ...COMPONENT }),
+  item('ACCT_PREP_MONTHLY', 'recurring_accounting', 'Prep component — monthly close', 'Componente de preparación — cierre mensual', 15000, { unit: 'per_month', ...COMPONENT }),
+  item('ACCT_PREP_QUARTERLY', 'recurring_accounting', 'Prep component — quarterly close', 'Componente de preparación — cierre trimestral', 50000, { unit: 'per_quarter', ...COMPONENT }),
+  item('ACCT_PREP_SEMI_ANNUAL', 'recurring_accounting', 'Prep component — semi-annual close', 'Componente de preparación — cierre semestral', 90000, { unit: 'per_6_months', ...COMPONENT }),
+  item('CPA_SESSION', 'recurring_accounting', 'Session component — one CPA session', 'Componente de sesión — una sesión CPA', 10000, { unit: 'per_session', ...COMPONENT }),
 
   // ── Scope ladder (per service line: Accounting, Payroll, Sales Tax) ──────────
   item('SCOPE_REG_SETUP', 'scope_ladder', 'Registration & Setup', 'Registro y configuración', 25000),

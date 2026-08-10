@@ -255,14 +255,26 @@ test('chase job: recurring reminders + one-time 7-day non-response alert (automa
   // can't rot as the calendar advances (the job stamps last_reminder_at with
   // now(), so fixed past asOf dates break the recurrence assertion).
   const asOf = todayChicago();
-  await app.db.query(`UPDATE document_requests SET created_at = now() - interval '4 days' WHERE contact_id = $1`, [eli.contactId]);
-  await app.db.query(`UPDATE tax_engagements SET docs_requested_at = now() - interval '8 days' WHERE id = $1`, [teId]);
+  // 7 days, not 4 — same midnight-Chicago boundary as docs_requested_at below.
+  // The reminder window is 3 days, so 4 days left under a day of slack and
+  // `reminders` silently came back 0 in the UTC-ahead-of-Chicago window. The
+  // recurrence assertion later (run2 at asOf+4) is unaffected: the job stamps
+  // last_reminder_at = now() after reminder #1, so #2 still depends on the
+  // 4-day asOf advance, not on this backdate.
+  await app.db.query(`UPDATE document_requests SET created_at = now() - interval '7 days' WHERE contact_id = $1`, [eli.contactId]);
+  // 14 days, not 8. The alert compares this timestamptz against a 7-day window
+  // measured from `todayChicago()::date` (midnight Chicago), so between UTC
+  // midnight and Chicago midnight an 8-day backdate leaves under a day of slack
+  // and the comparison flips. Same latent boundary as the invoice-overdue spec.
+  await app.db.query(`UPDATE tax_engagements SET docs_requested_at = now() - interval '14 days' WHERE id = $1`, [teId]);
 
   // 4+ days later: reminder #1 + non-response alert (docs requested > 7d before asOf).
   const run1 = await app.inject({ method: 'POST', url: `/jobs/document-chase?asOf=${asOf}`, headers: auth(brian) });
   assert.equal(run1.statusCode, 200, run1.body);
-  assert.ok(run1.json().reminders >= 1, 'reminder sent');
-  assert.ok(run1.json().nonResponseAlerts >= 1, 'non-response alert fired');
+  // Payload in the message: a bare `>= 1` failure tells you nothing about which
+  // half of the job came back empty, and this test has two independent windows.
+  assert.ok(run1.json().reminders >= 1, `reminder sent — payload ${run1.body}`);
+  assert.ok(run1.json().nonResponseAlerts >= 1, `non-response alert fired — payload ${run1.body}`);
   const reminded = sentMail.filter((m) => m.to === 'doc-chase@example.test' && /Reminder|Recordatorio/i.test(m.subject));
   assert.equal(reminded.length, 1);
 
@@ -281,8 +293,12 @@ test('chase job: recurring reminders + one-time 7-day non-response alert (automa
     );
     assert.equal(n.rows[0].n, 1, `alert for ${leader.email}`);
   }
-  const run2 = await app.inject({ method: 'POST', url: `/jobs/document-chase?asOf=${addDays(asOf, 4)}`, headers: auth(brian) });
-  assert.ok(run2.json().reminders >= 1, 'reminders recur every N days');
+  // +7, not +4. last_reminder_at was stamped with now() (a timestamptz) and the
+  // window is measured from a date-truncated asOf, so a 4-day advance against a
+  // 3-day window left under a day of slack — the third instance of this boundary
+  // in this one test. Advance past it comfortably; recurrence is still proven.
+  const run2 = await app.inject({ method: 'POST', url: `/jobs/document-chase?asOf=${addDays(asOf, 7)}`, headers: auth(brian) });
+  assert.ok(run2.json().reminders >= 1, `reminders recur every N days — payload ${run2.body}`);
   const stillOne = await app.db.query(
     `SELECT count(*)::int AS n FROM notifications WHERE type = 'client_non_response' AND contact_id = $1`,
     [eli.contactId]

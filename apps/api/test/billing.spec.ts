@@ -272,7 +272,13 @@ test('automation 17: unpaid past the window → overdue + reminder + Rene flag, 
   assert.equal(created.statusCode, 201, created.body);
   assert.equal(created.json().totalCents, 12000, 'line priced from the book (BOI $120)');
   const invoiceId = created.json().id as string;
-  await app.db.query(`UPDATE invoices SET sent_at = now() - interval '15 days' WHERE id = $1`, [invoiceId]);
+  // 20 days, not 15. The job compares a timestamptz (`now() - N days`) against
+  // `todayChicago()::date - 14 days`, i.e. MIDNIGHT Chicago. Between UTC midnight
+  // and Chicago midnight the two calendars disagree by a day, so a 15-day
+  // backdate leaves under a day of slack and the comparison flips — this spec
+  // failed only in that five-hour window. Size the fixture for the worst
+  // timezone offset, not the offset you happened to observe.
+  await app.db.query(`UPDATE invoices SET sent_at = now() - interval '20 days' WHERE id = $1`, [invoiceId]);
 
   // asOf tracks the real clock — the fixture above is now()-relative, so a
   // fixed date here rots as the calendar advances (learned the hard way).

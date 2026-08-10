@@ -50,24 +50,35 @@ export const PREP_PER_YEAR: Record<PrepCadence, number> = {
 };
 
 /**
- * Price-book item that prices each prep cadence. Weekly is deliberately absent:
- * the spec offers it as a dial position but the price book has no weekly line,
- * and inventing one would be a hardcoded price. Configuring weekly prep is
- * refused with a message that names the missing item — a data gap for Brian to
- * close in Admin → Pricing, not a number for me to guess.
+ * Prep COMPONENT per cadence (Brian's pricing ruling, 2026-08-09). All four dial
+ * positions are priced now — weekly included, which is what unblocked configuring
+ * a weekly client. These items are display_on_quote=false: derivation only.
  */
-export const PREP_ITEM: Partial<Record<PrepCadence, string>> = {
+export const PREP_ITEM: Record<PrepCadence, string> = {
+  weekly: 'ACCT_PREP_WEEKLY',
+  monthly: 'ACCT_PREP_MONTHLY',
+  quarterly: 'ACCT_PREP_QUARTERLY',
+  semi_annual: 'ACCT_PREP_SEMI_ANNUAL',
+};
+
+/** One CPA session. Every session cadence multiplies this. */
+export const SESSION_ITEM = 'CPA_SESSION';
+
+/**
+ * The CLIENT-FACING bundled plan for each matched-cadence combination. When both
+ * dials agree, the price the client is quoted is this single item — read as
+ * "monthly bookkeeping with a monthly CPA session, <one figure> per month" — and
+ * it equals prep + one session by construction (asserted by a test, so drift is
+ * a build failure rather than something a client notices).
+ *
+ * Mismatched combinations have no package item; their price is derived and
+ * presented as ONE figure all the same. Never as a session line.
+ */
+export const BUNDLED_PLAN_ITEM: Record<PrepCadence, string> = {
+  weekly: 'ACCT_WEEKLY',
   monthly: 'ACCT_MONTHLY',
   quarterly: 'ACCT_QUARTERLY',
   semi_annual: 'ACCT_SEMI_ANNUAL',
-};
-
-/** Months covered by one prep charge — turns book units into a monthly figure. */
-const PREP_MONTHS: Record<PrepCadence, number> = {
-  weekly: 1 / 4.333,
-  monthly: 1,
-  quarterly: 3,
-  semi_annual: 6,
 };
 
 export const SCOPE_ITEM: Partial<Record<ScopeRung, string>> = {
@@ -131,7 +142,33 @@ export interface ConfiguredEngagement {
   maintenanceMode: boolean;
   sCorpFloorApplied: boolean;
   monthlyEquivalentCents: number;
-  lines: Array<{ itemCode: string; label: string; amountCents: number | null; note: string }>;
+  annualCents: number;
+  /**
+   * THE ONE FIGURE A CLIENT SEES, already bundled. Per Brian's presentation
+   * ruling this is what any quote or invoice shows — never a session line.
+   */
+  clientFacing: {
+    label: string;
+    amountCents: number;
+    /** 'per_week' | 'per_month' | … — the billing period the label reads in. */
+    unit: string;
+    /** True when a matched-cadence package item priced it directly. */
+    fromPackageItem: boolean;
+  };
+  /**
+   * Internal only (staff configurator, audit). Deliberately NOT shaped like
+   * quote lines so it cannot be handed to a client-facing renderer by accident.
+   */
+  internalBreakdown: {
+    prepItemCode: string;
+    prepPerPeriodCents: number;
+    prepPeriodsPerYear: number;
+    sessionItemCode: string;
+    sessionCents: number;
+    sessionsPerYear: number;
+    scopeItemCode: string | null;
+    scopeAnnualCents: number;
+  };
 }
 
 async function currentVersionId(app: FastifyInstance): Promise<string> {
@@ -200,73 +237,88 @@ export async function configureRecurringEngagement(
     }
   }
 
-  // Price composition — every figure from the price book, or a refusal.
+  // ── PRICE DERIVATION (Brian's ruling 2026-08-09) ────────────────────────────
+  //   annual = prep component × close periods/year + sessions/year × session
+  // Every figure from the price book, or a refusal. Nothing estimated.
   const versionId = await currentVersionId(app);
   const prepItem = PREP_ITEM[input.prepCadence];
-  if (!prepItem) {
-    throw new AppError(
-      400,
-      'cadence_not_priced',
-      `The price book in force has no line for ${input.prepCadence} prep cadence, so this configuration ` +
-        `cannot be priced. Add the item in Admin → Pricing first — I will not estimate a price.`
-    );
-  }
-  const codes = [prepItem, ...(input.scopeRung && SCOPE_ITEM[input.scopeRung] ? [SCOPE_ITEM[input.scopeRung]!] : [])];
+  const scopeItem = input.scopeRung ? (SCOPE_ITEM[input.scopeRung] ?? null) : null;
+  const bundledItem = BUNDLED_PLAN_ITEM[input.prepCadence];
+  const codes = [prepItem, SESSION_ITEM, bundledItem, ...(scopeItem ? [scopeItem] : [])];
+
   const priced = await app.db.query<{
-    item_code: string; name_en: string; amount_cents: number | null; unit: string | null; needs_confirmation: boolean;
+    item_code: string; name_en: string; amount_cents: number | null; unit: string | null;
+    needs_confirmation: boolean; display_on_quote: boolean;
   }>(
-    `SELECT item_code, name_en, amount_cents, unit, needs_confirmation
+    `SELECT item_code, name_en, amount_cents, unit, needs_confirmation, display_on_quote
      FROM price_book_items WHERE version_id = $1 AND item_code = ANY($2) AND is_active`,
     [versionId, codes]
   );
   const byCode = new Map(priced.rows.map((r) => [r.item_code, r]));
-  const missing = codes.filter((c) => !byCode.has(c));
+  // The bundled package item is only needed when both dials match; a missing one
+  // is not fatal because the price derives from components either way.
+  const required = [prepItem, SESSION_ITEM, ...(scopeItem ? [scopeItem] : [])];
+  const missing = required.filter((c) => !byCode.has(c) || byCode.get(c)!.amount_cents === null);
   if (missing.length > 0) {
     throw new AppError(
       400,
       'cadence_not_priced',
-      `Missing from the price book in force: ${missing.join(', ')}.`
+      `The price book in force cannot price this configuration — missing or unpriced: ${missing.join(', ')}. ` +
+        `Add the item in Admin → Pricing first; I will not estimate a price.`
     );
   }
 
   const prep = byCode.get(prepItem)!;
-  const prepMonthly = prep.amount_cents === null ? 0 : Math.round(prep.amount_cents / PREP_MONTHS[input.prepCadence]);
+  const session = byCode.get(SESSION_ITEM)!;
+  const prepPerPeriod = prep.amount_cents!;
+  const sessionCents = session.amount_cents!;
+  const scope = scopeItem ? byCode.get(scopeItem)! : null;
+  // Scope rungs are flat one-time charges except the per_month ones.
+  const scopeAnnual =
+    scope === null || scope.amount_cents === null
+      ? 0
+      : scope.unit === 'per_month'
+        ? scope.amount_cents * 12
+        : scope.amount_cents;
 
-  const lines: ConfiguredEngagement['lines'] = [
-    {
-      itemCode: prep.item_code,
-      label: prep.name_en,
-      amountCents: prep.amount_cents,
-      note: `Prep cadence — ${input.prepCadence}${prep.needs_confirmation ? ' (⚠ price awaiting confirmation)' : ''}`,
-    },
-  ];
-  // The session dial carries no separate price in the book today: the ACCT_*
-  // lines are described as full management. Said out loud rather than implied by
-  // a zero, so nobody reads a missing charge as a free session.
-  lines.push({
-    itemCode: '—',
-    label: `CPA sessions — ${input.sessionCadence} (${sessionsPerYear}/year)`,
-    amountCents: null,
-    note:
-      'Included in the prep-cadence price. The price book has no separate session-cadence line; ' +
-      'if sessions should price independently, add the item in Admin → Pricing.',
-  });
-  if (input.scopeRung && SCOPE_ITEM[input.scopeRung]) {
-    const rung = byCode.get(SCOPE_ITEM[input.scopeRung]!)!;
-    lines.push({
-      itemCode: rung.item_code,
-      label: rung.name_en,
-      amountCents: rung.amount_cents,
-      note: `Scope rung — ${input.scopeRung}${rung.needs_confirmation ? ' (⚠ price awaiting confirmation)' : ''}`,
-    });
-  } else if (input.scopeRung === 'full_management') {
-    lines.push({
-      itemCode: '—',
-      label: 'Full management & compliance',
-      amountCents: null,
-      note: 'Priced by the prep-cadence line, which is the full-management rate.',
-    });
-  }
+  const annualCents = prepPerPeriod * prepPerYear + sessionsPerYear * sessionCents + scopeAnnual;
+  const monthlyEquivalent = Math.round(annualCents / 12);
+
+  // THE CLIENT-FACING FIGURE. Matched cadences quote the package item directly
+  // (and a test asserts it equals prep + one session, so the two layers cannot
+  // drift). Mismatched cadences derive, and are still presented as ONE number in
+  // the prep cadence's billing period — never as a session line.
+  const matched = sessionsPerYear === prepPerYear;
+  const bundled = byCode.get(bundledItem);
+  const perPeriodFromDerivation = Math.round(annualCents / prepPerYear);
+  const clientFacing =
+    matched && bundled?.amount_cents != null && scopeAnnual === 0
+      ? {
+          label: bundled.name_en,
+          amountCents: bundled.amount_cents,
+          unit: bundled.unit ?? 'flat',
+          fromPackageItem: true,
+        }
+      : {
+          label:
+            `${input.prepCadence.replaceAll('_', '-')} bookkeeping with ` +
+            `${input.sessionCadence.replaceAll('_', '-')} CPA session` +
+            (sessionsPerYear === 1 ? '' : 's'),
+          amountCents: perPeriodFromDerivation,
+          unit: prep.unit ?? 'flat',
+          fromPackageItem: false,
+        };
+
+  const internalBreakdown = {
+    prepItemCode: prep.item_code,
+    prepPerPeriodCents: prepPerPeriod,
+    prepPeriodsPerYear: prepPerYear,
+    sessionItemCode: session.item_code,
+    sessionCents,
+    sessionsPerYear,
+    scopeItemCode: scope?.item_code ?? null,
+    scopeAnnualCents: scopeAnnual,
+  };
 
   await app.db.query(
     `UPDATE engagements
@@ -293,7 +345,7 @@ export async function configureRecurringEngagement(
      VALUES ($1,$2::prep_cadence,$3::session_cadence,$4,$5::scope_rung,$6,$7,$8,$9,$10,$11)`,
     [
       engagementId, input.prepCadence, input.sessionCadence, sessionsPerYear, input.scopeRung ?? null,
-      input.maintenanceMode ?? false, sCorpFloorApplied, prepMonthly, versionId, actor.id, input.note ?? null,
+      input.maintenanceMode ?? false, sCorpFloorApplied, monthlyEquivalent, versionId, actor.id, input.note ?? null,
     ]
   );
   await writeAudit(app.db, {
@@ -307,6 +359,10 @@ export async function configureRecurringEngagement(
       scope_rung: input.scopeRung ?? null,
       maintenance_mode: input.maintenanceMode ?? false,
       s_corp_floor_applied: sCorpFloorApplied,
+      annual_cents: annualCents,
+      client_facing_cents: clientFacing.amountCents,
+      client_facing_unit: clientFacing.unit,
+      derived_from_components: !clientFacing.fromPackageItem,
     },
   });
 
@@ -318,8 +374,10 @@ export async function configureRecurringEngagement(
     scopeRung: input.scopeRung ?? null,
     maintenanceMode: input.maintenanceMode ?? false,
     sCorpFloorApplied,
-    monthlyEquivalentCents: prepMonthly,
-    lines,
+    monthlyEquivalentCents: monthlyEquivalent,
+    annualCents,
+    clientFacing,
+    internalBreakdown,
   };
 }
 

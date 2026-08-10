@@ -93,9 +93,11 @@ test('THE prove-it: price edit → new version; pinned engagements keep v1; calc
             (SELECT count(*)::int FROM bundle_rules WHERE version_id = $1) AS rules`,
     [v2.rows[0]!.id]
   );
-  // Item count is asserted so a stray seed addition is noticed; 78 = the v1
-  // book + LATE_FEE_MONTHLY (flow 4) + the four v4.6 resolution items.
-  assert.equal(counts.rows[0].items, 78);
+  // Item count is asserted so a stray seed addition is noticed; 84 = the v1
+  // book + LATE_FEE_MONTHLY (flow 4) + the four v4.6 resolution items + the six
+  // from Brian's 2026-08-09 pricing ruling (ACCT_WEEKLY, four prep components,
+  // CPA_SESSION).
+  assert.equal(counts.rows[0].items, 84);
   assert.equal(counts.rows[0].rules, 3);
 
   const prices = await app.db.query(
@@ -125,21 +127,24 @@ test('THE prove-it: price edit → new version; pinned engagements keep v1; calc
   assert.ok((await auditRows(app.db, 'price_book.version_created')) >= 1);
 });
 
+// Uses ENTITY_ANNUAL_REPORT ($130 vs $60 sheet conflict) — ACCT_SEMI_ANNUAL was
+// this fixture until Brian confirmed it on 2026-08-09, at which point there was
+// nothing left to confirm and the endpoint correctly 404'd.
 test('⚠ confirmation queue: confirming a seed conflict clears the flag without a new version', async () => {
   const confirm = await app.inject({
-    method: 'POST', url: '/admin/price-book/items/ACCT_SEMI_ANNUAL/confirm', headers: auth(brian),
+    method: 'POST', url: '/admin/price-book/items/ENTITY_ANNUAL_REPORT/confirm', headers: auth(brian),
   });
   assert.equal(confirm.statusCode, 200, confirm.body);
   const row = await app.db.query(
     `SELECT i.needs_confirmation FROM price_book_items i
      JOIN price_book_versions v ON v.id = i.version_id
-     WHERE i.item_code = 'ACCT_SEMI_ANNUAL' ORDER BY v.version_number DESC LIMIT 1`
+     WHERE i.item_code = 'ENTITY_ANNUAL_REPORT' ORDER BY v.version_number DESC LIMIT 1`
   );
   assert.equal(row.rows[0].needs_confirmation, false);
   assert.ok((await auditRows(app.db, 'price_book.item_confirmed')) >= 1);
 
   const again = await app.inject({
-    method: 'POST', url: '/admin/price-book/items/ACCT_SEMI_ANNUAL/confirm', headers: auth(brian),
+    method: 'POST', url: '/admin/price-book/items/ENTITY_ANNUAL_REPORT/confirm', headers: auth(brian),
   });
   assert.equal(again.statusCode, 404, 'already confirmed');
 });

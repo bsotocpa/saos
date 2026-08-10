@@ -141,3 +141,21 @@ prod defaults from harness defaults.
 **Rule**: for anything client-facing, evaluate the most embarrassing condition
 first (open notice, dispute) so the reason surfaced is the one a human would give.
 And record the suppressed attempts — a rule is only provable from its near-misses.
+
+## Date-window fixtures need ≥2 days of slack, not 1
+**Pattern**: jobs compare a `timestamptz` (`now() - N days`) against a
+date-truncated window (`todayChicago()::date - M days`, i.e. midnight Chicago).
+Between UTC midnight and Chicago midnight the two calendars differ by a day, so a
+fixture with exactly one day of margin flips and the job silently returns 0. Three
+separate assertions in one spec were riding on <1 day of slack; all passed for
+weeks and all failed inside the same five-hour window.
+**Rule**: when a fixture must clear an N-day window, backdate by N + at least 2.
+And put the job's payload in the assertion message — a bare `>= 1` failure does
+not say which half of a two-window job came back empty.
+
+## Verify against HEAD before assuming a failure is yours
+**Pattern**: two specs failed right after a large change of mine. Both were
+pre-existing latent flakes that had just entered their trigger window.
+**Rule**: when a spec fails after a change, `git stash` and run it on HEAD before
+diagnosing. It costs one command and it decides whether you are fixing your bug
+or someone else's — and it stops you "fixing" working code.

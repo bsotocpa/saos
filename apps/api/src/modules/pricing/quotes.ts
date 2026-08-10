@@ -105,8 +105,10 @@ export async function createQuote(
     const priced = await app.db.query<{
       item_code: string; name_en: string; name_es: string; amount_cents: number | null;
       price_min_cents: number | null; price_max_cents: number | null; is_pass_through: boolean;
+      display_on_quote: boolean;
     }>(
-      `SELECT item_code, name_en, name_es, amount_cents, price_min_cents, price_max_cents, is_pass_through
+      `SELECT item_code, name_en, name_es, amount_cents, price_min_cents, price_max_cents,
+              is_pass_through, display_on_quote
        FROM price_book_items WHERE version_id = $1 AND item_code = ANY($2) AND is_active`,
       [version.id, requested.map((l) => l.itemCode)]
     );
@@ -114,6 +116,21 @@ export async function createQuote(
     const missing = requested.filter((l) => !byCode.has(l.itemCode)).map((l) => l.itemCode);
     if (missing.length > 0) {
       throw new AppError(400, 'unknown_price_items', `Not in the price book in force: ${missing.join(', ')}.`);
+    }
+    // PRESENTATION RULING (Brian, 2026-08-09): derivation components never reach
+    // a client. A quote itemizing the session component separately is a defect,
+    // so the builder refuses the code outright rather than trusting the UI to
+    // hide it.
+    const components = requested
+      .filter((l) => byCode.get(l.itemCode)!.display_on_quote === false)
+      .map((l) => l.itemCode);
+    if (components.length > 0) {
+      throw new AppError(
+        400,
+        'not_quotable',
+        `These are derivation components, not sellable lines: ${components.join(', ')}. ` +
+          `A client sees one bundled plan price — configure the engagement and quote that figure instead.`
+      );
     }
     lines = requested.map((l) => {
       const item = byCode.get(l.itemCode)!;
