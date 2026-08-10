@@ -758,7 +758,7 @@ only Brian can make. Regenerate after any gate clears.)
       consent settings beside the estimate toggle ✅ 2026-08-09
       (migration 0030; comms/broadcast.ts + review-requests.ts;
       /announcements internal, portal /unsubscribe/[id]/[token])
-- [ ] SOP knowledge base: versioned searchable wiki per role/process;
+- [ ] **NEXT UP** — SOP knowledge base: versioned searchable wiki per role/process;
       task types carry "how to do this" links (CLAUDE.md: task-generating
       features without SOP hooks are incomplete); Whisper-seeded drafts
       w/ approval before publish
@@ -968,6 +968,49 @@ attempts to violate each one rather than demonstrations of the happy path.
   would suppress 100% today. Email announcements work; SMS needs consent captured
   at onboarding first. Not a bug — the TCPA gate doing its job.
 - 215/215 green. Announcements + unsubscribe verified at 390×844 and 1280px.
+
+### Pricing rulings + SMS consent backfill (completed 2026-08-09)
+Brian's four pricing rulings, implemented in the price book with the presentation
+rule made structural.
+- **Two layers.** BUNDLED PLANS are client-facing and quotable (weekly $300/wk,
+  monthly $250/mo, quarterly $600/qtr, semi-annual $1,000/6mo). COMPONENTS are
+  derivation-only: prep per close period ($200/$150/$500/$900) + $100 per CPA
+  session. A test asserts bundled = prep + one session to the cent, so the layers
+  cannot drift into a quote/invoice discrepancy.
+- **Weekly unblocked** (ruling 1) — that was the point; weekly clients had no
+  priceable cadence. **Nothing re-prices** (ruling 2): components were calibrated
+  to the totals already in force, and matched-cadence configs are asserted to
+  still land on them.
+- **Presentation rule enforced in code** (ruling 3). `display_on_quote` existed in
+  the schema since 0007 but was enforced nowhere. The quote builder and the
+  invoice builder now REFUSE a flagged code, and the builder catalog does not
+  offer components at all — so a session fee cannot be itemized to a client even
+  if a staffer asks for it by item code. The internal configurator still shows the
+  breakdown, shaped so it cannot be handed to a client-facing renderer.
+- **Ruling 4 verified**: maintenance mode (monthly prep + semi-annual sessions)
+  derives $2,000/yr = $166.67/mo, presented as one monthly figure and cheaper than
+  the full plan; utilization entitlement reads sessions_per_year as built.
+- Brian's semi-annual confirmation cleared a launch gate: 14 → **13** items
+  awaiting price confirmation.
+- **⚠ Note**: the s-corp-conversion bundle still offers ACCT_QUARTERLY as an
+  optional add-on, which is correct — that is the bundled plan, not a component.
+
+**Portal SMS opt-in** (Brian's addition): 433 active clients, zero SMS consent, so
+consent could only ever arrive through new onboarding. Now offered in the welcome
+flow, EN/ES, with the disclosure above the control, an unticked box, a disabled
+submit until ticked, a real decline button, and off-switch in the same card. The
+policy version is written into the consents row; migration 0032 adds a
+`portal_checkbox` method rather than mislabelling it as intake. A test asserts
+the classic trap: adding a phone and preferring 'text' is NOT consent.
+- **sendSms reordered** to check consent BEFORE Twilio credentials — the gate was
+  unreachable, and therefore untestable, in every environment without creds.
+
+**Two PRE-EXISTING flakes found and root-caused** (verified failing on HEAD before
+my changes): fixtures compared a timestamptz against a midnight-Chicago date
+window with one day of slack, so they flipped during the five hours when UTC and
+Chicago disagree on the date. Three assertions in document-chase, one in billing.
+
+227/227 green. Deployed through migration 0032.
 
 ### M0–M3 (completed 2026-07-05)
 - Stack as approved: Node 24 + TypeScript strict, npm workspaces, Fastify (M4),
