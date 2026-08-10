@@ -16,6 +16,7 @@ import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { sendSms } from '../comms/send-sms.ts';
 import { addDays, daysBetween } from '../tax/deadlines.ts';
+import { sopLinkForTaskType } from '../sops/service.ts';
 
 export type TaskStatus = 'not_started' | 'in_progress' | 'waiting_for_input' | 'completed' | 'deferred' | 'cancelled';
 /** Non-terminal statuses — what "open work" means across every view/query. */
@@ -67,6 +68,12 @@ export async function createTask(app: FastifyInstance, input: CreateTaskInput): 
   // from creation (v4.4: client to-dos drive the D3/D7/D14 ladder).
   const waitingSince = status === 'waiting_for_input' || input.clientVisible ? 'now()' : 'NULL';
 
+  // M27: attach the "how to do this" link from the task-type registry when the
+  // caller did not supply one. Resolved rather than typed, so a new hire opening
+  // a task finds the procedure without anyone remembering to paste a URL — and
+  // an unwritten SOP resolves to null rather than a dead link.
+  const sopLink = input.sopLink ?? (await sopLinkForTaskType(app, input.sourceType));
+
   const { rows } = await app.db.query<{ id: string }>(
     `INSERT INTO tasks
        (title, description, assigned_staff_id, contact_id, business_id, engagement_id, due_date, priority,
@@ -78,7 +85,7 @@ export async function createTask(app: FastifyInstance, input: CreateTaskInput): 
       input.title, input.description ?? null, input.assignedStaffId ?? null, input.contactId ?? null,
       input.businessId ?? null, input.engagementId ?? null, input.dueDate ?? null, input.priority ?? 0,
       input.source ?? 'system', input.sourceType ?? null, input.sourceId ?? null,
-      input.clientVisible ?? false, input.sopLink ?? null, input.createdByStaffId ?? null,
+      input.clientVisible ?? false, sopLink, input.createdByStaffId ?? null,
       input.boardColumnId ?? null, input.tags ?? [], input.remindAt ?? null,
       input.recurFreq ?? null, input.recurInterval ?? 1, input.parentTaskId ?? null, status,
     ]

@@ -17,6 +17,7 @@ import { seedPriceBook } from './data/price_book.mjs';
 import { seedForms } from './data/forms.mjs';
 import { seedAutomations } from './data/automations.mjs';
 import { seedBundles } from './data/bundles.mjs';
+import { seedSops } from './data/sops.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(here, '../../../.env') });
@@ -37,6 +38,7 @@ try {
     ['forms', seedForms],
     ['automations', seedAutomations],
     ['bundles', seedBundles],
+    ['sops', seedSops],
   ]) {
     const result = await fn(client);
     console.log(`✓ ${name}: ${result}`);
