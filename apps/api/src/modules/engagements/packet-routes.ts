@@ -19,6 +19,7 @@ import {
 } from './packet.ts';
 import { consentsToPresent, recordConsentAnswer } from '../compliance/consent-presentation.ts';
 import { createAttestAddendum } from './attest-addendum.ts';
+import { buildPacketDocument } from './packet-document.ts';
 import { makeDocusealAdapter } from '../signatures/docuseal.ts';
 import { sendEnvelope } from '../signatures/service.ts';
 
@@ -95,6 +96,29 @@ export function registerPacketRoutes(app: FastifyInstance): void {
     );
     await markPacketSent(app, packetId);
     return { packetId, envelopeId: env.envelopeId, envelopeReused: env.reused, ...sent };
+  });
+
+  /**
+   * The SAOS-generated packet document: Master + only this packet's schedules,
+   * variables filled, §7216 consents excluded. Read-only — this is what will be
+   * sent for signature once the signing path is chosen, and it is reviewable now.
+   */
+  app.get<{ Params: { id: string } }>('/packets/:id/document', read, async (request) => {
+    const packetId = z.uuid().parse(request.params.id);
+    const language = z.object({ language: z.enum(['en', 'es']).optional() })
+      .parse(request.query ?? {}).language ?? 'en';
+    const doc = await buildPacketDocument(app, packetId, language);
+    return {
+      packetId: doc.packetId,
+      language: doc.language,
+      sections: doc.sections.map((s) => ({
+        kind: s.kind, code: s.code, title: s.title,
+        templateKey: s.templateKey, templateVersion: s.templateVersion,
+        characters: s.body.length,
+      })),
+      deliberatelyExcluded: doc.deliberatelyExcluded,
+      html: doc.html,
+    };
   });
 
   app.get<{ Params: { id: string } }>('/contacts/:id/packets', read, async (request) => {
