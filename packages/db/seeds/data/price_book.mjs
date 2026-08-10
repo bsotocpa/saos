@@ -363,8 +363,19 @@ export async function seedPriceBook(client) {
          unit = EXCLUDED.unit,
          is_pass_through = EXCLUDED.is_pass_through,
          display_on_quote = EXCLUDED.display_on_quote,
-         needs_confirmation = EXCLUDED.needs_confirmation,
-         confirmation_note = EXCLUDED.confirmation_note,
+         -- A CONFIRMATION IS A HUMAN DECISION AND THE SEED NEVER REVERSES IT.
+         -- Plain assignment here meant every deploy re-flagged any price Brian
+         -- had confirmed in Admin → Pricing: the ⚠ badge came back on a price he
+         -- had already ruled on, with nothing to say it had happened.
+         -- AND keeps both directions honest — the seed can still flag a NEW item,
+         -- and can still resolve one (true AND false = false), but a row that is
+         -- already confirmed (false) stays confirmed forever.
+         needs_confirmation = price_book_items.needs_confirmation AND EXCLUDED.needs_confirmation,
+         confirmation_note = CASE
+           WHEN price_book_items.needs_confirmation AND EXCLUDED.needs_confirmation
+             THEN EXCLUDED.confirmation_note
+           ELSE NULL
+         END,
          sort_order = EXCLUDED.sort_order,
          metadata = EXCLUDED.metadata`,
       [

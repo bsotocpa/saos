@@ -57,9 +57,11 @@ test('the ⚠ conflicts are flagged needs_confirmation for Brian', async () => {
     WHERE i.needs_confirmation
   `);
   const codes = rows.map((r) => r.item_code);
+  // ACCT_SEMI_ANNUAL is deliberately NOT in this list any more — see the test
+  // below. A resolved conflict moves from "flagged" to "confirmed at this price";
+  // it does not stop being asserted.
   for (const expected of [
     'IND_CPA_LETTER',
-    'ACCT_SEMI_ANNUAL',
     'SCOPE_FULLMGMT_SALES_TAX',
     'ENTITY_FORMATION_EIN',
     'ENTITY_ANNUAL_REPORT',
@@ -67,6 +69,56 @@ test('the ⚠ conflicts are flagged needs_confirmation for Brian', async () => {
     'DEPOSIT_BUSINESS_TAX',
   ]) {
     assert.ok(codes.includes(expected), `${expected} should be flagged needs_confirmation`);
+  }
+});
+
+test('a conflict Brian RESOLVED is seeded at the ruled price, unflagged', async () => {
+  // ACCT_SEMI_ANNUAL was the $900 / $800 / $1,000 conflict. Brian ruled $1,000
+  // all-in on 2026-08-09. The seed carries the ruling, so this asserts the
+  // decision rather than the pending state it replaced — and it would fail if a
+  // future seed edit quietly moved the price back to a sheet value.
+  const { rows } = await client.query(`
+    SELECT i.amount_cents, i.unit, i.needs_confirmation, i.confirmation_note
+    FROM price_book_items i
+    JOIN price_book_versions v ON v.id = i.version_id AND v.version_number = 1
+    WHERE i.item_code = 'ACCT_SEMI_ANNUAL'
+  `);
+  assert.equal(rows.length, 1, 'ACCT_SEMI_ANNUAL must be seeded');
+  assert.equal(rows[0].amount_cents, 100000, "Brian's ruling: $1,000 all-in");
+  assert.equal(rows[0].unit, 'per_6_months');
+  assert.equal(rows[0].needs_confirmation, false, 'a ruled price is not still pending');
+  assert.equal(rows[0].confirmation_note, null, 'and carries no leftover conflict note');
+});
+
+test('re-seeding can never un-confirm a price a human confirmed', async () => {
+  // The seed upserts v1 with DO UPDATE, which used to include
+  // `needs_confirmation = EXCLUDED.needs_confirmation`. That meant every deploy
+  // re-flagged any item Brian had confirmed in Admin → Pricing: his decision
+  // silently reverted, and the ⚠ badge reappeared on a price he had already
+  // ruled on. This test pins the fix.
+  await client.query('BEGIN');
+  try {
+    const v1 = await client.query(`SELECT id FROM price_book_versions WHERE version_number = 1`);
+    // Simulate the admin confirm endpoint on a still-flagged item.
+    const target = await client.query(
+      `UPDATE price_book_items SET needs_confirmation = false, confirmation_note = NULL
+       WHERE version_id = $1 AND item_code = 'IND_CPA_LETTER' RETURNING item_code`,
+      [v1.rows[0].id]
+    );
+    assert.equal(target.rows.length, 1);
+
+    const { seedPriceBook } = await import('../seeds/data/price_book.mjs');
+    await seedPriceBook(client);
+
+    const after = await client.query(
+      `SELECT needs_confirmation, confirmation_note FROM price_book_items
+       WHERE version_id = $1 AND item_code = 'IND_CPA_LETTER'`,
+      [v1.rows[0].id]
+    );
+    assert.equal(after.rows[0].needs_confirmation, false, 're-seeding must not re-flag a confirmed price');
+    assert.equal(after.rows[0].confirmation_note, null, 'nor restore the resolved conflict note');
+  } finally {
+    await client.query('ROLLBACK');
   }
 });
 
