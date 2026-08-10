@@ -187,38 +187,48 @@ it. Archiving also works — nothing depends on it.
 
 ---
 
-# Part B — the real invite (the day final legal text lands)
+# Part B — the real invite
 
-Everything below is a step Part A has already proven. Expect ~30 minutes.
+**B1 and B2 below are already done** — legal package v3 FINAL landed 2026-08-10.
+This section now starts at B3. Expect ~15 minutes, not 30.
 
-### B1. Paste the legal text (~15 min)
+### B1. ~~Paste the legal text~~ ✅ DONE 2026-08-10
 
-Admin → Templates. For each of the 7:
+Superseded by v3. There is no longer a list of seven templates to paste, because
+there are no longer five engagement letters:
 
-| Template | Then |
+| What v3 loaded | State |
 |---|---|
-| `consent_7216_use` | paste final text, **clear the placeholder flag** |
-| `consent_7216_disclose` | paste, clear flag |
-| `engagement_letter_tax` | paste, clear flag, **set the late-fee disclosure flag IF the text carries the block** |
-| `engagement_letter_bookkeeping` | paste, clear flag, same late-fee check |
-| `engagement_letter_advisory` | paste, clear flag |
-| `engagement_letter_coo` | paste, clear flag |
-| `engagement_letter_entity` | paste, clear flag |
+| `engagement_master` — Master Engagement Agreement | ✅ final, late-fee disclosure flag set |
+| Schedules A–E (`schedule_a` … `schedule_e`) | ✅ final, mapped to service lines |
+| `consent_7216_use`, `consent_7216_disclose` | ✅ final text replaced the placeholders |
+| The five old `engagement_letter_*` | retired with a recorded reason (kept for the record) |
 
-Only the first three are needed for a tax client #1. The other four can wait.
+The late-fee flag was set only after checking Master §3 (1.5%/month after 30
+days) against the `LATE_FEE_MONTHLY` price-book metadata. **The old warning still
+stands for any future edit**: never set that flag on a body that lacks the
+disclosure block — a false gate is worse than no gate.
 
-**Do not set the late-fee flag on a body that lacks the disclosure block** — that
-would be a false gate, and late fees are letter-gated for a reason.
+What is NOT done, and is not blocking: the Spanish translations. Every v3
+template is queued in Admin → Templates ("awaiting your approval"), and Spanish
+clients receive the controlling English text until you approve each one.
 
-### B2. Confirm the rehearsal watermark is gone (~1 min)
+### B2. ~~Confirm the rehearsal watermark is gone~~ ✅ DONE
 
-Open `/intake/soto_intake`. The REHEARSAL banner should be absent — it keys off the
-placeholder flag you just cleared. If it is still there, a placeholder flag was
-missed.
+`/intake/soto_intake` no longer shows the REHEARSAL banner — it keyed off the
+placeholder flag, and the flag is cleared. Worth one glance to confirm after the
+deploy; if the banner is there, a flag was missed.
 
-### B3. Upload the real engagement letter to Docuseal (~5 min)
+### B3. Upload the Master + Schedules to Docuseal (~5 min) ⛔ YOURS
 
-Replace the placeholder template with the final text. Same fields, same role name.
+This is the last real blocker. One template, not five: the Master Agreement plus
+the schedules the client's services require. The system tells you which schedules
+belong in the packet (`POST /contacts/:id/packet/preview`, shown in the client
+packet UI) — you do not have to work it out.
+
+The Master carries one variable, `{{schedules_attached}}`, which the system fills
+with the attached schedule list. That sentence is what defines the scope of the
+single signature, so leave the field in place.
 
 ### B4. Create the real client (~2 min)
 
@@ -238,12 +248,16 @@ and confirm it in Admin → Pricing first.*
 They accept, fill the intake, upload documents. `attachment_acks` is armed, so a
 texted document gets the warm reply automatically.
 
-### B7. Watch these four things
+### B7. Watch these five things
 
 1. `/` Executive → "Needs you today" should show the onboarding task.
 2. `/clients/<id>` → the two gates should both go green (§7216, engagement letter).
 3. `/queue` → the return appears for whoever you assigned.
 4. Their portal → `/messages`, `/documents`, `/notices` all populated correctly.
+5. **Their portal `/sign`** → after the Master signature, the §7216 USE consent
+   appears benefit-framed with Yes / No thank you. It must NOT appear before the
+   signature, and the Hilo DISCLOSE consent must NOT appear at all unless client
+   #1 has a Hilo relationship. Both are optional; neither blocks anything.
 
 ### B8. Arm the next automations — only after #1 succeeds
 
@@ -253,8 +267,9 @@ In this order, one at a time, per the launch-readiness arming order:
 2. `escalation_ladder` — about a week after `document_chase` behaves
 3. everything else per `tasks/launch-readiness.md`
 
-**Do not arm `late_fees` until B1 set a real disclosure flag.** It is structurally
-impossible before that, so nothing breaks — it just does nothing.
+`late_fees` is now *armable* — the Master carries the disclosure and the flag is
+set. That means arming it will actually assess fees, so arm it when you want fees
+assessed, not as housekeeping.
 
 ---
 
@@ -265,16 +280,27 @@ Worth naming so it does not feel like it is:
 - **Stripe live mode** — blocks charging a deposit, not onboarding.
 - **KBA vendor** — blocks the *remote* 8879 only. Wet signature works. Not needed
   until the first e-filed return.
-- **The other 4 engagement letters** — only if client #1 buys those service lines.
+- **Schedules B–E** — loaded and live, but only attached if client #1 buys those
+  service lines. A tax client #1 needs the Master + Schedule A + the §7216 pair.
+- **Spanish translations** — queued for your approval; English controls, so a
+  Spanish-speaking client #1 is served correctly today.
+- **A Schedule F for attest** — Schedules A–E do not cover CPA review/audit work.
+  Packet assembly refuses attest by name, so nothing can go out wrong; ask your
+  attorney when convenient.
 - **Trello import** — the importer is built and idempotent; it just has nothing to
   import until the JSONs land.
 - **10 of 11 automations** — deliberately off.
 
 ---
 
-## Open questions for Brian
+## Answered (2026-08-10)
 
-1. **Personal email for the test client?** (blocks A2)
-2. **Deposit path: Stripe test mode or $0 override?** (my recommendation: override
-   for the rehearsal, Stripe separately)
-3. **After the rehearsal: keep or archive the test client?** (recommendation: keep)
+1. **Test client email** → `brian3712@gmail.com`.
+2. **Deposit path** → **$0 override** using `deposits.override` (CEO-only), so a
+   Stripe failure can never be mistaken for a legal-text failure. Stripe live is a
+   separate later test.
+3. **After the rehearsal** → keep the test client. It is excluded from every
+   measured number and visible in every operational surface, which is exactly what
+   you want the next time the onboarding flow changes.
+4. **Docuseal first-boot** → yours (it means setting an admin password). In
+   progress.

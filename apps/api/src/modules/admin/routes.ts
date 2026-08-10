@@ -196,8 +196,10 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.get('/admin/templates', admin, async () => {
     const { rows } = await app.db.query(
       `SELECT key, name, channel, subject_en, subject_es, body_en, body_es,
-              is_placeholder, variables, version, updated_at
-       FROM templates ORDER BY is_placeholder DESC, key`
+              is_placeholder, variables, version, updated_at,
+              kind::text AS kind, schedule_code, is_active, retired_reason,
+              needs_es_review, es_approved_at
+       FROM templates ORDER BY is_active DESC, is_placeholder DESC, key`
     );
     return { templates: rows };
   });
@@ -226,6 +228,13 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       params.push(b.hasLateFeeDisclosure);
       sets.push(`has_late_fee_disclosure = $${params.length}`);
     }
+    // ENGLISH CONTROLS (legal package v3). Editing the Spanish copy sends it back
+    // to the approval queue and drops the prior approval — an approval belongs to
+    // the text that was read, not to the row.
+    const esEdited = b.bodyEs !== undefined || b.subjectEs !== undefined;
+    if (esEdited) {
+      sets.push(`needs_es_review = true`, `es_approved_at = NULL`, `es_approved_by_staff_id = NULL`);
+    }
     await app.db.query(`UPDATE templates SET ${sets.join(', ')} WHERE key = $1`, params);
 
     // The launch-gate moment: placeholder → live means final legal text landed.
@@ -234,9 +243,9 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
       action: cleared ? 'template.placeholder_cleared' : 'template.updated',
       objectType: 'template', objectId: key,
-      details: { fields: Object.keys(b) },
+      details: { fields: Object.keys(b), es_requeued: esEdited },
     });
-    return { status: 'ok', placeholderCleared: cleared };
+    return { status: 'ok', placeholderCleared: cleared, esRequeuedForApproval: esEdited };
   });
 
   // ── Settings (SLA windows, thresholds, automation knobs) ─────────────────

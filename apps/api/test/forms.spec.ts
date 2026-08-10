@@ -479,25 +479,28 @@ test('M28 renderer contract: every question has bilingual text, and the TCPA dis
 });
 
 test('the rehearsal banner keys off the placeholder flag, so it removes itself', async () => {
-  // While §7216 consent text is placeholder, a form that COLLECTS consent must say
-  // out loud that the consent is not legally effective.
-  const pending = await app.inject({ method: 'GET', url: '/public/forms/soto_intake' });
-  assert.equal(pending.json().consentTextPending, true, 'the seeded consents are placeholders');
-  assert.match(pending.json().rehearsalBannerEn, /NOT legally effective/);
-  assert.match(pending.json().rehearsalBannerEs, /NO tiene efecto legal/);
+  // Legal package v3 landed final §7216 text, so the banner is already gone in a
+  // fresh database — the state Brian was building toward. Assert that first.
+  const live = await app.inject({ method: 'GET', url: '/public/forms/soto_intake' });
+  assert.equal(live.json().consentTextPending, false, 'v3 consent text is final');
+  assert.equal(live.json().rehearsalBannerEn, null, 'no watermark on a real intake');
+  assert.equal(live.json().rehearsalBannerEs, null);
 
-  // Clearing the flags — what Brian does the day final text lands — removes the
-  // banner with no separate switch to remember.
-  await app.db.query(
-    `UPDATE templates SET is_placeholder = false WHERE key IN ('consent_7216_use', 'consent_7216_disclose')`
-  );
-  const cleared = await app.inject({ method: 'GET', url: '/public/forms/soto_intake' });
-  assert.equal(cleared.json().consentTextPending, false);
-  assert.equal(cleared.json().rehearsalBannerEn, null, 'gone by itself');
-  assert.equal(cleared.json().rehearsalBannerEs, null);
-
-  // Restore, so the rest of the suite sees the real production state.
+  // Then prove the mechanism still works, because the flag is what protects a
+  // client from signing text that is back under review: flag the consents and the
+  // banner returns with no separate switch to remember.
   await app.db.query(
     `UPDATE templates SET is_placeholder = true WHERE key IN ('consent_7216_use', 'consent_7216_disclose')`
   );
+  const pending = await app.inject({ method: 'GET', url: '/public/forms/soto_intake' });
+  assert.equal(pending.json().consentTextPending, true);
+  assert.match(pending.json().rehearsalBannerEn, /NOT legally effective/);
+  assert.match(pending.json().rehearsalBannerEs, /NO tiene efecto legal/);
+
+  // Restore, so the rest of the suite sees the real production state.
+  await app.db.query(
+    `UPDATE templates SET is_placeholder = false WHERE key IN ('consent_7216_use', 'consent_7216_disclose')`
+  );
+  const restored = await app.inject({ method: 'GET', url: '/public/forms/soto_intake' });
+  assert.equal(restored.json().rehearsalBannerEn, null, 'gone by itself');
 });

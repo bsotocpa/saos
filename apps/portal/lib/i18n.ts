@@ -396,6 +396,32 @@ const dict = {
     'El enlace puede estar vencido. Responda a cualquiera de nuestros correos y le enviamos uno vigente.',
   ],
 
+  // Service Schedules (legal package v3). A client signs the Master once; a
+  // service added later needs only its own schedule accepted here.
+  schedules_title: ['One more thing to agree to', 'Un punto más por aceptar'],
+  schedules_intro: [
+    'You have already signed your Master Engagement Agreement, so there is nothing to re-sign. A service we added since then has its own terms — read them and accept below.',
+    'Ya firmó su Acuerdo Maestro de Compromiso, así que no hay nada que volver a firmar. Un servicio que agregamos después tiene sus propios términos — léalos y acéptelos abajo.',
+  ],
+  schedules_accept: ['I have read this and I agree', 'Lo he leído y estoy de acuerdo'],
+  schedules_accepted: ['Accepted', 'Aceptado'],
+  schedules_accepted_on: ['Accepted', 'Aceptado'],
+
+  // §7216 consents — optional, never a condition of service.
+  consents_title: ['Two optional permissions', 'Dos permisos opcionales'],
+  consent_optional: [
+    'Optional. Saying no changes nothing about your service.',
+    'Opcional. Decir no no cambia nada de su servicio.',
+  ],
+  consent_yes: ['Yes, you have my permission', 'Sí, tiene mi permiso'],
+  consent_no: ['No, thank you', 'No, gracias'],
+  consent_recorded_yes: ['Permission given. You can withdraw it any time.', 'Permiso otorgado. Puede retirarlo cuando quiera.'],
+  consent_recorded_no: ['Noted — we will not ask again.', 'Anotado — no volveremos a preguntar.'],
+  consent_en_only: [
+    '',
+    'Este texto legal se muestra en inglés porque la versión en inglés es la que rige. La traducción está en revisión y se la enviaremos cuando esté aprobada.',
+  ],
+
   loading: ['Loading…', 'Cargando…'],
   error_generic: ['Something went wrong. Please try again.', 'Algo salió mal. Intente de nuevo.'],
 } satisfies Record<string, [string, string]>;

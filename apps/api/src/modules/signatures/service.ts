@@ -25,11 +25,20 @@ export type EnvelopeType =
   | 'f8821' | 'f2848'   // v4.6 resolution lane: transcripts vs representation
   | 'other';
 
-/** DB template key per envelope type (engagement letters are per service line). */
-export function templateKeyFor(type: EnvelopeType, serviceLine?: string | null): string | null {
+/**
+ * DB template key per envelope type.
+ *
+ * v3 (Master + Schedules) collapsed the five per-service-line engagement letters
+ * into ONE Master Engagement Agreement. The service line no longer selects the
+ * letter — it selects which SCHEDULES ride along in the packet (see
+ * modules/engagements/packet.ts). So every engagement-letter envelope points at
+ * the Master, which is also what carries the late-fee disclosure the fee job
+ * reads. `serviceLine` is kept in the signature for callers that still pass it.
+ */
+export function templateKeyFor(type: EnvelopeType, _serviceLine?: string | null): string | null {
   switch (type) {
     case 'engagement_letter':
-      return `engagement_letter_${serviceLine ?? 'tax'}`;
+      return 'engagement_master';
     case 'consent_7216':
       return 'consent_7216_use';
     default:
@@ -382,6 +391,18 @@ export async function completeEnvelopeBySubmission(
       );
     }
     await app.db.query(`UPDATE contacts SET engagement_letter_status = 'signed' WHERE id = $1`, [env.contact_id]);
+
+    // v3: if this envelope carried a Master packet, ONE signature just accepted
+    // the Master AND every schedule attached to it. Record each acceptance.
+    const packet = await app.db.query<{ id: string }>(
+      `SELECT id FROM engagement_packets WHERE envelope_id = $1 AND status <> 'signed'`,
+      [env.id]
+    );
+    if (packet.rows[0]) {
+      const { recordMasterSignature } = await import('../engagements/packet.ts');
+      await recordMasterSignature(app, packet.rows[0].id);
+    }
+
     // v4.3 flow 4 GATE: late fees are only ever applied to clients whose
     // SIGNED letter carries the late-fee disclosure. Stamp it here — the fee
     // job reads this stamp and nothing else (CLAUDE.md hard rule).

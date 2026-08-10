@@ -77,6 +77,11 @@ test('PLACEHOLDER BLOCK: envelope with a flagged template is unsendable; finaliz
   const contact = await makeClient('Sigletter', 'sig-letter@example.test');
   const te = await makeTaxEngagement(contact);
 
+  // v3 loaded final text, so the Master is not flagged in a fresh database. Flag
+  // it deliberately — the gate must hold for ANY flagged template, whatever the
+  // current launch state happens to be.
+  await app.db.query(`UPDATE templates SET is_placeholder = true WHERE key = 'engagement_master'`);
+
   const envelope = await app.inject({
     method: 'POST', url: '/signature-envelopes', headers: auth(ana),
     payload: { contactId: contact, type: 'engagement_letter', taxEngagementId: te, serviceLine: 'tax' },
@@ -92,7 +97,7 @@ test('PLACEHOLDER BLOCK: envelope with a flagged template is unsendable; finaliz
   assert.equal(blocked.json().error, 'template_placeholder_blocked');
 
   // Brian finalizes the legal text in admin (simulated) → the gate opens.
-  await app.db.query(`UPDATE templates SET is_placeholder = false WHERE key = 'engagement_letter_tax'`);
+  await app.db.query(`UPDATE templates SET is_placeholder = false WHERE key = 'engagement_master'`);
   const sent = await app.inject({
     method: 'POST', url: `/signature-envelopes/${envId}/send`, headers: auth(ana),
   });

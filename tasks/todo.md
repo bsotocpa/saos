@@ -758,16 +758,21 @@ only Brian can make. Regenerate after any gate clears.)
       consent settings beside the estimate toggle ✅ 2026-08-09
       (migration 0030; comms/broadcast.ts + review-requests.ts;
       /announcements internal, portal /unsubscribe/[id]/[token])
-- [ ] **NEXT UP** — SOP knowledge base: versioned searchable wiki per role/process;
+- [x] SOP knowledge base: versioned searchable wiki per role/process;
       task types carry "how to do this" links (CLAUDE.md: task-generating
       features without SOP hooks are incomplete); Whisper-seeded drafts
-      w/ approval before publish
-- [ ] Hilo events (Eventbrite replacement): bilingual pages, capacity
+      w/ approval before publish ✅ 2026-08-09
+      (sops/service.ts + routes.ts + task-types.ts; /sops internal page;
+      scripts/check-task-sop-hooks.mjs wired into root `npm test` so a new
+      task type without an SOP hook fails the BUILD, not a review)
+- [x] Hilo events (Eventbrite replacement): bilingual pages, capacity
       caps, confirm/remind email+SMS, check-in list, post-event follow-up
-      → Hilo CRM + §7216-gated referral pipeline
-- [ ] Prove it: quote→engagement zero-re-entry e2e; broadcast suppression
+      → Hilo CRM + §7216-gated referral pipeline ✅ 2026-08-09
+      (events/service.ts + routes.ts; /events internal, portal /events/[slug];
+      capacity held by a DB constraint, not a counter)
+- [x] Prove it: quote→engagement zero-re-entry e2e; broadcast suppression
       + approval-gate tests; SOP link on every task type; event
-      registration → check-in → follow-up e2e
+      registration → check-in → follow-up e2e ✅ 2026-08-09
 
 ## M28 — Wireframe conformance pass ✅ 2026-08-09 (see tasks/m28-wireframe-conformance.md)
 - [x] SAOS_Wireframes.html applied as the UI reference DURING M25–M27
@@ -783,7 +788,100 @@ only Brian can make. Regenerate after any gate clears.)
       named: session recaps (a missing MODULE) and the public intake renderer
       (whose §7216 consent template is still PLACEHOLDER anyway).
 
+## M29 — Legal package v3 FINAL: Master + Schedules ✅ 2026-08-10 (awaiting deploy approval)
+- [x] Restructure: five per-service-line engagement letters → ONE Master
+      Engagement Agreement + Service Schedules A–E, packet assembling
+      dynamically from the client's service selection. One signature covers
+      every schedule attached at signing; services added later are accepted
+      per-schedule in the portal, no re-execution (Master §1)
+- [x] All text loaded verbatim from SOTO_Legal_Text_Package_FINAL_v3.docx;
+      every PLACEHOLDER flag on an ACTIVE template cleared (0 remaining);
+      the five old letters RETIRED with a recorded reason, not deleted
+- [x] `has_late_fee_disclosure` moved to the Master and set true — after
+      verifying Master §3 (1.5%/month after 30 days) against the
+      `LATE_FEE_MONTHLY` price-book metadata rather than trusting the heading
+- [x] §7216 presentation split: USE to every client at onboarding AFTER the
+      Master signature, benefit-framed; DISCLOSE only to a Hilo bridge or at
+      an actual referral moment; both optional, neither ever conditioning
+      service; nothing presentable before the signature exists
+- [x] English controls: every v3 template ships `needs_es_review = true` with
+      NO Spanish body; the render path falls back to English and logs it;
+      admin ES queue + approval endpoint; editing an approved translation
+      re-queues it and clears the stale approval
+- [x] Prove it: 15 new tests in `apps/api/test/master-schedules.spec.ts`
+      (one-signature-covers-attached, no-re-execution incl. the DB index,
+      portal per-schedule acceptance, schedule-before-Master refusal, A/B
+      split from RETURN TYPE, attest refusal, ES fallback ×3, consent
+      presentation ×4). Root `npm test`: **285/285 green**
+- [ ] **Deploy** migration 0038 + the legal v3 seed — awaiting Brian's approval
+      (production still reads 7 placeholders / 37 migrations until it lands)
+
 ## Review
+
+### M29 legal package v3 — Master + Schedules (completed 2026-08-10)
+- **Migration 0038**: `template_kind` + `acceptance_via` enums; templates gains
+  `kind`, `is_active`, `retired_at/reason`, `schedule_code`, `needs_es_review`,
+  `es_approved_by_staff_id/at`; new `service_schedules` (service_line → A–E, as
+  DATA so adding a line to a schedule is an admin edit), `engagement_packets`,
+  `schedule_acceptances`.
+- **Master §1 is enforced, not described.** `idx_one_signed_master_per_contact`
+  is a partial unique index, so a second signed Master is impossible even if a
+  future code path forgets to ask. Every acceptance row records HOW it arrived
+  (`master_signature` vs `portal_acceptance`) because "did this client agree to
+  bookkeeping terms" must be answerable per service, not inferred.
+- **The A/B split derives from the RETURN TYPE**, not the service line: a
+  business-only client never signs the individual schedule, an owner with both
+  gets both, and a tax client with no return type yet defaults to A.
+- **Attest is refused by name.** Schedules A–E do not cover CPA review/audit
+  work, so packet assembly throws `service_line_unscheduled` with the reason
+  instead of filing attest under Advisory terms. That is a real gap for Brian's
+  attorney (a Schedule F), and the build says so rather than papering it.
+- **`templateKeyFor('engagement_letter')` now returns `engagement_master`.** It
+  had to: the five per-line letters are retired, so the old return value pointed
+  every engagement-letter envelope at a retired placeholder. This is also what
+  makes the late-fee stamp fire, since the disclosure lives on the Master.
+- **Two real bugs found by writing the tests.** (1) `service_line[]` came back
+  from node-postgres as the raw string `'{tax}'` — no parser exists for an array
+  of a custom enum — so every `.filter()` in packet assembly threw; fixed with
+  `::text[]`. (2) The Master carries `{{schedules_attached}}`, and nothing filled
+  it; `renderMasterForPacket` now fills it from the packet's own schedule_codes,
+  so the sentence defining what the signature covered can never come from a
+  caller's guess.
+- **Three stale test fixtures corrected, not deleted.** admin/signatures/forms
+  specs asserted that real legal templates were placeholders. They now flag a
+  template deliberately and assert the gate both directions — the gate is about
+  the flag, not about the launch state, and these tests will keep working the
+  next time text goes back under review.
+- **`packages/db` seed spec inverted** (`engagement_letter_tax` is placeholder →
+  no ACTIVE template is a placeholder) plus a new test pinning the late-fee flag
+  to exactly one active template. Disclosed: that suite is NOT in root
+  `npm test` and reports 9/10 — the failure is `ACCT_SEMI_ANNUAL should be
+  flagged needs_confirmation`, which fails *because Brian confirmed that price*.
+  It asserts pristine seed state against the live dev DB; it needs a fresh-DB
+  harness like the API suite, which I have not built rather than quietly delete
+  the assertion.
+- **A decline never revokes a signature.** `recordConsentAnswer` writes
+  `consent_7216_status = 'declined'` only `WHERE consent_7216_status <> 'signed'`
+  — declining the Hilo disclosure must not wipe a USE consent the client gave.
+- **The portal can only answer what it was offered.** `POST /portal/consents`
+  re-runs the presentation rules and refuses `consent_not_offered`, so a crafted
+  request cannot record a consent the rules withheld. Verified live against the
+  dev API: 409 with nothing written.
+- **Verified end to end on a local throwaway fixture** (created, exercised,
+  deleted; dev test-client count back to 0): Schedule C accepted by
+  `master_signature` with its packet id, Schedule D accepted later by
+  `portal_acceptance` with no packet, USE consent `signed` /
+  `method=portal_checkbox` / `policy_version=v3-t2`, and the crafted DISCLOSE
+  refused. Audit trail carries both actions.
+- **Screenshot not captured**: the Browser pane is not displayed in this
+  session, so screenshots and clicks time out. The page was verified by
+  accessibility tree + rendered text + live API calls instead. Worth a 390px
+  capture next session when the pane is open.
+- **One flake seen, named**: the meetings e2e failed once in a full parallel run
+  (49s, vs 3.4s in isolation) and passed alone and on the immediate re-run —
+  contention between parallel spec processes each building their own database,
+  not a v3 regression. If it recurs, the fix is a longer timeout on that spec,
+  not a retry loop.
 
 ### M27 quote builder + leads pipeline (completed 2026-08-09)
 - **Migration 0027**: `quotes` (pins `price_book_version_id`, stores ONLY the

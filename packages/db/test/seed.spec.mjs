@@ -156,17 +156,58 @@ test('scope creep requires a reason (CHECK constraint)', async () => {
   }
 });
 
-test('placeholder templates are seeded and flagged (launch gate data)', async () => {
-  const { rows } = await client.query(`
-    SELECT key, is_placeholder, body_es IS NOT NULL AS has_spanish
+test('legal package v3: final text seeded, nothing active still a placeholder', async () => {
+  // This test used to assert the OPPOSITE — that the engagement letter and both
+  // §7216 consents were flagged PLACEHOLDER awaiting Brian's attorney. v3 FINAL
+  // landed, so the launch-gate assertion inverts: the gate is now that no ACTIVE
+  // template is a placeholder, and the retired letters keep their flag and their
+  // reason for the record.
+  const active = await client.query(
+    `SELECT key FROM templates WHERE is_placeholder AND is_active ORDER BY key`
+  );
+  assert.deepEqual(active.rows.map((r) => r.key), [], 'no active template may be a placeholder');
+
+  const legal = await client.query(`
+    SELECT key, kind::text AS kind, is_active, needs_es_review, body_es IS NOT NULL AS has_spanish
     FROM templates
-    WHERE key IN ('engagement_letter_tax', 'consent_7216_use', 'consent_7216_disclose')
+    WHERE key IN ('engagement_master', 'consent_7216_use', 'consent_7216_disclose')
+    ORDER BY key
   `);
-  assert.equal(rows.length, 3, 'engagement letter + both §7216 consents must be seeded');
-  for (const row of rows) {
-    assert.equal(row.is_placeholder, true, `${row.key} must be flagged PLACEHOLDER until Brian's final text`);
-    assert.equal(row.has_spanish, true, `${row.key} must ship EN and ES`);
+  assert.equal(legal.rows.length, 3, 'the Master + both §7216 consents must be seeded');
+  for (const row of legal.rows) {
+    assert.equal(row.is_active, true, `${row.key} must be active`);
+    // English controls until Brian approves a translation, so ES is deliberately
+    // absent-and-queued rather than machine-translated.
+    assert.equal(row.needs_es_review, true, `${row.key} must be queued for Spanish approval`);
+    assert.equal(row.has_spanish, false, `${row.key} must not ship unapproved Spanish`);
   }
+  assert.equal(legal.rows.find((r) => r.key === 'engagement_master').kind, 'master');
+
+  const schedules = await client.query(
+    `SELECT s.schedule_code, t.is_active FROM service_schedules s
+     JOIN templates t ON t.key = s.template_key ORDER BY s.schedule_code`
+  );
+  assert.deepEqual(schedules.rows.map((r) => r.schedule_code), ['A', 'B', 'C', 'D', 'E']);
+  for (const row of schedules.rows) assert.equal(row.is_active, true);
+
+  const retired = await client.query(
+    `SELECT key, retired_reason FROM templates
+     WHERE key LIKE 'engagement_letter_%' AND NOT is_active`
+  );
+  assert.equal(retired.rows.length, 5, 'the five old letters are retired, not deleted');
+  for (const row of retired.rows) {
+    assert.ok(row.retired_reason, `${row.key} must record WHY it was retired`);
+  }
+});
+
+test('the late-fee disclosure lives on the Master, and nowhere else', async () => {
+  const { rows } = await client.query(
+    `SELECT key FROM templates WHERE has_late_fee_disclosure AND is_active`
+  );
+  assert.deepEqual(
+    rows.map((r) => r.key), ['engagement_master'],
+    'the fee job reads this stamp — exactly one active template may carry it'
+  );
 });
 
 test('roles for the whole team (incl. future roles) are seeded', async () => {

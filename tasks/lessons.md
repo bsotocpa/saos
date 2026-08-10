@@ -237,3 +237,49 @@ previous migration), but it cost a failed deploy.
 `npm run build --workspace=@saos/internal` and `--workspace=@saos/portal` before
 `scripts/deploy.sh`. Typecheck + tests + 390px screenshots do not cover the
 production build; it is its own class of failure.
+
+## Enum arrays come back from node-postgres as raw strings
+**Pattern**: `service_lines service_line[]` selected plainly arrives as the string
+`'{tax}'`, not an array — node-postgres has no parser for an array of a *custom*
+enum type. Every `.filter()` on it threw, and packet assembly was broken for every
+client. TypeScript said `ServiceLine[]` and believed it, because the row type is a
+claim about the query, not a check of it.
+**Rule**: cast enum arrays to `::text[]` in the SELECT (pg parses text[] natively).
+More generally: a generic on `db.query<T>` is an assertion, not a validation — for
+any column type beyond scalars, prove the shape with a test that touches the value,
+not just the query.
+
+## A template variable nobody fills is a document with `{{...}}` in it
+**Pattern**: the v3 Master body ends with "Service Schedules attached at signing:
+{{schedules_attached}}". Nothing filled it, so the first render threw — and if the
+variable had had a default instead, a client would have signed a document with a
+mustache in it.
+**Rule**: when a template declares a variable, something must own filling it, and
+that owner should derive it from data rather than accept it from a caller. Assert
+`doesNotMatch(/\{\{/)` on anything a client will read or sign.
+
+## When the world changes, invert the test — don't delete the assertion
+**Pattern**: legal text landing broke three specs that used real legal templates as
+placeholder fixtures ("the seeded consents are placeholders"). The tempting fix is
+deleting the assertion; the honest fix is that those tests were about the GATE, not
+about the launch state.
+**Rule**: rewrite the test to create the condition it needs (flag a template on
+purpose, assert both directions) so it keeps working the next time the state moves.
+And when a suite asserts pristine seed state against a live dev database, say so
+out loud — `packages/db`'s suite fails because Brian confirmed a price, which is a
+test problem, not a data problem.
+
+## A test suite outside `npm test` is a suite that does not exist
+**Pattern**: `packages/db` names its script `test:db`, so `npm run test --workspaces`
+skips it. It had been asserting a pre-v3 world for some time and nothing noticed.
+**Rule**: the reportable number comes from root `npm test`; anything outside it must
+be named as outside it in the report, every time, or it silently rots.
+
+## Don't build a production bundle in a tree a dev server is about to use
+**Pattern**: running `next build` and then `next dev` on the same `.next` left the
+portal serving 500s (`build-manifest.json` unreadable), and Dropbox's file locks
+meant `rm -rf .next` could not fully clear it either.
+**Rule**: builds are for verification before deploy; clear `.next` (or accept the
+locked `cache/` subdir and restart) before starting dev in the same workspace. If
+the dev server returns Internal Server Error immediately after a build, suspect the
+tree, not the code.

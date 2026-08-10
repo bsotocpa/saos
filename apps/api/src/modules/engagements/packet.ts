@@ -1,0 +1,420 @@
+// Master + Schedules packet assembly (legal package v3 FINAL).
+//
+// Master §1 is the specification:
+//
+//   "Your signature below constitutes acceptance of this Agreement and every
+//    Service Schedule attached at signing. Services added later are engaged by
+//    your electronic acceptance of the applicable Schedule through the client
+//    portal, without re-execution of this Agreement."
+//
+// So there are exactly two ways a schedule becomes binding, and both are recorded
+// with WHICH way it was:
+//
+//   1. `master_signature` — attached at signing, covered by the one signature.
+//   2. `portal_acceptance` — added later, accepted per-schedule in the portal.
+//
+// Two refusals that matter more than the happy path:
+//
+//  · ATTEST HAS NO v3 SCHEDULE. Schedules A–E do not cover CPA review/audit work.
+//    Assembly REFUSES rather than attaching attest work to Advisory terms it does
+//    not belong under. That is a gap for the attorney, not something to paper over.
+//  · A SCHEDULE CANNOT BE ACCEPTED BEFORE THE MASTER, because each Schedule
+//    incorporates it. Portal acceptance without a signed Master is refused.
+
+import type { FastifyInstance } from 'fastify';
+import { writeAudit } from '../../audit.ts';
+import { AppError, type AuthedStaff } from '../../types.ts';
+
+export type ServiceLine =
+  | 'tax' | 'bookkeeping' | 'payroll' | 'sales_tax' | 'advisory'
+  | 'coo' | 'entity' | 'attest' | 'specialized_cpa' | 'nonprofit_cfo';
+
+/**
+ * Return types that make a tax engagement a BUSINESS return (Schedule B) rather
+ * than an individual one (Schedule A). This is a legal-scope determination from
+ * the schedule text, not an admin preference, so it lives in code.
+ */
+export const BUSINESS_RETURN_TYPES = new Set([
+  '1065', '1120s', '1120', '990', '990ez', '1120c', '1120f', '1120h', '1120pol',
+  '1041', '1120f_foreign', 'ag990il',
+]);
+
+/** Service lines with no v3 schedule. Assembly refuses these by name. */
+export const UNSCHEDULED_SERVICE_LINES: Record<string, string> = {
+  attest: 'CPA review/audit work is not covered by Schedules A–E in legal package v3. It needs its own attorney-drafted schedule before an attest engagement can be papered.',
+};
+
+export interface ResolvedSchedules {
+  codes: string[];
+  titles: Record<string, string>;
+  /** Service lines that drove each schedule, for the audit trail and the UI. */
+  reasons: Record<string, string[]>;
+}
+
+/**
+ * Which schedules a client's services require. Reads the service_lines mapping
+ * from `service_schedules` (admin-editable data) and adds the A/B tax split from
+ * the return types actually on file.
+ */
+export async function resolveSchedules(
+  app: FastifyInstance,
+  contactId: string,
+  opts: { extraServiceLines?: ServiceLine[] } = {}
+): Promise<ResolvedSchedules> {
+  const engagements = await app.db.query<{ service_line: ServiceLine }>(
+    `SELECT DISTINCT service_line::text AS service_line FROM engagements
+     WHERE contact_id = $1 AND status IN ('draft', 'active')`,
+    [contactId]
+  );
+  const lines = new Set<ServiceLine>([
+    ...engagements.rows.map((r) => r.service_line),
+    ...(opts.extraServiceLines ?? []),
+  ]);
+
+  const unscheduled = [...lines].filter((l) => UNSCHEDULED_SERVICE_LINES[l]);
+  if (unscheduled.length > 0) {
+    throw new AppError(
+      409,
+      'service_line_unscheduled',
+      unscheduled.map((l) => UNSCHEDULED_SERVICE_LINES[l]).join(' '),
+    );
+  }
+
+  // ::text[] is load-bearing. node-postgres has no parser for an array of a
+  // custom enum type, so `service_line[]` arrives as the raw string '{tax}' and
+  // every .filter() on it throws. text[] it parses natively.
+  const mapping = await app.db.query<{ schedule_code: string; title: string; service_lines: ServiceLine[] }>(
+    `SELECT schedule_code, title, service_lines::text[] AS service_lines
+     FROM service_schedules ORDER BY sort_order`
+  );
+
+  const codes = new Set<string>();
+  const titles: Record<string, string> = {};
+  const reasons: Record<string, string[]> = {};
+  for (const m of mapping.rows) {
+    titles[m.schedule_code] = m.title;
+    const hit = m.service_lines.filter((l) => lines.has(l));
+    if (hit.length > 0) {
+      codes.add(m.schedule_code);
+      reasons[m.schedule_code] = hit;
+    }
+  }
+
+  // The A/B split: 'tax' maps to A by default; a business return type adds B.
+  if (lines.has('tax')) {
+    const returns = await app.db.query<{ return_type: string }>(
+      `SELECT DISTINCT te.return_type::text AS return_type
+       FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
+       WHERE e.contact_id = $1`,
+      [contactId]
+    );
+    const types = returns.rows.map((r) => r.return_type);
+    const business = types.filter((t) => BUSINESS_RETURN_TYPES.has(t));
+    const individual = types.filter((t) => !BUSINESS_RETURN_TYPES.has(t));
+    if (business.length > 0) {
+      codes.add('B');
+      reasons.B = [...(reasons.B ?? []), ...business];
+    }
+    // No returns on file yet (quote accepted, engagement created, return not
+    // created) defaults to A — the individual case is by far the common one, and
+    // adding B later is a portal acceptance rather than a re-signature.
+    if (individual.length > 0 || types.length === 0) {
+      codes.add('A');
+      reasons.A = [...(reasons.A ?? []), ...(individual.length > 0 ? individual : ['tax (return type not yet set)'])];
+    } else {
+      // Business-only: A is not needed.
+      codes.delete('A');
+      delete reasons.A;
+    }
+  }
+
+  return { codes: [...codes].sort(), titles, reasons };
+}
+
+export interface PacketPreview extends ResolvedSchedules {
+  masterKey: string;
+  masterVersion: number;
+  alreadySigned: boolean;
+  /** Schedules already accepted, so a second packet only carries what is new. */
+  alreadyAccepted: string[];
+  newSchedules: string[];
+}
+
+export async function previewPacket(
+  app: FastifyInstance,
+  contactId: string,
+  opts: { extraServiceLines?: ServiceLine[] } = {}
+): Promise<PacketPreview> {
+  const resolved = await resolveSchedules(app, contactId, opts);
+  const master = await app.db.query<{ key: string; version: number }>(
+    `SELECT key, version FROM templates WHERE kind = 'master' AND is_active AND NOT is_placeholder`
+  );
+  if (!master.rows[0]) {
+    throw new AppError(
+      409,
+      'master_not_final',
+      'No final Master Engagement Agreement is loaded. Legal text must be in place before anything can be papered.'
+    );
+  }
+  const signed = await app.db.query(
+    `SELECT 1 FROM engagement_packets WHERE contact_id = $1 AND status = 'signed'`,
+    [contactId]
+  );
+  const accepted = await app.db.query<{ schedule_code: string }>(
+    `SELECT schedule_code FROM schedule_acceptances WHERE contact_id = $1`,
+    [contactId]
+  );
+  const already = accepted.rows.map((r) => r.schedule_code);
+  return {
+    ...resolved,
+    masterKey: master.rows[0].key,
+    masterVersion: master.rows[0].version,
+    alreadySigned: signed.rows.length > 0,
+    alreadyAccepted: already,
+    newSchedules: resolved.codes.filter((c) => !already.includes(c)),
+  };
+}
+
+/**
+ * Build the packet for a FIRST signature: Master + every schedule the client's
+ * services require, as one envelope. Refused if a Master is already signed —
+ * later services go through `acceptScheduleInPortal`, per Master §1.
+ */
+export async function createPacket(
+  app: FastifyInstance,
+  contactId: string,
+  actor: AuthedStaff,
+  opts: { extraServiceLines?: ServiceLine[] } = {}
+): Promise<{ packetId: string; scheduleCodes: string[]; masterKey: string }> {
+  const preview = await previewPacket(app, contactId, opts);
+  if (preview.alreadySigned) {
+    throw new AppError(
+      409,
+      'master_already_signed',
+      'This client has already signed the Master Engagement Agreement. Added services are accepted per-schedule in the portal — the Master is never re-executed.'
+    );
+  }
+  if (preview.codes.length === 0) {
+    throw new AppError(
+      400,
+      'no_services',
+      'No services are configured for this client, so there is no schedule to attach. Create the engagement first.'
+    );
+  }
+
+  const { rows } = await app.db.query<{ id: string }>(
+    `INSERT INTO engagement_packets
+       (contact_id, master_template_key, master_version, schedule_codes, created_by_staff_id)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [contactId, preview.masterKey, preview.masterVersion, preview.codes, actor.id]
+  );
+  await writeAudit(app.db, {
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    action: 'packet.created', objectType: 'engagement_packet', objectId: rows[0]!.id,
+    contactId,
+    details: { schedules: preview.codes, reasons: preview.reasons, master_version: preview.masterVersion },
+  });
+  return { packetId: rows[0]!.id, scheduleCodes: preview.codes, masterKey: preview.masterKey };
+}
+
+/**
+ * The envelope for a packet. Created ONCE and reused on retry — a send that fails
+ * at the Docuseal step must not leave a second envelope behind next time (the
+ * quote-send lesson). The packet is only marked 'sent' after the send succeeds.
+ */
+export async function envelopeForPacket(
+  app: FastifyInstance,
+  packetId: string,
+  actor: AuthedStaff,
+  opts: { docusealTemplateId?: string | undefined } = {}
+): Promise<{ envelopeId: string; contactId: string; reused: boolean }> {
+  const { rows } = await app.db.query<{
+    contact_id: string; envelope_id: string | null; status: string; master_template_key: string;
+  }>(
+    `SELECT contact_id, envelope_id, status, master_template_key
+     FROM engagement_packets WHERE id = $1`,
+    [packetId]
+  );
+  const p = rows[0];
+  if (!p) throw new AppError(404, 'not_found', 'Packet not found.');
+  if (p.status === 'signed') throw new AppError(409, 'already_signed', 'This packet is already signed.');
+  if (p.status === 'void') throw new AppError(409, 'packet_void', 'This packet was voided. Create a new one.');
+  if (p.envelope_id) return { envelopeId: p.envelope_id, contactId: p.contact_id, reused: true };
+
+  const { createEnvelope } = await import('../signatures/service.ts');
+  const env = await createEnvelope(app, { type: 'staff', id: actor.id, label: actor.email }, {
+    contactId: p.contact_id,
+    type: 'engagement_letter',
+    templateKey: p.master_template_key,
+    ...(opts.docusealTemplateId === undefined ? {} : { docusealTemplateId: opts.docusealTemplateId }),
+  });
+  await app.db.query(`UPDATE engagement_packets SET envelope_id = $2 WHERE id = $1`, [packetId, env.id]);
+  return { envelopeId: env.id, contactId: p.contact_id, reused: false };
+}
+
+/** Mark a packet sent. Called only after the envelope actually reached Docuseal. */
+export async function markPacketSent(app: FastifyInstance, packetId: string): Promise<void> {
+  await app.db.query(
+    `UPDATE engagement_packets SET status = 'sent', sent_at = COALESCE(sent_at, now())
+     WHERE id = $1 AND status = 'draft'`,
+    [packetId]
+  );
+}
+
+/**
+ * Record the Master signature. ONE signature accepts the Master and every schedule
+ * in the packet — so this writes one acceptance row per schedule, each marked
+ * `master_signature` and pointing at the packet that carried it.
+ */
+export async function recordMasterSignature(
+  app: FastifyInstance,
+  packetId: string,
+  meta: { ip?: string | null; userAgent?: string | null } = {}
+): Promise<{ contactId: string; accepted: string[] }> {
+  const { rows } = await app.db.query<{
+    contact_id: string; schedule_codes: string[]; status: string; master_version: number;
+  }>(
+    `SELECT contact_id, schedule_codes, status, master_version FROM engagement_packets WHERE id = $1`,
+    [packetId]
+  );
+  const p = rows[0];
+  if (!p) throw new AppError(404, 'not_found', 'Packet not found.');
+  if (p.status === 'signed') throw new AppError(409, 'already_signed', 'This packet is already signed.');
+
+  await app.db.query(
+    `UPDATE engagement_packets SET status = 'signed', signed_at = now() WHERE id = $1`,
+    [packetId]
+  );
+
+  for (const code of p.schedule_codes) {
+    const tpl = await app.db.query<{ version: number }>(
+      `SELECT t.version FROM templates t
+       JOIN service_schedules s ON s.template_key = t.key
+       WHERE s.schedule_code = $1`,
+      [code]
+    );
+    await app.db.query(
+      `INSERT INTO schedule_acceptances
+         (contact_id, schedule_code, via, packet_id, template_version, ip, user_agent)
+       VALUES ($1, $2, 'master_signature', $3, $4, $5, $6)
+       ON CONFLICT (contact_id, schedule_code) DO NOTHING`,
+      [p.contact_id, code, packetId, tpl.rows[0]?.version ?? 1, meta.ip ?? null, meta.userAgent ?? null]
+    );
+  }
+
+  // The old single flag stays in step, so every existing gate keeps working.
+  await app.db.query(
+    `UPDATE contacts SET engagement_letter_status = 'signed' WHERE id = $1`,
+    [p.contact_id]
+  );
+  await writeAudit(app.db, {
+    actorType: 'client', actorId: p.contact_id, actorLabel: 'master signature',
+    action: 'packet.signed', objectType: 'engagement_packet', objectId: packetId,
+    contactId: p.contact_id,
+    details: { schedules: p.schedule_codes, master_version: p.master_version, ...meta },
+  });
+  return { contactId: p.contact_id, accepted: p.schedule_codes };
+}
+
+/**
+ * A later-added service, accepted per-schedule in the portal. No re-execution of
+ * the Master — but the Master must already be signed, because the schedule
+ * incorporates it.
+ */
+export async function acceptScheduleInPortal(
+  app: FastifyInstance,
+  contactId: string,
+  scheduleCode: string,
+  meta: { ip?: string | null; userAgent?: string | null } = {}
+): Promise<{ accepted: boolean; alreadyAccepted: boolean }> {
+  const signed = await app.db.query(
+    `SELECT 1 FROM engagement_packets WHERE contact_id = $1 AND status = 'signed'`,
+    [contactId]
+  );
+  if (signed.rows.length === 0) {
+    throw new AppError(
+      409,
+      'master_not_signed',
+      'Each Schedule incorporates the Master Engagement Agreement, so the Master must be signed first.'
+    );
+  }
+  const tpl = await app.db.query<{ version: number }>(
+    `SELECT t.version FROM templates t
+     JOIN service_schedules s ON s.template_key = t.key
+     WHERE s.schedule_code = $1 AND t.is_active AND NOT t.is_placeholder`,
+    [scheduleCode]
+  );
+  if (!tpl.rows[0]) throw new AppError(404, 'schedule_not_found', `No active Schedule ${scheduleCode}.`);
+
+  const existing = await app.db.query(
+    `SELECT 1 FROM schedule_acceptances WHERE contact_id = $1 AND schedule_code = $2`,
+    [contactId, scheduleCode]
+  );
+  if (existing.rows.length > 0) return { accepted: true, alreadyAccepted: true };
+
+  await app.db.query(
+    `INSERT INTO schedule_acceptances
+       (contact_id, schedule_code, via, template_version, ip, user_agent)
+     VALUES ($1, $2, 'portal_acceptance', $3, $4, $5)`,
+    [contactId, scheduleCode, tpl.rows[0].version, meta.ip ?? null, meta.userAgent ?? null]
+  );
+  await writeAudit(app.db, {
+    actorType: 'client', actorId: contactId, actorLabel: 'portal acceptance',
+    action: 'schedule.accepted', objectType: 'contact', objectId: contactId, contactId,
+    details: { schedule_code: scheduleCode, via: 'portal_acceptance', template_version: tpl.rows[0].version, ...meta },
+  });
+  return { accepted: true, alreadyAccepted: false };
+}
+
+/**
+ * The Master rendered with its one variable filled — "Service Schedules attached
+ * at signing: A, C". The list is not decoration: it is the sentence that defines
+ * what the single signature covered, so it comes from the packet's own
+ * schedule_codes and never from a caller's guess.
+ */
+export async function renderMasterForPacket(
+  app: FastifyInstance,
+  packetId: string,
+  language: 'en' | 'es' = 'en'
+): Promise<{ body: string; scheduleCodes: string[]; titles: Record<string, string> }> {
+  const { rows } = await app.db.query<{ master_template_key: string; schedule_codes: string[] }>(
+    `SELECT master_template_key, schedule_codes FROM engagement_packets WHERE id = $1`,
+    [packetId]
+  );
+  const p = rows[0];
+  if (!p) throw new AppError(404, 'not_found', 'Packet not found.');
+
+  const titleRows = await app.db.query<{ schedule_code: string; title: string }>(
+    `SELECT schedule_code, title FROM service_schedules WHERE schedule_code = ANY($1) ORDER BY sort_order`,
+    [p.schedule_codes]
+  );
+  const titles: Record<string, string> = {};
+  for (const r of titleRows.rows) titles[r.schedule_code] = r.title;
+
+  const { renderTemplate } = await import('../templates/service.ts');
+  const rendered = await renderTemplate(app, p.master_template_key, language, {
+    schedules_attached: titleRows.rows.map((r) => `${r.schedule_code} — ${r.title}`).join('; '),
+  });
+  return { body: rendered.body, scheduleCodes: p.schedule_codes, titles };
+}
+
+/**
+ * Which schedules a client still needs to accept — what the portal shows as
+ * "one more thing to agree to" when a service is added after signing.
+ */
+export async function pendingSchedules(app: FastifyInstance, contactId: string) {
+  const preview = await previewPacket(app, contactId);
+  const pending = preview.newSchedules;
+  const rows = await app.db.query<{ schedule_code: string; title: string; body_en: string }>(
+    `SELECT s.schedule_code, s.title, t.body_en
+     FROM service_schedules s JOIN templates t ON t.key = s.template_key
+     WHERE s.schedule_code = ANY($1) AND t.is_active AND NOT t.is_placeholder
+     ORDER BY s.sort_order`,
+    [pending]
+  );
+  return {
+    masterSigned: preview.alreadySigned,
+    accepted: preview.alreadyAccepted,
+    pending: rows.rows,
+  };
+}

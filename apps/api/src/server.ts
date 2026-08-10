@@ -14,6 +14,7 @@ import { registerPortalAuthRoutes } from './modules/portal-auth/routes.ts';
 import { registerPortalRoutes } from './modules/portal/routes.ts';
 import { registerCrmRoutes } from './modules/crm/routes.ts';
 import { registerEngagementRoutes } from './modules/engagements/routes.ts';
+import { registerPacketRoutes } from './modules/engagements/packet-routes.ts';
 import { registerTaxRoutes } from './modules/tax/routes.ts';
 import { registerExtensionRoutes } from './modules/tax/extension-routes.ts';
 import { registerNoticeRoutes } from './modules/notices/routes.ts';
@@ -128,6 +129,7 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   registerPortalRoutes(app);
   registerCrmRoutes(app);
   registerEngagementRoutes(app);
+  registerPacketRoutes(app);
   registerTaxRoutes(app);
   registerExtensionRoutes(app);
   registerNoticeRoutes(app);

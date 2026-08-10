@@ -150,6 +150,14 @@ test('⚠ confirmation queue: confirming a seed conflict clears the flag without
 });
 
 test('template editor: edits bump versions; clearing PLACEHOLDER opens the M11 envelope gate', async () => {
+  // Legal package v3 loaded final text, so the Master is NOT a placeholder in a
+  // fresh database. Flag it here on purpose: this test is about the gate, and the
+  // gate has to hold whenever a template is flagged — including a future edit
+  // that puts final copy back into review.
+  await app.db.query(
+    `UPDATE templates SET is_placeholder = true, version = 1 WHERE key = 'engagement_master'`
+  );
+
   // A draft engagement-letter envelope blocked by the placeholder gate.
   const contact = await app.db.query<{ id: string }>(
     `INSERT INTO contacts (first_name, last_name, email) VALUES ('Synthetic', 'Gateopen', 'gateopen@example.test') RETURNING id`
@@ -165,17 +173,17 @@ test('template editor: edits bump versions; clearing PLACEHOLDER opens the M11 e
 
   // Ana cannot edit templates.
   const refused = await app.inject({
-    method: 'PATCH', url: '/admin/templates/engagement_letter_tax', headers: auth(ana),
+    method: 'PATCH', url: '/admin/templates/engagement_master', headers: auth(ana),
     payload: { bodyEn: 'nope' },
   });
   assert.equal(refused.statusCode, 403);
 
   // Brian supplies final text and clears the flag — THE launch-gate action.
   const cleared = await app.inject({
-    method: 'PATCH', url: '/admin/templates/engagement_letter_tax', headers: auth(brian),
+    method: 'PATCH', url: '/admin/templates/engagement_master', headers: auth(brian),
     payload: {
-      bodyEn: 'FINAL ENGAGEMENT LETTER (synthetic legal text) for {{client_name}} — {{service_scope}} at {{fee_summary}}.',
-      bodyEs: 'CARTA DE COMPROMISO FINAL (texto legal sintético) para {{client_name}} — {{service_scope}} por {{fee_summary}}.',
+      bodyEn: 'FINAL MASTER AGREEMENT (synthetic legal text) for {{client_name}} — {{service_scope}} at {{fee_summary}}.',
+      bodyEs: 'ACUERDO MAESTRO FINAL (texto legal sintético) para {{client_name}} — {{service_scope}} por {{fee_summary}}.',
       isPlaceholder: false,
     },
   });
@@ -183,8 +191,11 @@ test('template editor: edits bump versions; clearing PLACEHOLDER opens the M11 e
   assert.equal(cleared.json().placeholderCleared, true);
   assert.ok((await auditRows(app.db, 'template.placeholder_cleared')) >= 1);
 
+  // v3: supplying Spanish copy queues it for approval instead of going live.
+  assert.equal(cleared.json().esRequeuedForApproval, true, 'English controls until Brian approves the translation');
+
   const template = await app.db.query(
-    `SELECT is_placeholder, version FROM templates WHERE key = 'engagement_letter_tax'`
+    `SELECT is_placeholder, version FROM templates WHERE key = 'engagement_master'`
   );
   assert.equal(template.rows[0].is_placeholder, false);
   assert.equal(template.rows[0].version, 2);

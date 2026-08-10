@@ -34,19 +34,36 @@ export async function renderTemplate(
   language: 'en' | 'es',
   vars: Record<string, string>
 ): Promise<{ subject: string; body: string; isPlaceholder: boolean }> {
-  const { rows } = await app.db.query<TemplateRow>(
-    `SELECT key, subject_en, subject_es, body_en, body_es, is_placeholder FROM templates WHERE key = $1`,
+  const { rows } = await app.db.query<TemplateRow & { needs_es_review: boolean }>(
+    `SELECT key, subject_en, subject_es, body_en, body_es, is_placeholder, needs_es_review
+     FROM templates WHERE key = $1`,
     [key]
   );
   const t = rows[0];
   if (!t) throw new AppError(500, 'template_missing', `Template '${key}' not found.`);
 
-  // Bilingual rule: ES copy must exist for launch; until then fall back to EN
-  // loudly rather than sending nothing.
-  let subject = language === 'es' ? (t.subject_es ?? t.subject_en) : t.subject_en;
-  let body = language === 'es' ? (t.body_es ?? t.body_en) : t.body_en;
-  if (language === 'es' && (t.body_es === null || t.subject_es === null)) {
-    app.log.warn({ templateKey: key }, 'spanish template copy missing — fell back to english');
+  // ENGLISH CONTROLS (legal package v3: "English text controls; Spanish
+  // translations to follow"). Spanish is used only when it EXISTS and has been
+  // approved. Unapproved Spanish is not a lesser version of the text — for the
+  // Master, the Schedules and the §7216 consents it is text a client might rely
+  // on and Brian has not read, so it must not be sent.
+  //
+  // Falling back to English rather than refusing is deliberate: a Spanish reader
+  // receiving the controlling English text is imperfect; a Spanish reader
+  // receiving NOTHING is worse, and English is what governs either way.
+  const esUnavailable = t.body_es === null || t.subject_es === null;
+  const esUnapproved = t.needs_es_review === true;
+  const useSpanish = language === 'es' && !esUnavailable && !esUnapproved;
+
+  const subject = useSpanish ? t.subject_es : t.subject_en;
+  const body = useSpanish ? t.body_es! : t.body_en;
+  if (language === 'es' && !useSpanish) {
+    app.log.warn(
+      { templateKey: key, esUnavailable, esUnapproved },
+      esUnapproved
+        ? 'spanish copy awaiting approval — sent english (english controls)'
+        : 'spanish template copy missing — fell back to english'
+    );
   }
   return {
     subject: renderVars(subject ?? '', vars),
