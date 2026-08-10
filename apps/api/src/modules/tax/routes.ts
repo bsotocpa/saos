@@ -12,6 +12,8 @@ import { createEngagement } from '../engagements/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { computeComplexityScore } from './complexity.ts';
 import { TAX_STAGES, markDocumentsRequested, recordEfileResult, transitionStage } from './pipeline.ts';
+import { preparerQueue } from './queue.ts';
+import { todayChicago } from './deadlines.ts';
 
 const CreateBody = z.object({
   contactId: z.uuid(),
@@ -71,6 +73,8 @@ const ListQuery = z.object({
   stage: z.enum(TAX_STAGES).optional(),
   preparerId: z.uuid().optional(),
   taxYear: z.coerce.number().int().optional(),
+  // M28: the client packet needs one client's returns, not all 200.
+  contactId: z.uuid().optional(),
 });
 
 const DocRequestBody = z.object({
@@ -136,6 +140,24 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     return reply.code(201).send({ id, engagementId: parent.id });
   });
 
+  /**
+   * The preparer queue (M28 wireframe conformance, preparer step 1).
+   *
+   * Scoped by design: a preparer sees ONLY their own returns, which is the
+   * wireframe's "never sees other clients' data" rule. Leadership may pass
+   * ?preparerId= to look at someone's queue; a preparer passing someone else's id
+   * is ignored rather than refused, because the honest answer to "show me Ana's
+   * queue" for a preparer is their own queue, not an error page.
+   */
+  app.get('/my-queue', read, async (request) => {
+    const q = z.object({ preparerId: z.uuid().optional() }).parse(request.query);
+    const staff = request.staff!;
+    const isLeadership =
+      staff.permissions.includes('*') || staff.permissions.includes('dashboards.executive');
+    const target = isLeadership && q.preparerId ? q.preparerId : staff.id;
+    return { preparerId: target, scoped: !isLeadership, ...(await preparerQueue(app, target, todayChicago())) };
+  });
+
   app.get('/tax-engagements', read, async (request) => {
     const q = ListQuery.parse(request.query);
     const clauses: string[] = ['true'];
@@ -143,6 +165,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     if (q.stage) { params.push(q.stage); clauses.push(`te.stage = $${params.length}::tax_stage`); }
     if (q.preparerId) { params.push(q.preparerId); clauses.push(`te.preparer_id = $${params.length}`); }
     if (q.taxYear) { params.push(q.taxYear); clauses.push(`te.tax_year = $${params.length}`); }
+    if (q.contactId) { params.push(q.contactId); clauses.push(`e.contact_id = $${params.length}`); }
     const { rows } = await app.db.query(
       `SELECT te.id, te.tax_year, te.return_type, te.stage, te.preparer_id, te.reviewer_id,
               te.estimated_fee_min_cents, te.estimated_fee_max_cents, te.final_fee_cents,

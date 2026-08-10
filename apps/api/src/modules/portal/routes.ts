@@ -246,6 +246,52 @@ export function registerPortalRoutes(app: FastifyInstance): void {
   });
 
   // My Returns: delivered final return PDFs (ATX handoff), all years.
+  /**
+   * The client's own IRS notices (M28, wireframe customer step 8): "you see it's
+   * handled — in plain language."
+   *
+   * The whole notice engine — 48-hour actioning, the escalation ladder, owned
+   * tickets — was invisible to the person it is meant to reassure, so the panel's
+   * promise ("no more did-you-get-my-letter calls") went unmet.
+   *
+   * Deliberately NOT exposed: the handler's name, the service tier, internal
+   * resolution notes, or the escalation state. A client needs to know we have it,
+   * what it is about, and when the response is due. Who is chasing whom inside the
+   * firm is ours.
+   */
+  app.get('/portal/notices', scoped, async (request) => {
+    const client = request.client!;
+    const { rows } = await app.db.query<{
+      id: string; notice_type: string; tax_year: number | null;
+      response_deadline: string | null; status: string; received_at: Date | null;
+    }>(
+      `SELECT id, notice_type, tax_year, response_deadline::text AS response_deadline,
+              status::text AS status, received_at
+       FROM irs_notices
+       WHERE contact_id = $1
+       ORDER BY received_at DESC NULLS LAST, created_at DESC
+       LIMIT 50`,
+      [client.contactId]
+    );
+    // Internal stages collapse into three client-meaningful states. A client does
+    // not need to know the difference between 'under_review' and
+    // 'response_drafted' — both mean "we're on it".
+    const notices = rows.map((n) => ({
+      id: n.id,
+      noticeType: n.notice_type,
+      taxYear: n.tax_year,
+      responseDeadline: n.response_deadline,
+      receivedAt: n.received_at,
+      clientState:
+        n.status === 'resolved'
+          ? 'resolved'
+          : n.status === 'response_sent'
+            ? 'response_sent'
+            : 'in_progress',
+    }));
+    return { notices };
+  });
+
   app.get('/portal/returns', scoped, async (request) => {
     const client = request.client!;
     const { rows } = await app.db.query(

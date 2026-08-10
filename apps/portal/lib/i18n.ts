@@ -335,6 +335,31 @@ const dict = {
     'El enlace puede estar vencido, o el taller todavía no está abierto para inscripciones.',
   ],
 
+  // IRS notices, client-facing (M28). A letter from the IRS is frightening; this
+  // copy is calm and specific, and never implies the client must act alone.
+  nav_notices: ['IRS Letters', 'Cartas del IRS'],
+  notices_title: ['IRS letters', 'Cartas del IRS'],
+  notices_none: [
+    'No IRS letters on your account.',
+    'No hay cartas del IRS en su cuenta.',
+  ],
+  notices_none_hint: [
+    'If one arrives, upload it here or text us a photo and we’ll take it from there — you don’t need to know what it means first.',
+    'Si le llega una, súbala aquí o mándenos una foto por mensaje y nosotros seguimos — no necesita entenderla primero.',
+  ],
+  notice_state_working: ['We’re on it.', 'Ya lo estamos atendiendo.'],
+  notice_state_sent: [
+    'Our response has been sent to the IRS. Waiting on them now.',
+    'Nuestra respuesta ya se envió al IRS. Ahora esperamos su contestación.',
+  ],
+  notice_state_resolved: ['Resolved — nothing further needed.', 'Resuelto — no se necesita nada más.'],
+  notice_response_due: ['Response due', 'Respuesta debe enviarse antes del'],
+  notice_received: ['We received it', 'Lo recibimos el'],
+  notices_upload_hint: [
+    'If more pages arrive for the same letter, upload them under Documents. Never email or text the pages — the portal keeps them encrypted.',
+    'Si llegan más páginas de la misma carta, súbalas en Documentos. No las envíe por correo ni por mensaje — el portal las guarda cifradas.',
+  ],
+
   loading: ['Loading…', 'Cargando…'],
   error_generic: ['Something went wrong. Please try again.', 'Algo salió mal. Intente de nuevo.'],
 } satisfies Record<string, [string, string]>;

@@ -6,10 +6,11 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { isAuthed, signOut } from '../lib/api';
 import { useSession } from '../lib/session';
 
-const NAV: Array<{ href: string; key: 'nav_home' | 'nav_documents' | 'nav_returns' | 'nav_sign' | 'nav_invoices' | 'nav_messages' | 'nav_estimate' | 'nav_resources' | 'nav_profile' }> = [
+const NAV: Array<{ href: string; key: 'nav_home' | 'nav_documents' | 'nav_returns' | 'nav_notices' | 'nav_sign' | 'nav_invoices' | 'nav_messages' | 'nav_estimate' | 'nav_resources' | 'nav_profile' }> = [
   { href: '/', key: 'nav_home' },
   { href: '/documents', key: 'nav_documents' },
   { href: '/returns', key: 'nav_returns' },
+  { href: '/notices', key: 'nav_notices' },
   { href: '/sign', key: 'nav_sign' },
   { href: '/invoices', key: 'nav_invoices' },
   { href: '/messages', key: 'nav_messages' },

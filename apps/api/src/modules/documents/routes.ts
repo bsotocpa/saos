@@ -148,6 +148,56 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
     }
   );
 
+  /**
+   * A client's document list (M28 — the client packet needs it).
+   *
+   * METADATA ONLY: filename, category, size, dates. No bytes and no presigned
+   * URLs, so this is not a download path — but it IS an access to client document
+   * information, and CLAUDE.md requires every document access to be logged. So it
+   * writes an audit row naming the staffer and the client, exactly like the
+   * contact record view does. Downloading a file remains a separate, separately
+   * audited act below.
+   */
+  app.get(
+    '/documents',
+    { preHandler: [app.authenticate, requirePermission('documents.read')] },
+    async (request) => {
+      const q = z
+        .object({ contactId: z.uuid(), category: z.string().max(60).optional() })
+        .parse(request.query);
+      const staff = request.staff!;
+      const params: unknown[] = [q.contactId];
+      let categoryClause = '';
+      if (q.category) {
+        params.push(q.category);
+        categoryClause = ` AND d.category = $${params.length}::document_category`;
+      }
+      const { rows } = await app.db.query(
+        `SELECT d.id, d.category::text AS category, d.filename AS original_filename,
+                d.mime_type, d.size_bytes, d.tax_year, d.status::text AS status,
+                d.uploaded_by_type, d.created_at
+         FROM documents d
+         WHERE d.contact_id = $1 AND d.archived_at IS NULL${categoryClause}
+         ORDER BY d.created_at DESC
+         LIMIT 200`,
+        params
+      );
+      await writeAudit(app.db, {
+        actorType: 'staff',
+        actorId: staff.id,
+        actorLabel: staff.email,
+        action: 'documents.listed',
+        objectType: 'contact',
+        objectId: q.contactId,
+        contactId: q.contactId,
+        ip: request.ip,
+        userAgent: request.headers['user-agent'] ?? null,
+        details: { count: rows.length, category: q.category ?? null },
+      });
+      return { documents: rows };
+    }
+  );
+
   app.get<{ Params: { id: string } }>(
     '/documents/:id/download',
     { preHandler: [app.authenticate, requirePermission('documents.read')] },

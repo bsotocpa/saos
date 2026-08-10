@@ -38,7 +38,8 @@ async function jobAlreadyRan(app: FastifyInstance, action: string, runDate: stri
   return rows.length > 0;
 }
 
-async function getSetting<T>(app: FastifyInstance, key: string, fallback: T): Promise<T> {
+/** Shared setting reader — the preparer queue reuses it so "at risk" cannot mean two things. */
+export async function getSetting<T>(app: FastifyInstance, key: string, fallback: T): Promise<T> {
   const { rows } = await app.db.query<{ value: T }>(`SELECT value FROM app_settings WHERE key = $1`, [key]);
   return rows[0]?.value ?? fallback;
 }

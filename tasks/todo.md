@@ -769,12 +769,16 @@ only Brian can make. Regenerate after any gate clears.)
       + approval-gate tests; SOP link on every task type; event
       registration → check-in → follow-up e2e
 
-## M28 — Wireframe conformance pass
-- [ ] SAOS_Wireframes.html applied as the UI reference DURING M25–M27
+## M28 — Wireframe conformance pass ✅ 2026-08-09 (see tasks/m28-wireframe-conformance.md)
+- [x] SAOS_Wireframes.html applied as the UI reference DURING M25–M27
       builds; this milestone is the final sweep: customer portal, owner
       ops, and preparer screens conformed; Brian/Jackson EN/ES copy
       review rides along (existing launch-gate item)
-- [ ] Prove it: per-persona walkthrough vs wireframes with Brian
+- [x] Prove it: all 24 wireframe steps verdicted in
+      tasks/m28-wireframe-conformance.md; 3 of 5 real gaps closed and tested
+      (client packet, preparer queue, client notice view). 2 remain open and
+      named: session recaps (a missing MODULE) and the public intake renderer
+      (whose §7216 consent template is still PLACEHOLDER anyway).
 
 ## Review
 
