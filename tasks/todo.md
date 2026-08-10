@@ -774,6 +774,9 @@ only Brian can make. Regenerate after any gate clears.)
       builds; this milestone is the final sweep: customer portal, owner
       ops, and preparer screens conformed; Brian/Jackson EN/ES copy
       review rides along (existing launch-gate item)
+- [x] All five gaps closed 2026-08-09: client packet, preparer queue, client
+      notice view, SESSION RECAPS (v4.2 #6 module), public intake renderer.
+      Nine partials: Brian ruled do-not-build — signals-as-tasks is the design.
 - [x] Prove it: all 24 wireframe steps verdicted in
       tasks/m28-wireframe-conformance.md; 3 of 5 real gaps closed and tested
       (client packet, preparer queue, client notice view). 2 remain open and

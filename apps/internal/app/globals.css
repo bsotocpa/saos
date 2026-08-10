@@ -282,3 +282,11 @@ label.inline-check input[type='checkbox'],
   .report-table { display: none; }
   .report-cards { display: block; }
 }
+
+/* Session recap bodies (v4.2 #6). Pre-wrapped so the drafted markdown headings and
+   bullets keep their shape while still wrapping on a phone. */
+.recap-body {
+  white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 12.5px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; margin: 0; max-height: 420px; overflow-y: auto;
+}

@@ -18,13 +18,13 @@ routes and the API surface, not from memory.
 | # | Wireframe step | Verdict | Where it lives / what's missing |
 |---|---|---|---|
 | 1 | Discover & book (two-lane, EN/ES, "starting at") | ➖ / ⚠️ | The public marketing site is not SAOS. The booking engine IS ours (Cal.com two-lane, deposit at booking, Zoom-only enforcement, unmapped-event tasks) and works — but a client's entry point is a Cal.com page, not a SAOS screen. Nothing to build; noting it so the seam is explicit. |
-| 2 | Pick lane (virtual/in-office, individual/business) | ⛔ **GAP — still open** | `/public/forms/:key` + `/start` + `/submit` are built and tested. **There is no page that renders them.** A prospect has no way to reach the adaptive intake. |
+| 2 | Pick lane (virtual/in-office, individual/business) | ✅ **CLOSED this pass** | `/intake/[key]` in the portal renders the definition — screens, conditional fields, every field type, save-as-you-go. Was: API complete and tested, nothing rendering it. |
 | 3 | Deposit to schedule (Stripe, credits to final invoice) | ⚠️ | Deposit logic is complete — booking deposits, quote deposits, credit-to-final-invoice, and now the override/waiver. Checkout happens through Stripe (stub mode until you flip it). No SAOS-hosted deposit step page, because Stripe Checkout is the page. |
-| 4 | Questionnaire (adaptive, 6 of 10, §7216 + SMS consent) | ⛔ **GAP — still open** | Same as step 2 — nine onboarding modules and two form definitions are seeded, the API serves and scores them, and no UI renders them. |
+| 4 | Questionnaire (adaptive, 6 of 10, §7216 + SMS consent) | ✅ **CLOSED this pass** | Same renderer as step 2. Definition v2 adds bilingual question text as DATA (v1 had none), the TCPA disclosure shows at the point of consent, and demographics are never required. |
 | 5 | Upload docs (replaces Dropbox) | ✅ | `/documents` — upload, encrypted storage, request/needed states, portal-only rule enforced. |
 | 6 | Sign 8879 (KBA then sign) | ✅ | `/sign` — envelope statuses, KBA-before-Docuseal gate, method recorded per 8879. |
-| 7 | Recap & recurring (recap, to-dos, estimates, cadence) | ⚠️ | `/` has to-dos, estimate due, invoices, checklist, status. **The session RECAP is missing** — see the admin step 3 finding; the module was never built. Recurring cadence is now stored by the configurator but not shown to the client. |
-| 8 | If the IRS writes (plain-language notice status) | ✅ **CLOSED this pass** | `irs_notices` and the whole escalation engine exist; `/irs-notices` is staff-only. **The client has no notice view**, so the panel's promise — "no more did-you-get-my-letter calls" — is unmet. |
+| 7 | Recap & recurring (recap, to-dos, estimates, cadence) | ✅ **CLOSED this pass** | Recaps now post to the client’s portal thread (`/messages`) on approval, alongside the existing to-dos, estimate due and invoices on `/`. |
+| 8 | If the IRS writes (plain-language notice status) | ✅ **CLOSED this pass** | Portal `/notices`, EN/ES. Internal stages collapse to three client-meaningful states; handler, service tier and resolution notes are withheld. |
 
 ## Persona 2 — What you see as owner (9 steps)
 
@@ -32,7 +32,7 @@ routes and the API surface, not from memory.
 |---|---|---|---|
 | 1 | Command dashboard (active, need-you-today, extended, at-risk) | ✅ | `/` Executive — owner rollup, revenue, health bands, deadlines incl. AG990-IL, operational flows, pipeline, Dubsado readiness. |
 | 2 | Referral queue (§7216-gated both directions) | ✅ | `/hilo` → Referral queues, with the disclosure trail enforced by a DB CHECK. |
-| 3 | Approve session recaps ("your voice, before it sends") | ⛔ **GAP — missing module** | Meeting intelligence produces summaries and auto-creates tasks, but the **client-facing bilingual recap and its one-tap approval do not exist** — no table, no API, no screen. This is v4.2 NEW MODULES #6, not just a missing page. |
+| 3 | Approve session recaps ("your voice, before it sends") | ✅ **CLOSED this pass** | `/approvals` — one tap approves and sends; CHECKs make an unapproved send impossible. Automation #11, ships OFF. |
 | 4 | Price book & gates (versioned, effective-dated) | ✅ | `/admin/pricing` — versioned, needs-confirmation flags, price-lock. |
 | 5 | Team & access (scoped lanes) | ✅ | `/admin/staff` — roles, permissions, attest independence, intern read-only. |
 | 6 | Compliance monitor (IL SOS, annual reports, placeholders) | ⚠️ | Every piece runs as a job with tasks and alerts (SOS recheck, T-60 annual reports, the placeholder send-gate). There is no single "compliance monitor" screen; the signals arrive as tasks and Executive counters. Defensible, but not the wireframe's one-glance panel. |
@@ -44,8 +44,8 @@ routes and the API surface, not from memory.
 
 | # | Wireframe step | Verdict | Where it lives / what's missing |
 |---|---|---|---|
-| 1 | My queue (assigned returns, deadline-sorted, red when late) | ✅ **CLOSED this pass** | `/tasks` is task-shaped, not return-shaped. `GET /tax-engagements?preparerId=&stage=` exists. **A preparer has no returns queue** — the screen the wireframe says they live in. |
-| 2 | Client packet ("everything in one place") | ✅ **CLOSED this pass** | `GET /contacts/:id` returns the full picture. **There is no client detail page in the internal app at all** — the single biggest missing surface, and it is the return's front page for this persona. |
+| 1 | My queue (assigned returns, deadline-sorted, red when late) | ✅ **CLOSED this pass** | `/queue` — deadline-first, rejects pinned above everything, scoped to the preparer, at-risk from the shared extension setting. |
+| 2 | Client packet ("everything in one place") | ✅ **CLOSED this pass** | `/clients/[id]` — gates first (§7216, engagement letter), then contact, businesses, documents (audited list), quotes, and this client's returns. |
 | 3 | Prepare in ATX | ➖ | Deliberately external, per the wireframe. Nothing to build. |
 | 4 | Upload final return (+ true-up quote) | ✅ | `/upload-return` — category set, client notification, true-up. |
 | 5 | Send for 8879 (KBA envelope, live status, 48h chase) | ⚠️ | The signature engine, KBA gate, wet/remote method and entity-group bundling all exist; the preparer triggers it from `/upload-return`. No live status board of their own. |
@@ -57,7 +57,12 @@ routes and the API surface, not from memory.
 ## Summary
 
 Before this pass: **8 conform · 9 partial · 5 gaps · 2 not ours**.
-After closing three gaps: **11 conform · 9 partial · 2 gaps · 2 not ours**.
+After closing ALL FIVE gaps: **13 conform · 9 partial · 0 gaps · 2 not ours**.
+
+**Brian ruled on the nine partials (2026-08-09): do not build dedicated cockpits.**
+Signals-as-tasks is the design, per the one-task-system rule; a screen gets added
+only if real use shows a gap. That closes the conformance question — the nine
+partials are now decisions, not debt.
 
 ### The five gaps, in the order they block someone
 
@@ -79,18 +84,28 @@ After closing three gaps: **11 conform · 9 partial · 2 gaps · 2 not ours**.
    EN/ES. Internal stages collapse to three client-meaningful states, and the
    handler, service tier, escalation rung and resolution notes are all withheld —
    asserted by a test that greps the response body for each.
-4. ⛔ **STILL OPEN — Session recaps + approval** (owner step 3, customer step 7).
-   A missing MODULE, not a missing page: no table, no API, no screen. Meeting
-   intelligence summarises and creates tasks, but nothing drafts a bilingual
-   client recap or queues it for your one-tap approval. This is v4.2 NEW MODULES
-   #6. Deliberately not rushed at the end of a milestone — it needs a schema, an
-   approval gate, an automation toggle, and EN/ES copy you approve.
-5. ⛔ **STILL OPEN — Public intake + questionnaire** (customer steps 2 and 4).
-   The API is complete and tested (`/public/forms/:key`, nine onboarding modules,
-   two form definitions, scoring, §7216 + SMS consent capture) with no renderer.
-   It is also the one gap where the build is not the binding constraint: the
-   intake collects §7216 consent, and that consent template is still PLACEHOLDER,
-   so the flow could not legally run end-to-end today regardless.
+4. ✅ **CLOSED — Session recaps + approval** (owner step 3, customer step 7).
+   Migration 0036 finished the shape an early scaffold had left behind (the recap
+   columns existed on `meeting_summaries`; nothing ever wrote them) and made the
+   gate STRUCTURAL: CHECKs mean no code path — including a direct UPDATE — can
+   produce a recap that reached a client without a named approver, a send
+   timestamp, or copy in both languages. `/approvals` is the one-tap screen.
+   Drafted from what the session actually produced: decisions → what we covered,
+   client-owned items plus client-visible tasks → their action items, staff items →
+   ours, a real booking → next session (never invented). Editing an approved recap
+   WITHDRAWS the approval, so your name never stays on text you have not re-read.
+   Registered as automation #11, ships OFF, and the UI states the send is disarmed
+   BEFORE the tap so approving never silently does nothing.
+5. ✅ **CLOSED — Public intake + questionnaire** (customer steps 2 and 4).
+   `/intake/[key]` renders the definition: screens, conditional fields,
+   conditionally-required fields, every field type, save-as-you-go with the resume
+   token, per-field server validation, and the language answer switching the whole
+   form. The definition had NO field labels (v1 was structure only, because nothing
+   rendered it), so v2 adds bilingual question text AS DATA — Brian edits wording
+   without a deploy. The TCPA disclosure renders at the point of consent, and
+   demographic questions are never required and say why they are asked. Legal text
+   is in attorney review; pasting it into Admin → Templates is now the only
+   remaining step.
 
 ### On the nine partials
 

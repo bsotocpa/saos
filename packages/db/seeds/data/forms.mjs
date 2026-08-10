@@ -11,6 +11,116 @@
 
 const opt = (value, labelEn, labelEs, extra = {}) => ({ value, labelEn, labelEs, ...extra });
 
+/**
+ * Field QUESTION TEXT, in both languages — added when the public renderer was
+ * built (M28). It lives here, as data, for the same reason every other
+ * client-facing string does: Brian edits the wording in the definition without a
+ * deploy. Keyed by field key and injected by withLabels() below, so adding a
+ * field to a screen and forgetting its wording is visible rather than silent.
+ *
+ * Voice: these address a capable business owner, not someone being processed.
+ * Questions are short, say why when the reason is not obvious, and never imply
+ * that a blank answer is a failure.
+ */
+const LABELS = {
+  language: ['Which language should we use with you?', '¿En qué idioma prefiere que le hablemos?'],
+  first_name: ['First name', 'Nombre'],
+  last_name: ['Last name', 'Apellido'],
+  email: ['Email', 'Correo electrónico'],
+  mobile_phone: ['Mobile number', 'Número de celular'],
+  sms_ok: ['Can we text you?', '¿Podemos enviarle mensajes de texto?'],
+  preferred_contact_method: ['Best way to reach you', 'Mejor forma de contactarlo(a)'],
+  zip: ['ZIP code', 'Código postal'],
+
+  // Soto — business
+  owns_business: ['Do you own a business?', '¿Tiene un negocio?'],
+  business_name: ['Business name', 'Nombre del negocio'],
+  entity_type: ['How is it set up?', '¿Cómo está constituido?'],
+  industry: ['What does the business do?', '¿A qué se dedica el negocio?'],
+  years_in_business: ['How long have you been running it?', '¿Cuánto tiempo lleva operando?'],
+  revenue_range: ['Roughly what did it bring in last year?', '¿Aproximadamente cuánto vendió el año pasado?'],
+  employees_range: ['How many people work there, including you?', '¿Cuántas personas trabajan ahí, incluyéndolo(a) a usted?'],
+  business_zip: ['Business ZIP code', 'Código postal del negocio'],
+  other_businesses: [
+    'Do you own or co-own any other businesses?',
+    '¿Tiene o comparte otros negocios?',
+  ],
+  other_businesses_list: ['The other businesses', 'Los otros negocios'],
+
+  // Soto — what you need
+  services: ['What can we help with?', '¿Con qué le podemos ayudar?'],
+  filed_last_year: ['Did you file last year?', '¿Presentó su declaración el año pasado?'],
+  irs_letters: [
+    'Have you received any letters from the IRS or the state?',
+    '¿Ha recibido cartas del IRS o del estado?',
+  ],
+  notes: [
+    'Anything else we should know before we talk?',
+    '¿Algo más que debamos saber antes de hablar?',
+  ],
+  ssn_preference: [
+    'How would you rather give us your SSN or ITIN?',
+    '¿Cómo prefiere darnos su SSN o ITIN?',
+  ],
+  how_heard: ['How did you hear about us?', '¿Cómo supo de nosotros?'],
+  referred_by: ['Who should we thank?', '¿A quién le agradecemos?'],
+
+  // Hilo
+  stage: ['Where are you with the business right now?', '¿En qué etapa está su negocio ahora?'],
+  business_kind: ['What kind of business is it?', '¿Qué tipo de negocio es?'],
+  help_domains: ['What do you want help with?', '¿En qué quiere ayuda?'],
+  whats_going_on: ['Tell us what is going on', 'Cuéntenos qué está pasando'],
+  demo_woman: ['Woman-owned?', '¿Propiedad de una mujer?'],
+  demo_race: ['Race or ethnicity', 'Raza o etnia'],
+  demo_veteran: ['Veteran-owned?', '¿Propiedad de un veterano?'],
+  demo_disability: ['Owner with a disability?', '¿Dueño(a) con discapacidad?'],
+
+  // Consents
+  communication_consent: [
+    'Soto Accounting may contact me about my request',
+    'Soto Accounting puede contactarme sobre mi solicitud',
+  ],
+  esign_consent: [
+    'I agree to sign documents electronically (ESIGN Act)',
+    'Acepto firmar documentos electrónicamente (Ley ESIGN)',
+  ],
+};
+
+/** Demographic questions are for funder reporting and are never required. */
+const OPTIONAL_NOTE_EN = 'Optional — this is for our funder reporting and never affects what you get.';
+const OPTIONAL_NOTE_ES = 'Opcional — es para nuestros reportes a financiadores y nunca afecta lo que recibe.';
+
+/**
+ * Inject question text into every field, and flag any field whose wording is
+ * missing rather than shipping a raw key to a client.
+ */
+function withLabels(definition) {
+  const missing = [];
+  const screens = definition.screens.map((screen) => ({
+    ...screen,
+    fields: screen.fields.map((f) => {
+      const label = LABELS[f.key];
+      if (!label) missing.push(f.key);
+      const extra = {};
+      if (f.key.startsWith('demo_')) {
+        extra.helpEn = f.helpEn ?? OPTIONAL_NOTE_EN;
+        extra.helpEs = f.helpEs ?? OPTIONAL_NOTE_ES;
+      }
+      return {
+        ...f,
+        labelEn: label?.[0] ?? f.key,
+        labelEs: label?.[1] ?? f.key,
+        ...extra,
+      };
+    }),
+  }));
+  if (missing.length > 0) {
+    // Loud, not silent: a field with no wording would render as a database key.
+    console.warn(`  ⚠ form fields missing question text: ${missing.join(', ')}`);
+  }
+  return { ...definition, screens };
+}
+
 // TCPA / A2P 10DLC consent disclosure — shown WITH the sms_ok question. This
 // exact language is what the privacy page and the A2P campaign registration
 // reference; renderers must display it at the point of consent.
@@ -391,13 +501,19 @@ const STARTER_RESOURCES = [
 export async function seedForms(client) {
   let inserted = 0;
   for (const def of [SOTO_INTAKE_DEFINITION, HILO_INTAKE_DEFINITION]) {
+    // VERSION 2 carries the bilingual question text the public renderer needs
+    // (M28). v1 shipped structure only, with no field labels, because nothing
+    // rendered it. loadDefinition() takes the highest active version, so this
+    // supersedes v1 without touching it — and any admin edit to v2 survives
+    // re-seeding, same as every other seed here.
+    const labelled = withLabels(def);
     const res = await client.query(
       `INSERT INTO form_definitions (key, version, title_en, title_es, definition)
-       VALUES ($1, 1, $2, $3, $4::jsonb)
+       VALUES ($1, 2, $2, $3, $4::jsonb)
        ON CONFLICT (key, version) DO NOTHING`,
       [def.slug, def.slug === 'soto_intake' ? 'New Client Intake' : 'Hilo Entrepreneur Intake',
        def.slug === 'soto_intake' ? 'Registro de nuevo cliente' : 'Registro de emprendedor Hilo',
-       JSON.stringify(def)]
+       JSON.stringify(labelled)]
     );
     inserted += res.rowCount;
   }

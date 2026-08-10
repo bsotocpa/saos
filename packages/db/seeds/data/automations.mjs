@@ -67,6 +67,12 @@ export const automations = [
     description:
       'The day-before reminder for Hilo workshops — email, plus SMS only where the registrant ticked the box at signup AND the contact carries standing TCPA consent. OFF: the registration CONFIRMATION still goes out (that is transactional, a reply to something they just did), the check-in list is unaffected, and every suppressed reminder is counted in the job record.',
   },
+  {
+    key: 'session_recaps',
+    name: 'Session recaps to clients',
+    description:
+      'Sends the bilingual session recap to the client\'s portal thread and emails a pointer to it — only ever after YOU approve it; nothing here auto-sends. OFF: recaps still draft themselves after each session and still queue for your approval, and an approved recap waits at "approved" with the reason recorded instead of going out. Arm this once you are happy with the recap copy on a few real sessions.',
+  },
 ];
 
 export async function seedAutomations(client) {

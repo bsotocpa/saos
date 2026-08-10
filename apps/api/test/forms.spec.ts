@@ -422,3 +422,58 @@ test('IL SOS adverse result: Laura task + bilingual fix-steps email; recheck job
   const rerun = await app.inject({ method: 'POST', url: '/jobs/sos-recheck?asOf=2026-08-01', headers: auth(brian) });
   assert.equal(rerun.json().skipped, true);
 });
+
+test('M28 renderer contract: every question has bilingual text, and the TCPA disclosure ships with it', async () => {
+  // The public renderer is data-driven, so the DEFINITION is the contract. A field
+  // with no wording would render its database key to a stranger deciding whether
+  // to trust us with their taxes.
+  for (const key of ['soto_intake', 'hilo_intake']) {
+    const res = await app.inject({ method: 'GET', url: `/public/forms/${key}` });
+    assert.equal(res.statusCode, 200, res.body);
+    const def = res.json().definition as {
+      screens: Array<{
+        id: number; titleEn: string; titleEs: string;
+        fields: Array<{ key: string; type: string; labelEn?: string; labelEs?: string; options?: Array<{ labelEn: string; labelEs: string }> }>;
+      }>;
+    };
+    assert.equal(res.json().version, 2, 'v2 is the labelled definition the renderer needs');
+    assert.ok(def.screens.length >= 4);
+
+    for (const screen of def.screens) {
+      assert.ok(screen.titleEn?.length > 0, `${key} screen ${screen.id}: no English title`);
+      assert.ok(screen.titleEs?.length > 0, `${key} screen ${screen.id}: no Spanish title`);
+      for (const f of screen.fields) {
+        assert.ok((f.labelEn ?? '').length > 0, `${key}.${f.key}: no English question text`);
+        assert.ok((f.labelEs ?? '').length > 0, `${key}.${f.key}: no Spanish question text`);
+        // A label that is just the key means withLabels() had no entry for it.
+        assert.notEqual(f.labelEn, f.key, `${key}.${f.key}: label fell back to the raw key`);
+        assert.notEqual(f.labelEs, f.key, `${key}.${f.key}: Spanish label fell back to the raw key`);
+        for (const o of f.options ?? []) {
+          assert.ok(o.labelEn.length > 0 && o.labelEs.length > 0, `${key}.${f.key}: an option is missing a label`);
+        }
+      }
+    }
+
+    // TCPA: the disclosure must travel WITH the consent question, because the A2P
+    // campaign registration references that language at the point of consent.
+    const sms = def.screens.flatMap((s) => s.fields).find((f) => f.key === 'sms_ok') as
+      | { helpEn?: string; helpEs?: string }
+      | undefined;
+    assert.ok(sms, `${key}: no sms_ok field`);
+    assert.match(sms!.helpEn ?? '', /Reply STOP to opt out/i, `${key}: English TCPA disclosure missing`);
+    assert.match(sms!.helpEn ?? '', /Consent is not a condition of service/i);
+    assert.match(sms!.helpEs ?? '', /Responda STOP/i, `${key}: Spanish TCPA disclosure missing`);
+  }
+
+  // Demographic questions are never required and say why they are asked.
+  const hilo = (await app.inject({ method: 'GET', url: '/public/forms/hilo_intake' })).json().definition as {
+    screens: Array<{ fields: Array<{ key: string; required?: unknown; helpEn?: string; helpEs?: string }> }>;
+  };
+  const demos = hilo.screens.flatMap((s) => s.fields).filter((f) => f.key.startsWith('demo_'));
+  assert.ok(demos.length >= 3);
+  for (const d of demos) {
+    assert.notEqual(d.required, true, `${d.key} must never be required`);
+    assert.match(d.helpEn ?? '', /never affects what you get/i, `${d.key}: says why it is asked`);
+    assert.ok((d.helpEs ?? '').length > 0, `${d.key}: Spanish note missing`);
+  }
+});

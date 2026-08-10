@@ -737,6 +737,35 @@ export const templates = [
       'directamente y corregirlo.\n\n' +
       '— Soto Accounting',
   },
+  {
+    // Session recap notification (v4.2 #6). The recap ITSELF lives on the portal
+    // thread — this email is a short pointer, so replies land in the thread where
+    // the conversation belongs rather than in a mailbox nobody is watching.
+    // ⚠ BRIAN: this is the copy you sign off on. Edit in Admin → Templates.
+    key: 'session_recap',
+    name: 'Session recap posted (v4.2 #6 — awaiting Brian’s copy sign-off)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'portal_link'],
+    subjectEn: 'Your session recap is in your portal',
+    subjectEs: 'El resumen de su sesión está en su portal',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Your recap from our session is posted — what we covered, what we need from you, ' +
+      'what we are doing next, and when we meet again:\n\n' +
+      '{{portal_link}}\n\n' +
+      'Reply on that thread if I got anything wrong or left something out. It is easier to ' +
+      'fix now than at filing time.\n\n' +
+      '— Brian Soto, CPA · Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'El resumen de nuestra sesión ya está publicado — lo que cubrimos, lo que necesitamos ' +
+      'de usted, lo que haremos nosotros, y cuándo nos volvemos a ver:\n\n' +
+      '{{portal_link}}\n\n' +
+      'Responda en ese hilo si algo quedó mal o si faltó algo. Es más fácil corregirlo ahora ' +
+      'que al momento de declarar.\n\n' +
+      '— Brian Soto, CPA · Soto Accounting',
+  },
 ];
 
 export async function seedTemplates(client) {

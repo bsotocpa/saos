@@ -360,6 +360,42 @@ const dict = {
     'Si llegan más páginas de la misma carta, súbalas en Documentos. No las envíe por correo ni por mensaje — el portal las guarda cifradas.',
   ],
 
+  // Public intake / questionnaire chrome (M28). The QUESTIONS live in the form
+  // definition so Brian edits them without a deploy; these are the buttons and
+  // scaffolding around them.
+  intake_progress: ['Step', 'Paso'],
+  intake_next: ['Continue', 'Continuar'],
+  intake_back: ['Back', 'Atrás'],
+  intake_submit: ['Send it', 'Enviar'],
+  intake_choose: ['Choose one…', 'Elija una…'],
+  intake_yes: ['Yes', 'Sí'],
+  intake_no: ['No', 'No'],
+  intake_required: ['We need this one.', 'Necesitamos esta respuesta.'],
+  intake_fix_below: [
+    'Almost — a couple of answers need a look.',
+    'Ya casi — un par de respuestas necesitan revisión.',
+  ],
+  intake_add_another: ['Add another', 'Agregar otro'],
+  intake_remove: ['Remove', 'Quitar'],
+  intake_saved_note: [
+    'Your answers save as you go, so you can close this and come back.',
+    'Sus respuestas se guardan solas, así que puede cerrar y volver después.',
+  ],
+  intake_done_title: ['Got it — thank you', 'Listo — gracias'],
+  intake_done_body: [
+    'We have what we need to prepare for our conversation. Nothing else is needed from you right now.',
+    'Ya tenemos lo necesario para preparar nuestra conversación. No necesitamos nada más de usted por ahora.',
+  ],
+  intake_done_next: [
+    'Watch your email — we will confirm next steps there, in the language you chose.',
+    'Revise su correo — le confirmamos los siguientes pasos ahí, en el idioma que eligió.',
+  ],
+  intake_unavailable_title: ['This form isn’t available', 'Este formulario no está disponible'],
+  intake_unavailable_body: [
+    'The link may be old. Reply to any email from us and we will send you a current one.',
+    'El enlace puede estar vencido. Responda a cualquiera de nuestros correos y le enviamos uno vigente.',
+  ],
+
   loading: ['Loading…', 'Cargando…'],
   error_generic: ['Something went wrong. Please try again.', 'Algo salió mal. Intente de nuevo.'],
 } satisfies Record<string, [string, string]>;
