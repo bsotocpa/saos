@@ -226,3 +226,14 @@ procedure he never wrote.
 **Rule**: when a constraint pushes you toward a false attribution, the constraint is
 wrong. Require the timestamp, leave the approver NULL, and surface "not yet reviewed
 by a person" in the UI.
+
+## Run the production build before deploying a UI change
+**Pattern**: `/sops` worked all session in dev and then FAILED the deploy at
+`next build` — a client component calling `useSearchParams()` must sit inside a
+Suspense boundary or prerendering errors. Dev mode does not prerender, so nothing
+locally could have caught it. The deploy aborted safely (production stayed on the
+previous migration), but it cost a failed deploy.
+**Rule**: any turn that adds or changes a Next route runs
+`npm run build --workspace=@saos/internal` and `--workspace=@saos/portal` before
+`scripts/deploy.sh`. Typecheck + tests + 390px screenshots do not cover the
+production build; it is its own class of failure.

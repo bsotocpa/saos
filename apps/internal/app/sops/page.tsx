@@ -7,7 +7,7 @@
 // registry tab is the honest coverage view — how many task types actually have a
 // procedure written, not how many have a mapping.
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
 
@@ -63,7 +63,21 @@ function renderMd(md: string) {
   });
 }
 
+/**
+ * useSearchParams() forces this subtree out of static generation, so it MUST sit
+ * inside a Suspense boundary or `next build` fails prerendering /sops. Dev mode
+ * does not prerender, which is exactly why this only surfaced at deploy time —
+ * the production build is now part of the verification step.
+ */
 export default function SopsPage() {
+  return (
+    <Suspense fallback={<p className="muted">Loading…</p>}>
+      <SopsBrowser />
+    </Suspense>
+  );
+}
+
+function SopsBrowser() {
   const router = useRouter();
   const params = useSearchParams();
   const [q, setQ] = useState('');
