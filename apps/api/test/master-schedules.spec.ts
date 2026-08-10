@@ -105,12 +105,17 @@ test('the Master is final, carries the late-fee disclosure, and the old letters 
     'the late-fee disclosure now lives on the Master — the fee job reads this stamp'
   );
 
+  // THE LAUNCH GATE, with exactly one known exception. Schedule F ships flagged
+  // because the attorney document Brian supplied is headed "FOR ATTORNEY REDLINE"
+  // and he has not yet confirmed that header is stale. Asserting the precise set
+  // rather than "empty" keeps the gate sharp: any OTHER active placeholder fails
+  // here, and when Brian confirms, this list becomes empty.
   const activePlaceholders = await app.db.query<{ key: string }>(
-    `SELECT key FROM templates WHERE is_placeholder AND is_active`
+    `SELECT key FROM templates WHERE is_placeholder AND is_active ORDER BY key`
   );
   assert.deepEqual(
-    activePlaceholders.rows.map((r) => r.key), [],
-    'no ACTIVE template is still a placeholder — that is the launch gate'
+    activePlaceholders.rows.map((r) => r.key), ['schedule_f_attest'],
+    'the only active placeholder is Schedule F, pending Brian confirming the attorney clearance'
   );
 
   const retired = await app.db.query<{ n: number }>(
@@ -122,7 +127,8 @@ test('the Master is final, carries the late-fee disclosure, and the old letters 
   const schedules = await app.db.query<{ schedule_code: string }>(
     `SELECT schedule_code FROM service_schedules ORDER BY schedule_code`
   );
-  assert.deepEqual(schedules.rows.map((r) => r.schedule_code), ['A', 'B', 'C', 'D', 'E']);
+  // F joined the set when the attest schedule landed (see schedule-f-attest.spec.ts).
+  assert.deepEqual(schedules.rows.map((r) => r.schedule_code), ['A', 'B', 'C', 'D', 'E', 'F']);
 });
 
 // ── Assembly ──────────────────────────────────────────────────────────────────
@@ -158,7 +164,7 @@ test('the A/B split comes from the RETURN TYPE, not from the service line', asyn
   assert.deepEqual(both.codes, ['A', 'B'], 'a 1040 alongside the 1120-S adds A');
 });
 
-test('service lines map to their schedules, and attest is REFUSED rather than mis-papered', async () => {
+test('service lines map to their schedules', async () => {
   const books = await clientWith('bookkeeping', 'BooksClient');
   assert.deepEqual((await resolveSchedules(app, books)).codes, ['C']);
 
@@ -168,18 +174,12 @@ test('service lines map to their schedules, and attest is REFUSED rather than mi
   const entity = await clientWith('entity', 'EntityClient');
   assert.deepEqual((await resolveSchedules(app, entity)).codes, ['E']);
 
-  // The refusal that matters: Schedules A–E do not cover CPA review/audit work,
-  // so assembly stops instead of quietly filing attest under Advisory terms.
+  // Attest used to be refused here (`service_line_unscheduled`) because Schedules
+  // A–E do not cover CPA review/audit work. Schedule F now covers it, so attest
+  // MAPS — but under a harder rule that lives in schedule-f-attest.spec.ts: no
+  // packet without a complete per-engagement Addendum.
   const attest = await clientWith('attest', 'AttestClient');
-  await assert.rejects(
-    resolveSchedules(app, attest),
-    (err: { code?: string; message?: string }) => {
-      assert.equal(err.code, 'service_line_unscheduled');
-      assert.match(String(err.message), /review\/audit/i);
-      return true;
-    },
-    'attest has no v3 schedule — refuse, do not improvise'
-  );
+  assert.deepEqual((await resolveSchedules(app, attest)).codes, ['F']);
 });
 
 // ── Master §1, all four claims ────────────────────────────────────────────────

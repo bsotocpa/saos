@@ -18,6 +18,7 @@ import {
   pendingSchedules, previewPacket, type ServiceLine,
 } from './packet.ts';
 import { consentsToPresent, recordConsentAnswer } from '../compliance/consent-presentation.ts';
+import { createAttestAddendum } from './attest-addendum.ts';
 import { makeDocusealAdapter } from '../signatures/docuseal.ts';
 import { sendEnvelope } from '../signatures/service.ts';
 
@@ -54,6 +55,30 @@ export function registerPacketRoutes(app: FastifyInstance): void {
       app, id, request.staff!,
       b.extraServiceLines ? { extraServiceLines: b.extraServiceLines as ServiceLine[] } : {}
     );
+  });
+
+  /**
+   * The per-engagement attest Addendum (AU-C 210 / AR-C 90). Without it, packet
+   * assembly refuses — Schedule F alone does not agree the terms of an engagement.
+   */
+  app.post<{ Params: { id: string } }>('/engagements/:id/attest-addendum', write, async (request, reply) => {
+    const engagementId = z.uuid().parse(request.params.id);
+    const b = z
+      .object({
+        entityName: z.string().min(2).max(300),
+        entityBusinessId: z.uuid().nullish(),
+        engagementType: z.enum(['review', 'audit', 'insurance_wc']),
+        statementsAndPeriods: z.string().min(4).max(1000),
+        reportingFramework: z.string().min(2).max(300),
+        feeBasis: z.enum(['fixed', 'hourly']),
+        estimatedHours: z.number().positive().max(9999).optional(),
+        hourlyItemCode: z.string().min(1).optional(),
+        depositItemCode: z.string().min(1),
+        expectedReportDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .parse(request.body);
+    const result = await createAttestAddendum(app, request.staff!, { engagementId, ...b });
+    return reply.code(201).send(result);
   });
 
   /**

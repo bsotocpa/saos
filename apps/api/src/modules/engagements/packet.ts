@@ -39,10 +39,16 @@ export const BUSINESS_RETURN_TYPES = new Set([
   '1041', '1120f_foreign', 'ag990il',
 ]);
 
-/** Service lines with no v3 schedule. Assembly refuses these by name. */
-export const UNSCHEDULED_SERVICE_LINES: Record<string, string> = {
-  attest: 'CPA review/audit work is not covered by Schedules A–E in legal package v3. It needs its own attorney-drafted schedule before an attest engagement can be papered.',
-};
+/**
+ * Service lines with no schedule at all. Assembly refuses these by name.
+ *
+ * `attest` used to live here. Schedule F (SOTO_Schedule_F_Attest_FINALFORM) now
+ * covers CPA review, audit, and insurance/WC audit work, so attest is assemblable
+ * — but under a stricter rule than any other line: see `assertAttestAddendum`.
+ * Nothing else is currently unscheduled; the map stays because the NEXT service
+ * line Brian invents will need it, and a named refusal beats silent mis-filing.
+ */
+export const UNSCHEDULED_SERVICE_LINES: Record<string, string> = {};
 
 export interface ResolvedSchedules {
   codes: string[];
@@ -131,6 +137,101 @@ export async function resolveSchedules(
   return { codes: [...codes].sort(), titles, reasons };
 }
 
+export interface AttestAddendumSummary {
+  id: string;
+  engagementId: string;
+  entityName: string;
+  engagementType: 'review' | 'audit' | 'insurance_wc';
+  statementsAndPeriods: string;
+  reportingFramework: string;
+  feeSummary: string;
+  depositSummary: string;
+  expectedReportDate: string;
+}
+
+const ATTEST_TYPE_LABEL: Record<string, string> = {
+  review: 'Review (SSARS)',
+  audit: 'Audit (US GAAS)',
+  insurance_wc: 'Insurance / workers’ compensation audit',
+};
+
+const usd = (cents: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+
+/**
+ * ATTEST HAS A HARDER GATE THAN EVERY OTHER SCHEDULE.
+ *
+ * Schedule F carries the standing terms, but AU-C 210 (audits) and AR-C 90
+ * (reviews) require the terms of EACH engagement — entity, statements and period,
+ * framework, fee — to be agreed before work begins. So an attest packet without a
+ * complete Addendum is not merely untidy: the engagement is not properly agreed.
+ *
+ * The database CHECK already makes an incomplete Addendum unstorable. This refuses
+ * the packet when there is NO Addendum, and names which engagement is missing one.
+ */
+export async function attestAddendumFor(
+  app: FastifyInstance,
+  contactId: string
+): Promise<AttestAddendumSummary | null> {
+  const { rows } = await app.db.query<{
+    id: string; engagement_id: string; entity_name: string; engagement_type: string;
+    statements_and_periods: string; reporting_framework: string; fee_basis: string;
+    fee_fixed_cents: number | null; fee_hourly_rate_cents: number | null;
+    estimated_hours: string | null; deposit_cents: number; expected_report_date: string;
+  }>(
+    `SELECT a.id, a.engagement_id, a.entity_name, a.engagement_type::text AS engagement_type,
+            a.statements_and_periods, a.reporting_framework, a.fee_basis::text AS fee_basis,
+            a.fee_fixed_cents, a.fee_hourly_rate_cents, a.estimated_hours, a.deposit_cents,
+            to_char(a.expected_report_date, 'YYYY-MM-DD') AS expected_report_date
+     FROM attest_addenda a
+     JOIN engagements e ON e.id = a.engagement_id
+     WHERE a.contact_id = $1 AND e.status IN ('draft', 'active')
+     ORDER BY a.created_at DESC LIMIT 1`,
+    [contactId]
+  );
+  const a = rows[0];
+  if (!a) return null;
+  return {
+    id: a.id,
+    engagementId: a.engagement_id,
+    entityName: a.entity_name,
+    engagementType: a.engagement_type as AttestAddendumSummary['engagementType'],
+    statementsAndPeriods: a.statements_and_periods,
+    reportingFramework: a.reporting_framework,
+    feeSummary:
+      a.fee_basis === 'fixed'
+        ? `${usd(a.fee_fixed_cents ?? 0)} fixed fee`
+        : `${usd(a.fee_hourly_rate_cents ?? 0)} per hour, estimated ${a.estimated_hours} hours`,
+    depositSummary: usd(a.deposit_cents),
+    expectedReportDate: a.expected_report_date,
+  };
+}
+
+/** Refuses when Schedule F is in the packet but no complete Addendum exists. */
+export async function assertAttestAddendum(
+  app: FastifyInstance,
+  contactId: string,
+  codes: string[]
+): Promise<AttestAddendumSummary | null> {
+  if (!codes.includes('F')) return null;
+  const addendum = await attestAddendumFor(app, contactId);
+  if (!addendum) {
+    const eng = await app.db.query<{ id: string; title: string | null }>(
+      `SELECT id, title FROM engagements
+       WHERE contact_id = $1 AND service_line = 'attest' AND status IN ('draft', 'active')
+       ORDER BY created_at LIMIT 1`,
+      [contactId]
+    );
+    const which = eng.rows[0] ? ` (engagement ${eng.rows[0].title ?? eng.rows[0].id})` : '';
+    throw new AppError(
+      409,
+      'attest_addendum_required',
+      `An attest engagement${which} needs its Engagement Addendum before the packet can be assembled — entity, statements and period, reporting framework, fee, and deposit. AU-C 210 / AR-C 90 require those terms to be agreed for each engagement, so Schedule F alone is not enough.`
+    );
+  }
+  return addendum;
+}
+
 export interface PacketPreview extends ResolvedSchedules {
   masterKey: string;
   masterVersion: number;
@@ -138,6 +239,8 @@ export interface PacketPreview extends ResolvedSchedules {
   /** Schedules already accepted, so a second packet only carries what is new. */
   alreadyAccepted: string[];
   newSchedules: string[];
+  /** Present when Schedule F rides in this packet. */
+  attestAddendum: AttestAddendumSummary | null;
 }
 
 export async function previewPacket(
@@ -156,6 +259,31 @@ export async function previewPacket(
       'No final Master Engagement Agreement is loaded. Legal text must be in place before anything can be papered.'
     );
   }
+
+  // THE PLACEHOLDER GATE, EXTENDED TO SCHEDULES. Previously only the Master was
+  // checked, so a packet could carry a schedule whose text was still under review
+  // and a Master signature would record acceptance of it. Any schedule in the
+  // packet must be final — this is what makes it safe to load Schedule F with its
+  // flag still set while Brian confirms the attorney clearance.
+  const draftSchedules = await app.db.query<{ schedule_code: string; name: string }>(
+    `SELECT s.schedule_code, t.name
+     FROM service_schedules s JOIN templates t ON t.key = s.template_key
+     WHERE s.schedule_code = ANY($1) AND (t.is_placeholder OR NOT t.is_active)
+     ORDER BY s.schedule_code`,
+    [resolved.codes]
+  );
+  if (draftSchedules.rows.length > 0) {
+    throw new AppError(
+      409,
+      'schedule_not_final',
+      `Cannot assemble this packet: ${draftSchedules.rows
+        .map((r) => `${r.name} (Schedule ${r.schedule_code})`)
+        .join(', ')} is still flagged PLACEHOLDER. Final text must be in place in Admin → Templates before a client can be asked to accept it.`
+    );
+  }
+
+  const attestAddendum = await assertAttestAddendum(app, contactId, resolved.codes);
+
   const signed = await app.db.query(
     `SELECT 1 FROM engagement_packets WHERE contact_id = $1 AND status = 'signed'`,
     [contactId]
@@ -172,6 +300,7 @@ export async function previewPacket(
     alreadySigned: signed.rows.length > 0,
     alreadyAccepted: already,
     newSchedules: resolved.codes.filter((c) => !already.includes(c)),
+    attestAddendum,
   };
 }
 
@@ -204,15 +333,23 @@ export async function createPacket(
 
   const { rows } = await app.db.query<{ id: string }>(
     `INSERT INTO engagement_packets
-       (contact_id, master_template_key, master_version, schedule_codes, created_by_staff_id)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [contactId, preview.masterKey, preview.masterVersion, preview.codes, actor.id]
+       (contact_id, master_template_key, master_version, schedule_codes,
+        created_by_staff_id, attest_addendum_id)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [
+      contactId, preview.masterKey, preview.masterVersion, preview.codes, actor.id,
+      preview.attestAddendum?.id ?? null,
+    ]
   );
   await writeAudit(app.db, {
     actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
     action: 'packet.created', objectType: 'engagement_packet', objectId: rows[0]!.id,
     contactId,
-    details: { schedules: preview.codes, reasons: preview.reasons, master_version: preview.masterVersion },
+    details: {
+      schedules: preview.codes, reasons: preview.reasons, master_version: preview.masterVersion,
+      attest_addendum_id: preview.attestAddendum?.id ?? null,
+      attest_engagement_type: preview.attestAddendum?.engagementType ?? null,
+    },
   });
   return { packetId: rows[0]!.id, scheduleCodes: preview.codes, masterKey: preview.masterKey };
 }
@@ -396,6 +533,38 @@ export async function renderMasterForPacket(
     schedules_attached: titleRows.rows.map((r) => `${r.schedule_code} — ${r.title}`).join('; '),
   });
   return { body: rendered.body, scheduleCodes: p.schedule_codes, titles };
+}
+
+/**
+ * Schedule F rendered with its Addendum filled in. The Addendum's blanks are the
+ * agreed terms, so they are filled from `attest_addenda` — never left as blanks on
+ * a document a client is asked to accept.
+ */
+export async function renderScheduleF(
+  app: FastifyInstance,
+  contactId: string,
+  language: 'en' | 'es' = 'en'
+): Promise<{ body: string; addendum: AttestAddendumSummary }> {
+  const addendum = await attestAddendumFor(app, contactId);
+  if (!addendum) {
+    throw new AppError(409, 'attest_addendum_required', 'No attest Addendum on file for this client.');
+  }
+  const key = await app.db.query<{ template_key: string }>(
+    `SELECT template_key FROM service_schedules WHERE schedule_code = 'F'`
+  );
+  if (!key.rows[0]) throw new AppError(500, 'schedule_f_missing', 'Schedule F is not mapped.');
+
+  const { renderTemplate } = await import('../templates/service.ts');
+  const rendered = await renderTemplate(app, key.rows[0].template_key, language, {
+    entity_name: addendum.entityName,
+    engagement_type: ATTEST_TYPE_LABEL[addendum.engagementType] ?? addendum.engagementType,
+    statements_and_periods: addendum.statementsAndPeriods,
+    reporting_framework: addendum.reportingFramework,
+    fee_summary: addendum.feeSummary,
+    deposit_summary: addendum.depositSummary,
+    expected_report_date: addendum.expectedReportDate,
+  });
+  return { body: rendered.body, addendum };
 }
 
 /**
