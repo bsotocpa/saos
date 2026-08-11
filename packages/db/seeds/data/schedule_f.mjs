@@ -56,6 +56,51 @@ Expected report date: {{expected_report_date}}`;
 
 const KEY = 'schedule_f_attest';
 
+/**
+ * The email that carries an engagement packet to a client for signature.
+ *
+ * Lives here rather than in templates.mjs because it belongs to the v3 Master +
+ * Schedules architecture, and because portal-native signing (Brian's Option 2
+ * decision, 2026-08-11) made it the ONLY way a packet reaches a client: Docuseal
+ * self-hosted stays for Form 8879, where IRS Pub 1345 KBA is the point.
+ *
+ * The link goes to the portal, never an attachment — documents never travel by email
+ * attachment (CLAUDE.md).
+ */
+const PACKET_READY = {
+  key: 'packet_ready_to_sign',
+  name: 'Engagement agreement ready to sign (v3 packet)',
+  variables: ['first_name', 'schedules', 'sign_link'],
+  subjectEn: 'Your engagement agreement is ready to sign',
+  bodyEn:
+    'Hi {{first_name}},\n\n' +
+    'Your engagement agreement is ready. It covers {{schedules}}.\n\n' +
+    'You can read it and sign it in your portal — it takes about a minute:\n\n' +
+    '{{sign_link}}\n\n' +
+    'Signing it once covers the agreement and every service schedule included above. ' +
+    'If we add a service later, you accept just that schedule in the portal — you will ' +
+    'never be asked to sign this again.\n\n' +
+    'If anything in it does not look right, reply and tell us. We would rather fix the ' +
+    'terms than have you sign something you have questions about.\n\n' +
+    '— Soto Accounting',
+};
+
+async function seedPacketEmail(client) {
+  const existing = await client.query(`SELECT 1 FROM templates WHERE key = $1`, [PACKET_READY.key]);
+  if (existing.rows.length > 0) return false;
+  // English only, needs_es_review = true: v3 says the English text controls and
+  // Spanish follows Brian's approval. The render path falls back to English.
+  await client.query(
+    `INSERT INTO templates
+       (key, name, channel, subject_en, body_en, subject_es, body_es,
+        is_placeholder, variables, kind, needs_es_review)
+     VALUES ($1, $2, 'email', $3, $4, NULL, NULL, false, $5::jsonb, 'operational', true)`,
+    [PACKET_READY.key, PACKET_READY.name, PACKET_READY.subjectEn, PACKET_READY.bodyEn,
+     JSON.stringify(PACKET_READY.variables)]
+  );
+  return true;
+}
+
 export async function seedScheduleF(client) {
   // The Addendum fields are filled from attest_addenda at render time, so the
   // variables are declared and something owns filling every one of them.
@@ -96,6 +141,9 @@ export async function seedScheduleF(client) {
     [KEY]
   );
 
+  const emailAdded = await seedPacketEmail(client);
+
   const flag = await client.query(`SELECT is_placeholder FROM templates WHERE key = $1`, [KEY]);
-  return `Schedule F: loaded (${flag.rows[0].is_placeholder ? 'PLACEHOLDER' : 'final'}), mapped to the attest service line, ES queued`;
+  return `Schedule F: loaded (${flag.rows[0].is_placeholder ? 'PLACEHOLDER' : 'final'}), mapped to the attest service line, ES queued` +
+    (emailAdded ? '; packet_ready_to_sign email seeded' : '');
 }

@@ -187,7 +187,12 @@ export function registerCrmRoutes(app: FastifyInstance): void {
               -- A test client must ANNOUNCE itself wherever staff look at it,
               -- or someone treats the rehearsal as a real engagement.
               c.is_test, c.test_note,
-              c.br1_referred_by_hilo, c.br3_referred_by_jackson, c.br4_hilo_program_participant
+              c.br1_referred_by_hilo, c.br3_referred_by_jackson, c.br4_hilo_program_participant,
+              -- Portal access is now a PRECONDITION for sending an engagement packet
+              -- (packets are signed in the portal), so the client page has to be able
+              -- to see it and offer to grant it.
+              EXISTS (SELECT 1 FROM portal_users pu WHERE pu.contact_id = c.id AND pu.is_active)
+                AS has_portal_access
        FROM contacts c WHERE c.id = $1 AND NOT c.is_archived`,
       [id]
     );

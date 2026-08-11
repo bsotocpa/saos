@@ -14,16 +14,14 @@ import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import {
-  acceptScheduleInPortal, createPacket, envelopeForPacket, markPacketSent,
-  pendingSchedules, previewPacket, type ServiceLine,
+  acceptScheduleInPortal, createPacket, pendingSchedules, previewPacket,
+  sendPacketForPortalSignature, type ServiceLine,
 } from './packet.ts';
 import { consentsToPresent, recordConsentAnswer } from '../compliance/consent-presentation.ts';
 import { createAttestAddendum } from './attest-addendum.ts';
 import { buildPacketDocument } from './packet-document.ts';
 import { presentForSignature, signPacketInPortal } from './portal-signature.ts';
 import { makeMinioClient } from '../documents/storage.ts';
-import { makeDocusealAdapter } from '../signatures/docuseal.ts';
-import { sendPacketEnvelope } from '../signatures/service.ts';
 
 const SERVICE_LINES = [
   'tax', 'bookkeeping', 'payroll', 'sales_tax', 'advisory',
@@ -36,7 +34,6 @@ const PreviewQuery = z.object({
 });
 
 export function registerPacketRoutes(app: FastifyInstance): void {
-  const docuseal = makeDocusealAdapter(app.config);
   const minio = makeMinioClient(app.config);
   // Papering a client is a commitment act, so it rides the same permission that
   // creates an engagement rather than a new one only Brian would ever hold.
@@ -86,28 +83,16 @@ export function registerPacketRoutes(app: FastifyInstance): void {
   });
 
   /**
-   * Send the packet for signature. The envelope is created once and reused, so a
-   * failed send can be retried without stranding a second envelope; 'sent' is
-   * stamped only after Docuseal accepted it.
+   * Send the packet for signature — PORTAL-NATIVE, permanently. No Docuseal envelope
+   * is created: engagement packets are signed in our own portal (Master §4 carries
+   * the E-SIGN/UETA consent), and Docuseal self-hosted is reserved for Form 8879
+   * where IRS Pub 1345 requires KBA.
    */
   app.post<{ Params: { id: string } }>('/packets/:id/send', write, async (request) => {
     const packetId = z.uuid().parse(request.params.id);
     const language = z.object({ language: z.enum(['en', 'es']).optional() })
       .parse(request.body ?? {}).language ?? 'en';
-
-    // The document is BUILT here, per client, from our own templates. There is no
-    // docusealTemplateId parameter any more — that was the shape that bundled every
-    // schedule and both §7216 consents into one signature.
-    const env = await envelopeForPacket(app, packetId, request.staff!);
-    const sent = await sendPacketEnvelope(
-      app, docuseal, { type: 'staff', id: request.staff!.id, label: request.staff!.email },
-      packetId, env.envelopeId, language
-    );
-    await markPacketSent(app, packetId);
-    return {
-      packetId, envelopeId: env.envelopeId, envelopeReused: env.reused,
-      sections: sent.sections, excludedConsents: sent.excludedConsents, ...sent.result,
-    };
+    return sendPacketForPortalSignature(app, packetId, request.staff!, language);
   });
 
   /**

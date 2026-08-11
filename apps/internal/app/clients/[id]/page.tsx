@@ -21,6 +21,7 @@ interface Contact {
   city: string | null; state: string | null;
   soto_status: string; hilo_status: string; client_since: string | null;
   consent_7216_status: string; engagement_letter_status: string;
+  has_portal_access: boolean;
   health_score: number | null; health_components: Record<string, unknown> | null;
   sms_consent: boolean; source: string; ssn_status: string | null; ssn_last4: string | null;
   notes: string | null;
@@ -315,7 +316,35 @@ export default function ClientPacketPage() {
                   >
                     Review document
                   </a>{' '}
-                  {p.status === 'draft' ? (
+                  {p.status === 'draft' && packet?.contact.has_portal_access === false ? (
+                    /* Portal access is a PRECONDITION now that packets are signed in
+                       the portal. Offering Send here without it would fail with a
+                       message the screen could not act on, so the fix is offered at
+                       the point of need instead. */
+                    <button
+                      className="btn accent"
+                      type="button"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!window.confirm(
+                          'Grant portal access? The client is emailed a secure sign-in link.'
+                        )) return;
+                        setBusy(true);
+                        setPacketErr('');
+                        try {
+                          await api('/portal-users', { method: 'POST', body: { contactId: params.id } });
+                          setPacketMsg('Portal access granted — the client was emailed a sign-in link. You can send the packet now.');
+                          await load();
+                        } catch (err) {
+                          setPacketErr(err instanceof Error ? err.message : 'Could not grant portal access.');
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      {busy ? 'Working…' : 'Grant portal access first'}
+                    </button>
+                  ) : p.status === 'draft' ? (
                     <button
                       className="btn accent"
                       type="button"

@@ -355,9 +355,117 @@ export async function createPacket(
 }
 
 /**
- * The envelope for a packet. Created ONCE and reused on retry — a send that fails
- * at the Docuseal step must not leave a second envelope behind next time (the
- * quote-send lesson). The packet is only marked 'sent' after the send succeeds.
+ * SEND A PACKET FOR PORTAL SIGNATURE — the permanent path (Brian's Option 2
+ * decision, 2026-08-11). Docuseal self-hosted stays for Form 8879, where IRS Pub
+ * 1345 requires KBA and the vendor's identity trail is the point; an engagement
+ * packet needs no KBA and Master §4 already carries the client's E-SIGN/UETA
+ * consent, so signing it in our own portal keeps every client document in-house.
+ *
+ * This deliberately does NOT create a signature envelope. The old Docuseal path
+ * could not carry a generated document at all on community edition, and the static
+ * all-in-one template it fell back on bundled schedules the client had not engaged
+ * plus both §7216 consents.
+ *
+ * Order matters: the document is BUILT first, because building it applies the
+ * placeholder gate to every schedule, refuses attest without an Addendum, and
+ * refuses if a §7216 consent ever reached the signing document. Only then is the
+ * client told it is waiting. A failed build sends nothing and marks nothing.
+ */
+export async function sendPacketForPortalSignature(
+  app: FastifyInstance,
+  packetId: string,
+  actor: AuthedStaff,
+  language: 'en' | 'es' = 'en'
+): Promise<{
+  packetId: string;
+  scheduleCodes: string[];
+  emailedTo: string;
+  sections: Array<{ kind: string; code: string | null; templateKey: string; templateVersion: number }>;
+  excludedConsents: string[];
+}> {
+  const { rows } = await app.db.query<{
+    contact_id: string; status: string; schedule_codes: string[];
+    first_name: string; email: string | null; language: 'en' | 'es';
+  }>(
+    `SELECT p.contact_id, p.status, p.schedule_codes, c.first_name, c.email, c.language
+     FROM engagement_packets p JOIN contacts c ON c.id = p.contact_id
+     WHERE p.id = $1`,
+    [packetId]
+  );
+  const p = rows[0];
+  if (!p) throw new AppError(404, 'not_found', 'Packet not found.');
+  if (p.status === 'signed') throw new AppError(409, 'already_signed', 'This packet is already signed.');
+  if (p.status === 'void') throw new AppError(409, 'packet_void', 'This packet was voided. Create a new one.');
+  if (!p.email) {
+    throw new AppError(400, 'no_email', 'This client has no email address, so the signing link cannot be sent.');
+  }
+
+  // Build first — this is where every gate fires.
+  const { buildPacketDocument } = await import('./packet-document.ts');
+  const doc = await buildPacketDocument(app, packetId, language);
+
+  // The portal needs a session to sign, so the client must have portal access.
+  const portalUser = await app.db.query(
+    `SELECT 1 FROM portal_users WHERE contact_id = $1 AND is_active`,
+    [p.contact_id]
+  );
+  if (portalUser.rows.length === 0) {
+    throw new AppError(
+      409,
+      'no_portal_access',
+      'This client has no portal access yet, and the agreement is signed in the portal. Grant access first — they will get a sign-in link with it.'
+    );
+  }
+
+  const titles = doc.sections
+    .filter((s) => s.kind === 'schedule')
+    .map((s) => s.title)
+    .join(', ');
+
+  const { sendTemplatedEmail } = await import('../templates/service.ts');
+  await sendTemplatedEmail(app, {
+    to: p.email,
+    templateKey: 'packet_ready_to_sign',
+    // The CLIENT's language, not the staffer's. English controls until Brian
+    // approves the translation, and renderTemplate falls back on its own.
+    language: p.language,
+    vars: {
+      first_name: p.first_name,
+      schedules: titles || 'your engagement',
+      sign_link: `${app.config.PORTAL_BASE_URL}/sign`,
+    },
+    contactId: p.contact_id,
+  });
+
+  await markPacketSent(app, packetId);
+
+  await writeAudit(app.db, {
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    action: 'packet.sent', objectType: 'engagement_packet', objectId: packetId,
+    contactId: p.contact_id,
+    details: {
+      method: 'portal_esign',
+      schedules: p.schedule_codes,
+      sections: doc.sections.map((s) => ({ kind: s.kind, code: s.code, key: s.templateKey, version: s.templateVersion })),
+      excluded_consents: doc.deliberatelyExcluded.map((e) => e.templateKey),
+    },
+  });
+
+  return {
+    packetId,
+    scheduleCodes: p.schedule_codes,
+    emailedTo: p.email,
+    sections: doc.sections.map((s) => ({
+      kind: s.kind, code: s.code, templateKey: s.templateKey, templateVersion: s.templateVersion,
+    })),
+    excludedConsents: doc.deliberatelyExcluded.map((e) => e.templateKey),
+  };
+}
+
+/**
+ * RETAINED FOR THE DOCUSEAL PATH ONLY — no longer used by engagement packets.
+ * Kept because a historical packet may still carry an envelope_id from before the
+ * portal-native decision, and the completion webhook reads it.
  */
 export async function envelopeForPacket(
   app: FastifyInstance,

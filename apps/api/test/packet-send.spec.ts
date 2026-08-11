@@ -1,17 +1,21 @@
-// Sending a packet: SAOS generates the document, Docuseal signs THAT.
+// Sending an engagement packet — PORTAL-NATIVE, permanently (Brian's Option 2
+// decision, 2026-08-11). Docuseal self-hosted is reserved for Form 8879, where IRS
+// Pub 1345 requires KBA and the vendor's identity trail is the point.
 //
-// The shape being prevented, permanently: one pre-built Docuseal template holding
-// the Master + all five Schedules + BOTH §7216 consent forms, signed once. That
-// would have a tax-only client accept bookkeeping terms the database says they
-// never accepted, and capture §7216 consent with the signature that engages the
-// service — the conditioning §7216 forbids.
+// What these tests pin down:
+//   · sending creates NO signature envelope, and never touches Docuseal
+//   · the document is BUILT before anything is sent, so every gate fires first
+//   · a failed build sends nothing and marks nothing
+//   · the client is emailed a PORTAL LINK, never an attachment
+//   · signing in the portal accepts exactly the schedules in the document
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash, randomBytes } from 'node:crypto';
 import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
-import type { Mailer } from '../src/mailer.ts';
+import type { Mailer, MailMessage } from '../src/mailer.ts';
 import { createTestConfig, makeContact, makeStaff, auditRows, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { createEngagement } from '../src/modules/engagements/service.ts';
@@ -23,7 +27,14 @@ let config: Config;
 let brian: TestStaff & { token: string };
 let ceo: AuthedStaff;
 
-const silentMailer: Mailer = { transport: 'console', async send() { return { id: 'silent' }; } };
+const sentMail: MailMessage[] = [];
+const capturingMailer: Mailer = {
+  transport: 'console',
+  async send(msg) {
+    sentMail.push(msg);
+    return { id: `captured-${sentMail.length}` };
+  },
+};
 const auth = (t: { token: string }) => ({ authorization: `Bearer ${t.token}` });
 
 async function staffWithToken(email: string, role: string): Promise<TestStaff & { token: string }> {
@@ -39,20 +50,30 @@ async function staffWithToken(email: string, role: string): Promise<TestStaff & 
   return { ...staff, token: res.json().token as string };
 }
 
-async function packetFor(name: string, lines: string[]): Promise<{ contactId: string; packetId: string }> {
-  const c = await makeContact(app.db, {
-    firstName: 'Synthetic', lastName: name, email: `${name.toLowerCase()}@example.test`,
-  });
+/** A client with portal access, an engagement, and a packet ready to send. */
+async function readyToSend(name: string, lines: string[]) {
+  const email = `${name.toLowerCase()}@example.test`;
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: name, email });
   for (const line of lines) {
     await createEngagement(app, ceo, { contactId: c.id, serviceLine: line as 'tax', status: 'active' }, {});
   }
+  const pu = await app.db.query<{ id: string }>(
+    `INSERT INTO portal_users (contact_id, email) VALUES ($1, $2) RETURNING id`,
+    [c.id, email]
+  );
+  const token = randomBytes(32).toString('base64url');
+  await app.db.query(
+    `INSERT INTO portal_sessions (portal_user_id, token_hash, expires_at)
+     VALUES ($1, $2, now() + interval '1 hour')`,
+    [pu.rows[0]!.id, createHash('sha256').update(token).digest('hex')]
+  );
   const packet = await createPacket(app, c.id, ceo);
-  return { contactId: c.id, packetId: packet.packetId };
+  return { contactId: c.id, packetId: packet.packetId, email, cookie: { cookie: `saos_portal_session=${token}` } };
 }
 
 before(async () => {
   config = await createTestConfig('packetsend');
-  app = buildServer(config, { mailer: silentMailer });
+  app = buildServer(config, { mailer: capturingMailer });
   await app.ready();
   brian = await staffWithToken('brian-ps@example.test', 'ceo');
   ceo = { id: brian.id, email: brian.email, permissions: ['*'], roleKey: 'ceo' } as AuthedStaff;
@@ -62,127 +83,146 @@ after(async () => {
   await app.close();
 });
 
-test('the send path uses the GENERATED document, not a Docuseal template', async () => {
-  const { packetId } = await packetFor('SendsGenerated', ['tax']);
+test('sending emails a PORTAL LINK and creates no signature envelope at all', async () => {
+  const { packetId, email } = await readyToSend('PortalSend', ['tax']);
+  sentMail.length = 0;
+
   const res = await app.inject({
     method: 'POST', url: `/packets/${packetId}/send`, headers: auth(brian), payload: {},
   });
   assert.equal(res.statusCode, 200, res.body);
   const body = res.json() as {
-    submissionId: string;
-    sections: Array<{ kind: string; code: string | null }>;
-    excludedConsents: string[];
+    emailedTo: string; scheduleCodes: string[];
+    sections: Array<{ code: string | null }>; excludedConsents: string[];
   };
+  assert.equal(body.emailedTo, email);
+  assert.deepEqual(body.scheduleCodes, ['A']);
+  assert.deepEqual(body.sections.map((s) => s.code), [null, 'A'], 'Master + Schedule A');
+  assert.deepEqual(body.excludedConsents.sort(), ['consent_7216_disclose', 'consent_7216_use']);
 
-  // The stub distinguishes the two paths by submission id prefix, so this asserts
-  // WHICH path ran rather than merely that something was sent.
-  assert.match(body.submissionId, /^stub-doc-/, 'the generated-document path ran');
-  assert.deepEqual(body.sections.map((s) => s.code), [null, 'A'], 'Master + Schedule A only');
-  assert.deepEqual(
-    body.excludedConsents.sort(), ['consent_7216_disclose', 'consent_7216_use'],
-    'both consents reported as excluded from the signing document'
-  );
-});
-
-test('the envelope is marked a packet envelope, and the DB refuses to template it', async () => {
-  const { packetId } = await packetFor('GuardedEnvelope', ['bookkeeping']);
-  await app.inject({ method: 'POST', url: `/packets/${packetId}/send`, headers: auth(brian), payload: {} });
-
-  const env = await app.db.query<{ id: string; is_packet_envelope: boolean; docuseal_template_id: string | null }>(
-    `SELECT se.id, se.is_packet_envelope, se.docuseal_template_id
-     FROM signature_envelopes se JOIN engagement_packets p ON p.envelope_id = se.id
-     WHERE p.id = $1`,
+  // NO envelope, and nothing on the packet pointing at a vendor.
+  const envelopes = await app.db.query(
+    `SELECT 1 FROM signature_envelopes WHERE contact_id = (SELECT contact_id FROM engagement_packets WHERE id = $1)`,
     [packetId]
   );
-  assert.equal(env.rows[0]!.is_packet_envelope, true);
-  assert.equal(env.rows[0]!.docuseal_template_id, null, 'no template id, ever');
-
-  // THE GUARD: pointing this envelope at a Docuseal template is unrepresentable.
-  await assert.rejects(
-    app.db.query(
-      `UPDATE signature_envelopes SET docuseal_template_id = '1' WHERE id = $1`,
-      [env.rows[0]!.id]
-    ),
-    /signature_envelopes_packet_never_templated/,
-    'the old all-in-one-template shape cannot come back'
+  assert.equal(envelopes.rows.length, 0, 'portal-native signing creates no envelope');
+  const packet = await app.db.query<{ status: string; envelope_id: string | null }>(
+    `SELECT status, envelope_id FROM engagement_packets WHERE id = $1`, [packetId]
   );
-});
+  assert.equal(packet.rows[0]!.status, 'sent');
+  assert.equal(packet.rows[0]!.envelope_id, null);
 
-test('the audit row records exactly what the client was asked to sign', async () => {
-  const { packetId } = await packetFor('AuditedSend', ['bookkeeping', 'entity']);
-  await app.inject({ method: 'POST', url: `/packets/${packetId}/send`, headers: auth(brian), payload: {} });
+  // The email carries a link, never the document itself.
+  const mail = sentMail.find((m) => m.to === email);
+  assert.ok(mail, 'the client was emailed');
+  assert.match(mail.text, /\/sign/, 'points at the portal');
+  assert.doesNotMatch(mail.text, /MASTER ENGAGEMENT AGREEMENT/, 'documents never travel by email');
 
-  const audit = await app.db.query<{ details: Record<string, unknown> }>(
-    `SELECT details FROM audit_log WHERE action = 'packet.sent' AND details->>'packet_id' = $1`,
-    [packetId]
+  const audit = await app.db.query<{ details: { method: string } }>(
+    `SELECT details FROM audit_log WHERE action = 'packet.sent' AND object_id = $1`, [packetId]
   );
-  assert.equal(audit.rows.length, 1);
-  const d = audit.rows[0]!.details as {
-    sections: Array<{ kind: string; code: string | null; key: string; version: number }>;
-    excluded_consents: string[];
-  };
-  assert.deepEqual(d.sections.map((s) => s.code), [null, 'C', 'E']);
-  for (const s of d.sections) assert.ok(s.version >= 1, `${s.key} version recorded`);
-  assert.equal(d.excluded_consents.length, 2, 'the omission is on the record too');
+  assert.equal(audit.rows[0]!.details.method, 'portal_esign');
   assert.ok((await auditRows(app.db, 'packet.sent')) >= 1);
 });
 
-test('a failed send does not strand a second envelope, and does not mark the packet sent', async () => {
-  const { packetId } = await packetFor('RetrySend', ['bookkeeping']);
-  // Break the document: put its schedule back under review.
+test('a failed build sends nothing and marks nothing', async () => {
+  const { packetId, email } = await readyToSend('BuildFails', ['bookkeeping']);
+  sentMail.length = 0;
   await app.db.query(`UPDATE templates SET is_placeholder = true WHERE schedule_code = 'C'`);
-  const failed = await app.inject({
-    method: 'POST', url: `/packets/${packetId}/send`, headers: auth(brian), payload: {},
-  });
-  assert.equal(failed.statusCode, 409, failed.body);
-  assert.equal(failed.json().error, 'schedule_not_final');
-
-  const after = await app.db.query<{ status: string; envelope_id: string | null }>(
-    `SELECT status, envelope_id FROM engagement_packets WHERE id = $1`, [packetId]
-  );
-  assert.equal(after.rows[0]!.status, 'draft', 'not marked sent on a failed send');
-  const envelopeId = after.rows[0]!.envelope_id;
-  assert.ok(envelopeId, 'the envelope was created and kept for reuse');
-
-  // Fix it and retry: the SAME envelope is reused rather than a second created.
-  await app.db.query(`UPDATE templates SET is_placeholder = false WHERE schedule_code = 'C'`);
-  const ok = await app.inject({
-    method: 'POST', url: `/packets/${packetId}/send`, headers: auth(brian), payload: {},
-  });
-  assert.equal(ok.statusCode, 200, ok.body);
-  assert.equal(ok.json().envelopeReused, true);
-  assert.equal(ok.json().envelopeId, envelopeId);
-
-  const count = await app.db.query<{ n: number }>(
-    `SELECT count(*)::int AS n FROM signature_envelopes se
-     JOIN contacts c ON c.id = se.contact_id
-     WHERE c.last_name = 'RetrySend'`
-  );
-  assert.equal(count.rows[0]!.n, 1, 'exactly one envelope for the whole story');
+  try {
+    const res = await app.inject({
+      method: 'POST', url: `/packets/${packetId}/send`, headers: auth(brian), payload: {},
+    });
+    assert.equal(res.statusCode, 409, res.body);
+    assert.equal(res.json().error, 'schedule_not_final');
+    assert.equal(sentMail.filter((m) => m.to === email).length, 0, 'no email escaped');
+    const packet = await app.db.query<{ status: string }>(
+      `SELECT status FROM engagement_packets WHERE id = $1`, [packetId]
+    );
+    assert.equal(packet.rows[0]!.status, 'draft', 'not marked sent');
+  } finally {
+    await app.db.query(`UPDATE templates SET is_placeholder = false WHERE schedule_code = 'C'`);
+  }
 });
 
-test('signing the generated packet records acceptance of exactly its schedules', async () => {
-  const { contactId, packetId } = await packetFor('SignsGenerated', ['advisory']);
+test('a client with no portal access cannot be sent a packet they could not sign', async () => {
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'NoPortal', email: 'noportal@example.test',
+  });
+  await createEngagement(app, ceo, { contactId: c.id, serviceLine: 'entity', status: 'active' }, {});
+  const packet = await createPacket(app, c.id, ceo);
+  sentMail.length = 0;
+
+  const res = await app.inject({
+    method: 'POST', url: `/packets/${packet.packetId}/send`, headers: auth(brian), payload: {},
+  });
+  assert.equal(res.statusCode, 409, res.body);
+  assert.equal(res.json().error, 'no_portal_access');
+  assert.match(res.json().message, /Grant access first/i, 'it says what to do');
+  assert.equal(sentMail.length, 0, 'no dead-end email');
+});
+
+test('an already-signed packet cannot be sent again', async () => {
+  const { packetId, cookie } = await readyToSend('SendOnce', ['advisory']);
+  await app.inject({ method: 'POST', url: `/packets/${packetId}/send`, headers: auth(brian), payload: {} });
+
+  const presented = (await app.inject({ method: 'GET', url: '/portal/packet', headers: cookie })).json() as
+    { documentSha256: string };
+  const signed = await app.inject({
+    method: 'POST', url: '/portal/packet/sign', headers: cookie,
+    payload: {
+      signedName: 'Synthetic Signer', intentAffirmed: true, esignConsentAck: true,
+      documentSha256: presented.documentSha256,
+    },
+  });
+  assert.equal(signed.statusCode, 200, signed.body);
+
+  const again = await app.inject({
+    method: 'POST', url: `/packets/${packetId}/send`, headers: auth(brian), payload: {},
+  });
+  assert.equal(again.statusCode, 409);
+  assert.equal(again.json().error, 'already_signed');
+});
+
+test('the whole path end to end: send, read, sign, and exactly those schedules accepted', async () => {
+  const { contactId, packetId, cookie } = await readyToSend('EndToEnd', ['bookkeeping', 'entity']);
   const sent = await app.inject({
     method: 'POST', url: `/packets/${packetId}/send`, headers: auth(brian), payload: {},
   });
   assert.equal(sent.statusCode, 200, sent.body);
+  assert.deepEqual(sent.json().scheduleCodes, ['C', 'E']);
 
-  const { recordMasterSignature } = await import('../src/modules/engagements/packet.ts');
-  await recordMasterSignature(app, packetId);
+  const presented = (await app.inject({ method: 'GET', url: '/portal/packet', headers: cookie })).json() as
+    { documentSha256: string; scheduleCodes: string[]; html: string };
+  assert.deepEqual(presented.scheduleCodes, ['C', 'E']);
+  assert.doesNotMatch(presented.html, /SCHEDULE A —/i, 'no schedule the client did not engage');
+
+  const signed = await app.inject({
+    method: 'POST', url: '/portal/packet/sign', headers: cookie,
+    payload: {
+      signedName: 'Synthetic Signer', intentAffirmed: true, esignConsentAck: true,
+      documentSha256: presented.documentSha256,
+    },
+  });
+  assert.equal(signed.statusCode, 200, signed.body);
+  assert.deepEqual((signed.json().accepted as string[]).sort(), ['C', 'E']);
 
   const acceptances = await app.db.query<{ schedule_code: string; via: string }>(
-    `SELECT schedule_code, via::text AS via FROM schedule_acceptances WHERE contact_id = $1`,
+    `SELECT schedule_code, via::text AS via FROM schedule_acceptances WHERE contact_id = $1 ORDER BY schedule_code`,
     [contactId]
   );
-  assert.deepEqual(acceptances.rows.map((r) => r.schedule_code), ['D']);
-  assert.equal(acceptances.rows[0]!.via, 'master_signature');
+  assert.deepEqual(acceptances.rows.map((r) => r.schedule_code), ['C', 'E']);
+  for (const r of acceptances.rows) assert.equal(r.via, 'master_signature');
 
-  // And nothing was recorded for a schedule that was never in the document.
-  for (const code of ['A', 'B', 'C', 'E', 'F']) {
-    assert.ok(
-      !acceptances.rows.some((r) => r.schedule_code === code),
-      `Schedule ${code} was not in the document, so it must not be accepted`
-    );
-  }
+  const packet = await app.db.query<{ status: string; signature_method: string }>(
+    `SELECT status, signature_method FROM engagement_packets WHERE id = $1`, [packetId]
+  );
+  assert.equal(packet.rows[0]!.status, 'signed');
+  assert.equal(packet.rows[0]!.signature_method, 'portal_esign');
+
+  // And the §7216 USE consent becomes available only now.
+  const consents = (await app.inject({ method: 'GET', url: '/portal/consents', headers: cookie })).json() as
+    { masterSigned: boolean; offers: Array<{ kind: string }> };
+  assert.equal(consents.masterSigned, true);
+  assert.deepEqual(consents.offers.map((o) => o.kind), ['7216_use']);
 });
