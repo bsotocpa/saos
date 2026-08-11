@@ -97,6 +97,23 @@ before(async () => {
      VALUES ($1, now() - interval '5 days', 'completed')`,
     [rehearsalId]
   );
+  // An OPEN SENT QUOTE, the shape the real rehearsal produced ($380 waived-deposit
+  // quote). Without this in the fixture, the quote-metric assertions below have
+  // nothing to move — which is exactly how the pipeline header bug hid.
+  await app.db.query(
+    `INSERT INTO quotes (contact_id, status, total_cents, subtotal_cents, sent_at, lead_stage_on_send)
+     VALUES ($1, 'sent', 38000, 38000, now() - interval '1 hour', NULL)`,
+    [rehearsalId]
+  ).catch(async () => {
+    // lead_stage_on_send may not exist in this schema version; the columns that
+    // matter to the assertion are status/total/sent_at.
+    await app.db.query(
+      `INSERT INTO quotes (contact_id, status, total_cents, subtotal_cents, sent_at)
+       VALUES ($1, 'sent', 38000, 38000, now() - interval '1 hour')`,
+      [rehearsalId]
+    );
+  });
+  await app.db.query(`UPDATE contacts SET lead_stage = 'quoted' WHERE id = $1`, [rehearsalId]);
   const eng = await app.db.query<{ id: string }>(
     `INSERT INTO engagements (contact_id, service_line, status) VALUES ($1, 'tax', 'active') RETURNING id`,
     [rehearsalId]
@@ -183,6 +200,18 @@ test('EXCLUDED FROM MEASUREMENT: every number moves by exactly one when the flag
     1,
     'pipeline stage counts'
   );
+
+  // THE QUOTE METRICS TOO. This assertion is why the bug of 2026-08-10 could
+  // survive: the old test checked byStage (which was filtered) and nothing else,
+  // while quotesOpen/openValueCents/winRate read FROM quotes with no join to
+  // contacts at all. One rehearsal quote showed as "1 open / $380" in the pipeline
+  // header while the stage columns beside it correctly showed 0.
+  assert.equal(beforePipeline.quotesSent - afterPipeline.quotesSent, 1, 'quotes sent');
+  assert.equal(beforePipeline.quotesOpen - afterPipeline.quotesOpen, 1, 'quotes open');
+  assert.equal(
+    beforePipeline.openValueCents - afterPipeline.openValueCents, 38000,
+    'open quote VALUE — a rehearsal quote is not pipeline value'
+  );
   assert.equal(
     beforeRetire.migratedLoggedIn - afterRetire.migratedLoggedIn,
     1,
@@ -256,6 +285,17 @@ test('VISIBLE IN OPERATIONS: the record can still be worked', async () => {
   assert.equal(packet.statusCode, 200);
   assert.equal(packet.json().contact.is_test, true, 'and it says it is a test');
   assert.match(packet.json().contact.test_note, /rehearsal/i);
+
+  // THE PIPELINE BOARD SHOWS IT. This is the other half of the 2026-08-10 bug:
+  // the board hid test clients while the header counted them, so a rehearsal quote
+  // appeared as "1 open / $380" with no card anywhere to click. The board is
+  // operations — a rehearsal you cannot see is not a rehearsal — so it is visible
+  // and flagged, while every number on the page excludes it.
+  const { pipelineBoard } = await import('../src/modules/pricing/pipeline.ts');
+  const board = (await pipelineBoard(app)) as Array<{ id: string; is_test: boolean }>;
+  const card = board.find((r) => r.id === rehearsalId);
+  assert.ok(card, 'the rehearsal lead has a card on the board');
+  assert.equal(card.is_test, true, 'and the card knows to badge itself TEST');
 
   // The return shows in the preparer queue.
   const queue = await preparerQueue(app, brian.id, todayChicago());

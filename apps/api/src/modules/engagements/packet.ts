@@ -411,7 +411,17 @@ export async function markPacketSent(app: FastifyInstance, packetId: string): Pr
 export async function recordMasterSignature(
   app: FastifyInstance,
   packetId: string,
-  meta: { ip?: string | null; userAgent?: string | null } = {}
+  meta: {
+    ip?: string | null;
+    userAgent?: string | null;
+    /**
+     * HOW it was signed, stamped in the same statement that marks it signed.
+     * A signed packet must always say which path produced the signature
+     * (CHECK engagement_packets_signed_has_method), so this cannot be a
+     * follow-up write that might not happen.
+     */
+    method?: 'portal_esign' | 'docuseal' | undefined;
+  } = {}
 ): Promise<{ contactId: string; accepted: string[] }> {
   const { rows } = await app.db.query<{
     contact_id: string; schedule_codes: string[]; status: string; master_version: number;
@@ -424,8 +434,10 @@ export async function recordMasterSignature(
   if (p.status === 'signed') throw new AppError(409, 'already_signed', 'This packet is already signed.');
 
   await app.db.query(
-    `UPDATE engagement_packets SET status = 'signed', signed_at = now() WHERE id = $1`,
-    [packetId]
+    `UPDATE engagement_packets
+     SET status = 'signed', signed_at = now(), signature_method = $2
+     WHERE id = $1`,
+    [packetId, meta.method ?? 'docuseal']
   );
 
   for (const code of p.schedule_codes) {

@@ -20,6 +20,8 @@ import {
 import { consentsToPresent, recordConsentAnswer } from '../compliance/consent-presentation.ts';
 import { createAttestAddendum } from './attest-addendum.ts';
 import { buildPacketDocument } from './packet-document.ts';
+import { presentForSignature, signPacketInPortal } from './portal-signature.ts';
+import { makeMinioClient } from '../documents/storage.ts';
 import { makeDocusealAdapter } from '../signatures/docuseal.ts';
 import { sendPacketEnvelope } from '../signatures/service.ts';
 
@@ -35,6 +37,7 @@ const PreviewQuery = z.object({
 
 export function registerPacketRoutes(app: FastifyInstance): void {
   const docuseal = makeDocusealAdapter(app.config);
+  const minio = makeMinioClient(app.config);
   // Papering a client is a commitment act, so it rides the same permission that
   // creates an engagement rather than a new one only Brian would ever hold.
   const write = { preHandler: [app.authenticate, requirePermission('engagements.create')] };
@@ -154,6 +157,36 @@ export function registerPacketRoutes(app: FastifyInstance): void {
       .object({ atReferralMoment: z.coerce.boolean().optional() })
       .parse(request.query ?? {}).atReferralMoment;
     return consentsToPresent(app, id, atReferralMoment === undefined ? {} : { atReferralMoment });
+  });
+
+  // ── Portal: sign the engagement packet here, not at a vendor ──────────────
+
+  /** The document to read, and the hash the signature must come back with. */
+  app.get('/portal/packet', scoped, async (request) => {
+    const client = request.client!;
+    const language = z.object({ language: z.enum(['en', 'es']).optional() })
+      .parse(request.query ?? {}).language ?? 'en';
+    return presentForSignature(app, client.contactId, language);
+  });
+
+  app.post('/portal/packet/sign', scoped, async (request) => {
+    const b = z
+      .object({
+        signedName: z.string().min(2).max(200),
+        intentAffirmed: z.boolean(),
+        esignConsentAck: z.boolean(),
+        documentSha256: z.string().regex(/^[0-9a-f]{64}$/),
+        language: z.enum(['en', 'es']).optional(),
+      })
+      .parse(request.body);
+    const client = request.client!;
+    // Attribution comes from the SESSION, never the body.
+    return signPacketInPortal(
+      app, minio,
+      { contactId: client.contactId, portalUserId: client.portalUserId },
+      b,
+      { ip: request.ip, userAgent: request.headers['user-agent'] ?? null }
+    );
   });
 
   // ── Portal: the client's side of Master §1 ────────────────────────────────

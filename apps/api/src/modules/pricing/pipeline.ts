@@ -153,14 +153,22 @@ export async function pipelineMetrics(app: FastifyInstance): Promise<PipelineMet
          ORDER BY EXTRACT(EPOCH FROM (COALESCE(accepted_at, declined_at) - sent_at)) / 86400.0
        ) FILTER (WHERE sent_at IS NOT NULL AND COALESCE(accepted_at, declined_at) IS NOT NULL)
                                                                             AS median_days
-     FROM quotes`
+     -- These are MEASUREMENT numbers, so they exclude test and archived clients
+     -- exactly as the stage counts above do. They used to read FROM quotes with no
+     -- join at all, which is how one rehearsal quote showed as an open quote with
+     -- its value in the pipeline header while the stage columns beside it correctly
+     -- showed zero — the same screen disagreeing with itself, and a rehearsal
+     -- win or loss moving the real win rate.
+     FROM quotes q JOIN contacts c ON c.id = q.contact_id
+     WHERE NOT c.is_test AND NOT c.is_archived`
   );
   const r = q.rows[0]!;
   const decided = r.accepted + r.declined + r.expired;
 
   const lost = await app.db.query<{ reason: string; count: number }>(
-    `SELECT COALESCE(decline_reason, 'no response') AS reason, count(*)::int AS count
-     FROM quotes WHERE status IN ('declined', 'expired')
+    `SELECT COALESCE(q.decline_reason, 'no response') AS reason, count(*)::int AS count
+     FROM quotes q JOIN contacts c ON c.id = q.contact_id
+     WHERE q.status IN ('declined', 'expired') AND NOT c.is_test AND NOT c.is_archived
      GROUP BY 1 ORDER BY 2 DESC, 1`
   );
 
@@ -183,8 +191,13 @@ export async function pipelineMetrics(app: FastifyInstance): Promise<PipelineMet
 /** The pipeline board: leads grouped by stage with their newest quote. */
 export async function pipelineBoard(app: FastifyInstance) {
   const { rows } = await app.db.query(
+    // The BOARD is operations, not measurement: "excluded from measurement,
+    // visible in operations". A test client must be workable here — a rehearsal you
+    // cannot see is not a rehearsal — so it is INCLUDED and flagged, while every
+    // number in pipelineMetrics excludes it. Archived leads stay hidden: archiving
+    // means "stop working this".
     `SELECT c.id, c.first_name, c.last_name, c.email, c.lead_stage::text AS lead_stage,
-            c.lead_stage_at, c.lost_reason, c.language,
+            c.lead_stage_at, c.lost_reason, c.language, c.is_test,
             q.id AS quote_id, q.status::text AS quote_status, q.total_cents,
             q.range_min_cents, q.range_max_cents, q.sent_at, q.expires_at
      FROM contacts c
@@ -193,7 +206,7 @@ export async function pipelineBoard(app: FastifyInstance) {
        FROM quotes WHERE contact_id = c.id ORDER BY created_at DESC LIMIT 1
      ) q ON true
      WHERE c.lead_stage IS NOT NULL AND c.lead_stage <> 'client'
-       AND NOT c.is_test AND NOT c.is_archived
+       AND NOT c.is_archived
      ORDER BY c.lead_stage, c.lead_stage_at DESC NULLS LAST`
   );
   return rows;

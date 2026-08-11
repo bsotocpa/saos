@@ -33,6 +33,8 @@ interface BoardRow {
   lead_stage: string;
   lead_stage_at: string | null;
   lost_reason: string | null;
+  /** Workable here, but excluded from every number on this page. */
+  is_test: boolean;
   quote_id: string | null;
   quote_status: string | null;
   total_cents: number | null;
@@ -563,7 +565,12 @@ export default function PipelinePage() {
                   <div key={r.id} className="lead-card">
                     <strong>
                       {r.first_name} {r.last_name}
-                    </strong>
+                    </strong>{' '}
+                    {r.is_test ? (
+                      <span className="badge warn" title="Test client: workable here, excluded from every number on this page.">
+                        TEST
+                      </span>
+                    ) : null}
                     <br />
                     <span className="muted small" style={{ overflowWrap: 'anywhere' }}>
                       {r.email ?? 'no email'}

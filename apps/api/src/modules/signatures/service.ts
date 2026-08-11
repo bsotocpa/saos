@@ -477,7 +477,7 @@ export async function completeEnvelopeBySubmission(
     );
     if (packet.rows[0]) {
       const { recordMasterSignature } = await import('../engagements/packet.ts');
-      await recordMasterSignature(app, packet.rows[0].id);
+      await recordMasterSignature(app, packet.rows[0].id, { method: 'docuseal' });
     }
 
     // v4.3 flow 4 GATE: late fees are only ever applied to clients whose

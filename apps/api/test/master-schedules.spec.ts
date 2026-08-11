@@ -227,9 +227,13 @@ test('the Master is NEVER re-executed — a second signed packet is impossible',
   // ...and so does the database, even if some future code path forgets to ask.
   await assert.rejects(
     app.db.query(
+      // signature_method is set so this INSERT gets PAST
+      // engagement_packets_signed_has_method and actually reaches the unique index
+      // under test. Both constraints are real; this one is not the subject here.
       `INSERT INTO engagement_packets
-         (contact_id, master_template_key, master_version, schedule_codes, status, signed_at)
-       VALUES ($1, 'engagement_master', 1, ARRAY['C'], 'signed', now())`,
+         (contact_id, master_template_key, master_version, schedule_codes, status, signed_at,
+          signature_method)
+       VALUES ($1, 'engagement_master', 1, ARRAY['C'], 'signed', now(), 'portal_esign')`,
       [id]
     ),
     /idx_one_signed_master_per_contact/,
