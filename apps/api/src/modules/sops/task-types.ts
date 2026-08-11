@@ -70,6 +70,11 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
     sop: null,
     reason: 'The alert states the fix (check the cron and the B2 credentials); the restore-drill SOP covers the deeper procedure.',
   },
+  container_unhealthy: {
+    sop: null,
+    reason:
+      'The task description carries the whole procedure for this one, generated per container: the logs command, the health-inspect command, and the restart that clears a wedged service. A separate SOP would duplicate text that is already in front of whoever opens the task — and the first real instance (ClamAV wedged mid-database-reload) was fixed by exactly that restart.',
+  },
   restore_drill: {
     sop: 'ops-restore-drill',
   },

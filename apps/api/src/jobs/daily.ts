@@ -96,6 +96,16 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   // 15-minute granularity is fine for a "remind me at" alarm).
   const reminders = await runTaskReminderSweep(app);
   if (reminders.reminded > 0) app.log.info({ job: 'task_reminders', ...reminders }, 'reminders fired');
+
+  // DEPENDENCY PROBE, every tick — not daily. Docker health answers "does the
+  // container think it is fine"; this answers "can the API reach the scanner right
+  // now", which is the question that matters and the one nobody was asking while
+  // ClamAV sat wedged for twelve hours.
+  const { probeDependencies } = await import('../modules/admin/container-health.ts');
+  const deps = await probeDependencies(app);
+  if (deps.alerted.length > 0) {
+    app.log.error({ job: 'dependency_probe', unreachable: deps.alerted }, 'dependency unreachable');
+  }
 }
 
 /** Kick off the scheduler loop; health refresh runs on the first tick of each day too. */

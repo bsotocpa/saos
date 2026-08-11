@@ -103,13 +103,13 @@ interface AttachmentRow {
   id: string; channel: string; origin_ref: string; sender: string;
   contact_id: string | null; thread_id: string | null; filename: string;
   mime_type: string | null; size_bytes: string; minio_bucket: string; minio_key: string;
-  scan_status: string; status: string; suggested_category: string | null;
+  scan_status: string; scan_detail: string | null; status: string; suggested_category: string | null;
 }
 
 async function loadQuarantined(app: FastifyInstance, id: string): Promise<AttachmentRow> {
   const { rows } = await app.db.query<AttachmentRow>(
     `SELECT id, channel, origin_ref, sender, contact_id, thread_id, filename, mime_type,
-            size_bytes::text AS size_bytes, minio_bucket, minio_key, scan_status, status, suggested_category
+            size_bytes::text AS size_bytes, minio_bucket, minio_key, scan_status, scan_detail, status, suggested_category
      FROM inbound_attachments WHERE id = $1`,
     [id]
   );
@@ -122,14 +122,50 @@ async function loadQuarantined(app: FastifyInstance, id: string): Promise<Attach
 export async function fileAttachment(
   app: FastifyInstance,
   id: string,
-  opts: { category: string; contactId?: string | null; actor: { id: string; email: string }; ip?: string | null }
+  opts: {
+    category: string; contactId?: string | null;
+    actor: { id: string; email: string }; ip?: string | null;
+    /** CEO-only: file a document whose scan never ran. Recorded by name. */
+    unscannedOverrideNote?: string | undefined;
+    actorRoleKey?: string | undefined;
+  }
 ): Promise<{ documentId: string }> {
   const att = await loadQuarantined(app, id);
   if (att.scan_status === 'infected') {
     throw new AppError(409, 'infected', 'This attachment failed the virus scan — it cannot be filed. Discard it and request a portal re-upload.');
   }
-  const contactId = opts.contactId ?? att.contact_id;
-  if (!contactId) throw new AppError(400, 'no_contact', 'Assign a contact before filing (unmatched senders are triage-only).');
+
+  const contactIdEarly = opts.contactId ?? att.contact_id;
+  if (!contactIdEarly) throw new AppError(400, 'no_contact', 'Assign a contact before filing (unmatched senders are triage-only).');
+
+  // A SKIPPED SCAN IS NOT A PASS. When clamd is unreachable the ingest path records
+  // scan_status = 'skipped' with the reason and quarantines the file — but filing
+  // used to refuse only 'infected', so an UNSCANNED document could be filed to a
+  // client's record by a staffer who did not read the status column. That is how a
+  // 12-hour scanner outage turns into an unscanned document in a client file.
+  //
+  // Now it refuses, with one way through: Brian's documented override, the same
+  // shape as the attest independence gate. He is the only one who can decide that a
+  // specific unscanned file is acceptable, and the decision is recorded by name.
+  if (att.scan_status !== 'clean') {
+    if (!opts.unscannedOverrideNote) {
+      throw new AppError(
+        409,
+        'scan_not_clean',
+        `This attachment was never scanned (status: ${att.scan_status}${att.scan_detail ? ` — ${att.scan_detail}` : ''}). ` +
+          'Filing an unscanned document into a client record needs Brian\'s documented override. ' +
+          'Better: fix the scanner and re-run the scan, or ask the client to re-upload through the portal.'
+      );
+    }
+    if (opts.actorRoleKey !== 'ceo') {
+      throw new AppError(
+        403,
+        'unscanned_override_requires_ceo',
+        'Only Brian (CEO) may authorise filing an unscanned attachment.'
+      );
+    }
+  }
+  const contactId = contactIdEarly;
 
   const minio = makeMinioClient(app.config);
   const stream = await minio.getObject(att.minio_bucket, att.minio_key);
@@ -154,8 +190,25 @@ export async function fileAttachment(
     actorType: 'staff', actorId: opts.actor.id, actorLabel: opts.actor.email,
     action: 'attachment.filed', objectType: 'inbound_attachment', objectId: id,
     contactId, ip: opts.ip ?? null,
-    details: { origin_channel: att.channel, origin_ref: att.origin_ref, category: opts.category, document_id: doc.id },
+    details: {
+      origin_channel: att.channel, origin_ref: att.origin_ref, category: opts.category,
+      document_id: doc.id, scan_status: att.scan_status,
+    },
   });
+
+  // A separate, searchable audit action for the override — "which unscanned files
+  // did we file, and why" must be answerable without reading every filing row.
+  if (att.scan_status !== 'clean') {
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: opts.actor.id, actorLabel: opts.actor.email,
+      action: 'attachment.unscanned_override', objectType: 'inbound_attachment', objectId: id,
+      contactId, ip: opts.ip ?? null,
+      details: {
+        scan_status: att.scan_status, scan_detail: att.scan_detail,
+        note: opts.unscannedOverrideNote, document_id: doc.id,
+      },
+    });
+  }
   return { documentId: doc.id };
 }
 

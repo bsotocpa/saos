@@ -154,6 +154,12 @@ export const settings = [
     description: 'Quarterly restore-drill cadence (WISP): a drill older than this opens a reminder for Brian.',
   },
   {
+    key: 'ops.container_unhealthy_alert_minutes',
+    value: 10,
+    description:
+      'A container unhealthy this long opens an alert + task for Brian. Set after ClamAV sat unhealthy for ~12 hours (1470 failed checks) with nothing watching. The host cron reports every 5 minutes, so detection lands within ~5 min of this threshold.',
+  },
+  {
     key: 'health.red_below',
     value: 40,
     description: 'Health score below this = Red → alert assigned staff.',

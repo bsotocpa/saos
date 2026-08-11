@@ -312,3 +312,39 @@ the exact conditioning the package's own instructions forbid.
 vendor template, verify the vendor artifact's CONTENTS against the model before the
 first signature. `GET /api/templates` answered it in one call, before any client
 touched it — cheaper than discovering it from a signed PDF.
+
+## A watchdog nobody installed is a watchdog that does not exist
+**Pattern**: ClamAV sat unhealthy for ~12 hours — 1470 failed health checks, wedged
+mid-database-reload — and Brian learned about it because I happened to paste a
+container listing into a report. Nothing watched container health at all. This is the
+second instance of the same class: the 2026-08 drill found the backup cron had never
+been installed either.
+**Rule**: every watchdog is installed by `deploy.sh`, idempotently, so it cannot be
+silently missing. And the alert has to reach a human surface (notification + task),
+not a log line nobody reads.
+**Corollary**: Docker health answers "does the container think it is fine". Also probe
+what the APP needs — a container can be healthy and unreachable from the API, and that
+failure is invisible to Docker.
+
+## Don't give the app the Docker socket to watch itself
+**Pattern**: the obvious way to monitor containers is mounting /var/run/docker.sock
+into the API. That hands root-equivalent host control to the most internet-exposed
+process on the box.
+**Rule**: host-side cron reads Docker and POSTs a summary to a secret-authenticated
+webhook; the API stores and alerts but never inspects. Same split as the backup cron.
+
+## "Not silent" is not the same as "not fail-open"
+**Pattern**: when clamd was unreachable, ingest recorded `scan_status = 'skipped'`
+with the reason and quarantined the file — genuinely not silent. But filing refused
+only `'infected'`, so an UNSCANNED document could still be filed into a client record
+by anyone who did not read the status column.
+**Rule**: for a safety gate, enumerate what is ALLOWED (`=== 'clean'`), never what is
+forbidden. A denylist of one value passes everything new that ever gets added.
+
+## Order refusals by what the user should do next
+**Pattern**: my scan gate fired before the "assign a contact" check, so a staffer
+triaging an unmatched attachment was told to get a CEO override when the actual next
+step was assigning a contact.
+**Rule**: cheap request validation first, safety gates after — except the hardest
+block (infected), which precedes everything. The first error a user sees should name
+the first thing they can fix.

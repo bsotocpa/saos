@@ -51,6 +51,38 @@ const TemplateBody = z
 const SettingBody = z.object({ value: z.unknown() });
 
 export function registerAdminRoutes(app: FastifyInstance): void {
+  /**
+   * Container health, reported by the HOST cron (scripts/container-health.sh).
+   *
+   * Authenticated with WEBHOOK_SECRET, the same way the Docuseal webhook is: the
+   * caller is a script on the box, not a person with a session. The API deliberately
+   * has no Docker socket — mounting it would hand root-equivalent host control to
+   * the most internet-exposed process we run.
+   */
+  app.post('/webhooks/container-health', async (request, reply) => {
+    const secret = request.headers['x-webhook-secret'];
+    if (typeof secret !== 'string' || secret !== app.config.WEBHOOK_SECRET) {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+    const b = z
+      .object({
+        containers: z
+          .array(
+            z.object({
+              name: z.string().min(1),
+              health: z.string(),
+              state: z.string(),
+              failingStreak: z.number().int().min(0).default(0),
+              unhealthyMinutes: z.number().min(0).optional(),
+            })
+          )
+          .max(100),
+      })
+      .parse(request.body);
+    const { recordContainerHealth } = await import('./container-health.ts');
+    return recordContainerHealth(app, b.containers);
+  });
+
   const pricing = { preHandler: [app.authenticate, requirePermission('pricing.edit')] };
   const admin = { preHandler: [app.authenticate, requirePermission('admin.settings')] };
 

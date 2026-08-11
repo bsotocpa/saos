@@ -375,10 +375,19 @@ export function registerCommsRoutes(app: FastifyInstance): void {
 
   app.post<{ Params: { id: string } }>('/inbound-attachments/:id/file', inbox, async (request) => {
     const id = z.uuid().parse(request.params.id);
-    const b = z.object({ category: z.string().min(1), contactId: z.uuid().optional() }).parse(request.body);
+    const b = z
+      .object({
+        category: z.string().min(1),
+        contactId: z.uuid().optional(),
+        /** CEO-only: file a document whose scan never ran. Min length so it is a reason, not "ok". */
+        unscannedOverrideNote: z.string().min(10, 'Document why filing an unscanned file is acceptable.').optional(),
+      })
+      .parse(request.body);
     return fileAttachment(app, id, {
       category: b.category, contactId: b.contactId ?? null,
       actor: request.staff!, ip: request.ip,
+      ...(b.unscannedOverrideNote === undefined ? {} : { unscannedOverrideNote: b.unscannedOverrideNote }),
+      ...(request.staff!.roleKey === undefined ? {} : { actorRoleKey: request.staff!.roleKey }),
     });
   });
 

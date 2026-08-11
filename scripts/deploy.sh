@@ -39,6 +39,12 @@ echo "deploy: [1b/5] ensuring the encrypted data volume is mounted..."
 echo "deploy: [1c/5] ensuring the nightly backup cron is installed..."
 "${SSH[@]}" 'mkdir -p /var/lib/saos/backup-staging && (crontab -l 2>/dev/null | grep -v "scripts/backup.sh"; echo "15 2 * * * cd /opt/saos && ENV_FILE=/opt/saos/.env bash scripts/backup.sh >> /var/log/saos-backup.log 2>&1") | crontab - && crontab -l | grep -q "scripts/backup.sh"'
 
+# Same reasoning as the backup cron above: a watchdog nobody installed is a
+# watchdog that does not exist. ClamAV sat unhealthy for 12 hours because nothing
+# was watching container health at all.
+echo "deploy: [1d/5] ensuring the container-health cron is installed (every 5 min)..."
+"${SSH[@]}" '(crontab -l 2>/dev/null | grep -v "scripts/container-health.sh"; echo "*/5 * * * * cd /opt/saos && ENV_FILE=/opt/saos/.env bash scripts/container-health.sh >> /var/log/saos-container-health.log 2>&1") | crontab - && crontab -l | grep -q "scripts/container-health.sh"'
+
 echo "deploy: [2/5] building + starting the FULL stack incl. intel + booking (first build takes minutes)..."
 "${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml up -d --build --quiet-pull'
 
