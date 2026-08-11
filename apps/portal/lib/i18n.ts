@@ -396,6 +396,32 @@ const dict = {
     'El enlace puede estar vencido. Responda a cualquiera de nuestros correos y le enviamos uno vigente.',
   ],
 
+  // The engagement packet, signed here in the portal (E-SIGN / UETA).
+  packet_title: ['Your engagement agreement', 'Su acuerdo de compromiso'],
+  packet_intro: [
+    'This is the agreement for the services you asked for. Read it, then sign at the bottom. It takes a minute.',
+    'Este es el acuerdo para los servicios que solicitó. Léalo y fírmelo al final. Toma un minuto.',
+  ],
+  packet_includes: ['What this covers', 'Qué cubre'],
+  packet_signed_title: ['Signed — thank you', 'Firmado — gracias'],
+  packet_signed_body: [
+    'We have your signed agreement. A copy is in your Documents, and nothing else is needed here.',
+    'Tenemos su acuerdo firmado. Hay una copia en Documentos y no necesita hacer nada más aquí.',
+  ],
+  packet_name_label: ['Type your full name to sign', 'Escriba su nombre completo para firmar'],
+  packet_sign_button: ['Sign the agreement', 'Firmar el acuerdo'],
+  packet_signing: ['Signing…', 'Firmando…'],
+  packet_changed: [
+    'The agreement changed while you had it open, so nothing was signed. Reload the page and read the current version — we will not bind you to text you did not see.',
+    'El acuerdo cambió mientras lo tenía abierto, así que no se firmó nada. Recargue la página y lea la versión actual — no lo vincularemos a un texto que no vio.',
+  ],
+  packet_reload: ['Reload and read again', 'Recargar y leer de nuevo'],
+  packet_name_required: ['Please type your full name.', 'Por favor escriba su nombre completo.'],
+  packet_affirm_required: [
+    'Please confirm both statements before signing.',
+    'Por favor confirme ambas declaraciones antes de firmar.',
+  ],
+
   // Service Schedules (legal package v3). A client signs the Master once; a
   // service added later needs only its own schedule accepted here.
   schedules_title: ['One more thing to agree to', 'Un punto más por aceptar'],

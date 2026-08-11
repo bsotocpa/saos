@@ -10,7 +10,7 @@
 //    are: optional permissions that change nothing if declined.
 
 import { useEffect, useState } from 'react';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import type { DictKey } from '../../lib/i18n';
 
@@ -34,6 +34,16 @@ interface ConsentOffer {
   bodyEn: string;
 }
 
+interface PresentedPacket {
+  packetId: string;
+  html: string;
+  documentSha256: string;
+  scheduleCodes: string[];
+  sections: Array<{ kind: string; code: string | null; title: string }>;
+  alreadySigned: boolean;
+  affirmations: { intent: string; esignConsent: string };
+}
+
 function statusKey(status: string): DictKey {
   if (status === 'completed') return 'env_status_completed';
   if (status === 'sent' || status === 'viewed') return 'env_status_sent';
@@ -50,6 +60,16 @@ export default function SignPage() {
   const [accepted, setAccepted] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
 
+  // The engagement packet: read it, then sign it here.
+  const [packet, setPacket] = useState<PresentedPacket | null>(null);
+  const [signedName, setSignedName] = useState('');
+  const [intentOk, setIntentOk] = useState(false);
+  const [esignOk, setEsignOk] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [signError, setSignError] = useState<string | null>(null);
+  const [staleDocument, setStaleDocument] = useState(false);
+  const [justSigned, setJustSigned] = useState(false);
+
   const load = async () => {
     const [env, sch, con] = await Promise.all([
       api<{ envelopes: Envelope[] }>('/portal/signature-envelopes'),
@@ -59,7 +79,51 @@ export default function SignPage() {
     setEnvelopes(env.envelopes);
     setSchedules(sch.pending);
     setOffers(con.offers);
+    // 404 here just means there is no packet waiting — not an error worth showing.
+    try {
+      setPacket(await api<PresentedPacket>(`/portal/packet?language=${lang}`));
+    } catch {
+      setPacket(null);
+    }
     setLoaded(true);
+  };
+
+  const signPacket = async () => {
+    if (!packet) return;
+    setSignError(null);
+    if (signedName.trim().length < 2) {
+      setSignError(t('packet_name_required'));
+      return;
+    }
+    if (!intentOk || !esignOk) {
+      setSignError(t('packet_affirm_required'));
+      return;
+    }
+    setSigning(true);
+    try {
+      await api('/portal/packet/sign', {
+        method: 'POST',
+        body: {
+          signedName: signedName.trim(),
+          intentAffirmed: intentOk,
+          esignConsentAck: esignOk,
+          documentSha256: packet.documentSha256,
+          language: lang,
+        },
+      });
+      setJustSigned(true);
+      // Reload: this is what makes the §7216 consent offer appear, and it appears
+      // only now — after the signature, separately, and optionally.
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'document_changed') {
+        setStaleDocument(true);
+      } else {
+        setSignError(err instanceof ApiError ? err.message : t('error_generic'));
+      }
+    } finally {
+      setSigning(false);
+    }
   };
   useEffect(() => {
     void load();
@@ -81,6 +145,91 @@ export default function SignPage() {
     <>
       <h1>{t('sign_title')}</h1>
       <p className="muted">{t('sign_intro')}</p>
+
+      {/* THE ENGAGEMENT PACKET — the first thing a new client does. */}
+      {packet && !packet.alreadySigned ? (
+        <section className="card" style={{ borderColor: 'var(--electric)' }}>
+          <h2>{t('packet_title')}</h2>
+          <p className="muted">{t('packet_intro')}</p>
+          {lang === 'es' ? <p className="muted small">{t('consent_en_only')}</p> : null}
+
+          <p className="small">
+            <strong>{t('packet_includes')}:</strong>{' '}
+            {packet.sections.map((s) => s.title).join(' · ')}
+          </p>
+
+          {/*
+            The document itself, scrollable so the page stays usable on a phone.
+            dangerouslySetInnerHTML is safe here for a specific reason, not by
+            assumption: buildPacketDocument is the only producer of this string, and
+            it escapes EVERY interpolated value — template bodies, titles, template
+            keys, the client's name — before wrapping them in its own markup. Admin
+            copy is admin-editable, so if someone pasted a <script> into a template
+            body it renders as visible text rather than executing. The markup is
+            entirely the generator's.
+          */}
+          <div
+            style={{
+              maxHeight: 380, overflowY: 'auto', fontSize: 13, lineHeight: 1.55,
+              padding: 12, border: '1px solid var(--line)', borderRadius: 8,
+              background: 'var(--paper, #fff)',
+            }}
+            dangerouslySetInnerHTML={{ __html: packet.html }}
+          />
+
+          {staleDocument ? (
+            <>
+              <p className="alert error" style={{ marginTop: 12 }}>{t('packet_changed')}</p>
+              <p>
+                <button className="btn accent" type="button" onClick={() => window.location.reload()}>
+                  {t('packet_reload')}
+                </button>
+              </p>
+            </>
+          ) : (
+            <div style={{ marginTop: 16 }}>
+              <label className="field" style={{ display: 'block' }}>
+                <input
+                  type="checkbox"
+                  checked={intentOk}
+                  onChange={(e) => setIntentOk(e.target.checked)}
+                />{' '}
+                <span className="small">{packet.affirmations.intent}</span>
+              </label>
+              <label className="field" style={{ display: 'block' }}>
+                <input
+                  type="checkbox"
+                  checked={esignOk}
+                  onChange={(e) => setEsignOk(e.target.checked)}
+                />{' '}
+                <span className="small">{packet.affirmations.esignConsent}</span>
+              </label>
+              <label className="field">
+                {t('packet_name_label')}
+                <input
+                  value={signedName}
+                  onChange={(e) => setSignedName(e.target.value)}
+                  autoComplete="name"
+                  style={{ fontSize: 18 }}
+                />
+              </label>
+              {signError ? <p className="alert error">{signError}</p> : null}
+              <p>
+                <button className="btn accent" type="button" disabled={signing} onClick={() => void signPacket()}>
+                  {signing ? t('packet_signing') : t('packet_sign_button')}
+                </button>
+              </p>
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {justSigned || packet?.alreadySigned ? (
+        <section className="card">
+          <h2>{t('packet_signed_title')}</h2>
+          <p>{t('packet_signed_body')}</p>
+        </section>
+      ) : null}
 
       <section className="card">
         {loaded && envelopes.length === 0 ? <p className="muted">{t('sign_empty')}</p> : null}
