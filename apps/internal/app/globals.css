@@ -241,6 +241,20 @@ table.dense .title-cell { max-width: 340px; overflow: hidden; text-overflow: ell
 }
 .lead-card:first-of-type { border-top: none; }
 
+/* A board card that goes nowhere is a dead end: the whole card links to the client
+   detail. It must not LOOK like a hyperlink (inheriting colour keeps the badges and
+   muted text reading correctly) but it must clearly BE clickable — hence the
+   pointer, the hover tint, and a visible focus ring for keyboard users. */
+a.lead-card-link {
+  display: block; color: inherit; text-decoration: none; cursor: pointer;
+  padding-left: 6px; padding-right: 6px; margin-left: -6px; margin-right: -6px;
+  border-radius: 6px;
+}
+/* Deliberately lighter than --electric-soft: that is the .badge background, and a
+   hover matching it would make every badge on the card disappear. */
+a.lead-card-link:hover { background: rgba(0, 201, 191, 0.08); }
+a.lead-card-link:focus-visible { outline: 2px solid var(--electric); outline-offset: -2px; }
+
 /* The global input rule stretches every control to 100%. A checkbox sitting
    inline with its own label must not take the whole row. */
 label.inline-check { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; }

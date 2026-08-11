@@ -8,6 +8,7 @@
 // reading today.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
 
@@ -562,7 +563,15 @@ export default function PipelinePage() {
                 <p className="muted small">Nobody here.</p>
               ) : (
                 rows.map((r) => (
-                  <div key={r.id} className="lead-card">
+                  /* The WHOLE card is the link — a board card with a small link in
+                     one corner is a worse target, especially on a phone. Safe to
+                     wrap because nothing inside it is interactive. */
+                  <Link
+                    key={r.id}
+                    href={`/clients/${r.id}`}
+                    className="lead-card lead-card-link"
+                    title={`Open ${r.first_name} ${r.last_name}`}
+                  >
                     <strong>
                       {r.first_name} {r.last_name}
                     </strong>{' '}
@@ -604,7 +613,7 @@ export default function PipelinePage() {
                         <span className="muted small">expires {r.expires_at.slice(0, 10)}</span>
                       </>
                     ) : null}
-                  </div>
+                  </Link>
                 ))
               )}
             </section>
