@@ -79,22 +79,28 @@ export function registerCrmRoutes(app: FastifyInstance): void {
   app.get('/contacts', read, async (request) => {
     const q = SearchQuery.parse(request.query);
     const clauses: string[] = ['NOT c.is_archived'];
-    const params: unknown[] = [];
-    if (q.search) {
-      params.push(`%${q.search}%`);
-      // Business name is searched too: half this book bills under a business name
-      // rather than a person's, and the migration report flagged 35 such clients.
-      // Searching only people made those clients effectively unfindable.
-      clauses.push(
-        `(c.first_name ILIKE $${params.length} OR c.last_name ILIKE $${params.length}
-          OR (c.first_name || ' ' || c.last_name) ILIKE $${params.length}
-          OR c.email::text ILIKE $${params.length} OR c.phone ILIKE $${params.length}
-          OR EXISTS (
-            SELECT 1 FROM business_members bm JOIN businesses b ON b.id = bm.business_id
-            WHERE bm.contact_id = c.id AND b.name ILIKE $${params.length}
-          ))`
-      );
-    }
+    // $1 is ALWAYS the search pattern (NULL when absent) so both the WHERE clause
+    // and the matched-business subquery in the SELECT can reference it. Deriving
+    // its position from params.length would silently point at sotoStatus the moment
+    // someone filters without searching.
+    const params: unknown[] = [q.search ? `%${q.search}%` : null];
+    // The clause is ALWAYS present and always references $1, guarded by
+    // `$1 IS NULL`. Adding it conditionally left $1 bound but unreferenced when
+    // nobody searched, and Postgres rejects that outright ("bind message supplies
+    // 1 parameters, but prepared statement requires 0") — every unfiltered list
+    // request 500'd. Business name is included because much of this book bills
+    // under a business rather than a person; the migration flagged 35 such clients,
+    // and searching only people left them unfindable.
+    clauses.push(
+      `($1::text IS NULL OR
+        c.first_name ILIKE $1 OR c.last_name ILIKE $1
+        OR (c.first_name || ' ' || c.last_name) ILIKE $1
+        OR c.email::text ILIKE $1 OR c.phone ILIKE $1
+        OR EXISTS (
+          SELECT 1 FROM business_members bm JOIN businesses b ON b.id = bm.business_id
+          WHERE bm.contact_id = c.id AND b.name ILIKE $1
+        ))`
+    );
     if (q.sotoStatus) {
       params.push(q.sotoStatus);
       clauses.push(`c.soto_status = $${params.length}::soto_status`);
@@ -121,11 +127,18 @@ export function registerCrmRoutes(app: FastifyInstance): void {
               -- is_test so the directory can badge a rehearsal record rather than
               -- letting it look like a real client (visible in operations).
               c.is_test,
-              -- The PRIMARY business is the one worth showing in a directory row;
-              -- name breaks ties so the value is stable between requests.
+              -- Show the business that MATCHED the search, not the primary one.
+              -- Brian's ruling after searching "dishroulette" returned a client
+              -- displaying "BREAK BREAD CHICAGO LLC": he owns several businesses,
+              -- the search hit one, and the row showed another. Correct by the old
+              -- rule and still wrong to read. With no search (or no match), the
+              -- primary is the right thing to show.
               (SELECT b.name FROM business_members bm JOIN businesses b ON b.id = bm.business_id
                WHERE bm.contact_id = c.id
-               ORDER BY bm.is_primary DESC, b.name LIMIT 1) AS business_name,
+               ORDER BY
+                 CASE WHEN $1::text IS NOT NULL AND b.name ILIKE $1 THEN 0 ELSE 1 END,
+                 bm.is_primary DESC, b.name
+               LIMIT 1) AS business_name,
               (SELECT count(*)::int FROM engagements e
                WHERE e.contact_id = c.id AND e.status = 'active') AS active_engagements
        FROM contacts c

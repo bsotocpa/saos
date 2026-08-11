@@ -171,6 +171,63 @@ test('the client directory finds people by BUSINESS name, and carries what a row
   const body = paged.json() as { contacts: unknown[]; total: number };
   assert.equal(body.contacts.length, 1);
   assert.ok(body.total > 1, 'total counts matches, not the page');
+
+  // NO SEARCH must work. The search clause references $1 unconditionally now,
+  // because binding $1 without referencing it made Postgres reject every
+  // unfiltered request ("bind message supplies 1 parameters, but prepared
+  // statement requires 0").
+  const unfiltered = await app.inject({ method: 'GET', url: '/contacts', headers: auth(brian) });
+  assert.equal(unfiltered.statusCode, 200, unfiltered.body);
+  const filteredOnly = await app.inject({
+    method: 'GET', url: '/contacts?sotoStatus=active', headers: auth(brian),
+  });
+  assert.equal(filteredOnly.statusCode, 200, 'filtering without searching works too');
+});
+
+test('the row shows the business that MATCHED, not an unrelated primary one', async () => {
+  // Searching "dishroulette" in production returned a client displaying
+  // "BREAK BREAD CHICAGO LLC" — he owns several businesses, the search hit one, and
+  // the row showed another. Correct by the old rule and still wrong to read.
+  const created = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Multiowner', email: 'multiowner@example.test' },
+  });
+  const contactId = created.json().id as string;
+
+  const primary = await app.inject({
+    method: 'POST', url: `/contacts/${contactId}/businesses`, headers: auth(brian),
+    payload: { name: 'Aardvark Primary Holdings LLC' },
+  });
+  assert.equal(primary.statusCode, 201, primary.body);
+  await app.db.query(
+    `UPDATE business_members SET is_primary = true WHERE contact_id = $1 AND business_id = $2`,
+    [contactId, primary.json().id]
+  );
+  const second = await app.inject({
+    method: 'POST', url: `/contacts/${contactId}/businesses`, headers: auth(brian),
+    payload: { name: 'Umbrella Side Venture LLC' },
+  });
+  assert.equal(second.statusCode, 201, second.body);
+  await app.db.query(
+    `UPDATE business_members SET is_primary = false WHERE contact_id = $1 AND business_id = $2`,
+    [contactId, second.json().id]
+  );
+
+  // Searching the NON-primary business must display that business.
+  const matched = await app.inject({ method: 'GET', url: '/contacts?search=umbrella', headers: auth(brian) });
+  const row = (matched.json().contacts as Array<{ id: string; business_name: string }>)
+    .find((r) => r.id === contactId);
+  assert.ok(row, 'found by the side venture');
+  assert.equal(
+    row.business_name, 'Umbrella Side Venture LLC',
+    'shows what matched, not the primary the searcher never typed'
+  );
+
+  // With no search, the PRIMARY is still the right thing to show.
+  const noSearch = await app.inject({ method: 'GET', url: '/contacts?search=multiowner', headers: auth(brian) });
+  const plain = (noSearch.json().contacts as Array<{ id: string; business_name: string }>)
+    .find((r) => r.id === contactId);
+  assert.equal(plain?.business_name, 'Aardvark Primary Holdings LLC', 'name match → primary business');
 });
 
 test('§7216 gate: blocked until a signed consent is recorded', async () => {

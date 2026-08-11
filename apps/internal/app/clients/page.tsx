@@ -44,17 +44,31 @@ export default function ClientsPage() {
   const [status, setStatus] = useState('');
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const LIMIT = 25;
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     const params = new URLSearchParams({ limit: String(LIMIT), offset: String(offset) });
     if (search.trim()) params.set('search', search.trim());
     if (status) params.set('sotoStatus', status);
-    const res = await api<{ contacts: ClientRow[]; total: number }>(`/contacts?${params}`);
-    setRows(res.contacts);
-    setTotal(res.total);
-    setLoading(false);
+    try {
+      const res = await api<{ contacts: ClientRow[]; total: number }>(`/contacts?${params}`);
+      setRows(res.contacts);
+      setTotal(res.total);
+    } catch (err) {
+      // PAGE HARDENING. A deploy replaces the container mid-navigation and Caddy
+      // returns 502 for a moment; an unhandled rejection here would white-screen
+      // the directory instead of saying so. Brian hit exactly this on
+      // /clients/[id] during the 2026-08-11 deploy.
+      // The internal api helper throws a plain Error with .code/.status attached
+      // (ApiError is the portal's class, not this app's).
+      setError(err instanceof Error && err.message ? err.message : 'Could not load clients.');
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
   }, [search, status, offset]);
 
   useEffect(() => {
@@ -102,7 +116,18 @@ export default function ClientsPage() {
         </div>
       </section>
 
-      {loading ? (
+      {error ? (
+        <section className="card">
+          <p className="alert error">{error}</p>
+          <p className="muted small">
+            If a deploy just went out, the page may have fetched a chunk mid-restart. A reload usually clears it.
+          </p>
+          <p>
+            <button className="btn accent" type="button" onClick={() => void load()}>Try again</button>{' '}
+            <button className="btn ghost" type="button" onClick={() => window.location.reload()}>Reload the page</button>
+          </p>
+        </section>
+      ) : loading ? (
         <p className="muted">Loading…</p>
       ) : rows.length === 0 ? (
         <section className="card">
