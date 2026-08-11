@@ -45,6 +45,14 @@ echo "deploy: [1c/5] ensuring the nightly backup cron is installed..."
 echo "deploy: [1d/5] ensuring the container-health cron is installed (every 5 min)..."
 "${SSH[@]}" '(crontab -l 2>/dev/null | grep -v "scripts/container-health.sh"; echo "*/5 * * * * cd /opt/saos && ENV_FILE=/opt/saos/.env bash scripts/container-health.sh >> /var/log/saos-container-health.log 2>&1") | crontab - && crontab -l | grep -q "scripts/container-health.sh"'
 
+# Caddy mounts a SINGLE FILE (./deploy/Caddyfile). git archive|tar replaces that
+# file by inode, so the running container keeps seeing the OLD one — every
+# Caddyfile change silently did nothing unless someone recreated the container.
+# Found 2026-08-11: the host file had the new config, the container had zero of it.
+# Recreating caddy whenever the file changed makes the config actually apply.
+echo "deploy: [1e/5] recreating caddy if its config changed (single-file bind mount goes stale by inode)..."
+"${SSH[@]}" 'cd /opt/saos && NEW=$(md5sum deploy/Caddyfile | cut -d" " -f1) && OLD=$(docker exec saos-caddy-1 md5sum /etc/caddy/Caddyfile 2>/dev/null | cut -d" " -f1 || echo none) && if [ "$NEW" != "$OLD" ]; then echo "caddy config changed -> recreating"; docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate caddy; else echo "caddy config unchanged"; fi'
+
 echo "deploy: [2/5] building + starting the FULL stack incl. intel + booking (first build takes minutes)..."
 "${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml up -d --build --quiet-pull'
 
