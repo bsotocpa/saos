@@ -133,6 +133,46 @@ export function registerPacketRoutes(app: FastifyInstance): void {
     };
   });
 
+  /**
+   * The same document as text/html, so REVIEWING it is opening a link rather than
+   * reading escaped JSON. This is what the Review button targets — the JSON variant
+   * above is for programmatic callers and the section manifest.
+   */
+  app.get<{ Params: { id: string } }>('/packets/:id/document.html', read, async (request, reply) => {
+    const packetId = z.uuid().parse(request.params.id);
+    const language = z.object({ language: z.enum(['en', 'es']).optional() })
+      .parse(request.query ?? {}).language ?? 'en';
+    const doc = await buildPacketDocument(app, packetId, language);
+    const excluded = doc.deliberatelyExcluded.map((e) => e.templateKey).join(', ');
+    // A review header, so whoever opens this knows it is a draft for checking and
+    // can see at a glance what is in it and what was deliberately left out.
+    const page = `<!doctype html>
+<html lang="${language}"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Engagement packet — review</title>
+<style>
+  body { font: 15px/1.6 -apple-system, Segoe UI, Roboto, sans-serif; color: #14211f;
+         max-width: 820px; margin: 0 auto; padding: 24px 18px 64px; }
+  .review { background: #e0f9f7; border: 1px solid #00c9bf; border-radius: 10px;
+            padding: 12px 14px; margin-bottom: 24px; font-size: 13px; }
+  .review strong { display: block; margin-bottom: 4px; }
+  section.doc { margin: 0 0 34px; }
+  h2 { font-size: 18px; margin: 28px 0 10px; }
+  .signature-block { border-top: 2px solid #14211f; padding-top: 14px; }
+  code { background: #f1f5f4; padding: 1px 4px; border-radius: 3px; }
+</style></head><body>
+<div class="review">
+  <strong>Draft for review — nothing has been sent.</strong>
+  Contains: ${doc.sections.map((s) => s.title).join(' · ')}.<br />
+  Deliberately excluded: ${excluded || 'nothing'} — the §7216 consents are presented
+  separately in the portal after the signature, which is what keeps them valid.
+</div>
+${doc.html}
+</body></html>`;
+    void reply.header('content-type', 'text/html; charset=utf-8');
+    return reply.send(page);
+  });
+
   app.get<{ Params: { id: string } }>('/contacts/:id/packets', read, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const packets = await app.db.query(

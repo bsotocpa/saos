@@ -303,6 +303,52 @@ export default function ClientPacketPage() {
                   {p.sent_at ? ` · sent ${p.sent_at.slice(0, 10)}` : ''}
                   {p.signed_at ? ` · signed ${p.signed_at.slice(0, 10)}` : ''}
                 </span>
+                {/* THE PROMISED ACTIONS, made clickable. The banner told Brian to
+                    "review the document, then send it for signature" and the row had
+                    neither button — the same failure as the pipeline card. */}
+                <span style={{ flex: '1 1 100%', marginTop: 6 }}>
+                  <a
+                    className="btn ghost"
+                    href={`/api/packets/${p.id}/document.html`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Review document
+                  </a>{' '}
+                  {p.status === 'draft' ? (
+                    <button
+                      className="btn accent"
+                      type="button"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!window.confirm(
+                          'Send this packet for signature? The client receives it immediately.'
+                        )) return;
+                        setBusy(true);
+                        setPacketErr('');
+                        try {
+                          const res = await api<{ sections: Array<{ code: string | null }>; submissionId?: string }>(
+                            `/packets/${p.id}/send`, { method: 'POST', body: {} }
+                          );
+                          setPacketMsg(
+                            `Sent for signature. The client was emailed the Master plus ${
+                              res.sections.filter((s) => s.code).map((s) => s.code).join(' · ')
+                            }.`
+                          );
+                          await load();
+                        } catch (err) {
+                          setPacketErr(err instanceof Error ? err.message : 'Could not send the packet.');
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      {busy ? 'Sending…' : 'Send for signature'}
+                    </button>
+                  ) : p.status === 'sent' ? (
+                    <span className="muted small">Waiting on the client&apos;s signature.</span>
+                  ) : null}
+                </span>
               </div>
             ))}
             <p className="muted small">

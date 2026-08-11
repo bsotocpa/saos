@@ -348,3 +348,18 @@ step was assigning a contact.
 **Rule**: cheap request validation first, safety gates after — except the hardest
 block (infected), which precedes everything. The first error a user sees should name
 the first thing they can fix.
+
+## API-level verification proves capability, not reachability
+**Pattern**: three findings in one evening were the same failure — the pipeline card
+was not clickable, the packet card had no Review or Send button, and /clients/[id] had
+no nav entry or list at all. In every case the backend was complete, tested, and
+deployed; the UI affordance did not exist. My tests proved the endpoint worked, which
+is not the same as proving anyone could reach it. Worse, in the packet case the UI
+literally instructed Brian to do something the screen gave him no way to do.
+**Rule** (Brian's, added to the UI milestone checklist): every entity surfaced on a
+screen must have its promised actions clickable, verified by a BROWSER WALKTHROUGH —
+open the page, click the thing, land somewhere. Route tests and `curl` do not count.
+If a banner or empty state tells the user to take an action, the control for that
+action must be in the same view.
+**Corollary**: an endpoint that returns JSON is not reviewable by a human. "Give me
+the document URL" needed a text/html route, not the JSON one the API already had.

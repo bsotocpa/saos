@@ -1635,3 +1635,18 @@ Chicago disagree on the date. Three assertions in document-chase, one in billing
   down). portal_migration_welcome template seeded (EN/ES, live) — staged
   onboarding sends at launch via the existing portal-access grant.
 - 112/112 API tests green ×2 (migration suite ×6 on synthetic fixtures).
+
+## Post-season review items (logged, deliberately not built now)
+
+- [ ] **Base-return price ranges.** The four `IND_BASE_*` items carry flat amounts
+      with no `price_min_cents`/`price_max_cents`, so a derived interview quote takes
+      its range from `pricing.estimate_band_percent` (15% for launch). Brian's ruling
+      2026-08-11: neither of us invents min/max numbers. **Revisit after one season of
+      real derived quotes**, which will show what base complexity actually varies by;
+      then set explicit ranges in Admin → Pricing and the interview prefers them over
+      the band automatically (already implemented that way).
+- [ ] **Lead self-quoting.** The tax interview was built client-readable and bilingual
+      for exactly this; only the staff-side surface exists so far.
+- [ ] **Attest Schedule F variants.** Schedule F covers review / audit / insurance-WC.
+      If Brian sells a compilation or an agreed-upon-procedures engagement, that needs
+      its own schedule — assembly refuses unscheduled attest work by name today.
