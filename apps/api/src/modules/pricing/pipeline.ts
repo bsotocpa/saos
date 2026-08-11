@@ -160,7 +160,10 @@ export async function pipelineMetrics(app: FastifyInstance): Promise<PipelineMet
      -- showed zero — the same screen disagreeing with itself, and a rehearsal
      -- win or loss moving the real win rate.
      FROM quotes q JOIN contacts c ON c.id = q.contact_id
-     WHERE NOT c.is_test AND NOT c.is_archived`
+     -- 'void' = withdrawn by us (duplicate/error). Never a proposal, so it is
+     -- neither sent, open, won nor lost — excluded outright rather than
+     -- misfiled as a client decline.
+     WHERE NOT c.is_test AND NOT c.is_archived AND q.status <> 'void'`
   );
   const r = q.rows[0]!;
   const decided = r.accepted + r.declined + r.expired;

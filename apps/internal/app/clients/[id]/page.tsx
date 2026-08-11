@@ -49,6 +49,22 @@ interface Quote {
   id: string; status: string; total_cents: number; range_min_cents: number | null;
   range_max_cents: number | null; created_at: string;
 }
+interface Engagement {
+  id: string; service_line: string; status: string; title: string | null; created_at: string;
+}
+interface PacketPreview {
+  codes: string[];
+  titles: Record<string, string>;
+  reasons: Record<string, string[]>;
+  masterKey: string;
+  alreadySigned: boolean;
+  alreadyAccepted: string[];
+  newSchedules: string[];
+}
+interface PacketRow {
+  id: string; status: string; schedule_codes: string[];
+  sent_at: string | null; signed_at: string | null; created_at: string;
+}
 
 const okBadge = (s: string) => (s === 'signed' || s === 'granted' || s === 'on_file' ? 'ok' : 'warn');
 
@@ -60,6 +76,15 @@ export default function ClientPacketPage() {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [error, setError] = useState('');
+  // Engagements (service-line agreements) are a DIFFERENT thing from returns
+  // (tax_engagements). The Returns card said "No tax engagements" while the client
+  // list said "2 active", and both were right — see the Returns card below.
+  const [engagements, setEngagements] = useState<Engagement[]>([]);
+  const [packets, setPackets] = useState<PacketRow[]>([]);
+  const [preview, setPreview] = useState<PacketPreview | null>(null);
+  const [packetMsg, setPacketMsg] = useState('');
+  const [packetErr, setPacketErr] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -76,6 +101,21 @@ export default function ClientPacketPage() {
         api<{ quotes: Quote[] }>(`/contacts/${params.id}/quotes`)
           .then((r) => setQuotes(r.quotes ?? []))
           .catch(() => setQuotes([])),
+        api<{ engagements: Engagement[] }>(`/engagements?contactId=${params.id}`)
+          .then((r) => setEngagements(r.engagements ?? []))
+          .catch(() => setEngagements([])),
+        api<{ packets: PacketRow[] }>(`/contacts/${params.id}/packets`)
+          .then((r) => setPackets(r.packets ?? []))
+          .catch(() => setPackets([])),
+        // The preview refuses when there is nothing to paper (no services, attest
+        // without an Addendum, text not final). Its message IS the explanation, so
+        // it is shown rather than swallowed.
+        api<PacketPreview>(`/contacts/${params.id}/packet/preview`, { method: 'POST', body: {} })
+          .then((r) => { setPreview(r); setPacketErr(''); })
+          .catch((err: unknown) => {
+            setPreview(null);
+            setPacketErr(err instanceof Error ? err.message : 'Could not work out the packet.');
+          }),
       ]);
     } catch (err) {
       setError((err as Error).message);
@@ -232,10 +272,114 @@ export default function ClientPacketPage() {
         </section>
       </div>
 
+      {/* ENGAGEMENT PACKET — Master + only the schedules this client's services
+          require. This action existed only as an API endpoint until now, so there
+          was no way to paper a client from the UI at all. */}
+      <section className="card span" style={{ marginTop: 12 }}>
+        <h2>Engagement packet</h2>
+        {packetMsg ? <p className="alert ok">{packetMsg}</p> : null}
+        {packetErr ? (
+          <>
+            <p className="alert warn">{packetErr}</p>
+            <p className="muted small">
+              Nothing is papered yet. Fix the reason above and reload — the packet is assembled from
+              the client&apos;s active services, so it needs at least one.
+            </p>
+          </>
+        ) : null}
+
+        {packets.length > 0 ? (
+          <>
+            {packets.map((p) => (
+              <div className="quote-line" key={p.id}>
+                <span className="name">
+                  Packet <span className="badge">{p.schedule_codes.join(' · ') || 'no schedules'}</span>{' '}
+                  <span className={`badge ${p.status === 'signed' ? 'ok' : p.status === 'sent' ? 'warn' : ''}`}>
+                    {p.status}
+                  </span>
+                </span>
+                <span className="muted small" style={{ flex: '1 1 100%' }}>
+                  created {p.created_at.slice(0, 10)}
+                  {p.sent_at ? ` · sent ${p.sent_at.slice(0, 10)}` : ''}
+                  {p.signed_at ? ` · signed ${p.signed_at.slice(0, 10)}` : ''}
+                </span>
+              </div>
+            ))}
+            <p className="muted small">
+              A client signs the Master once. Services added later are accepted per-schedule in the
+              portal — the Master is never re-executed.
+            </p>
+          </>
+        ) : preview ? (
+          <>
+            <p className="small">
+              <strong>Would contain:</strong>{' '}
+              {preview.codes.length === 0
+                ? 'nothing yet — no active services'
+                : preview.codes.map((c) => `${c} — ${preview.titles[c] ?? ''}`).join(' · ')}
+            </p>
+            {preview.codes.length > 0 ? (
+              <p className="muted small">
+                Derived from:{' '}
+                {preview.codes
+                  .map((c) => `${c} (${(preview.reasons[c] ?? []).join(', ')})`)
+                  .join(' · ')}
+              </p>
+            ) : null}
+            <p>
+              <button
+                className="btn accent"
+                type="button"
+                disabled={busy || preview.codes.length === 0}
+                onClick={async () => {
+                  setBusy(true);
+                  setPacketErr('');
+                  try {
+                    const res = await api<{ packetId: string; scheduleCodes: string[] }>(
+                      `/contacts/${params.id}/packet`, { method: 'POST', body: {} }
+                    );
+                    setPacketMsg(
+                      `Packet created with ${res.scheduleCodes.join(' · ')}. Review the document, then send it for signature.`
+                    );
+                    await load();
+                  } catch (err) {
+                    setPacketErr(err instanceof Error ? err.message : 'Could not create the packet.');
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {busy ? 'Working…' : 'Create engagement packet'}
+              </button>
+            </p>
+          </>
+        ) : packetErr ? null : (
+          <p className="muted small">Working out what this client needs…</p>
+        )}
+      </section>
+
       <section className="card span" style={{ marginTop: 12 }}>
         <h2>Returns</h2>
         {returns.length === 0 ? (
-          <p className="muted small">No tax engagements.</p>
+          <>
+            {/* The old copy — "No tax engagements." — was accurate and read as a
+                contradiction: the client list counts ENGAGEMENTS (service-line
+                agreements) while this card counts RETURNS (tax_engagements). Both
+                were right. Say which is which, and give the next step. */}
+            <p className="muted small">
+              No tax return has been created yet.
+              {engagements.filter((e) => e.status === 'active').length > 0 ? (
+                <>
+                  {' '}This client has{' '}
+                  <strong>{engagements.filter((e) => e.status === 'active').length} active
+                  engagement{engagements.filter((e) => e.status === 'active').length === 1 ? '' : 's'}</strong>{' '}
+                  ({engagements.filter((e) => e.status === 'active').map((e) => e.service_line).join(', ')}) —
+                  an engagement is the agreement to do the work; a return is the specific year and form.
+                  Create the return from the preparer queue once the year and return type are known.
+                </>
+              ) : null}
+            </p>
+          </>
         ) : (
           returns.map((t) => (
             <div className="quote-line" key={t.id}>

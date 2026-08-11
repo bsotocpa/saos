@@ -95,6 +95,21 @@ export default function PipelinePage() {
   const [expiresInDays, setExpiresInDays] = useState(30);
   const [notes, setNotes] = useState('');
   const [sentLink, setSentLink] = useState('');
+  /**
+   * The send confirmation is its OWN state, deliberately outside the builder.
+   * It used to live inside the builder modal, so resetBuilder() wiped it the moment
+   * the composer closed — Brian sent a quote, lost the confirmation, could not tell
+   * whether it had gone, and built a second one. A confirmation that vanishes is
+   * not a confirmation.
+   */
+  const [sentConfirm, setSentConfirm] = useState<
+    { url: string; name: string; totalCents: number | null } | null
+  >(null);
+  /** Open (sent, undecided) quotes for the selected client — the duplicate guard. */
+  const [openQuotes, setOpenQuotes] = useState<
+    Array<{ id: string; status: string; total_cents: number; created_at: string }>
+  >([]);
+  const [dupAcknowledged, setDupAcknowledged] = useState(false);
   // A saved draft awaiting a deliberate deposit decision, then sending.
   const [draftQuoteId, setDraftQuoteId] = useState('');
   const [depositOverride, setDepositOverride] = useState<
@@ -141,6 +156,23 @@ export default function PipelinePage() {
     }, 250);
     return () => clearTimeout(handle);
   }, [search]);
+
+  /**
+   * DUPLICATE GUARD. Brian sent two quotes to the same client because nothing told
+   * him the first had gone through in a way that stuck. Selecting a client now
+   * surfaces any quote already out with them, before the builder will send another.
+   */
+  const loadOpenQuotes = useCallback(async (contactId: string) => {
+    setDupAcknowledged(false);
+    try {
+      const r = await api<{ quotes: Array<{ id: string; status: string; total_cents: number; created_at: string }> }>(
+        `/contacts/${contactId}/quotes`
+      );
+      setOpenQuotes((r.quotes ?? []).filter((q) => q.status === 'sent'));
+    } catch {
+      setOpenQuotes([]);
+    }
+  }, []);
 
   const deposits = useMemo(() => catalog.filter((i) => i.service_line === 'deposit'), [catalog]);
   const filtered = useMemo(() => {
@@ -253,6 +285,13 @@ export default function PipelinePage() {
       if (send) {
         const r = await api<{ url: string }>(`/quotes/${created.id}/send`, { method: 'POST' });
         setSentLink(r.url);
+        setSentConfirm({
+          url: r.url,
+          name: `${contact.first_name} ${contact.last_name}`,
+          totalCents: null,
+        });
+        setOpen(false);
+        resetBuilder();
       } else {
         // Saving a draft keeps the composer open so the deposit can be adjusted
         // deliberately before the client ever sees the quote.
@@ -273,6 +312,51 @@ export default function PipelinePage() {
     <>
       <h1>Pipeline</h1>
       {error ? <div className="alert error">{error}</div> : null}
+
+      {/* THE SEND CONFIRMATION. Its own modal, outside the builder, dismissed only
+          by an explicit click — the previous version lived inside the composer and
+          was wiped by resetBuilder(), so the send left no trace and a second quote
+          got built. It stays until Brian says he has seen it. */}
+      {sentConfirm ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Quote sent"
+          style={{
+            position: "fixed", inset: 0, zIndex: 50, display: "flex",
+            alignItems: "center", justifyContent: "center", padding: 16,
+            background: "rgba(13, 59, 56, 0.45)",
+          }}
+        >
+          <div className="modal" style={{ maxWidth: 560 }}>
+            <h2>Quote sent to {sentConfirm.name}</h2>
+            <p className="alert ok" style={{ marginBottom: 8 }}>
+              The proposal email is on its way, and the quote is now open awaiting their decision.
+            </p>
+            <p className="small muted">Their link (also emailed):</p>
+            <p>
+              <code style={{ overflowWrap: 'anywhere' }}>{sentConfirm.url}</code>
+            </p>
+            <p className="muted small">
+              You do not need to send another. If you want to change it, open the client and edit or
+              resend this one — a second quote means they can accept both.
+            </p>
+            <p>
+              <button
+                type="button"
+                className="btn accent"
+                onClick={() => { void navigator.clipboard?.writeText(sentConfirm.url); }}
+              >
+                Copy link
+              </button>{' '}
+              <Link className="btn ghost" href={`/clients/${contact?.id ?? ''}`}>Open the client</Link>{' '}
+              <button type="button" className="btn ghost" onClick={() => { setSentConfirm(null); setSentLink(''); }}>
+                Dismiss
+              </button>
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="chipbar">
         <button type="button" className="btn accent" onClick={() => setOpen((o) => !o)}>
@@ -295,7 +379,42 @@ export default function PipelinePage() {
             excluded from the total until they tick them.
           </p>
 
-          {sentLink ? (
+          {/* DUPLICATE GUARD: a quote is already out with this client. Surfaced
+              before anything else in the composer, with the existing one offered
+              first — sending a second is a deliberate act, not the default. */}
+          {contact && openQuotes.length > 0 && !dupAcknowledged ? (
+            <div className="alert warn">
+              <strong>
+                {contact.first_name} {contact.last_name} already has{' '}
+                {openQuotes.length === 1 ? 'a quote' : `${openQuotes.length} quotes`} out.
+              </strong>
+              {openQuotes.map((q) => (
+                <p key={q.id} className="small" style={{ margin: '6px 0' }}>
+                  {money(q.total_cents)} · sent {q.created_at.slice(0, 10)} · awaiting their decision
+                </p>
+              ))}
+              <p className="muted small">
+                Sending another means they receive two live proposals and can accept both. Pick one:
+              </p>
+              <p>
+                <Link className="btn ghost" href={`/clients/${contact.id}`}>Open the client</Link>{' '}
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => { setContact(null); setOpenQuotes([]); }}
+                >
+                  Choose a different client
+                </button>{' '}
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setDupAcknowledged(true)}
+                >
+                  Create another anyway
+                </button>
+              </p>
+            </div>
+          ) : sentLink ? (
             <div className="alert ok">
               Sent. The client link (also emailed):{' '}
               <code style={{ overflowWrap: 'anywhere' }}>{sentLink}</code>
@@ -317,7 +436,7 @@ export default function PipelinePage() {
                   <span className="chipbar" style={{ marginTop: 4 }}>
                     <span className="chip active">
                       {contact.first_name} {contact.last_name}
-                      <button type="button" className="x" onClick={() => setContact(null)} aria-label="Clear">×</button>
+                      <button type="button" className="x" onClick={() => { setContact(null); setOpenQuotes([]); setDupAcknowledged(false); }} aria-label="Clear">×</button>
                     </span>
                   </span>
                 ) : (
@@ -332,7 +451,7 @@ export default function PipelinePage() {
               {!contact && matches.length > 0 ? (
                 <div className="chipbar">
                   {matches.map((m) => (
-                    <button key={m.id} type="button" className="chip" onClick={() => { setContact(m); setMatches([]); }}>
+                    <button key={m.id} type="button" className="chip" onClick={() => { setContact(m); setMatches([]); void loadOpenQuotes(m.id); }}>
                       {m.first_name} {m.last_name}
                     </button>
                   ))}

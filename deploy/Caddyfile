@@ -6,15 +6,42 @@
 }
 
 portal.sotoaccounting.com {
-	reverse_proxy portal:3000
+	# A deploy replaces these containers, and for a second Docker DNS cannot resolve
+	# the service name. On 2026-08-11 that produced a 502 for a Next.js chunk while
+	# Brian was mid-navigation on /clients/[id] and broke the page. Retrying for a
+	# few seconds turns a container swap into a pause instead of an error — a
+	# standing deploy characteristic engineered away rather than documented around.
+	reverse_proxy portal:3000 {
+		lb_try_duration 10s
+		lb_try_interval 250ms
+		fail_duration 5s
+	}
 }
 
 api.sotoaccounting.com {
-	reverse_proxy api:3001
+	# A deploy replaces these containers, and for a second Docker DNS cannot resolve
+	# the service name. On 2026-08-11 that produced a 502 for a Next.js chunk while
+	# Brian was mid-navigation on /clients/[id] and broke the page. Retrying for a
+	# few seconds turns a container swap into a pause instead of an error — a
+	# standing deploy characteristic engineered away rather than documented around.
+	reverse_proxy api:3001 {
+		lb_try_duration 10s
+		lb_try_interval 250ms
+		fail_duration 5s
+	}
 }
 
 ops.sotoaccounting.com {
-	reverse_proxy internal:3005
+	# A deploy replaces these containers, and for a second Docker DNS cannot resolve
+	# the service name. On 2026-08-11 that produced a 502 for a Next.js chunk while
+	# Brian was mid-navigation on /clients/[id] and broke the page. Retrying for a
+	# few seconds turns a container swap into a pause instead of an error — a
+	# standing deploy characteristic engineered away rather than documented around.
+	reverse_proxy internal:3005 {
+		lb_try_duration 10s
+		lb_try_interval 250ms
+		fail_duration 5s
+	}
 }
 
 sign.sotoaccounting.com {
