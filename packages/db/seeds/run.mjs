@@ -20,6 +20,7 @@ import { seedBundles } from './data/bundles.mjs';
 import { seedSops } from './data/sops.mjs';
 import { seedLegalV3 } from './data/legal_v3.mjs';
 import { seedScheduleF } from './data/schedule_f.mjs';
+import { seedTaxInterview } from './data/tax_interview.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(here, '../../../.env') });
@@ -43,6 +44,7 @@ try {
     ['sops', seedSops],
     ['legal_v3', seedLegalV3],
     ['schedule_f', seedScheduleF],
+    ['tax_interview', seedTaxInterview],
   ]) {
     const result = await fn(client);
     console.log(`✓ ${name}: ${result}`);

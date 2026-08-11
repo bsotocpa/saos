@@ -62,6 +62,12 @@ export async function createQuote(
     depositItemCode?: string | null | undefined;
     /** Recurring work quotes exact; one-time work quotes as a range. */
     asRange?: boolean | undefined;
+    /** The interview answers that derived these lines — kept so the price stays explainable. */
+    interviewAnswers?: Record<string, string | number | boolean> | undefined;
+    /** 'base_only' narrows the band to the base return; derived schedules are exact. */
+    rangeBasis?: 'total' | 'base_only' | undefined;
+    /** The base portion of the subtotal. Required when rangeBasis is 'base_only'. */
+    baseCents?: number | undefined;
     expiresInDays?: number | undefined;
     notes?: string | null | undefined;
   },
@@ -165,15 +171,26 @@ export async function createQuote(
   if (input.asRange) {
     const band = await estimateBandPercent(app);
     rangeMinCents = totalCents;
-    rangeMaxCents = Math.round(totalCents * (1 + band / 100));
+    if (input.rangeBasis === 'base_only') {
+      // Only the BASE widens. A client who told us they have three rentals sees
+      // precision on the schedules and a band only where complexity genuinely
+      // varies — Brian's ruling on the guided interview. Widening the whole total
+      // is what made a derived quote read as vague.
+      const baseCents = Math.min(Math.max(input.baseCents ?? 0, 0), totalCents);
+      const exactPart = totalCents - baseCents;
+      rangeMaxCents = exactPart + Math.round(baseCents * (1 + band / 100));
+    } else {
+      rangeMaxCents = Math.round(totalCents * (1 + band / 100));
+    }
   }
 
   const { rows } = await app.db.query<{ id: string }>(
     `INSERT INTO quotes
        (contact_id, business_id, language, bundle_slug, price_book_version_id,
         subtotal_cents, discount_cents, total_cents, range_min_cents, range_max_cents,
-        deposit_item_code, expires_at, created_by_staff_id, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        deposit_item_code, expires_at, created_by_staff_id, notes,
+        interview_answers, range_basis)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16)
      RETURNING id`,
     [
       input.contactId, input.businessId ?? null, input.language ?? 'en', input.bundleSlug ?? null, version.id,
@@ -181,6 +198,8 @@ export async function createQuote(
       input.depositItemCode ?? null,
       input.expiresInDays ? `${addDays(todayChicago(), input.expiresInDays)}T23:59:59Z` : null,
       actor.id, input.notes ?? null,
+      input.interviewAnswers ? JSON.stringify(input.interviewAnswers) : null,
+      input.asRange ? (input.rangeBasis ?? 'total') : null,
     ]
   );
   const quoteId = rows[0]!.id;

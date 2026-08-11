@@ -32,12 +32,44 @@ const CreateQuoteBody = z
     asRange: z.boolean().optional(),
     expiresInDays: z.number().int().min(1).max(365).optional(),
     notes: z.string().nullable().optional(),
+    // Set by the guided interview so the quote records what the client told us and
+    // the band narrows to the base return only.
+    interviewAnswers: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+    rangeBasis: z.enum(['total', 'base_only']).optional(),
+    baseCents: z.number().int().min(0).optional(),
   })
   .refine((b) => Boolean(b.bundleSlug) || (b.lines?.length ?? 0) > 0, {
     message: 'Provide bundleSlug or at least one line item.',
   });
 
+const InterviewBody = z.object({
+  answers: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
+  language: z.enum(['en', 'es']).optional(),
+});
+
 export function registerQuoteRoutes(app: FastifyInstance): void {
+
+  /**
+   * THE GUIDED TAX INTERVIEW. Questions first, then derive — so the quote's line
+   * items come from what the client actually has rather than what a staffer
+   * remembered to add. Read-only: it prices nothing until the builder creates a
+   * quote from the derived lines, which staff can still edit.
+   */
+  const interviewGuard = { preHandler: [app.authenticate, requirePermission('engagements.read')] };
+
+  app.get('/quotes/tax-interview', interviewGuard, async (request) => {
+    const language = z.object({ language: z.enum(['en', 'es']).optional() })
+      .parse(request.query ?? {}).language ?? 'en';
+    const { interviewQuestions } = await import('./tax-interview.ts');
+    return { questions: await interviewQuestions(app, language) };
+  });
+
+  app.post('/quotes/tax-interview/derive', interviewGuard, async (request) => {
+    const b = InterviewBody.parse(request.body);
+    const { deriveTaxQuote } = await import('./tax-interview.ts');
+    return deriveTaxQuote(app, b.answers, b.language ?? 'en');
+  });
+
   const read = { preHandler: [app.authenticate, requirePermission('engagements.read')] };
   const manage = { preHandler: [app.authenticate, requirePermission('engagements.tax.manage')] };
 
