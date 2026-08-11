@@ -82,8 +82,17 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     const params: unknown[] = [];
     if (q.search) {
       params.push(`%${q.search}%`);
+      // Business name is searched too: half this book bills under a business name
+      // rather than a person's, and the migration report flagged 35 such clients.
+      // Searching only people made those clients effectively unfindable.
       clauses.push(
-        `(c.first_name ILIKE $${params.length} OR c.last_name ILIKE $${params.length} OR (c.first_name || ' ' || c.last_name) ILIKE $${params.length} OR c.email::text ILIKE $${params.length} OR c.phone ILIKE $${params.length})`
+        `(c.first_name ILIKE $${params.length} OR c.last_name ILIKE $${params.length}
+          OR (c.first_name || ' ' || c.last_name) ILIKE $${params.length}
+          OR c.email::text ILIKE $${params.length} OR c.phone ILIKE $${params.length}
+          OR EXISTS (
+            SELECT 1 FROM business_members bm JOIN businesses b ON b.id = bm.business_id
+            WHERE bm.contact_id = c.id AND b.name ILIKE $${params.length}
+          ))`
       );
     }
     if (q.sotoStatus) {
@@ -98,17 +107,34 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       params.push(q.managerId);
       clauses.push(`c.assigned_manager_id = $${params.length}`);
     }
+    // The total BEFORE paging, so the list can say "showing 25 of 426" instead of
+    // leaving you guessing whether your search matched everything.
+    const totalRow = await app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM contacts c WHERE ${clauses.join(' AND ')}`,
+      params
+    );
+
     params.push(q.limit, q.offset);
     const { rows } = await app.db.query(
       `SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.language,
-              c.soto_status, c.hilo_status, c.health_score, c.assigned_manager_id, c.client_since
+              c.soto_status, c.hilo_status, c.health_score, c.assigned_manager_id, c.client_since,
+              -- is_test so the directory can badge a rehearsal record rather than
+              -- letting it look like a real client (visible in operations).
+              c.is_test,
+              -- The PRIMARY business is the one worth showing in a directory row;
+              -- name breaks ties so the value is stable between requests.
+              (SELECT b.name FROM business_members bm JOIN businesses b ON b.id = bm.business_id
+               WHERE bm.contact_id = c.id
+               ORDER BY bm.is_primary DESC, b.name LIMIT 1) AS business_name,
+              (SELECT count(*)::int FROM engagements e
+               WHERE e.contact_id = c.id AND e.status = 'active') AS active_engagements
        FROM contacts c
        WHERE ${clauses.join(' AND ')}
        ORDER BY c.last_name, c.first_name
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
-    return { contacts: rows, limit: q.limit, offset: q.offset };
+    return { contacts: rows, total: totalRow.rows[0]!.n, limit: q.limit, offset: q.offset };
   });
 
   app.post('/contacts', write, async (request, reply) => {

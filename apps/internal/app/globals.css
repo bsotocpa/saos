@@ -297,6 +297,14 @@ label.inline-check input[type='checkbox'],
   .report-cards { display: block; }
 }
 
+/* Generic table-to-cards utilities, same 767px breakpoint as the report pattern
+   above (CLAUDE.md: dense table on desktop, cards on a phone). */
+.phone-only { display: none; }
+@media (max-width: 767px) {
+  .desk-only { display: none; }
+  .phone-only { display: block; }
+}
+
 /* Session recap bodies (v4.2 #6). Pre-wrapped so the drafted markdown headings and
    bullets keep their shape while still wrapping on a phone. */
 .recap-body {

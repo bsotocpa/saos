@@ -137,6 +137,42 @@ test('CRM walkthrough: contact → business → gaps shrink as data lands → en
   assert.equal(byEmail.json().contacts.length, 1);
 });
 
+test('the client directory finds people by BUSINESS name, and carries what a row needs', async () => {
+  // A large part of this book bills under a business rather than a person — the
+  // migration flagged 35 such clients. Searching only people made them unfindable,
+  // which is half of why /clients/[id] sat orphaned with no way in.
+  const created = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Quietowner', email: 'quietowner@example.test' },
+  });
+  const contactId = created.json().id as string;
+  // Creating it under the contact links the membership for us.
+  const biz = await app.inject({
+    method: 'POST', url: `/contacts/${contactId}/businesses`, headers: auth(brian),
+    payload: { name: 'Zebra Fabrication Partners LLC' },
+  });
+  assert.equal(biz.statusCode, 201, biz.body);
+
+  // The owner's NAME does not contain "zebra" — only the business does.
+  const found = await app.inject({ method: 'GET', url: '/contacts?search=zebra', headers: auth(brian) });
+  assert.equal(found.statusCode, 200, found.body);
+  const rows = found.json().contacts as Array<{
+    id: string; business_name: string | null; is_test: boolean; active_engagements: number;
+  }>;
+  const row = rows.find((r) => r.id === contactId);
+  assert.ok(row, 'found by business name');
+  assert.equal(row.business_name, 'Zebra Fabrication Partners LLC', 'the row shows which business');
+  assert.equal(row.is_test, false, 'so the directory can badge a rehearsal record');
+  assert.equal(row.active_engagements, 0);
+
+  // A total independent of the page, so the list can say "showing 25 of 426"
+  // instead of leaving you unsure whether the search matched more.
+  const paged = await app.inject({ method: 'GET', url: '/contacts?limit=1', headers: auth(brian) });
+  const body = paged.json() as { contacts: unknown[]; total: number };
+  assert.equal(body.contacts.length, 1);
+  assert.ok(body.total > 1, 'total counts matches, not the page');
+});
+
 test('§7216 gate: blocked until a signed consent is recorded', async () => {
   const created = await app.inject({
     method: 'POST', url: '/contacts', headers: auth(brian),
