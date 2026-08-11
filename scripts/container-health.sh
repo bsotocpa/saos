@@ -29,6 +29,7 @@ for name in $(docker ps -a --filter "name=saos-" --format '{{.Names}}'); do
   health="$(docker inspect "$name" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || echo none)"
   state="$(docker inspect "$name" --format '{{.State.Status}}' 2>/dev/null || echo unknown)"
   streak="$(docker inspect "$name" --format '{{if .State.Health}}{{.State.Health.FailingStreak}}{{else}}0{{end}}' 2>/dev/null || echo 0)"
+  exit_code="$(docker inspect "$name" --format '{{.State.ExitCode}}' 2>/dev/null || echo 0)"
 
   # How long has it been unhealthy? Approximated from the oldest consecutive failing
   # entry in the health log, which is what "unhealthy for N minutes" should mean.
@@ -44,15 +45,34 @@ for name in $(docker ps -a --filter "name=saos-" --format '{{.Names}}'); do
   fi
 
   [ -n "$items" ] && items="$items,"
-  items="$items{\"name\":\"$name\",\"health\":\"$health\",\"state\":\"$state\",\"failingStreak\":${streak:-0}$minutes_field}"
+  items="$items{\"name\":\"$name\",\"health\":\"$health\",\"state\":\"$state\",\"failingStreak\":${streak:-0},\"exitCode\":${exit_code:-0}$minutes_field}"
 done
 
 [ -n "$items" ] || { echo "container-health: no saos-* containers found"; exit 0; }
 
-# --fail so a non-2xx is a cron failure (visible in the log) rather than silence.
-curl -sS --fail --max-time 20 \
-  -X POST "$API_URL/webhooks/container-health" \
-  -H "content-type: application/json" \
-  -H "x-webhook-secret: $WEBHOOK_SECRET" \
-  -d "{\"containers\":[$items]}"
-echo
+# The API is NOT published on the host — prod publishes only Caddy, and the API
+# listens on 3001 inside the docker network. So the report is delivered by asking
+# the api container to post to itself. Going out through Caddy would work too, but
+# would make the watchdog depend on DNS and TLS being healthy, which is exactly the
+# kind of thing it exists to report on.
+PAYLOAD_FILE="$(mktemp)"
+trap 'rm -f "$PAYLOAD_FILE"' EXIT
+printf '{"containers":[%s]}' "$items" > "$PAYLOAD_FILE"
+
+docker exec -i -e WEBHOOK_SECRET="$WEBHOOK_SECRET" saos-api-1 node -e '
+const chunks = [];
+process.stdin.on("data", (c) => chunks.push(c));
+process.stdin.on("end", async () => {
+  const body = Buffer.concat(chunks).toString("utf8");
+  const res = await fetch("http://localhost:3001/webhooks/container-health", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-webhook-secret": process.env.WEBHOOK_SECRET },
+    body,
+  });
+  const text = await res.text();
+  console.log(res.status + " " + text);
+  // Non-2xx exits non-zero so a broken watchdog shows up in the cron log rather
+  // than failing quietly — the failure mode this whole script exists to prevent.
+  if (!res.ok) process.exit(1);
+});
+' < "$PAYLOAD_FILE"

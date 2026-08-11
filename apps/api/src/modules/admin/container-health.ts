@@ -37,6 +37,8 @@ export interface ContainerReport {
   failingStreak: number;
   /** Minutes since the container entered its current unhealthy run, if known. */
   unhealthyMinutes?: number | undefined;
+  /** Exit code when stopped. 0 = finished its job (init containers do this). */
+  exitCode?: number | undefined;
 }
 
 /** Services whose failure is a COMPLIANCE problem, not just an outage. */
@@ -66,7 +68,13 @@ export async function recordContainerHealth(
   const graceMinutes = Number(await getSetting(app, 'ops.container_unhealthy_alert_minutes', 10));
 
   const unhealthy = containers.filter((c) => {
-    if (c.state === 'restarting' || c.state === 'exited') return true;
+    if (c.state === 'restarting') return true;
+    // A container that EXITED CLEANLY did its job and stopped. The stack has
+    // one-shot init containers (saos-minio-init-1, saos-calcom-db-init-1) that are
+    // supposed to be in exactly this state, and the first live run of this watchdog
+    // alerted on both of them. A watchdog that cries wolf twice every five minutes
+    // gets ignored, which recreates the outage it was built to catch.
+    if (c.state === 'exited') return (c.exitCode ?? 0) !== 0;
     if (c.health !== 'unhealthy') return false;
     // 'starting' is never an alert: a container that is still booting is not broken.
     // Past the grace period, or a long failing streak, is.

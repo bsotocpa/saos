@@ -74,6 +74,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
               state: z.string(),
               failingStreak: z.number().int().min(0).default(0),
               unhealthyMinutes: z.number().min(0).optional(),
+              exitCode: z.number().int().optional(),
             })
           )
           .max(100),

@@ -96,9 +96,19 @@ test('a briefly-unhealthy or still-starting container does NOT alert', async () 
   assert.deepEqual(result.alerted, [], 'no noise for normal startup churn');
 });
 
-test('an exited container alerts immediately — there is no grace period for gone', async () => {
+test('a one-shot init container that finished is NOT an outage', async () => {
+  // The first live run of this watchdog alerted on saos-minio-init-1 and
+  // saos-calcom-db-init-1 — containers whose whole job is to run once and exit 0.
+  const quiet = await recordContainerHealth(app, [
+    { name: 'saos-minio-init-1', health: 'none', state: 'exited', failingStreak: 0, exitCode: 0 },
+    { name: 'saos-calcom-db-init-1', health: 'none', state: 'exited', failingStreak: 0, exitCode: 0 },
+  ]);
+  assert.deepEqual(quiet.alerted, [], 'exited cleanly = did its job');
+});
+
+test('a container that CRASHED alerts immediately — no grace period for gone', async () => {
   const result = await recordContainerHealth(app, [
-    { name: 'saos-minio-1', health: 'none', state: 'exited', failingStreak: 0 },
+    { name: 'saos-minio-1', health: 'none', state: 'exited', failingStreak: 0, exitCode: 137 },
   ]);
   assert.deepEqual(result.alerted, ['saos-minio-1']);
   const alert = await app.db.query<{ title: string; severity: string }>(
