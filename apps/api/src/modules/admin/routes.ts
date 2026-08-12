@@ -282,6 +282,33 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   });
 
   // ── Settings (SLA windows, thresholds, automation knobs) ─────────────────
+  /*
+   * FINDING #14(3): system health on the ops dashboard.
+   *
+   * Authenticated staff, no admin.settings permission required — a wedged virus
+   * scanner is operational information that everyone working the queue needs, not a
+   * configuration secret. Putting it behind the admin gate is how it stays invisible.
+   *
+   * Includes the document-scan backlog, because "the scanner is down" and "47 client
+   * uploads are waiting to be filed" are the same incident seen from two ends, and the
+   * second one is what makes it urgent.
+   */
+  app.get('/admin/system-health', { preHandler: [app.authenticate] }, async () => {
+    const deps = await app.db.query(
+      `SELECT name, reachable, since, last_checked_at, detail,
+              EXTRACT(EPOCH FROM (now() - since))::bigint AS seconds_in_state
+         FROM dependency_health ORDER BY reachable, name`
+    );
+    const scans = await app.db.query(
+      `SELECT scan_status::text AS status, count(*)::int AS n,
+              min(created_at) AS oldest
+         FROM documents
+        WHERE archived_at IS NULL
+        GROUP BY scan_status`
+    );
+    return { dependencies: deps.rows, documentScans: scans.rows };
+  });
+
   app.get('/admin/settings', admin, async () => {
     const { rows } = await app.db.query(
       `SELECT key, value, description, updated_at FROM app_settings ORDER BY key`

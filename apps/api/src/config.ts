@@ -130,6 +130,26 @@ export function loadConfig(overrides: Partial<Record<keyof Config, unknown>> = {
     if (config.STRIPE_MODE === 'live' && (!config.STRIPE_SECRET_KEY || !config.STRIPE_WEBHOOK_SECRET)) {
       throw new Error('STRIPE_MODE=live requires STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET.');
     }
+    /*
+     * FINDING #14. This assertion is what makes the document scan gate safe.
+     *
+     * An unconfigured scanner and a broken scanner are different things. Broken means
+     * defer filing and retry (Brian's ruling). Unconfigured means dev or test, where
+     * documents must still be able to file or nothing works locally — so
+     * scan_status 'not_configured' is allowed through the filing gate.
+     *
+     * That leniency is only safe if production CANNOT be in that state. Hence: no
+     * CLAMAV_HOST, no boot. The alternative — trusting that the variable is always
+     * set — turns a missing line in .env into every client document filing unscanned,
+     * silently, with a compliance column claiming it was fine.
+     */
+    if (!config.CLAMAV_HOST) {
+      throw new Error(
+        'CLAMAV_HOST is unset — refusing to start in production. Document scanning is a ' +
+          'compliance control, and without it the scan gate would let uploads file as ' +
+          '"not_configured" rather than clean.'
+      );
+    }
   }
   return config;
 }

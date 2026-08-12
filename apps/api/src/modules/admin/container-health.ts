@@ -166,6 +166,31 @@ export async function probeDependencies(
     reachable.postgres = false;
   }
 
+  /*
+   * FINDING #14(3), Brian's ruling: "13 hours down should be visible, not discovered
+   * via OOM logs."
+   *
+   * This probe already ran every tick and already alerted. What it did not do was
+   * REMEMBER, so the duration of an outage was not a fact the system held — it was
+   * something you reconstructed afterwards from dmesg. `since` only moves when the
+   * state TRANSITIONS, which is what makes it a duration rather than a timestamp of
+   * the last check.
+   */
+  for (const [name, ok] of Object.entries(reachable)) {
+    await app.db.query(
+      `INSERT INTO dependency_health (name, reachable, since, last_checked_at, detail)
+       VALUES ($1, $2, now(), now(), $3)
+       ON CONFLICT (name) DO UPDATE
+         SET reachable = EXCLUDED.reachable,
+             last_checked_at = now(),
+             detail = EXCLUDED.detail,
+             -- Only reset the clock when the state actually changed.
+             since = CASE WHEN dependency_health.reachable <> EXCLUDED.reachable
+                          THEN now() ELSE dependency_health.since END`,
+      [name, ok, ok ? null : (reasonFor(name) ?? 'unreachable from the API')]
+    );
+  }
+
   const down = Object.entries(reachable).filter(([, ok]) => !ok).map(([name]) => name);
   const alerted: string[] = [];
   if (down.length > 0) {

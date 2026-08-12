@@ -62,10 +62,40 @@ interface Rollup {
   vouchers_due: number;
 }
 
+interface SystemHealth {
+  dependencies: Array<{
+    name: string;
+    reachable: boolean;
+    since: string;
+    detail: string | null;
+    seconds_in_state: number | string;
+  }>;
+  documentScans: Array<{ status: string; n: number; oldest: string | null }>;
+}
+
+/** Infrastructure names as staff would say them, not as containers are named. */
+const LABELS: Record<string, string> = {
+  clamav: 'Virus scanning',
+  postgres: 'Database',
+};
+
+/** "13h 20m" beats "48012 seconds" when the point is how long something has been broken. */
+function formatDuration(seconds: number | string): string {
+  const s = Number(seconds);
+  if (!Number.isFinite(s) || s < 60) return 'under a minute';
+  const days = Math.floor(s / 86400);
+  const hours = Math.floor((s % 86400) / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
 export default function ExecutivePage() {
   const router = useRouter();
   const [data, setData] = useState<Executive | null>(null);
   const [rollup, setRollup] = useState<Rollup | null>(null);
+  const [health, setHealth] = useState<SystemHealth | null>(null);
 
   useEffect(() => {
     if (!isAuthed()) {
@@ -74,7 +104,13 @@ export default function ExecutivePage() {
     }
     void api<Executive>('/dashboards/executive').then(setData);
     void api<Rollup>('/tasks/rollup').then(setRollup);
+    void api<SystemHealth>('/admin/system-health').then(setHealth);
   }, [router]);
+
+  const awaitingScan = (health?.documentScans ?? [])
+    .filter((s) => s.status === 'pending_scan' || s.status === 'skipped')
+    .reduce((n, s) => n + s.n, 0);
+  const infectedCount = (health?.documentScans ?? []).find((s) => s.status === 'infected')?.n ?? 0;
 
   if (!data) return <p className="muted">Loading…</p>;
 
@@ -83,6 +119,43 @@ export default function ExecutivePage() {
   return (
     <>
       <h1>Executive</h1>
+
+      {/* FINDING #14(3): a wedged virus scanner was invisible here for thirteen hours
+          and got discovered by reading OOM logs. It states the DURATION, because
+          "unreachable" without "for how long" reads like a blip, and it names the
+          client-facing consequence — uploads waiting to be filed — because that is
+          what makes it urgent rather than merely red. Silent when all is well. */}
+      {health && (health.dependencies.some((d) => !d.reachable) || awaitingScan > 0) ? (
+        <section className="card" data-testid="system-health" style={{ borderColor: 'var(--danger, #b3261e)' }}>
+          <h2>System health</h2>
+          <ul className="list">
+            {health.dependencies
+              .filter((d) => !d.reachable)
+              .map((d) => (
+                <li key={d.name}>
+                  <strong>{LABELS[d.name] ?? d.name} unreachable</strong> for {formatDuration(d.seconds_in_state)}
+                  {d.detail ? <span className="muted small"> — {d.detail}</span> : null}
+                </li>
+              ))}
+            {awaitingScan > 0 ? (
+              <li>
+                <strong>{awaitingScan} client upload{awaitingScan === 1 ? '' : 's'} awaiting a virus scan.</strong>{' '}
+                <span className="muted small">
+                  Stored and visible to the client, but not yet filed against their document
+                  requests — so they are still being chased for them. Clears automatically
+                  once the scanner is reachable.
+                </span>
+              </li>
+            ) : null}
+            {infectedCount > 0 ? (
+              <li>
+                <strong>{infectedCount} quarantined file{infectedCount === 1 ? '' : 's'}</strong>{' '}
+                <span className="muted small">failed the virus scan — see your tasks.</span>
+              </li>
+            ) : null}
+          </ul>
+        </section>
+      ) : null}
 
       {rollup ? (
         <section className="card" data-testid="owner-rollup" style={rollup.mine.length + rollup.approvals.length > 0 ? { borderColor: 'var(--electric)' } : undefined}>

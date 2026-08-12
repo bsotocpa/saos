@@ -98,15 +98,132 @@ export async function uploadDocument(
     );
   }
 
-  // Tie the upload to its document-request item, roll up request completion.
+  /*
+   * FINDING #14 — scan on intake, but NEVER refuse on intake.
+   *
+   * Brian's ruling: an upload is always accepted and stored. Our scanner being
+   * wedged is our problem, not the client's, and refusing uploads would put it on
+   * them at the surface they use most. What IS gated is filing: the document does
+   * not satisfy a document request until the verdict is clean.
+   *
+   * A scan failure must not fail the upload either — the bytes are already in MinIO
+   * and the row already exists, so an exception here would report failure for work
+   * that succeeded, and the client would upload again.
+   */
+  const verdict = await recordScan(app, id, input.buffer, input.contactId, actor).catch(
+    (err): ScanStatus => {
+      app.log.error({ err, documentId: id }, 'scan bookkeeping failed — leaving pending_scan for the rescan job');
+      return 'pending_scan';
+    }
+  );
+
+  // Tie the upload to its document-request item, roll up request completion — only
+  // when the verdict permits FILING (see mayFile). Anything else defers, and the
+  // rescan job finishes the job when the scanner comes back. A skipped scan is not a
+  // pass; the client keeps their file either way.
   if (input.documentRequestItemId) {
-    await fulfillRequestItem(app, input.documentRequestItemId, id, input.contactId);
+    if (mayFile(verdict)) {
+      await fulfillRequestItem(app, input.documentRequestItemId, id, input.contactId);
+    } else {
+      await app.db.query(`UPDATE documents SET pending_request_item_id = $2 WHERE id = $1`, [
+        id,
+        input.documentRequestItemId,
+      ]);
+    }
   }
 
   return { id };
 }
 
-async function fulfillRequestItem(
+export type ScanStatus = 'pending_scan' | 'clean' | 'infected' | 'skipped' | 'not_configured';
+
+/**
+ * May a document with this verdict be FILED — i.e. count as satisfying a document
+ * request, so we stop chasing the client for it?
+ *
+ * 'clean' obviously. 'not_configured' because a deployment with no scanner at all is
+ * dev or test, where the alternative is that no document can ever file and every
+ * local flow is broken. Production cannot be in that state: loadConfig() refuses to
+ * boot without CLAMAV_HOST. The safety lives in that assertion, not here.
+ *
+ * Everything else — pending_scan, skipped, infected — is fail-closed. A skipped scan
+ * is not a pass.
+ */
+export function mayFile(status: ScanStatus): boolean {
+  return status === 'clean' || status === 'not_configured';
+}
+
+/**
+ * Scan bytes and record the verdict on the document. Returns the stored status.
+ *
+ * Every verdict is audit-logged, including 'skipped' — an unscanned client document
+ * is exactly the kind of thing that must be reconstructable later, and "we never
+ * scanned it because clamd was down for thirteen hours" is only provable if the
+ * skip left a row.
+ */
+export async function recordScan(
+  app: FastifyInstance,
+  documentId: string,
+  buffer: Buffer,
+  contactId: string,
+  actor: UploadActor
+): Promise<ScanStatus> {
+  const { scanBuffer } = await import('../comms/scan.ts');
+  const result = await scanBuffer(app.config, buffer);
+  // 'skipped' covers two very different worlds: a scanner that is BROKEN and a
+  // deployment that has none. Config is authoritative about which — never the detail
+  // string, which is prose and could be reworded by anyone.
+  const status: ScanStatus =
+    result.status === 'skipped' && !app.config.CLAMAV_HOST ? 'not_configured' : result.status;
+
+  await app.db.query(
+    `UPDATE documents
+        SET scan_status = $2::document_scan_status, scan_detail = $3, scanned_at = now(),
+            scan_attempts = scan_attempts + 1
+      WHERE id = $1`,
+    [documentId, status, result.detail]
+  );
+
+  await writeAudit(app.db, {
+    actorType: 'system',
+    actorId: null,
+    actorLabel: 'virus scan',
+    action: `document.scan.${status}`,
+    objectType: 'document',
+    objectId: documentId,
+    contactId,
+    ip: actor.ip ?? null,
+    details: { status, detail: result.detail },
+  });
+
+  if (status === 'infected') {
+    // Internal alert, never gated: nothing is sent to the client. They are not told
+    // their file is infected by an automated message — Brian decides how that
+    // conversation happens.
+    const owner = await firstActiveByRole(app.db, 'ceo');
+    await createTask(app, {
+      title: 'Infected client upload quarantined',
+      description:
+        `A client upload failed the virus scan (${result.detail ?? 'no detail recorded'}).\n\n` +
+        'The file is stored but cannot be filed against a document request and cannot be ' +
+        'downloaded by anyone. It does not satisfy whatever we asked the client for, so the ' +
+        'request is still outstanding.\n\n' +
+        'Decide how to ask for a replacement. The system deliberately does NOT tell the client ' +
+        'their file was infected — that message is yours to write, and an automated ' +
+        '"your file has a virus" email to a client who is probably not at fault is not it.',
+      contactId,
+      assignedStaffId: owner,
+      source: 'system',
+      sourceType: 'document_infected',
+      sourceId: documentId,
+      priority: 2,
+    }).catch((err) => app.log.error({ err, documentId }, 'could not raise infected-file task'));
+  }
+
+  return status;
+}
+
+export async function fulfillRequestItem(
   app: FastifyInstance,
   itemId: string,
   documentId: string,
@@ -161,9 +278,10 @@ export async function downloadDocument(
 ): Promise<{ stream: NodeJS.ReadableStream; filename: string; mimeType: string | null }> {
   const { rows } = await app.db.query<{
     id: string; contact_id: string; filename: string; mime_type: string | null;
-    minio_bucket: string; minio_key: string;
+    minio_bucket: string; minio_key: string; scan_status: string;
   }>(
-    `SELECT id, contact_id, filename, mime_type, minio_bucket, minio_key
+    `SELECT id, contact_id, filename, mime_type, minio_bucket, minio_key,
+            scan_status::text AS scan_status
      FROM documents WHERE id = $1 AND archived_at IS NULL`,
     [documentId]
   );
@@ -172,6 +290,25 @@ export async function downloadDocument(
   // 404 as for a nonexistent one (fail closed, no existence oracle).
   if (!doc || (scope.clientContactId !== undefined && doc.contact_id !== scope.clientContactId)) {
     throw new AppError(404, 'not_found', 'Document not found.');
+  }
+
+  /*
+   * FINDING #14: an infected file is not downloadable by ANYONE — not staff, not the
+   * client who uploaded it. Handing malware to a staff machine because the row
+   * happens to be in a client folder would defeat the point of scanning it.
+   *
+   * Only 'infected' blocks. 'pending_scan' and 'skipped' still download: intake never
+   * refuses, so a client must be able to see and retrieve the file they just sent,
+   * and blocking staff during a scanner outage would break normal work over an
+   * infrastructure problem. Those states are blocked from FILING, which is the gate
+   * Brian specified.
+   */
+  if (doc.scan_status === 'infected') {
+    throw new AppError(
+      409,
+      'infected',
+      'This file failed the virus scan and cannot be downloaded. Ask the client to re-upload it through the portal.'
+    );
   }
 
   await writeAudit(app.db, {

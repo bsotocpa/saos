@@ -243,6 +243,32 @@ A client declined a proposal and gave a reason.
 3. Close the lead or re-open it. Either is fine; leaving it is not.
 `),
 
+  sop('brian-infected-upload', 'A client upload failed the virus scan', 'ceo', 'Documents', `
+## Why you have this task
+A file a client uploaded to the portal came back **infected**. The technical side is
+already handled and needs nothing from you:
+
+- the file is stored, but it **cannot be filed** against a document request and
+  **cannot be downloaded** by anyone, including you;
+- whatever we asked the client for is therefore **still outstanding**, and the chase
+  clock is still running;
+- the client has **not** been told anything. No automated message goes out.
+
+## What is actually yours to decide
+1. **How to ask for a replacement.** A client whose machine has malware is usually not
+   at fault and does not know. "Your file has a virus" is not the opening line.
+   Ask for a re-upload, or offer the in-person option.
+2. **Whether this is a pattern.** Once is an accident. Repeatedly infected uploads from
+   the same client is a conversation about their computer, and possibly a reason to
+   take documents in person only.
+3. **Whether anything else of theirs is suspect.** Other uploads from the same client
+   are listed on their record with scan status; a clean verdict there is a real clean
+   verdict, not an assumption.
+
+Do not ask the client to email the file instead. Documents never travel by email
+attachment or text — that rule does not bend because the scanner caught something.
+`),
+
   // ── Booking + ops ──────────────────────────────────────────────────────────
   sop('booking-zoom-only', 'A discovery call was not booked on Zoom', null, 'Booking', `
 ## Why you have this task

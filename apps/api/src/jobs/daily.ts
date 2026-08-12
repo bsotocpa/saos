@@ -106,6 +106,21 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   if (deps.alerted.length > 0) {
     app.log.error({ job: 'dependency_probe', unreachable: deps.alerted }, 'dependency unreachable');
   }
+
+  // FINDING #14 — rescan documents whose verdict is still outstanding, every tick.
+  //
+  // Every tick, not daily: this is the mechanism that makes "intake never refuses"
+  // honest. A document sitting at 'skipped' is a client who uploaded what we asked
+  // for and is still being chased for it. The gap between the scanner coming back and
+  // the filing completing should be minutes, not until tomorrow.
+  //
+  // It no-ops cheaply when there is nothing outstanding — one indexed query.
+  const { runDocumentRescanJob } = await import('../modules/documents/rescan.ts');
+  const { makeMinioClient } = await import('../modules/documents/storage.ts');
+  const rescan = await runDocumentRescanJob(app, makeMinioClient(app.config));
+  if (rescan.considered > 0) {
+    app.log.info({ job: 'document_rescan', ...rescan }, 'rescanned documents awaiting a verdict');
+  }
 }
 
 /** Kick off the scheduler loop; health refresh runs on the first tick of each day too. */

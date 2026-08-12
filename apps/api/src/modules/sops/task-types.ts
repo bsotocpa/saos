@@ -65,6 +65,13 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   booking_not_zoom: { sop: 'booking-zoom-only' },
   booking_unmapped: { sop: 'booking-unmapped-event-type' },
 
+  // Finding #14. Deliberately NOT null: the hard part of an infected client upload
+  // is the conversation, not the quarantine. The technical side is automatic (stored,
+  // unfileable, undownloadable) — what needs a written procedure is how to ask a
+  // client for a replacement without accusing them of something they almost certainly
+  // did not do on purpose, and when a repeat infection stops being an accident.
+  document_infected: { sop: 'brian-infected-upload' },
+
   // ── Ops tasks whose title is the whole instruction ─────────────────────────
   backup_stale: {
     sop: null,
