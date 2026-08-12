@@ -18,6 +18,7 @@ import {
 } from './service.ts';
 import { runSosRecheckJob } from '../entity/sos.ts';
 import { todayChicago } from '../tax/deadlines.ts';
+import { prefillBookingUrl } from './booking-link.ts';
 
 const StartBody = z.object({
   language: z.enum(['en', 'es']).default('en'),
@@ -170,10 +171,21 @@ export function registerFormRoutes(app: FastifyInstance): void {
     const bookingUrl = await app.db.query<{ value: string | null }>(
       `SELECT value #>> '{}' AS value FROM app_settings WHERE key = 'booking.client_booking_url'`
     );
+    // An authenticated client should not retype their own name and email into the
+    // booking page — we know who they are. Prefill happens HERE rather than in the
+    // portal so the identity comes from the session, not from the browser.
+    const identity = await app.db.query<{ name: string | null; email: string | null }>(
+      `SELECT nullif(trim(concat_ws(' ', first_name, last_name)), '') AS name, email
+       FROM contacts WHERE id = $1`,
+      [client.contactId]
+    );
+    const rawBookingUrl = bookingUrl.rows[0]?.value ?? null;
     return {
       onboarding: rows[0] ?? null,
       pendingSignatures: pendingEnvelopes.rows[0]!.n,
-      bookingUrl: bookingUrl.rows[0]?.value ?? null,
+      bookingUrl: rawBookingUrl
+        ? prefillBookingUrl(rawBookingUrl, identity.rows[0] ?? { name: null, email: null })
+        : null,
     };
   });
 
