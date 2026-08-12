@@ -885,6 +885,34 @@ not reachability."
       a `scan_status` column + backfill decision for existing documents, and needs a
       fail-open/fail-closed choice — refusing every upload whenever clamd is down is a
       real availability cost on the surface clients use most. Sequencing is Brian's
+- [x] **#14 BUILT to Brian's ruling (2026-08-12), deployed, migration 0045.** Intake
+      never refuses — a client upload is always accepted and stored, infected included.
+      Filing fails closed: a document does not satisfy a request until the verdict
+      allows it, with the deferred target held in `documents.pending_request_item_id`.
+      The rescan job runs EVERY TICK (a document at `skipped` is a client being chased
+      for something they already sent). Infected → quarantined, task for Brian,
+      undownloadable by anyone including the uploader, and the client is told nothing
+      automatically — SOP `brian-infected-upload` covers that conversation.
+      **The subtle part**: `skipped` conflated a BROKEN scanner with a deployment that
+      has none, and dev/test have no `CLAMAV_HOST`, so gating on clean would mean no
+      document could ever file locally. Rather than loosen the gate at runtime, the
+      states are now distinct (`not_configured` may file) and production is made unable
+      to reach that state — `loadConfig()` refuses to boot without `CLAMAV_HOST`, with
+      a test that fails if the assertion is removed.
+      Backfill run in production: **4 documents, all clean**.
+      Ops dashboard verified in a browser at 390px: "Virus scanning unreachable for
+      13h 5m" plus the upload backlog and what it means for clients; silent when
+      healthy. Root `npm test`: **352/352**
+- [ ] **#15 — production is NOT all test data (found by the backfill, 2026-08-12)**.
+      Brian's premise for the backfill was "production is still all test data". The
+      script checked rather than assumed: of 4 documents, **3 are `recording` category
+      in `saos-recordings`, attached to a contact with `soto_status = 'active'` and
+      `is_test = false`** (not Brian's own contact). Either a real client record exists
+      in production, or a rehearsal/recorder contact was never flagged `is_test`.
+      Worth resolving because the test-client flag is what every measurement query
+      keys off — an unflagged test contact silently pollutes win rate, health bands and
+      capacity, which is the exact failure the "excluded from measurement" rule exists
+      to prevent. No action taken: reclassifying a contact is Brian's call
 - [ ] Still open from the rehearsal: document upload, session recap approval
 
 ## M31 — Booking: Cal.com event types + prefilled portal link (2026-08-11)

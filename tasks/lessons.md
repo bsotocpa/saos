@@ -432,3 +432,46 @@ this was an artifact of my verification, not a live leak.
 `minio_bucket`/`minio_key` too, and the object removal must be audited like every
 other document access. Client documents outliving the record that authorises them is a
 retention problem, not a housekeeping one.
+
+## "Skipped" hid two different worlds, and the gate exposed it
+**What happened**: adding "filing requires a clean scan" broke two existing tests, and
+the reason mattered more than the tests. `scanBuffer()` returns `skipped` both when the
+scanner is BROKEN and when the deployment has no scanner at all. Dev and test have no
+`CLAMAV_HOST`, so a gate on `clean` meant no document could ever file locally — the
+feature would have been permanently broken outside production.
+**The wrong fixes**, both tempting: treat `skipped` as passing (a missing env var then
+silently files every client document unscanned, with a compliance column claiming
+otherwise), or make dev run a scanner (correct but heavy, and the first person without
+one gets a mystery).
+**Rule**: when one status covers an operational failure AND a deployment choice, split
+it, then make the permissive branch UNREACHABLE in production by assertion —
+`loadConfig()` refuses to boot without `CLAMAV_HOST`. Safety belongs in a startup
+check that fails loudly, not in a runtime branch that hopes. Test the assertion
+itself, so removing it fails the suite rather than quietly widening the gate.
+**Corollary**: a test that breaks when you add a gate is telling you where the gate's
+edge cases live. Both failures here were the same missing distinction.
+
+## Ask who pays for the outage
+**Pattern**: my instinct on "portal uploads are unscanned" was to refuse uploads when
+the scanner is down — fail closed, obviously correct. Brian's ruling was better and
+the reasoning generalises: refusing intake makes the CLIENT pay for our infrastructure
+being broken, on the surface they use most, and they cannot fix it or even understand
+it. Accept and store always; gate the internal consequence (filing) instead; retry
+until it resolves. A wedged scanner then costs TIME, which we absorb, rather than
+uploads, which they absorb.
+**Rule**: for any fail-closed decision, name who bears the cost when the dependency
+fails. If it is the client and they have no remedy, look for a gate further inside the
+system that produces the same safety.
+
+## A boolean cannot say "for thirteen hours"
+**What happened**: the dependency probe ran every tick and alerted correctly, and
+ClamAV still sat dead for 13 hours before anyone noticed — because nothing PERSISTED
+the state. "Unreachable" was recomputed each tick and thrown away, so the duration was
+only recoverable from dmesg after the fact.
+**Rule**: for anything whose severity is a function of how long it has been true,
+store the transition, not the reading. `since` updates only when the state changes;
+`last_checked_at` moves every tick. Then the surface can say "13h 5m" instead of
+"unreachable", which is the difference between a blip and an incident.
+**And put the consequence next to it**: the dashboard names the client-facing effect
+("4 uploads waiting to be filed — clients are still being chased for them"), because
+that is what makes it urgent rather than merely red.
