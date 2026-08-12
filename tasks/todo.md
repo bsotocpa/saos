@@ -856,6 +856,19 @@ not reachability."
 - [x] Also folded in: Caddy `lb_try_duration 10s`; `merge-env.sh` so a deploy can
       never blank a server-set secret; container-health cron
 - [x] Root `npm test`: **338/338 green** (285 → 334 → 338)
+- [ ] **#13 — LOGGED, NO CHANGE (awaiting Brian's deliberate ruling)**: the portal
+      shell decides "signed in" from a `sessionStorage` marker (`saos_portal_authed`),
+      not from the session cookie. A client with a VALID cookie who closes the browser
+      is shown the sign-in page and must request a fresh magic link.
+      **Mobile cost, stated explicitly** (Brian's note): iPhone Safari clears
+      sessionStorage on tab close, so valid-cookie clients on iOS re-request a magic
+      link EVERY visit — and the friction lands hardest on the document-upload
+      surface, which is exactly where a client is most likely to bounce.
+      Security argument for keeping it: a closed browser on a shared or family
+      computer does not leave the portal open.
+      This is a security-vs-friction tradeoff **to be decided deliberately, not
+      defaulted**. Found during the booking walkthrough; restraint on changing auth
+      inside a booking task was the right call, so nothing was touched
 - [ ] Still open from the rehearsal: document upload, session recap approval
 
 ## M31 — Booking: Cal.com event types + prefilled portal link (2026-08-11)
