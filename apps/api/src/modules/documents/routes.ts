@@ -10,6 +10,7 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { makeMinioClient } from './storage.ts';
 import { afterReturnDelivered, downloadDocument, runDocumentChaseJob, uploadDocument } from './service.ts';
+import { firstActiveByRole } from '../../staffing.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 
 const CLIENT_CATEGORIES = ['tax_documents', 'business_records', 'id_verification', 'irs_notices', 'other'] as const;
@@ -72,6 +73,96 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       }
     );
     return reply.code(201).send(result);
+  });
+
+  /**
+   * ATTACH A FILE IN MESSAGES (finding #11) — a portal upload that happens to start
+   * in chat. Clients will try to send files in the conversation, so this meets them
+   * there while keeping the pipeline underneath.
+   *
+   * It lives in THIS module, beside /portal/documents, and calls uploadDocument with
+   * the identical actor and input shape. That is the point: Brian's requirement is
+   * that downstream filing, chase and Documents logic cannot distinguish a
+   * Messages-originated file from a direct portal upload. There is no source flag on
+   * the document — nothing for that logic to branch on. The only linkage is
+   * messages.document_id, pointing one way.
+   *
+   * No quarantine: the client is authenticated, exactly as on the Documents page.
+   */
+  app.post('/portal/messages/attachments', { preHandler: [app.authenticateClient] }, async (request, reply) => {
+    const client = request.client!;
+    const { data, buffer } = await readUpload(request);
+    const fields = z
+      .object({
+        category: z.enum(CLIENT_CATEGORIES),
+        taxYear: z.coerce.number().int().optional(),
+        documentRequestItemId: z.uuid().optional(),
+        threadId: z.uuid().optional(),
+        /** Optional note the client typed with the file. */
+        note: z.string().max(2000).optional(),
+      })
+      .parse(fieldValues(data));
+
+    // IDENTICAL to /portal/documents — same actor shape, same inputs, same function.
+    const doc = await uploadDocument(
+      app,
+      minio,
+      { type: 'client', id: client.portalUserId, label: client.email, ip: request.ip },
+      {
+        contactId: client.contactId, // ALWAYS the session contact
+        category: fields.category,
+        filename: data.filename,
+        mimeType: data.mimetype,
+        buffer,
+        taxYear: fields.taxYear,
+        documentRequestItemId: fields.documentRequestItemId,
+      }
+    );
+
+    // Thread: reuse the one they are in, or open one.
+    let threadId = fields.threadId ?? null;
+    if (threadId) {
+      const owned = await app.db.query(
+        `SELECT 1 FROM message_threads WHERE id = $1 AND contact_id = $2`,
+        [threadId, client.contactId]
+      );
+      if (!owned.rows[0]) throw new AppError(404, 'not_found', 'Thread not found.');
+    } else {
+      const t = await app.db.query<{ id: string }>(
+        `INSERT INTO message_threads (contact_id, subject) VALUES ($1, $2) RETURNING id`,
+        [client.contactId, 'Portal message']
+      );
+      threadId = t.rows[0]!.id;
+    }
+
+    // IMMUTABLE TEXT + REFERENCE (Brian's ruling). The sentence is written once and
+    // never recomputed from the document, so the conversation still reads correctly
+    // if the file is later deleted or refiled; document_id is ON DELETE SET NULL, so
+    // the link degrades rather than leaving a hole.
+    const note = fields.note?.trim();
+    const body = note
+      ? `${note}\n\n[Attached: ${data.filename}]`
+      : `[Attached: ${data.filename}]`;
+    await app.db.query(
+      `INSERT INTO messages (thread_id, direction, channel, sender_type, body, language, document_id)
+       VALUES ($1, 'inbound', 'portal', 'client', $2, $3, $4)`,
+      [threadId, body, client.language, doc.id]
+    );
+    await app.db.query(
+      `UPDATE message_threads SET last_message_at = now(), status = 'open' WHERE id = $1`,
+      [threadId]
+    );
+
+    const rene = await firstActiveByRole(app.db, 'comms_billing');
+    if (rene) {
+      await app.db.query(
+        `INSERT INTO notifications (staff_id, type, severity, title, contact_id, related_object_type, related_object_id)
+         VALUES ($1, 'portal_message', 'info', $2, $3, 'message_thread', $4)`,
+        [rene, `File sent in Messages by ${client.email}`, client.contactId, threadId]
+      );
+    }
+
+    return reply.code(201).send({ threadId, documentId: doc.id, filename: data.filename });
   });
 
   app.get<{ Params: { id: string } }>(

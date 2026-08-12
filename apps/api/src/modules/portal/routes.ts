@@ -388,10 +388,16 @@ export function registerPortalRoutes(app: FastifyInstance): void {
       `SELECT t.id, t.subject, t.last_message_at,
               COALESCE(json_agg(json_build_object(
                 'id', m.id, 'direction', m.direction, 'body', m.body, 'sentAt', m.sent_at,
-                'senderType', m.sender_type
+                'senderType', m.sender_type,
+                -- Reference plus immutable text: the body already SAYS what was
+                -- attached, so a null id (deleted or refiled document) degrades the
+                -- link without leaving a hole in the conversation.
+                'documentId', m.document_id,
+                'documentFilename', d.filename
               ) ORDER BY m.sent_at) FILTER (WHERE m.id IS NOT NULL), '[]') AS messages
        FROM message_threads t
        LEFT JOIN messages m ON m.thread_id = t.id
+       LEFT JOIN documents d ON d.id = m.document_id
        WHERE t.contact_id = $1
        GROUP BY t.id
        ORDER BY t.last_message_at DESC NULLS LAST`,

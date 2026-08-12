@@ -389,3 +389,35 @@ Correct data is not the same as a valid consent.
 
 **Corollary**: "it works and the audit row is right" does not settle a consent
 question. Ask whether the person could tell they were being asked something separate.
+
+## A column name recalled from memory is a 500 in production
+**What happened**: I added `d.original_filename` to the portal Messages query. The
+column is `documents.filename`. TypeScript could not catch it — the SQL is a string —
+and every existing test predated the join, so nothing failed locally. The Messages
+page would have 500'd for every client on load, not just clients with attachments,
+because the broken column was in the list query. It was caught only because I wrote a
+test that read the row back.
+**Rule**: when writing raw SQL against a table I have not touched this session, read
+the column list first (`information_schema.columns` or the migration), and make at
+least one test SELECT the new column. A raw-SQL typo is untyped, so the test IS the
+type check.
+**Corollary**: a query added to a LIST endpoint fails for everyone, not just the users
+of the new feature. Blast radius scales with how ordinary the endpoint is.
+
+## Enforce "the two paths must be indistinguishable" with a differential test
+**Pattern**: Brian's requirement for Messages attachments was that a file sent in chat
+stamp IDENTICAL provenance and filing metadata to a direct portal upload — "no silent
+fork in the pipeline." The weak version of that test asserts the fields I happened to
+remember (category, contact, uploader). That passes while a fork exists in the fields
+I forgot.
+**Rule**: for a parity requirement, upload/create the same input BOTH ways and loop
+over `Object.keys(row)` asserting equality on every column except identity and
+timestamps — then separately assert that no discriminator column (`source`, `origin`,
+`message_id`, `via`) exists on the table at all. The first half catches a fork in
+values; the second half catches someone adding the ability to fork later.
+**Proof it has teeth**: I mutated the route to hardcode `category: 'other'` and
+confirmed the differential test failed, then reverted. A parity test I have not seen
+fail is a parity test I am guessing about.
+**Structure over promise**: both upload routes call the same `readUpload` +
+`uploadDocument`; the attachment route passes the same actor shape. Parity is a shared
+code path, not two code paths kept in agreement by review.

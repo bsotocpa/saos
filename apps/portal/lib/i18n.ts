@@ -473,6 +473,18 @@ const dict = {
     'Este texto legal se muestra en inglés porque la versión en inglés es la que rige. La traducción está en revisión y se la enviaremos cuando esté aprobada.',
   ],
 
+  // Attachments in Messages (finding #11). The copy says where the file GOES —
+  // a client sending a W-2 in chat should know it lands in their documents.
+  msg_attach_label: ['Attach a file (optional)', 'Adjuntar un archivo (opcional)'],
+  msg_attach_category: ['What kind of document is it?', '¿Qué tipo de documento es?'],
+  msg_attach_where: [
+    'It will be saved securely to your Documents and we will see it here in the conversation. Photos from your phone are fine.',
+    'Se guardará de forma segura en sus Documentos y lo veremos aquí en la conversación. Las fotos desde su teléfono funcionan bien.',
+  ],
+  msg_send_with_file: ['Send file', 'Enviar archivo'],
+  msg_sending: ['Sending…', 'Enviando…'],
+  msg_open_attachment: ['Open attachment', 'Abrir archivo adjunto'],
+
   loading: ['Loading…', 'Cargando…'],
   error_generic: ['Something went wrong. Please try again.', 'Algo salió mal. Intente de nuevo.'],
 } satisfies Record<string, [string, string]>;

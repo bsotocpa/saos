@@ -816,6 +816,48 @@ only Brian can make. Regenerate after any gate clears.)
 - [ ] **Deploy** migration 0038 + the legal v3 seed — awaiting Brian's approval
       (production still reads 7 placeholders / 37 migrations until it lands)
 
+## M30 — Rehearsal walkthrough findings #1–#12 (Brian's dress rehearsal, 2026-08-11)
+Findings numbered as Brian reported them, with his rulings. Backend-complete-but-
+unreachable was the theme: see lessons.md "API-level verification proves capability,
+not reachability."
+- [x] **#1** Pipeline card not clickable → whole card is a `<Link>` to `/clients/[id]`
+- [x] **#2** No client directory at all → `/clients` list (table desktop, cards at
+      390px, error state with retry) + nav entry; `/clients/[id]` reachable
+- [x] **#3** (A) Direct URL supplied so Brian could keep moving that night
+- [x] **#4** Returns card read as if it held engagements → copy distinguishes
+      engagements from returns; the missing packet action added
+- [x] **#5** Duplicate quote from a real double-submit → duplicate guard on client
+      selection; the 8/10 marked canonical, dupe `6d3e20d4` VOIDED (migration 0042
+      added `void` to `quote_status` rather than misfiling as `declined`, which would
+      have corrupted the lost-reasons report), engagement `94fce63c` withdrawn
+- [x] **#6** Packet card not actionable → explicit **Review document** (text/html
+      render route) and **Send for signature** buttons, plus "Grant portal access
+      first" when the client has no portal user
+- [x] **#7** Packet send pointed at Docuseal → repointed at portal-native signing.
+      **Option 2 is permanent**: portal-native IS the engagement-packet signing path;
+      Docuseal stays for 8879s only (Pub 1345 KBA)
+- [x] **#8** After signing, the portal re-offered Schedule A as "a service we added
+      since then" — "pending" meant not-yet-accepted, which every schedule is before
+      the Master exists. Fixed: `const pending = preview.alreadySigned ? preview.newSchedules : []`
+- [x] **#9** "Book your consultation" Go button routed to Estimates → miswire fixed
+- [x] **#10** Signing dead-ended → returns to the home checklist with step 2 marked
+      done (`step_sign_docs_at = COALESCE(step_sign_docs_at, now())`)
+- [x] **#11** Messages had no attachment affordance → attach control; ruling was
+      "reference plus immutable text". Body keeps `[Attached: receipt.pdf]` forever;
+      `messages.document_id` is ON DELETE SET NULL so the link degrades to plain text
+      and the thread never develops a hole. Brian's requirement — Messages files stamp
+      IDENTICAL provenance to direct uploads, no silent fork — enforced by a
+      DIFFERENTIAL test (every `documents` column compared both ways + no
+      `source`/`origin`/`message_id`/`via` column may exist), mutation-proven to fail
+- [x] **#12** §7216 consent rendered under the signature confirmation → isolated
+      `/consent` screen, nav suppressed, duration stated, equally-weighted decline.
+      **Launch-gate-tier rule added to lessons.md** per Brian: same class as
+      no-hardcoded-prices. Rehearsal consent row stands (test client)
+- [x] Also folded in: Caddy `lb_try_duration 10s`; `merge-env.sh` so a deploy can
+      never blank a server-set secret; container-health cron
+- [x] Root `npm test`: **338/338 green** (285 → 334 → 338)
+- [ ] Still open from the rehearsal: document upload, session recap approval
+
 ## Review
 
 ### M29 legal package v3 — Master + Schedules (completed 2026-08-10)
