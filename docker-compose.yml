@@ -240,7 +240,22 @@ services:
     image: clamav/clamav:1.4
     profiles: [scan]
     restart: unless-stopped
-    mem_limit: 1600m
+    # 1600m was not enough and the failure mode was silent-ish: clamd was OOM-killed
+    # by the cgroup at anon-rss 1,631,384 kB during a freshclam signature reload
+    # (2026-08-12 04:27), the container stayed Up because its supervisor lives on, and
+    # every scan afterwards got "Unable to contact server". Twice — a 12h wedge, then
+    # a 25h one.
+    #
+    # clamd reloads CONCURRENTLY by default: the new signature set is loaded while the
+    # old one is still resident, so peak is roughly double steady state. Steady state
+    # is ~1.5 GB with the current sets (3.28M main + 355K daily signatures), and those
+    # only grow. 3g leaves real headroom for the reload spike instead of sitting a few
+    # MB under the ceiling.
+    #
+    # Budget: the box has 15.6 GB with ~11.7 GB available, so this costs 1.4 GB of
+    # headroom shared with Whisper and Ollama. Flagged to Brian rather than absorbed
+    # quietly, per the memory-budget rule.
+    mem_limit: 3g
     volumes:
       - saos_clamav_data:/var/lib/clamav
     networks: [saos]
