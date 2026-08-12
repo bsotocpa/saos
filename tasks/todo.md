@@ -858,6 +858,45 @@ not reachability."
 - [x] Root `npm test`: **338/338 green** (285 → 334 → 338)
 - [ ] Still open from the rehearsal: document upload, session recap approval
 
+## M31 — Booking: Cal.com event types + prefilled portal link (2026-08-11)
+- [x] `scripts/provision-calcom.mjs` — six event types, two America/Chicago
+      schedules, twelve blackout dates, as DATA in one reviewable file. Dry run by
+      default; `--execute` applies in a single transaction then READS BACK what
+      landed. Re-running it is the January Busy Season flip
+- [x] Direct SQL is the only interface available: this deployment runs the Cal.com
+      v6.2.0 monolith with no API service — `/api/v1` is absent from the image,
+      `/api/v2` proxies to port 5555 which is not deployed. Every column read from
+      `information_schema` on the live DB, not recalled. Confirmed in the container
+      source that `getBookingFieldsWithSystemFields()` parses `bookingFields || []`
+      and ensures system fields on read, so storing only custom questions is correct
+- [x] No dollar amount anywhere in it: `price`/`currency` are never written, because
+      "no payment at booking" is the ABSENCE of payment config. Deposits stay in the
+      price book → engagement quote
+- [x] Portal step 4 carries Cal.com prefill (`?name=&email=`), built SERVER-side so
+      identity comes from the session, not the browser. Name and email only — asking
+      an authenticated client their phone or client status is the system forgetting
+      who it is talking to. Non-http schemes and unparseable settings degrade instead
+      of reaching the href
+- [x] Verified in a browser at 390px, both states: with the setting, step 4 is a real
+      prefilled link (`target=_blank rel=noreferrer`); with it null, the finding-#9
+      copy still says scheduling is not open. Root `npm test`: **343/343**
+- [ ] **BLOCKED on Brian**: the Cal.com DB has ZERO users — first boot never done.
+      Event types belong to a user and the username IS the booking URL, so nothing
+      can be provisioned until he signs up at
+      https://book.sotoaccounting.com/auth/signup. Account creation sets a password,
+      which I do not handle
+- [ ] Then, in order: deploy the prefill code → run the provisioner dry run for his
+      review → `--execute` → set `booking.client_booking_url` →
+      production browser walkthrough of step 4
+- [ ] Flagged choices in the provisioner he may want to flip (one toggle each):
+      `in-person-tax-prep` and `customer-support` are PUBLIC (he specified hidden only
+      for 1, 4, 5); service-interest is REQUIRED; "+ other" read as an
+      "Something else" option rather than a free-text field; public-event question
+      labels are bilingual EN · ES per the standing Spanish-copy rule, which he did
+      not ask for and can strip
+- [ ] Deferred by Brian, no action: session recaps depend on Zoom→Whisper and Cal
+      Video meetings will not feed that pipeline. Revisit when recaps are armed
+
 ## Review
 
 ### M29 legal package v3 — Master + Schedules (completed 2026-08-10)
