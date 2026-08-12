@@ -45,6 +45,7 @@ export default function Dashboard() {
   const [packetToSign, setPacketToSign] = useState(false);
   const [pendingSchedules, setPendingSchedules] = useState(0);
   const [consentOffers, setConsentOffers] = useState(0);
+  const [bookingUrl, setBookingUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthed()) {
@@ -52,7 +53,10 @@ export default function Dashboard() {
       return;
     }
     void Promise.all([
-      api<{ onboarding: Onboarding | null }>('/portal/onboarding').then((r) => setOnboarding(r.onboarding)),
+      api<{ onboarding: Onboarding | null; bookingUrl: string | null }>('/portal/onboarding').then((r) => {
+        setOnboarding(r.onboarding);
+        setBookingUrl(r.bookingUrl ?? null);
+      }),
       api<{ todos: Todo[] }>('/portal/todos').then((r) => setTodos(r.todos)),
       api<{ engagements: Engagement[] }>('/portal/engagements').then((r) => setEngagements(r.engagements)),
       api<{ requests: DocRequest[] }>('/portal/document-requests').then((r) => setRequests(r.requests)),
@@ -179,11 +183,25 @@ export default function Dashboard() {
                 <span className="grow">{t(s.label)}</span>
                 {done ? (
                   <span className="badge ok">{t('checklist_done')}</span>
+                ) : s.step === 'book_consult' && !bookingUrl ? (
+                  /* FINDING #9: this step's Go button pointed at /estimate — the
+                     Estimates page, not a booking flow, because no portal booking
+                     exists yet. Sending a client to the wrong page is worse than
+                     telling them the truth, so it says so until
+                     booking.client_booking_url is set, at which point it becomes a
+                     real link with no deploy. */
+                  <span className="muted small">{t('checklist_step4_unavailable')}</span>
                 ) : (
                   <>
-                    <Link className="btn ghost" href={s.href}>
+                    <a
+                      className="btn ghost"
+                      href={s.step === 'book_consult' && bookingUrl ? bookingUrl : s.href}
+                      {...(s.step === 'book_consult' && bookingUrl
+                        ? { target: '_blank', rel: 'noreferrer' }
+                        : {})}
+                    >
                       {t('checklist_go')}
-                    </Link>
+                    </a>
                     <button className="btn ghost" type="button" onClick={() => void markStep(s.step)}>
                       {t('checklist_mark_done')}
                     </button>

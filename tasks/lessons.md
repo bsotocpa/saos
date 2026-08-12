@@ -363,3 +363,29 @@ If a banner or empty state tells the user to take an action, the control for tha
 action must be in the same view.
 **Corollary**: an endpoint that returns JSON is not reviewable by a human. "Give me
 the document URL" needed a text/html route, not the JSON one the API already had.
+
+## §7216 CONSENT-SCREEN ISOLATION — launch-gate tier
+**Same class as no-hardcoded-prices and the placeholder gate: breaking it breaks
+compliance, not layout.**
+
+**Rule** (Rev. Proc. 2013-14, Brian's ruling 2026-08-11): for 1040-series clients, an
+electronic §7216 consent must be presented on a screen whose content pertains SOLELY
+to the consent. In this codebase that means:
+- Consents live on `/consent`, never as a card on another page.
+- The site nav is suppressed there (see shell.tsx) — it is other content.
+- No checklist, no progress bar, no thank-you residue from the signature.
+- The screen states the consent text, its DURATION, an affirmative action, and an
+  equally-weighted decline. A decline styled as the lesser button is a nudge, and a
+  §7216 consent may not be nudged.
+- It renders only AFTER the signature confirmation is dismissed. Never in the same
+  view as the signature.
+
+**How it was found**: the consent used to render on `/sign` directly under the
+"Signed — thank you" panel. Brian granted it SIX SECONDS after signing and did not
+register it as a separate decision — he asked afterwards whether it had presented at
+all. The row was valid and the ordering was legal; the presentation still let a
+consent feel continuous with the engagement, which is exactly what the rule prevents.
+Correct data is not the same as a valid consent.
+
+**Corollary**: "it works and the audit row is right" does not settle a consent
+question. Ask whether the person could tell they were being asked something separate.

@@ -163,7 +163,18 @@ export function registerFormRoutes(app: FastifyInstance): void {
        WHERE contact_id = $1 AND status NOT IN ('completed', 'voided', 'declined')`,
       [client.contactId]
     );
-    return { onboarding: rows[0] ?? null, pendingSignatures: pendingEnvelopes.rows[0]!.n };
+    // FINDING #9: checklist step 4 ("Book your consultation") pointed at /estimate,
+    // sending clients to the wrong page, because no portal booking flow exists yet.
+    // The link is a SETTING: null means scheduling is not open and the portal says so
+    // rather than misrouting; setting it makes step 4 a real link with no deploy.
+    const bookingUrl = await app.db.query<{ value: string | null }>(
+      `SELECT value #>> '{}' AS value FROM app_settings WHERE key = 'booking.client_booking_url'`
+    );
+    return {
+      onboarding: rows[0] ?? null,
+      pendingSignatures: pendingEnvelopes.rows[0]!.n,
+      bookingUrl: bookingUrl.rows[0]?.value ?? null,
+    };
   });
 
   app.post<{ Params: { step: string } }>(

@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
+import { useRouter } from 'next/navigation';
 import { useSession } from '../../lib/session';
 import type { DictKey } from '../../lib/i18n';
 
@@ -52,11 +53,11 @@ function statusKey(status: string): DictKey {
 }
 
 export default function SignPage() {
+  const router = useRouter();
   const { t, lang } = useSession();
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [schedules, setSchedules] = useState<PendingSchedule[]>([]);
   const [offers, setOffers] = useState<ConsentOffer[]>([]);
-  const [answered, setAnswered] = useState<Record<string, 'yes' | 'no'>>({});
   const [accepted, setAccepted] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -133,12 +134,6 @@ export default function SignPage() {
     await api(`/portal/schedules/${code}/accept`, { method: 'POST' });
     setAccepted((prev) => [...prev, code]);
     setSchedules((prev) => prev.filter((s) => s.schedule_code !== code));
-  };
-
-  const answerConsent = async (kind: ConsentOffer['kind'], granted: boolean) => {
-    await api('/portal/consents', { method: 'POST', body: { kind, granted } });
-    setAnswered((prev) => ({ ...prev, [kind]: granted ? 'yes' : 'no' }));
-    setOffers((prev) => prev.filter((o) => o.kind !== kind));
   };
 
   return (
@@ -224,10 +219,30 @@ export default function SignPage() {
         </section>
       ) : null}
 
+      {/* FINDING #10: signing used to dead-end here. The signature is the emotional
+          peak of onboarding, so the confirmation now hands the client onward — back to
+          the checklist, where step 2 is already ticked and the bar has moved, and
+          upload is one tap away.
+
+          Dismissing it is also the gate for the §7216 consent (finding #12): if one
+          is owed, dismissing routes to its OWN screen rather than rendering it here
+          under the thank-you. */}
       {justSigned || packet?.alreadySigned ? (
-        <section className="card">
+        <section className="card" style={{ borderColor: 'var(--electric)' }}>
           <h2>{t('packet_signed_title')}</h2>
           <p>{t('packet_signed_body')}</p>
+          <p>
+            <button
+              className="btn accent"
+              type="button"
+              onClick={() => {
+                // The consent gets a dedicated screen; otherwise straight home.
+                router.push(offers.length > 0 ? '/consent' : '/');
+              }}
+            >
+              {offers.length > 0 ? t('packet_signed_next_consent') : t('packet_signed_next_checklist')}
+            </button>
+          </p>
         </section>
       ) : null}
 
@@ -282,34 +297,10 @@ export default function SignPage() {
         </p>
       ) : null}
 
-      {/* §7216 — optional permissions, benefit-framed, never conditioning service. */}
-      {offers.length > 0 ? (
-        <section className="card">
-          <h2>{t('consents_title')}</h2>
-          {lang === 'es' ? <p className="muted small">{t('consent_en_only')}</p> : null}
-          {offers.map((o) => (
-            <div key={o.kind} style={{ marginTop: 16 }}>
-              <h3>{o.headlineEn}</h3>
-              <p style={{ whiteSpace: 'pre-wrap' }}>{o.bodyEn}</p>
-              <p className="muted small">{t('consent_optional')}</p>
-              <p>
-                <button className="btn accent" type="button" onClick={() => void answerConsent(o.kind, true)}>
-                  {t('consent_yes')}
-                </button>{' '}
-                <button className="btn ghost" type="button" onClick={() => void answerConsent(o.kind, false)}>
-                  {t('consent_no')}
-                </button>
-              </p>
-            </div>
-          ))}
-        </section>
-      ) : null}
-
-      {Object.entries(answered).map(([kind, value]) => (
-        <p key={kind} className={value === 'yes' ? 'alert ok' : 'alert info'}>
-          {t(value === 'yes' ? 'consent_recorded_yes' : 'consent_recorded_no')}
-        </p>
-      ))}
+      {/* The §7216 consents are NOT rendered here. Rev. Proc. 2013-14 requires a
+          screen whose content pertains solely to the consent, and Brian granted one
+          six seconds after signing without registering it as separate when it lived
+          under the thank-you panel. They live at /consent. */}
     </>
   );
 }

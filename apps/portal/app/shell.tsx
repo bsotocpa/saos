@@ -59,7 +59,15 @@ export function Shell({ children }: { children: ReactNode }) {
           </button>
         ) : null}
       </header>
-      {authed ? (
+      {/*
+        §7216 CONSENT SCREEN ISOLATION (Rev. Proc. 2013-14, launch-gate tier).
+        An electronic §7216 consent must be presented on a screen whose content
+        pertains SOLELY to the consent. The site nav is other content, so it is
+        suppressed on /consent — the client can still sign out and switch language
+        from the topbar, but nothing invites them elsewhere mid-decision.
+        Do not "fix" this by adding the nav back.
+      */}
+      {authed && !pathname.startsWith('/consent') ? (
         <nav className="nav">
           {NAV.map((item) => (
             <Link key={item.href} href={item.href} className={pathname === item.href ? 'active' : ''}>

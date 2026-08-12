@@ -443,6 +443,31 @@ const dict = {
   consent_no: ['No, thank you', 'No, gracias'],
   consent_recorded_yes: ['Permission given. You can withdraw it any time.', 'Permiso otorgado. Puede retirarlo cuando quiera.'],
   consent_recorded_no: ['Noted — we will not ask again.', 'Anotado — no volveremos a preguntar.'],
+
+  // The dedicated §7216 consent screen (Rev. Proc. 2013-14: content solely about
+  // the consent). Duration is stated because the rule requires it.
+  consent_duration_label: ['How long this lasts:', 'Cuánto dura:'],
+  consent_duration_body: [
+    'One year from the date you agree, unless you withdraw it sooner. You can withdraw it at any time by telling us — in the portal, by email, or by phone.',
+    'Un año desde la fecha en que acepte, a menos que lo retire antes. Puede retirarlo en cualquier momento avisándonos — en el portal, por correo o por teléfono.',
+  ],
+  consent_none_title: ['Nothing to decide', 'Nada por decidir'],
+  consent_done_body: [
+    'There is nothing waiting for you here. Thank you.',
+    'No hay nada pendiente aquí. Gracias.',
+  ],
+  consent_continue: ['Back to my checklist', 'Volver a mi lista'],
+
+  // Onward path from the signature (finding #10) — the signature must not dead-end.
+  packet_signed_next_checklist: ['Back to my checklist', 'Volver a mi lista'],
+  packet_signed_next_consent: ['Continue', 'Continuar'],
+
+  // Checklist step 4 when scheduling is not open yet (finding #9): say so rather
+  // than routing the client to the wrong page.
+  checklist_step4_unavailable: [
+    'Scheduling is not open yet — we will reach out to set this up.',
+    'Las citas aún no están abiertas — nos comunicaremos para coordinarla.',
+  ],
   consent_en_only: [
     '',
     'Este texto legal se muestra en inglés porque la versión en inglés es la que rige. La traducción está en revisión y se la enviaremos cuando esté aprobada.',

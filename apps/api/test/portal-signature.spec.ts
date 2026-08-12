@@ -139,6 +139,34 @@ test('a signature records intent, consent, attribution, the hash, and a retained
   );
 });
 
+test('signing advances onboarding step 2 server-side (finding #10)', async () => {
+  const { contactId, cookie } = await ready('AdvancesStep', ['tax']);
+  // The checklist row exists from first login; step 2 is open.
+  await app.db.query(
+    `INSERT INTO portal_onboarding (contact_id) VALUES ($1) ON CONFLICT (contact_id) DO NOTHING`,
+    [contactId]
+  );
+  const before = await app.db.query<{ step_sign_docs_at: string | null }>(
+    `SELECT step_sign_docs_at FROM portal_onboarding WHERE contact_id = $1`, [contactId]
+  );
+  assert.equal(before.rows[0]!.step_sign_docs_at, null);
+
+  const presented = (await app.inject({ method: 'GET', url: '/portal/packet', headers: cookie })).json() as
+    { documentSha256: string };
+  await app.inject({
+    method: 'POST', url: '/portal/packet/sign', headers: cookie,
+    payload: { ...SIGN, documentSha256: presented.documentSha256 },
+  });
+
+  // Signing IS "sign your documents". A checklist still showing step 2 open after the
+  // client signed thirty seconds ago is the system disagreeing with them, and the
+  // signature used to dead-end on a confirmation with no way back to see it change.
+  const after = await app.db.query<{ step_sign_docs_at: string | null }>(
+    `SELECT step_sign_docs_at FROM portal_onboarding WHERE contact_id = $1`, [contactId]
+  );
+  assert.ok(after.rows[0]!.step_sign_docs_at, 'step 2 is marked done by the signature itself');
+});
+
 test('THE INTEGRITY CHECK: a document that changed since it was read cannot be signed', async () => {
   const { packetId, cookie } = await ready('ChangedDoc', ['bookkeeping']);
   const presented = (await app.inject({ method: 'GET', url: '/portal/packet', headers: cookie })).json() as

@@ -182,6 +182,28 @@ export async function signPacketInPortal(
     [session.contactId, presented.packetId]
   );
 
+  // ONBOARDING STEP 2 IS DONE BY DEFINITION. Signing the agreement IS "sign your
+  // documents", so it is marked here rather than waiting for the client to tick it —
+  // a checklist that still shows step 2 open after they just signed is the system
+  // disagreeing with the thing the client did thirty seconds ago.
+  await app.db.query(
+    `INSERT INTO portal_onboarding (contact_id) VALUES ($1) ON CONFLICT (contact_id) DO NOTHING`,
+    [session.contactId]
+  );
+  await app.db.query(
+    `UPDATE portal_onboarding
+     SET step_sign_docs_at = COALESCE(step_sign_docs_at, now())
+     WHERE contact_id = $1`,
+    [session.contactId]
+  );
+  await app.db.query(
+    `UPDATE portal_onboarding SET completed_at = now()
+     WHERE contact_id = $1 AND completed_at IS NULL
+       AND step_confirm_info_at IS NOT NULL AND step_sign_docs_at IS NOT NULL
+       AND step_upload_prior_return_at IS NOT NULL AND step_book_consult_at IS NOT NULL`,
+    [session.contactId]
+  );
+
   await writeAudit(app.db, {
     actorType: 'client', actorId: session.contactId, actorLabel: input.signedName.trim(),
     action: 'packet.signed_in_portal', objectType: 'engagement_packet', objectId: presented.packetId,

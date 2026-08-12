@@ -95,6 +95,12 @@ export const settings = [
       'Lane 2: event-type slugs that are ALWAYS FREE ("Book a question call — no charge", codified retention asset).',
   },
   {
+    key: 'booking.client_booking_url',
+    value: null,
+    description:
+      'The Cal.com link clients use to book a consultation. NULL until Brian creates the event types — while null, the portal checklist says scheduling is not open yet instead of sending clients to the wrong page (finding #9: step 4 pointed at /estimate). Setting it turns the step into a real link with no deploy.',
+  },
+  {
     key: 'referral.disclosure_policy_version',
     value: '2026-07-05.v1',
     description:
