@@ -421,3 +421,14 @@ fail is a parity test I am guessing about.
 **Structure over promise**: both upload routes call the same `readUpload` +
 `uploadDocument`; the attachment route passes the same actor shape. Parity is a shared
 code path, not two code paths kept in agreement by review.
+
+## A row delete is not an object delete — MinIO has no cascade
+**What happened**: verifying `ON DELETE SET NULL` in production, I deleted a
+`documents` row directly and the MinIO object stayed behind. I found the orphan and
+removed it. The application does NOT hard-delete documents — it archives by status,
+and `grep "DELETE FROM documents"` across the API returns nothing outside tests — so
+this was an artifact of my verification, not a live leak.
+**Rule for whoever adds a delete path**: deleting a `documents` row must delete
+`minio_bucket`/`minio_key` too, and the object removal must be audited like every
+other document access. Client documents outliving the record that authorises them is a
+retention problem, not a housekeeping one.
