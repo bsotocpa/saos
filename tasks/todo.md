@@ -869,6 +869,22 @@ not reachability."
       This is a security-vs-friction tradeoff **to be decided deliberately, not
       defaulted**. Found during the booking walkthrough; restraint on changing auth
       inside a booking task was the right call, so nothing was touched
+- [ ] **#14 — PORTAL UPLOADS ARE NOT VIRUS-SCANNED (found 2026-08-12, needs Brian's
+      ruling before building)**. Correcting my own claim: when I described the #11
+      deploy I said the Messages attachment route "reuses the existing upload path,
+      ClamAV scan included." That was wrong. `scanBuffer()` is called from exactly one
+      place — `modules/comms/attachments.ts`, the inbound EMAIL/MMS attachment path.
+      `documents/service.ts` never scans, and the `documents` table has no
+      `scan_status` column at all. So no portal upload has ever been scanned: not
+      Documents, not Messages attachments.
+      What the email path does right, for reference: a dead clamd yields `skipped`,
+      and `attachments.ts` refuses to file anything that is not `clean` — it fails
+      CLOSED, per the "a skipped scan is not a pass" rule.
+      Why this is a ruling and not a bug fix I just do: adding a scan to the portal
+      path is a client-facing behavior change (uploads can start being REFUSED), needs
+      a `scan_status` column + backfill decision for existing documents, and needs a
+      fail-open/fail-closed choice — refusing every upload whenever clamd is down is a
+      real availability cost on the surface clients use most. Sequencing is Brian's
 - [ ] Still open from the rehearsal: document upload, session recap approval
 
 ## M31 — Booking: Cal.com event types + prefilled portal link (2026-08-11)
