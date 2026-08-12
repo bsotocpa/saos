@@ -24,8 +24,8 @@ import type { Mailer } from '../src/mailer.ts';
 import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import {
-  acceptScheduleInPortal, createPacket, previewPacket, recordMasterSignature,
-  renderMasterForPacket, resolveSchedules,
+  acceptScheduleInPortal, createPacket, pendingSchedules, previewPacket,
+  recordMasterSignature, renderMasterForPacket, resolveSchedules,
 } from '../src/modules/engagements/packet.ts';
 import { consentsToPresent, recordConsentAnswer } from '../src/modules/compliance/consent-presentation.ts';
 import { renderTemplate } from '../src/modules/templates/service.ts';
@@ -276,6 +276,41 @@ test('a later-added service is accepted per-schedule in the portal, and recorded
 
   // Idempotent: a double-tap in the portal is not a second acceptance.
   assert.deepEqual(await acceptScheduleInPortal(app, id, 'D'), { accepted: true, alreadyAccepted: true });
+});
+
+test('BEFORE signing, no schedule is offered as "added since then" (finding #8)', async () => {
+  // The portal offered Schedule A as a service "we added since then", under copy
+  // asserting the Master was already signed, with an accept button that
+  // acceptScheduleInPortal then refused as master_not_signed. The acceptance rows
+  // were fine — "pending" simply meant "not yet accepted" instead of "added after
+  // signing", and before a signature nothing is accepted, so everything looked new.
+  const id = await clientWith('tax', 'PendingBeforeSign');
+
+  const before = await pendingSchedules(app, id);
+  assert.equal(before.masterSigned, false);
+  assert.deepEqual(
+    before.pending.map((p) => p.schedule_code), [],
+    'nothing is "added since then" when nothing has been signed yet'
+  );
+
+  // After signing, still nothing pending: A was attached AT signing and covered.
+  const packet = await createPacket(app, id, actor);
+  await recordMasterSignature(app, packet.packetId, { method: 'portal_esign' });
+  const after = await pendingSchedules(app, id);
+  assert.equal(after.masterSigned, true);
+  assert.deepEqual(after.accepted, ['A']);
+  assert.deepEqual(
+    after.pending.map((p) => p.schedule_code), [],
+    'a schedule covered by the signature is never offered again'
+  );
+
+  // A genuinely NEW service does appear — that is what pending is for.
+  await app.db.query(
+    `INSERT INTO engagements (contact_id, service_line, status) VALUES ($1, 'advisory', 'active')`,
+    [id]
+  );
+  const withNew = await pendingSchedules(app, id);
+  assert.deepEqual(withNew.pending.map((p) => p.schedule_code), ['D']);
 });
 
 test('a Schedule cannot be accepted before the Master it incorporates', async () => {

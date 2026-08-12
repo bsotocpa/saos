@@ -42,6 +42,9 @@ export default function Dashboard() {
   const [requests, setRequests] = useState<DocRequest[]>([]);
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [packetToSign, setPacketToSign] = useState(false);
+  const [pendingSchedules, setPendingSchedules] = useState(0);
+  const [consentOffers, setConsentOffers] = useState(0);
 
   useEffect(() => {
     if (!isAuthed()) {
@@ -59,6 +62,19 @@ export default function Dashboard() {
       api<{ invoices: Invoice[] }>('/portal/invoices').then((r) =>
         setInvoices(r.invoices.filter((i) => i.status === 'sent' || i.status === 'overdue'))
       ),
+      // "Waiting on you" has to know about the things that ACTUALLY wait on a client
+      // now. It was computed from document requests, signature envelopes and invoices
+      // only — and portal-native signing does not create envelopes at all, so an
+      // unsigned agreement counted as nothing. 404 is the normal "no packet" answer.
+      api<{ alreadySigned: boolean }>('/portal/packet')
+        .then((r) => setPacketToSign(!r.alreadySigned))
+        .catch(() => setPacketToSign(false)),
+      api<{ pending: unknown[] }>('/portal/schedules')
+        .then((r) => setPendingSchedules((r.pending ?? []).length))
+        .catch(() => setPendingSchedules(0)),
+      api<{ offers: unknown[] }>('/portal/consents')
+        .then((r) => setConsentOffers((r.offers ?? []).length))
+        .catch(() => setConsentOffers(0)),
     ]);
   }, [router]);
 
@@ -74,7 +90,22 @@ export default function Dashboard() {
   const doneCount = onboarding
     ? STEPS.filter((s) => onboarding[s.key as keyof Onboarding]).length
     : 0;
-  const nothingWaiting = requests.length === 0 && envelopes.length === 0 && invoices.length === 0;
+  /**
+   * "You're all caught up" must not appear ABOVE an unfinished setup checklist —
+   * two systems on one screen disagreeing about what is waiting. It was computed
+   * from document requests, envelopes and invoices only, and knew nothing about the
+   * checklist, an unsigned agreement, a schedule awaiting acceptance, or an open
+   * §7216 offer. Portal-native signing makes the envelope check useless on its own,
+   * since packets no longer create envelopes.
+   */
+  const nothingWaiting =
+    requests.length === 0 &&
+    envelopes.length === 0 &&
+    invoices.length === 0 &&
+    !showChecklist &&
+    !packetToSign &&
+    pendingSchedules === 0 &&
+    consentOffers === 0;
 
   return (
     <>

@@ -245,8 +245,10 @@ export default function SignPage() {
         </ul>
       </section>
 
-      {/* A service added after signing: its schedule, not a new signature. */}
-      {schedules.length > 0 ? (
+      {/* A service added AFTER signing: its schedule, not a new signature. Guarded on
+          packet.alreadySigned as well as the API's own guard — this section's copy
+          asserts the Master is signed, so it must never render before it is. */}
+      {schedules.length > 0 && packet?.alreadySigned !== false ? (
         <section className="card">
           <h2>{t('schedules_title')}</h2>
           <p className="muted">{t('schedules_intro')}</p>

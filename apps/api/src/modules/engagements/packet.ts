@@ -698,7 +698,21 @@ export async function renderScheduleF(
  */
 export async function pendingSchedules(app: FastifyInstance, contactId: string) {
   const preview = await previewPacket(app, contactId);
-  const pending = preview.newSchedules;
+
+  /**
+   * FINDING #8. "Pending" means ADDED AFTER SIGNING — a schedule that needs its own
+   * portal acceptance because the Master signature did not cover it. It does NOT mean
+   * "not yet accepted".
+   *
+   * Before the Master is signed nothing is accepted yet, so every attached schedule
+   * looked pending: the portal offered Schedule A as "a service we added since then",
+   * under copy asserting the Master was already signed, with an accept button that
+   * acceptScheduleInPortal would then refuse as master_not_signed. A dead end built
+   * out of a true-but-wrong query.
+   *
+   * Until the Master is signed, the packet panel owns that conversation entirely.
+   */
+  const pending = preview.alreadySigned ? preview.newSchedules : [];
   const rows = await app.db.query<{ schedule_code: string; title: string; body_en: string }>(
     `SELECT s.schedule_code, s.title, t.body_en
      FROM service_schedules s JOIN templates t ON t.key = s.template_key
