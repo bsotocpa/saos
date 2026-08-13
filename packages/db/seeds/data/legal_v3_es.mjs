@@ -120,7 +120,10 @@ Cualquiera de las partes puede terminar este Contrato o cualquier Anexo mediante
 (d) Resolución de controversias. Las partes intentarán primero, de buena fe, resolver cualquier controversia mediante negociación entre representantes con facultades para transigir; si no se resuelve dentro de los treinta (30) días siguientes al aviso por escrito, mediante mediación no vinculante administrada por la American Arbitration Association ("AAA") conforme a sus Commercial Mediation Procedures en Chicago, Illinois, compartiendo por partes iguales los honorarios del mediador; y si aún no se resuelve sesenta (60) días después de iniciada la mediación, mediante arbitraje final y vinculante administrado por la AAA conforme a sus Commercial Arbitration Rules en Chicago, Illinois, ante un único árbitro neutral que sea juez jubilado o abogado con al menos quince (15) años de experiencia en derecho contable o en controversias de responsabilidad profesional. El árbitro no tiene facultad para otorgar daños excluidos por el párrafo (a). El laudo puede ser homologado ante cualquier tribunal competente.
 (e) RENUNCIA A JUICIO POR JURADO Y A ACCIONES COLECTIVAS. CADA PARTE RENUNCIA IRREVOCABLEMENTE, EN LA MÁXIMA MEDIDA PERMITIDA POR LA LEY, A CUALQUIER DERECHO A JUICIO POR JURADO RESPECTO DE CUALQUIER CONTROVERSIA, Y EL CLIENTE ACEPTA QUE TODAS LAS RECLAMACIONES DEBEN PRESENTARSE A TÍTULO INDIVIDUAL Y NO COMO DEMANDANTE O MIEMBRO DE UNA CLASE EN CUALQUIER PROCEDIMIENTO PRETENDIDAMENTE COLECTIVO, REPRESENTATIVO O DE GRUPO.
 
-10. Acuerdo íntegro
+10. Idioma que rige
+Este Contrato se celebra y perfecciona en idioma inglés. Si este Contrato se traduce a cualquier otro idioma por conveniencia o para cualquier otro fin, el texto en idioma inglés regirá, controlará y prevalecerá sobre dicha traducción en todos los aspectos, incluidos el cumplimiento, la interpretación, la construcción y la ejecución de este Contrato.
+
+11. Acuerdo íntegro
 Este Contrato, junto con sus Anexos, su cotización de honorarios y la configuración de su contrato, constituye el acuerdo íntegro respecto de los servicios descritos y reemplaza las cartas de contratación anteriores para dichos servicios.
 
 Anexos de Servicios adjuntos al momento de firmar: {{schedules_attached}}
@@ -273,17 +276,26 @@ export async function seedLegalV3Es(db) {
 
   for (const [key, { body, subject }] of Object.entries(ES)) {
     const { rows } = await db.query(
-      `SELECT body_en, subject_en, needs_es_review, es_approved_at FROM templates WHERE key = $1`,
+      `SELECT body_en, subject_en, body_es, needs_es_review, es_approved_at FROM templates WHERE key = $1`,
       [key]
     );
     if (rows.length === 0) {
       missing.push(key);
       continue;
     }
-    // NEVER overwrite copy Brian has already approved — an approval means he read that
-    // exact text, and quietly replacing it underneath would invalidate the approval
-    // without anyone noticing.
-    if (rows[0].es_approved_at) continue;
+    /*
+     * NEVER overwrite a translation that already exists.
+     *
+     * This used to skip only APPROVED copy, which left a hole exactly wide enough to
+     * fall through: the governing-language clause was added to body_es directly, the
+     * approval was then re-queued (clearing es_approved_at), and the next deploy saw an
+     * unapproved row and overwrote it with the pre-clause text from this file. Brian
+     * then approved a Spanish Master silently missing the clause he had just ordered.
+     *
+     * This file seeds INITIAL translations. Once a body exists — approved or not — it is
+     * the live text and this seed is not the authority on it.
+     */
+    if (rows[0].es_approved_at || (rows[0].body_es && rows[0].body_es.trim().length > 0)) continue;
 
     // A placeholder that does not survive translation renders as literal text in a
     // signed document. Compare the sets rather than trusting the prose.
