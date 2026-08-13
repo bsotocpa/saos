@@ -50,9 +50,28 @@ was there.
 
 ---
 
-## GATE 2 — Two price-book service lines are grab-bags (found 2026-08-13)
+## GATE 2 — CLEARED 2026-08-13 (price book v2)
 
-Blocking as part of GATE 1: do not remove GATE 1 by mapping these lines as they stand.
+Reclassified as a new effective-dated version per Brian's ruling — v1 closed 2026-08-13,
+v2 opened the same day, 84 items and 13 needs_confirmation flags carried forward, no
+price changed. v1 rows are intact, so every historical quote still reads under the book
+it was written against.
+
+  SCOPE_REVIEW_AUDIT       scope_ladder     -> attest              (F)
+  SALES_TAX_ST1_FILING     scope_ladder     -> recurring_accounting (C)
+  SCOPE_FULLMGMT_PAYROLL   scope_ladder     -> recurring_accounting (C)
+  SCOPE_FULLMGMT_SALES_TAX scope_ladder     -> recurring_accounting (C)
+  SCOPE_REG_SETUP          scope_ladder     -> recurring_accounting (C)
+  SCORP_CONVERSION_2553    setup_conversion -> entity_services      (E)
+
+Verified by rendered packet: attest quote implies F; the independence gate refuses attest
+for a client with active Soto bookkeeping and yields only to a recorded override;
+previewPacket refuses without a complete AU-C 210 / AR-C 90 Addendum; with the Addendum
+complete the rendered Master names Schedule F.
+
+scope_ladder lost its no-schedule ruling — only SCOPE_ADMIN_TRAINING remains there and it
+is a product, not a tier modifier. STILL OPEN: which schedule governs training work.
+The seed reports it loudly as unmapped-with-live-items, and GATE 1 blocks quoting it.
 
 `scope_ladder` and `setup_conversion` each mix genuine add-ons with real services, so a
 single schedule per service line is the wrong altitude for them:
