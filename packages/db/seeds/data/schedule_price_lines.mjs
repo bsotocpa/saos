@@ -48,14 +48,24 @@ const MAPPINGS = [
 /**
  * PERMANENTLY unmapped, by ruling — not awaiting anything.
  *
- * scope_ladder: Brian ruled no schedule (2026-08-13). Scope-ladder items are add-on
- *   tiers that ride on whatever engagement they are attached to; they do not bring a
- *   schedule of their own. A quote of ONLY scope-ladder lines therefore implies no
- *   schedule, which is correct and also means it cannot stand as an engagement by
- *   itself.
- * software_passthrough, deposit: not services under any schedule.
+ * software_passthrough, deposit: not services under any schedule. A software
+ *   subscription rebilled at cost and a deposit line are not work Soto agrees to do.
+ *
+ * scope_ladder USED TO BE HERE and was REMOVED (Brian, 2026-08-13). His condition was
+ * that it keeps the no-schedule ruling "ONLY for items that are genuinely tier
+ * modifiers after the four real services move out." After the GATE 2 reclassification
+ * the only item left classified scope_ladder is SCOPE_ADMIN_TRAINING, which the book
+ * itself describes as "the deliberate Hilo bridge product — DIY-minded entrepreneurs
+ * buy training": a product sold on its own, not a modifier on someone else's
+ * engagement. Nothing genuine remained, so the blanket ruling is gone.
+ *
+ * That matters beyond tidiness. A standing "scope_ladder → no schedule" entry is a
+ * permanent "this is fine", and it would silently absorb the NEXT item somebody files
+ * under scope_ladder — which is exactly how SCOPE_REVIEW_AUDIT, an attest service,
+ * came to imply no schedule and bypass the independence path. Unmapped and loud beats
+ * mapped-to-nothing and quiet.
  */
-const NEVER_MAPPED = ['scope_ladder', 'software_passthrough', 'deposit'];
+const NEVER_MAPPED = ['software_passthrough', 'deposit'];
 
 export async function seedSchedulePriceLines(db) {
   // Verify every target schedule exists before inserting, so a missing schedule is a
@@ -81,19 +91,42 @@ export async function seedSchedulePriceLines(db) {
     inserted += res.rowCount;
   }
 
-  // Anything neither mapped nor deliberately never-mapped is a genuine gap, and it
-  // stays visible in the deploy output rather than being quietly forgotten.
+  /*
+   * Anything neither mapped nor deliberately never-mapped is a gap, and it stays in the
+   * deploy output rather than being quietly forgotten.
+   *
+   * Reported in two tiers, because a service line with LIVE ITEMS behind it is an
+   * active problem — every quote containing one resolves to "no schedule" — while an
+   * unused enum value is only bookkeeping. Crying wolf about the second is how the
+   * first stops being noticed.
+   */
   const { rows: unmapped } = await db.query(
-    `SELECT unnest(enum_range(NULL::price_service_line))::text AS service_line
-     EXCEPT SELECT service_line::text FROM schedule_for_price_line
-     EXCEPT SELECT unnest($1::text[])`,
+    `WITH gaps AS (
+       SELECT unnest(enum_range(NULL::price_service_line))::text AS service_line
+       EXCEPT SELECT service_line::text FROM schedule_for_price_line
+       EXCEPT SELECT unnest($1::text[])
+     )
+     SELECT g.service_line,
+            (SELECT count(*)::int FROM price_book_items i
+               JOIN price_book_versions v ON v.id = i.version_id
+              WHERE i.service_line::text = g.service_line AND i.is_active
+                AND v.effective_from <= CURRENT_DATE
+                AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)) AS live_items
+       FROM gaps g ORDER BY 2 DESC, 1`,
     [NEVER_MAPPED]
   );
-  const pending = unmapped.map((r) => r.service_line).sort();
-  return (
-    `${inserted} of ${MAPPINGS.length} price-line → schedule mappings inserted` +
-    (pending.length > 0
-      ? `; AWAITING A RULING: ${pending.join(', ')}`
-      : `; no schedule by ruling: ${NEVER_MAPPED.join(', ')}`)
-  );
+  const withItems = unmapped.filter((r) => r.live_items > 0);
+  const empty = unmapped.filter((r) => r.live_items === 0);
+
+  let report = `${inserted} of ${MAPPINGS.length} price-line → schedule mappings inserted`;
+  if (withItems.length > 0) {
+    report +=
+      `; ⚠ UNMAPPED WITH LIVE ITEMS: ` +
+      withItems.map((r) => `${r.service_line} (${r.live_items})`).join(', ');
+  }
+  if (empty.length > 0) report += `; unmapped but unused: ${empty.map((r) => r.service_line).join(', ')}`;
+  if (withItems.length === 0 && empty.length === 0) {
+    report += `; every service line resolves (no schedule by ruling: ${NEVER_MAPPED.join(', ')})`;
+  }
+  return report;
 }

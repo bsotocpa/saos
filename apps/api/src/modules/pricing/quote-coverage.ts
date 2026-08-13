@@ -32,7 +32,14 @@ export async function schedulesImpliedByQuote(
   const { rows } = await app.db.query<{ schedule_code: string }>(
     `SELECT DISTINCT m.schedule_code
        FROM quote_line_items qli
+       JOIN quotes q ON q.id = qli.quote_id
        JOIN price_book_items pbi ON pbi.item_code = qli.item_code
+       -- PIN THE VERSION. Joining on item_code alone matched the item in EVERY price
+       -- book version, so the moment a second version existed a single quote resolved
+       -- to the union of its old and new classifications (a GATE 2 reclassification
+       -- made SCORP_CONVERSION_2553 imply both C and E). A quote means what the book
+       -- said when it was written.
+       AND pbi.version_id = q.price_book_version_id
        JOIN schedule_for_price_line m ON m.service_line = pbi.service_line
       WHERE qli.quote_id = $1 AND qli.chosen
       ORDER BY m.schedule_code`,
@@ -57,7 +64,14 @@ export async function unmappedServiceLines(
   const { rows } = await app.db.query<{ service_line: string }>(
     `SELECT DISTINCT pbi.service_line::text AS service_line
        FROM quote_line_items qli
+       JOIN quotes q ON q.id = qli.quote_id
        JOIN price_book_items pbi ON pbi.item_code = qli.item_code
+       -- PIN THE VERSION. Joining on item_code alone matched the item in EVERY price
+       -- book version, so the moment a second version existed a single quote resolved
+       -- to the union of its old and new classifications (a GATE 2 reclassification
+       -- made SCORP_CONVERSION_2553 imply both C and E). A quote means what the book
+       -- said when it was written.
+       AND pbi.version_id = q.price_book_version_id
        LEFT JOIN schedule_for_price_line m ON m.service_line = pbi.service_line
       WHERE qli.quote_id = $1 AND qli.chosen AND m.service_line IS NULL
         AND pbi.service_line::text NOT IN ('software_passthrough', 'deposit')
@@ -142,7 +156,14 @@ export async function assertTaxOnlyUntil19(app: FastifyInstance, quoteId: string
   const { rows } = await app.db.query<{ service_line: string; item_code: string }>(
     `SELECT DISTINCT pbi.service_line::text AS service_line, qli.item_code
        FROM quote_line_items qli
+       JOIN quotes q ON q.id = qli.quote_id
        JOIN price_book_items pbi ON pbi.item_code = qli.item_code
+       -- PIN THE VERSION. Joining on item_code alone matched the item in EVERY price
+       -- book version, so the moment a second version existed a single quote resolved
+       -- to the union of its old and new classifications (a GATE 2 reclassification
+       -- made SCORP_CONVERSION_2553 imply both C and E). A quote means what the book
+       -- said when it was written.
+       AND pbi.version_id = q.price_book_version_id
       WHERE qli.quote_id = $1 AND qli.chosen
       ORDER BY 1`,
     [quoteId]

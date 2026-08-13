@@ -317,3 +317,52 @@ test('GATE 1: a non-tax quote cannot be SENT until finding #19 is fixed', async 
   const ok = await sendQuote(app, taxQuote.id, staffActor(await ceoId()));
   assert.ok(ok.url, 'tax work is unaffected');
 });
+
+test('schedule resolution PINS the price-book version — a reclassification is not retroactive', async () => {
+  // This broke the moment a second version existed. schedulesImpliedByQuote joined
+  // price_book_items on item_code alone, so one quote resolved to the UNION of the
+  // item's old and new classifications: after GATE 2 moved SCORP_CONVERSION_2553 from
+  // setup_conversion to entity_services, a quote for it implied both C and E.
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic',
+    lastName: 'PinnedVersion',
+    email: 'pinnedversion@example.test',
+  });
+  const itemCode = await taxItemCode();
+
+  // A quote against the version in force today.
+  const before = await createQuote(app, { contactId: c.id, lines: [{ itemCode }] }, staffActor(await ceoId()));
+  assert.deepEqual(await schedulesImpliedByQuote(app, before.id), ['A']);
+
+  // Now reclassify that very item in a NEW version, the way GATE 2 did.
+  const v1 = await app.db.query<{ id: string; version_number: number }>(
+    `SELECT id, version_number FROM price_book_versions
+      WHERE effective_from <= CURRENT_DATE AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
+      ORDER BY version_number DESC LIMIT 1`
+  );
+  const v2 = await app.db.query<{ id: string }>(
+    `INSERT INTO price_book_versions (version_number, effective_from, note)
+     VALUES ($1, CURRENT_DATE, 'test: reclassification must not reach backwards') RETURNING id`,
+    [v1.rows[0]!.version_number + 1]
+  );
+  await app.db.query(
+    `INSERT INTO price_book_items
+       (version_id, item_code, service_line, name_en, name_es, amount_cents, unit,
+        is_pass_through, display_on_quote, is_active, sort_order)
+     SELECT $1, item_code, 'entity_services'::price_service_line, name_en, name_es, amount_cents,
+            unit, is_pass_through, display_on_quote, is_active, sort_order
+       FROM price_book_items WHERE version_id = $2 AND item_code = $3`,
+    [v2.rows[0]!.id, v1.rows[0]!.id, itemCode]
+  );
+
+  // The OLD quote still means what the book said when it was written.
+  assert.deepEqual(
+    await schedulesImpliedByQuote(app, before.id),
+    ['A'],
+    'a reclassification must not reach backwards into a quote already given to a client'
+  );
+
+  // Clean up so later tests see one version in force.
+  await app.db.query(`DELETE FROM price_book_items WHERE version_id = $1`, [v2.rows[0]!.id]);
+  await app.db.query(`DELETE FROM price_book_versions WHERE id = $1`, [v2.rows[0]!.id]);
+});
