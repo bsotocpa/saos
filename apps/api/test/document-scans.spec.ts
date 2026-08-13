@@ -37,18 +37,27 @@ const silentMailer: Mailer = { transport: 'console', async send() { return { id:
 function startClamd(): Promise<{ server: Server; port: number }> {
   return new Promise((resolve) => {
     const server = createServer((sock) => {
+      // ACCUMULATE. TCP gives no guarantee about chunk boundaries, and the first
+      // version of this fake inspected each chunk in isolation: if the four
+      // zero bytes that terminate an INSTREAM arrived split across two reads —
+      // which happens under full-suite load and not when this file runs alone —
+      // the fake never answered, scanBuffer hit its 20s timeout, and a 'clean'
+      // test flaked to 'skipped'. A flaky test is worse than no test.
+      let seen = Buffer.alloc(0);
       sock.on('data', (chunk) => {
+        seen = Buffer.concat([seen, chunk]);
+
         // The reachability probe speaks PING/PONG, not INSTREAM. A fake that only
         // knows one command reports the scanner as unreachable and quietly
         // invalidates the dependency-health tests.
-        if (chunk.includes('PING')) {
+        if (seen.includes('PING')) {
           sock.write('PONG\0');
           sock.end();
           return;
         }
-        // The terminating zero-length chunk is four zero bytes at the end.
-        const tail = chunk.subarray(Math.max(0, chunk.length - 4));
-        if (tail.length === 4 && tail.readUInt32BE(0) === 0) {
+        // An INSTREAM ends with a zero-length chunk: four zero bytes, judged
+        // against everything received so far rather than the latest read.
+        if (seen.length >= 4 && seen.readUInt32BE(seen.length - 4) === 0) {
           sock.write(
             verdict === 'clean'
               ? 'stream: OK\0'
@@ -433,4 +442,70 @@ test('with no scanner configured at all, filing still works — dev is not broke
   } finally {
     config.CLAMAV_HOST = saved;
   }
+});
+
+test('FINDING #16: the firm-wide overview leads with what is wrong', async () => {
+  // Staff could only ever ask about ONE contact's documents, so "what is quarantined
+  // right now?" required already knowing whose file to look at. This endpoint is that
+  // question, and the ORDER of its answer is the triage.
+  const secret = 'JBSWY3DPEHPK3PXP';
+  const staff = await makeStaff(app.db, config, {
+    email: 'docsoverview@example.test',
+    name: 'Synthetic Preparer Two',
+    role: 'tax_preparer',
+    password: 'preparer-password-123456',
+    totpSecret: secret,
+  });
+  const code = new OTPAuth.TOTP({
+    algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(secret),
+  }).generate();
+  const login = await app.inject({
+    method: 'POST', url: '/auth/login',
+    payload: { email: staff.email, password: staff.password, totp: code },
+  });
+  assert.equal(login.statusCode, 200, login.body);
+  const auth = { authorization: `Bearer ${(login.json() as { token: string }).token}` };
+
+  const res = await app.inject({ method: 'GET', url: '/documents/overview', headers: auth });
+  assert.equal(res.statusCode, 200, res.body);
+  const body = res.json() as {
+    documents: Array<{ scan_status: string; contact_name: string | null; filename: string }>;
+    counts: Record<string, number>;
+  };
+
+  assert.ok(body.documents.length > 0, 'earlier tests in this file left documents behind');
+  assert.ok((body.counts.infected ?? 0) >= 1, 'the infected upload from earlier is counted');
+
+  // Infected must sort ahead of everything, whatever its upload time.
+  const firstClean = body.documents.findIndex((d) => d.scan_status === 'clean');
+  const lastInfected = body.documents.map((d) => d.scan_status).lastIndexOf('infected');
+  if (firstClean !== -1 && lastInfected !== -1) {
+    assert.ok(lastInfected < firstClean, 'quarantined files sort above clean ones — the list IS the triage');
+  }
+
+  // A filename with no client is not actionable.
+  assert.ok(
+    body.documents.every((d) => 'contact_name' in d),
+    'every row names its client'
+  );
+
+  // The deep link from the dashboard must actually filter.
+  const quarantine = await app.inject({
+    method: 'GET', url: '/documents/overview?scanStatus=infected', headers: auth,
+  });
+  assert.equal(quarantine.statusCode, 200);
+  const q = quarantine.json() as { documents: Array<{ scan_status: string }>; counts: Record<string, number> };
+  assert.ok(q.documents.length > 0);
+  assert.ok(q.documents.every((d) => d.scan_status === 'infected'), 'filtered to quarantine only');
+  assert.ok(
+    (q.counts.clean ?? 0) >= 1,
+    'counts stay UNFILTERED so the chips still show the rest while you are looking at quarantine'
+  );
+
+  // Firm-wide listing is audited like every other document access.
+  const audit = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM audit_log
+      WHERE action = 'documents.listed' AND details->>'scope' = 'firm_wide'`
+  );
+  assert.ok(audit.rows[0]!.n >= 2, 'both listings left an audit row');
 });

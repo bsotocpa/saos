@@ -903,16 +903,30 @@ not reachability."
       Ops dashboard verified in a browser at 390px: "Virus scanning unreachable for
       13h 5m" plus the upload backlog and what it means for clients; silent when
       healthy. Root `npm test`: **352/352**
-- [ ] **#15 — production is NOT all test data (found by the backfill, 2026-08-12)**.
-      Brian's premise for the backfill was "production is still all test data". The
-      script checked rather than assumed: of 4 documents, **3 are `recording` category
-      in `saos-recordings`, attached to a contact with `soto_status = 'active'` and
-      `is_test = false`** (not Brian's own contact). Either a real client record exists
-      in production, or a rehearsal/recorder contact was never flagged `is_test`.
-      Worth resolving because the test-client flag is what every measurement query
-      keys off — an unflagged test contact silently pollutes win rate, health bands and
-      capacity, which is the exact failure the "excluded from measurement" rule exists
-      to prevent. No action taken: reclassifying a contact is Brian's call
+- [x] **#15 — RESOLVED: production DID contain real client data (Brian's ruling,
+      2026-08-12). Not a data-hygiene defect — a corrected premise.**
+      The backfill checked rather than assumed and found 3 `recording` documents on a
+      contact with `soto_status = 'active'`, `is_test = false`. That contact is
+      **Jackson Flores — business partner AND a real tax client**. The record was
+      already correct in every respect:
+      · `is_test` stays FALSE — he is a real client, and flagging him would have
+        excluded a real client from measurement, the mirror image of the bug the flag
+        exists to prevent
+      · `soto_status = 'active'` is correct
+      · the 3 meeting recordings STAY on his record as client notes/documents — real
+        artifacts on a real client, not rehearsal debris
+      · nothing was archived, reclassified or deleted
+      **Correction to the record**: the rehearsal ran against production while real
+      client data was present. My earlier statement, repeating Brian's premise, that
+      "production is still all test data" was wrong. The backfill scanned every one of
+      those files against current signatures (daily 28089) and all came back
+      **clean — no exposure**. They had been sitting unscanned from creation until the
+      backfill, which is precisely the gap finding #14 closed.
+      **Forward cover confirmed**: `meetings/routes.ts` creates recordings through
+      `uploadDocument`, as does every other path that inserts a `documents` row
+      (bookkeeping close, attachment filing, Docuseal webhook) — so his future
+      recordings are scanned inline at upload, and the `pending_scan` default plus the
+      rescan job would catch any path that ever bypassed it
 - [ ] Still open from the rehearsal: document upload, session recap approval
 
 ## M31 — Booking: Cal.com event types + prefilled portal link (2026-08-11)
@@ -1788,3 +1802,13 @@ Chicago disagree on the date. Three assertions in document-chase, one in billing
 - [ ] **Attest Schedule F variants.** Schedule F covers review / audit / insurance-WC.
       If Brian sells a compilation or an agreed-upon-procedures engagement, that needs
       its own schedule — assembly refuses unscheduled attest work by name today.
+
+## Standing constraint — test-vs-real exists only at CONTACT level (Brian, 2026-08-12)
+- [ ] `is_test` is a column on `contacts`. Nothing marks a SESSION, a document, a
+      recording or a quote as test. So a staff member running a test session against a
+      REAL contact — exactly what happened on Jackson Flores's record — produces real
+      artifacts and test artifacts that are indistinguishable, and the "excluded from
+      measurement" rule has no hook to grab.
+      **Constraint for future work, no build now** (Brian's call). Anything that adds a
+      test/rehearsal mode must decide where the flag lives, and per-contact is already
+      known to be the wrong altitude. Related: [#15 ruling]

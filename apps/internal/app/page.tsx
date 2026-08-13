@@ -4,6 +4,7 @@
 // value, revenue MTD/YTD, A/R aging, health distribution, staff capacity,
 // deadline countdown. Exception-based: the point is what needs attention.
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../lib/api';
@@ -144,13 +145,16 @@ export default function ExecutivePage() {
                   Stored and visible to the client, but not yet filed against their document
                   requests — so they are still being chased for them. Clears automatically
                   once the scanner is reachable.
-                </span>
+                </span>{' '}
+                {/* FINDING #16: a count with nowhere to go is the same paper cut again. */}
+                <Link href="/documents">Review</Link>
               </li>
             ) : null}
             {infectedCount > 0 ? (
               <li>
                 <strong>{infectedCount} quarantined file{infectedCount === 1 ? '' : 's'}</strong>{' '}
-                <span className="muted small">failed the virus scan — see your tasks.</span>
+                <span className="muted small">failed the virus scan.</span>{' '}
+                <Link href="/documents?scan=infected">Review quarantine</Link>
               </li>
             ) : null}
           </ul>

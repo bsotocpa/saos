@@ -289,6 +289,87 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
     }
   );
 
+  /*
+   * FINDING #16 — the firm-wide document surface for staff.
+   *
+   * Every document endpoint before this one was scoped to a single contact, which
+   * means answering "what is quarantined right now?" or "what is stuck awaiting a
+   * scan?" required knowing which client to ask about first. After #14 made scan
+   * status a real thing, that gap became the difference between a compliance control
+   * existing and anyone being able to see it.
+   *
+   * Returns counts alongside rows so the surface can show what is wrong before you
+   * filter for it — a quarantined file you have to go looking for is not visible.
+   */
+  app.get(
+    '/documents/overview',
+    { preHandler: [app.authenticate, requirePermission('documents.read')] },
+    async (request) => {
+      const staff = request.staff!;
+      const q = z
+        .object({
+          scanStatus: z
+            .enum(['pending_scan', 'clean', 'infected', 'skipped', 'not_configured'])
+            .optional(),
+          category: z.string().max(60).optional(),
+          contactId: z.uuid().optional(),
+          limit: z.coerce.number().int().min(1).max(200).default(100),
+        })
+        .parse(request.query);
+
+      // Counts are unfiltered by scanStatus on purpose: the chips must show the
+      // quarantine count even while you are looking at something else.
+      const counts = await app.db.query<{ status: string; n: number }>(
+        `SELECT scan_status::text AS status, count(*)::int AS n
+           FROM documents WHERE archived_at IS NULL
+          GROUP BY scan_status`
+      );
+
+      const { rows } = await app.db.query(
+        `SELECT d.id, d.filename, d.category::text AS category, d.size_bytes, d.created_at,
+                d.scan_status::text AS scan_status, d.scan_detail, d.scanned_at,
+                d.scan_attempts, d.pending_request_item_id IS NOT NULL AS filing_deferred,
+                d.contact_id,
+                nullif(trim(concat_ws(' ', c.first_name, c.last_name)), '') AS contact_name,
+                c.is_test AS contact_is_test
+           FROM documents d
+           JOIN contacts c ON c.id = d.contact_id
+          WHERE d.archived_at IS NULL
+            AND ($1::text IS NULL OR d.scan_status::text = $1)
+            AND ($2::text IS NULL OR d.category::text = $2)
+            AND ($3::uuid IS NULL OR d.contact_id = $3)
+          -- Infected first, then whatever is stuck, then the boring ones. The order IS
+          -- the triage: the top of this list is the work.
+          ORDER BY CASE d.scan_status
+                     WHEN 'infected' THEN 0
+                     WHEN 'pending_scan' THEN 1
+                     WHEN 'skipped' THEN 2
+                     ELSE 3
+                   END,
+                   d.created_at DESC
+          LIMIT $4`,
+        [q.scanStatus ?? null, q.category ?? null, q.contactId ?? null, q.limit]
+      );
+
+      await writeAudit(app.db, {
+        actorType: 'staff',
+        actorId: staff.id,
+        actorLabel: staff.email,
+        action: 'documents.listed',
+        objectType: 'documents',
+        objectId: null,
+        ip: request.ip,
+        userAgent: request.headers['user-agent'] ?? null,
+        details: { scope: 'firm_wide', count: rows.length, filters: q },
+      });
+
+      return {
+        documents: rows,
+        counts: Object.fromEntries(counts.rows.map((r) => [r.status, r.n])),
+      };
+    }
+  );
+
   app.get<{ Params: { id: string } }>(
     '/documents/:id/download',
     { preHandler: [app.authenticate, requirePermission('documents.read')] },
