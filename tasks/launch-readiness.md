@@ -73,32 +73,6 @@ scope_ladder lost its no-schedule ruling — only SCOPE_ADMIN_TRAINING remains t
 is a product, not a tier modifier. STILL OPEN: which schedule governs training work.
 The seed reports it loudly as unmapped-with-live-items, and GATE 1 blocks quoting it.
 
-`scope_ladder` and `setup_conversion` each mix genuine add-ons with real services, so a
-single schedule per service line is the wrong altitude for them:
-
-**`scope_ladder`** — Brian ruled "no schedule", correct for tier items. But 4 of 6 are
-real services:
-
-| item | what it actually is |
-|---|---|
-| `SALES_TAX_ST1_FILING` | a sales-tax filing — Schedule C work |
-| `SCOPE_FULLMGMT_PAYROLL` | payroll full management — Schedule C |
-| `SCOPE_FULLMGMT_SALES_TAX` | sales tax full management — Schedule C |
-| `SCOPE_REVIEW_AUDIT` | **a review/audit rung — ATTEST, Schedule F** |
-| `SCOPE_ADMIN_TRAINING` | genuinely an add-on tier |
-| `SCOPE_REG_SETUP` | genuinely an add-on tier |
-
-`SCOPE_REVIEW_AUDIT` is the one that matters most: attest work carries the independence
-gate and Schedule F. Under "scope_ladder → no schedule", a quote containing it implies
-no schedule at all, so nothing in the schedule path would trigger the attest treatment.
-
-**`setup_conversion`** — `SETUP_QBO` and `SETUP_PAYROLL` are Schedule C, but
-`SCORP_CONVERSION_2553` is an S-corp election, which reads as entity (Schedule E) or
-tax, not recurring accounting.
-
-**Needs a ruling, two options:** reclassify the mis-filed items onto the right
-`price_service_line`, or make the schedule mapping per-item for these two lines. The
-first is cleaner and fixes the price book rather than working around it.
 
 ---
 
