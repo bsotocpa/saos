@@ -138,10 +138,20 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
     }
   );
 
-  /** Send it: mints the client link, pins the version, moves the lead to 'quoted'. */
+  /**
+   * Send it: mints the client link, pins the version, moves the lead to 'quoted'.
+   *
+   * FINDING #17: refuses with 409 `schedule_already_covered` when this quote's
+   * schedules are already accepted by the client, unless the sender declares whether
+   * this is additional work or replaces what exists. The declared answer is stored on
+   * the quote — a warning someone clicked through is not a record.
+   */
   app.post<{ Params: { id: string } }>('/quotes/:id/send', manage, async (request) => {
     const id = z.uuid().parse(request.params.id);
-    return sendQuote(app, id, request.staff!);
+    const body = z
+      .object({ duplicateIntent: z.enum(['additional_work', 'replaces_existing']).optional() })
+      .parse(request.body ?? {});
+    return sendQuote(app, id, request.staff!, { duplicateIntent: body.duplicateIntent });
   });
 
   /** Staff view of a quote (by id) — the same body the client sees, plus internals. */

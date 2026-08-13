@@ -10,17 +10,7 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import pg from 'pg';
 
-import { seedRoles } from './data/roles.mjs';
-import { seedSettings } from './data/settings.mjs';
-import { seedTemplates } from './data/templates.mjs';
-import { seedPriceBook } from './data/price_book.mjs';
-import { seedForms } from './data/forms.mjs';
-import { seedAutomations } from './data/automations.mjs';
-import { seedBundles } from './data/bundles.mjs';
-import { seedSops } from './data/sops.mjs';
-import { seedLegalV3 } from './data/legal_v3.mjs';
-import { seedScheduleF } from './data/schedule_f.mjs';
-import { seedTaxInterview } from './data/tax_interview.mjs';
+import { SEEDS } from '../index.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(here, '../../../.env') });
@@ -33,19 +23,7 @@ const client = new pg.Client({ connectionString: databaseUrl });
 try {
   await client.connect();
   await client.query('BEGIN');
-  for (const [name, fn] of [
-    ['roles', seedRoles],
-    ['settings', seedSettings],
-    ['templates', seedTemplates],
-    ['price_book', seedPriceBook],
-    ['forms', seedForms],
-    ['automations', seedAutomations],
-    ['bundles', seedBundles],
-    ['sops', seedSops],
-    ['legal_v3', seedLegalV3],
-    ['schedule_f', seedScheduleF],
-    ['tax_interview', seedTaxInterview],
-  ]) {
+  for (const [name, fn] of SEEDS) {
     const result = await fn(client);
     console.log(`✓ ${name}: ${result}`);
   }

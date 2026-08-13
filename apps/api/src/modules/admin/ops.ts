@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
 import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 
 /** Written by scripts/backup.sh — timestamps, snapshot id, counts. No client data. */
@@ -229,7 +229,7 @@ export async function runRestoreDrillReminderJob(
 
   let reminded = false;
   if (ageDays > intervalDays) {
-    const ceo = await firstActiveByRole(app.db, 'ceo');
+    const ceo = await ownerForRole(app.db, 'ceo');
     if (ceo) {
       // One reminder per quarter (dedupe key), not one per day.
       const quarter = `${today.slice(0, 4)}-Q${Math.ceil(Number(today.slice(5, 7)) / 3)}`;
@@ -300,7 +300,7 @@ export async function runBackupStaleCheckJob(
   if (status) {
     stale = Date.now() - Date.parse(status.last_backup_at) > 26 * 3_600_000;
     if (stale) {
-      const ceo = await firstActiveByRole(app.db, 'ceo');
+      const ceo = await ownerForRole(app.db, 'ceo');
       if (ceo) {
         await notifyOnce(app.db, {
           staffId: ceo,

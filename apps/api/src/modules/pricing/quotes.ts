@@ -12,7 +12,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { createEngagement } from '../engagements/service.ts';
@@ -20,6 +20,11 @@ import { createInvoice } from '../billing/service.ts';
 import { addDays, todayChicago } from '../tax/deadlines.ts';
 import { composeBundle } from './bundles.ts';
 import { setLeadStage } from './pipeline.ts';
+import {
+  assertSendableOverCoverage,
+  schedulesImpliedByQuote,
+  type DuplicateIntent,
+} from './quote-coverage.ts';
 
 /** Range width for one-time work — a SETTING, never a literal (⚠ Brian tunes). */
 async function estimateBandPercent(app: FastifyInstance): Promise<number> {
@@ -229,7 +234,8 @@ export async function createQuote(
 export async function sendQuote(
   app: FastifyInstance,
   quoteId: string,
-  actor: AuthedStaff
+  actor: AuthedStaff,
+  opts: { duplicateIntent?: DuplicateIntent | undefined } = {}
 ): Promise<{ token: string; url: string }> {
   const q = await app.db.query<{
     status: string; contact_id: string; language: 'en' | 'es'; total_cents: number;
@@ -243,11 +249,34 @@ export async function sendQuote(
   if (!quote) throw new AppError(404, 'not_found', 'Quote not found.');
   if (quote.status !== 'draft') throw new AppError(409, 'already_sent', `Quote is '${quote.status}'.`);
 
+  /*
+   * FINDING #17, the other half. If this quote's schedules are ALREADY accepted by
+   * this client, stop here and make the sender say what they mean. Blocking at send
+   * rather than at accept is deliberate: at send there is a staff member on the screen
+   * who knows whether this is extra scope or a mistake, and the client has not yet
+   * been asked to decide anything.
+   */
+  const coverage = await assertSendableOverCoverage(
+    app,
+    quoteId,
+    quote.contact_id,
+    opts.duplicateIntent
+  );
+
   const token = randomBytes(32).toString('base64url');
   const hash = createHash('sha256').update(token).digest('hex');
   await app.db.query(
-    `UPDATE quotes SET status = 'sent', sent_at = now(), public_token_hash = $2 WHERE id = $1`,
-    [quoteId, hash]
+    `UPDATE quotes
+     SET status = 'sent', sent_at = now(), public_token_hash = $2,
+         duplicate_intent = $3::quote_duplicate_intent,
+         duplicate_intent_schedules = $4::text[]
+     WHERE id = $1`,
+    [
+      quoteId,
+      hash,
+      coverage.intent,
+      coverage.overlapping.length > 0 ? coverage.overlapping : null,
+    ]
   );
   const url = `${app.config.PORTAL_BASE_URL}/quote/${token}`;
 
@@ -598,26 +627,50 @@ export async function acceptQuote(
   );
   await setLeadStage(app, row.contact_id, depositInvoiceId ? 'deposit_paid' : 'onboarding', null, 'quote accepted');
 
-  const rene = await firstActiveByRole(app.db, 'comms_billing');
-  if (rene) {
+  /*
+   * FINDING #17 — acceptance must ALWAYS produce visible consequence.
+   *
+   * This block used to sit entirely inside `if (rene)`. `comms_billing` is a role
+   * nobody holds yet, so on a real acceptance the engagement row was created and the
+   * task and the alert were both skipped: Brian accepted a quote and, from every
+   * screen he could see, nothing happened. Silent acceptance into the void.
+   *
+   * The task is now UNCONDITIONAL. Only its assignee is conditional, and
+   * ownerForRole() falls back to Brian before it gives up. An unassigned task in the
+   * queue is visible; a skipped task is not.
+   */
+  const owner = await ownerForRole(app.db, 'comms_billing');
+  const scheduleCodes = await schedulesImpliedByQuote(app, quote.id);
+  const scheduleNote =
+    scheduleCodes.length > 0
+      ? ` Schedule${scheduleCodes.length > 1 ? 's' : ''} ${scheduleCodes.join(', ')} ${
+          scheduleCodes.length > 1 ? 'are' : 'is'
+        } what this quote covers.`
+      : '';
+
+  await createTask(app, {
+    title: `Start onboarding: ${quote.first_name} ${quote.last_name} (quote accepted)`,
+    description:
+      'The quote converted to an engagement. Send the engagement letter + §7216 and open ' +
+      `the portal checklist.${scheduleNote}`,
+    assignedStaffId: owner,
+    contactId: row.contact_id,
+    priority: 1,
+    source: 'automation',
+    sourceType: 'quote_accepted',
+    sourceId: quote.id,
+  });
+
+  // Alerts need an actual person to alert; the task above is the durable record.
+  if (owner) {
     await notifyOnce(app.db, {
-      staffId: rene,
+      staffId: owner,
       type: 'quote_accepted',
       severity: 'info',
       title: `Quote ACCEPTED: ${quote.first_name} ${quote.last_name} — $${(totalCents / 100).toFixed(2)}`,
       contactId: row.contact_id,
       relatedObjectType: 'quote',
       relatedObjectId: quote.id,
-    });
-    await createTask(app, {
-      title: `Start onboarding: ${quote.first_name} ${quote.last_name} (quote accepted)`,
-      description: 'The quote converted to an engagement. Send the engagement letter + §7216 and open the portal checklist.',
-      assignedStaffId: rene,
-      contactId: row.contact_id,
-      priority: 1,
-      source: 'automation',
-      sourceType: 'quote_accepted',
-      sourceId: quote.id,
     });
   }
   await writeAudit(app.db, {
@@ -645,18 +698,16 @@ export async function declineQuote(
   await setLeadStage(app, quote.contact_id, 'lost', null, `quote declined: ${reason}`);
   await app.db.query(`UPDATE contacts SET lost_reason = $2 WHERE id = $1`, [quote.contact_id, reason]);
 
-  const brian = await firstActiveByRole(app.db, 'ceo');
-  if (brian) {
-    await createTask(app, {
-      title: `Quote declined: ${quote.first_name} ${quote.last_name} — "${reason.slice(0, 80)}"`,
-      description: 'Declined quotes return to the leads pipeline. Decide whether to re-quote, adjust scope, or close the lead.',
-      assignedStaffId: brian,
-      contactId: quote.contact_id,
-      source: 'automation',
-      sourceType: 'quote_declined',
-      sourceId: quote.id,
-    });
-  }
+  // A decline is a consequence too: the task is unconditional, the assignee is not.
+  await createTask(app, {
+    title: `Quote declined: ${quote.first_name} ${quote.last_name} — "${reason.slice(0, 80)}"`,
+    description: 'Declined quotes return to the leads pipeline. Decide whether to re-quote, adjust scope, or close the lead.',
+    assignedStaffId: await ownerForRole(app.db, 'ceo'),
+    contactId: quote.contact_id,
+    source: 'automation',
+    sourceType: 'quote_declined',
+    sourceId: quote.id,
+  });
   await writeAudit(app.db, {
     actorType: 'client', actorId: quote.contact_id, actorLabel: `${quote.first_name} ${quote.last_name}`,
     action: 'quote.declined', objectType: 'quote', objectId: quote.id,

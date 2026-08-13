@@ -8,7 +8,7 @@ import { writeAudit } from '../../audit.ts';
 import { isAutomationEnabled } from '../../automations.ts';
 import { AppError } from '../../types.ts';
 import { requirePermission } from '../../plugins/auth.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { handleMailBounce } from '../portal-auth/service.ts';
 import { makeMinioClient } from '../documents/storage.ts';
@@ -106,7 +106,7 @@ export function registerCommsRoutes(app: FastifyInstance): void {
       });
     }
 
-    const rene = await firstActiveByRole(app.db, 'comms_billing');
+    const rene = await ownerForRole(app.db, 'comms_billing');
     if (rene) {
       await notifyOnce(app.db, {
         staffId: rene,
@@ -214,7 +214,7 @@ export function registerCommsRoutes(app: FastifyInstance): void {
       : 'Thank you for calling Soto Accounting. Please send us a text message at this number and our team will respond within one business day.';
 
     const contact = await contactByPhone(app, params['From'] ?? '');
-    const rene = await firstActiveByRole(app.db, 'comms_billing');
+    const rene = await ownerForRole(app.db, 'comms_billing');
     const callSid = params['CallSid'] ?? `unknown-${Date.now()}`;
     if (rene) {
       await notifyOnce(app.db, {

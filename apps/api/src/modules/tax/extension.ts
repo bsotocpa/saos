@@ -10,7 +10,7 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { isAutomationEnabled } from '../../automations.ts';
-import { firstActiveByRole } from '../../staffing.ts';
+import { ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import {
   AUTOMATIC_EXTENSION_TYPES,
@@ -100,7 +100,7 @@ export async function runExtensionDecisionListJob(
   for (const list of rows) {
     // M25: the review itself is Brian's work item (owner rollup); the
     // notifications below remain the alert channel.
-    const ceo = await firstActiveByRole(app.db, 'ceo');
+    const ceo = await ownerForRole(app.db, 'ceo');
     if (ceo) {
       await createTask(app, {
         title: `Review Extension Decision List — deadline ${list.deadline} (${list.count} engagement(s))`,

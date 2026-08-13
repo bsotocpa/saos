@@ -13,7 +13,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 
 export const MIGRATED_LOGIN_TARGET = 25;
@@ -80,7 +80,7 @@ export async function runDubsadoRetirementCheckJob(
   let alerted = false;
 
   if (readiness.ready) {
-    const brian = await firstActiveByRole(app.db, 'ceo');
+    const brian = await ownerForRole(app.db, 'ceo');
     if (brian) {
       // relatedObjectId is a fixed key, so notifyOnce makes this a
       // once-ever alert rather than a daily nag after the trigger lands.

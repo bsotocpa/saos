@@ -14,6 +14,36 @@ export async function firstActiveByRole(db: Db, roleKey: string): Promise<string
   return rows[0]?.id ?? null;
 }
 
+/**
+ * Who should OWN work routed to this role — with a fallback, because an unfilled role
+ * must never cancel the work.
+ *
+ * FINDING #17. Brian accepted a quote and nothing happened. The cause was not the
+ * quote logic: the notification and the task were both inside `if (rene)`, and
+ * `comms_billing` is a role nobody holds yet — production has exactly one staff
+ * account. So the engagement row was created and every visible consequence was
+ * skipped. An audit found 8 more places with the same shape, three of them on the
+ * rehearsal path (booking, inbound messages, intake submission).
+ *
+ * In a one-person firm every unrouted task is Brian's, so: role holder → CEO →
+ * nobody. And "nobody" still means CREATE THE TASK, unassigned — an unassigned task
+ * in the queue is visible, a skipped task is not. That is the rule this function
+ * exists to make easy:
+ *
+ *   const owner = await ownerForRole(app.db, 'comms_billing');
+ *   await createTask(app, { ..., assignedStaffId: owner });   // unconditional
+ *   if (owner) await notifyOnce(...);                          // alerts need a person
+ *
+ * `scripts/check-role-guarded-tasks.mjs` fails the build if createTask goes back
+ * inside an `if (owner)`.
+ */
+export async function ownerForRole(db: Db, roleKey: string): Promise<string | null> {
+  const direct = await firstActiveByRole(db, roleKey);
+  if (direct) return direct;
+  if (roleKey === 'ceo') return null; // already asked for the fallback
+  return firstActiveByRole(db, 'ceo');
+}
+
 /** All active staff across the given roles (escalation fan-out). */
 export async function allActiveByRoles(db: Db, roleKeys: string[]): Promise<string[]> {
   const { rows } = await db.query<{ id: string }>(

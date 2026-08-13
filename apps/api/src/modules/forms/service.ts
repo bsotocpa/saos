@@ -6,7 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { ensurePortalUser, issueMagicLink } from '../portal-auth/service.ts';
@@ -294,7 +294,7 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
     }
   }
   if (a.irs_letters === 'yes') {
-    const ana = await firstActiveByRole(app.db, 'tax_preparer');
+    const ana = await ownerForRole(app.db, 'tax_preparer');
     if (ana) {
       await notifyOnce(app.db, {
         staffId: ana, type: 'intake_irs_letter_flag', severity: 'warning',

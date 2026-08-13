@@ -17,7 +17,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { has7216Consent, require7216Consent } from '../compliance/consent.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { createScopedToken, verifyScopedToken } from '../../crypto.ts';
@@ -71,7 +71,7 @@ export async function createReferral(
 
   // The approval queue lives with the receiving side's lead: Jackson approves
   // Hilo→Soto handoffs; the ED/COO role also holds the Soto→Hilo queue.
-  const approver = await firstActiveByRole(app.db, 'ed_coo');
+  const approver = await ownerForRole(app.db, 'ed_coo');
   if (approver) {
     await notifyOnce(app.db, {
       staffId: approver,

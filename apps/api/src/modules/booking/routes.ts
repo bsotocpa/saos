@@ -12,7 +12,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { createInvoice } from '../billing/service.ts';
@@ -113,7 +113,7 @@ export function registerBookingRoutes(app: FastifyInstance): void {
     const depositCode = depositItems[slug];
     if (!depositCode) {
       // Unknown event type: accept, flag for staff so nothing silently slips.
-      const rene = await firstActiveByRole(app.db, 'comms_billing');
+      const rene = await ownerForRole(app.db, 'comms_billing');
       if (rene) {
         await notifyOnce(app.db, {
           staffId: rene,
@@ -171,7 +171,7 @@ export function registerBookingRoutes(app: FastifyInstance): void {
     // Zoom-only rule (MP): flag discovery bookings that aren't on Zoom.
     const location = (body.payload.videoCallData?.type ?? body.payload.location ?? '').toLowerCase();
     if (!location.includes('zoom')) {
-      const rene = await firstActiveByRole(app.db, 'comms_billing');
+      const rene = await ownerForRole(app.db, 'comms_billing');
       if (rene) {
         await notifyOnce(app.db, {
           staffId: rene,

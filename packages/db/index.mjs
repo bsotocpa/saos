@@ -18,6 +18,7 @@ import { seedSops } from './seeds/data/sops.mjs';
 import { seedLegalV3 } from './seeds/data/legal_v3.mjs';
 import { seedScheduleF } from './seeds/data/schedule_f.mjs';
 import { seedTaxInterview } from './seeds/data/tax_interview.mjs';
+import { seedSchedulePriceLines } from './seeds/data/schedule_price_lines.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -37,10 +38,38 @@ export async function migrate(databaseUrl, direction = 'up') {
   });
 }
 
+/**
+ * THE seed list — named, ordered, and the single source of truth.
+ *
+ * There used to be two: this one (used by tests via seedAll) and a second copy inside
+ * seeds/run.mjs (used by `npm run seed` and every deploy). A seed added to one and not
+ * the other silently did not exist on the other side, which is how the price-line →
+ * schedule mapping passed a deploy and then failed every test that depended on it.
+ * Divergence between "what production seeds" and "what tests seed" is not a bug you
+ * find quickly — it looks like the feature is broken.
+ *
+ * Order matters: legal_v3 creates the service_schedules rows that
+ * schedule_price_lines references.
+ */
+export const SEEDS = [
+  ['roles', seedRoles],
+  ['settings', seedSettings],
+  ['templates', seedTemplates],
+  ['price_book', seedPriceBook],
+  ['forms', seedForms],
+  ['automations', seedAutomations],
+  ['bundles', seedBundles],
+  ['sops', seedSops],
+  ['legal_v3', seedLegalV3],
+  ['schedule_f', seedScheduleF],
+  ['tax_interview', seedTaxInterview],
+  ['schedule_price_lines', seedSchedulePriceLines],
+];
+
 /** Run all seeds (idempotent) using an already-connected pg client. */
 export async function seedAll(client) {
   const results = [];
-  for (const fn of [seedRoles, seedSettings, seedTemplates, seedPriceBook, seedForms, seedAutomations, seedBundles, seedSops, seedLegalV3, seedScheduleF, seedTaxInterview]) {
+  for (const [, fn] of SEEDS) {
     results.push(await fn(client));
   }
   return results;

@@ -6,7 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { isAutomationEnabled } from '../../automations.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { currentPriceBookVersion } from '../pricing/service.ts';
@@ -195,7 +195,7 @@ export async function invoiceForFiledEngagement(
   if (!te) throw new AppError(404, 'not_found', 'Tax engagement not found.');
   if (te.invoice_number) return { invoiced: false }; // already invoiced — idempotent
 
-  const rene = await firstActiveByRole(app.db, 'comms_billing');
+  const rene = await ownerForRole(app.db, 'comms_billing');
 
   if (te.final_fee_cents === null) {
     if (rene) {
