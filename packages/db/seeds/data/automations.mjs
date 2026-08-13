@@ -56,6 +56,12 @@ export const automations = [
       'Warm reply when a client emails/texts a file, pointing at the secure portal link. Transactional (a reply to something they just sent) — recommended ON once client intake begins. OFF: the file is still accepted, scanned, and quarantined for review.',
   },
   {
+    key: 'portal_upload_acks',
+    name: 'Portal-upload acknowledgements',
+    description:
+      'Receipt confirmation when a client uploads through the portal, saying what happens next. Separate from attachment_acks on purpose: that one redirects people away from email attachments, and telling a client who just used the portal to use the portal is nonsense. THROTTLED to one ack per client per window (booking.upload_ack_throttle_minutes) so a ten-file upload session sends one email, not ten. OFF: the upload still works, is still scanned, and is still filed — the client simply is not told.',
+  },
+  {
     key: 'review_requests',
     name: 'Google review asks (milestone-triggered)',
     description:

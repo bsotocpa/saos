@@ -259,3 +259,61 @@ test('a quote with no overlap sends with no intent and records none', async () =
   assert.equal(row.rows[0]!.intent, null, 'NULL means "no overlap", not "unanswered"');
   assert.equal(row.rows[0]!.schedules, null);
 });
+
+test('GATE 1: a non-tax quote cannot be SENT until finding #19 is fixed', async () => {
+  // #19: acceptQuote hardcodes serviceLine 'tax', so accepting a bookkeeping quote
+  // produces a Schedule A — an individual-tax agreement for work that is not
+  // individual tax. Brian's ruling: tax-only until it is fixed, enforced in code
+  // rather than only in launch-readiness.md.
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic',
+    lastName: 'NonTaxGated',
+    email: 'nontaxgated@example.test',
+  });
+
+  const nonTax = await app.db.query<{ item_code: string; service_line: string }>(
+    `SELECT pbi.item_code, pbi.service_line::text AS service_line
+       FROM price_book_items pbi
+       JOIN price_book_versions v ON v.id = pbi.version_id
+      WHERE pbi.service_line::text = 'recurring_accounting' AND pbi.is_active
+        AND pbi.display_on_quote AND pbi.amount_cents IS NOT NULL
+        AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
+      ORDER BY pbi.item_code LIMIT 1`
+  );
+  assert.ok(nonTax.rows[0], 'the price book has a bookkeeping item');
+
+  const quote = await createQuote(
+    app,
+    { contactId: c.id, lines: [{ itemCode: nonTax.rows[0]!.item_code }] },
+    staffActor(await ceoId())
+  );
+
+  const actor = staffActor(await ceoId());
+  await assert.rejects(
+    () => sendQuote(app, quote.id, actor),
+    (err: unknown) => {
+      assert.ok(err instanceof AppError);
+      assert.equal(err.statusCode, 409);
+      assert.equal(err.code, 'non_tax_quote_gated');
+      assert.match(err.message, /finding #19/);
+      assert.match(err.message, new RegExp(nonTax.rows[0]!.item_code));
+      assert.match(err.message, /launch-readiness/);
+      return true;
+    }
+  );
+
+  const still = await app.db.query<{ status: string }>(
+    `SELECT status::text AS status FROM quotes WHERE id = $1`,
+    [quote.id]
+  );
+  assert.equal(still.rows[0]!.status, 'draft', 'blocked at send — the client never sees it');
+
+  // A tax quote for the same client still sends, so the gate is a scalpel.
+  const taxQuote = await createQuote(
+    app,
+    { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] },
+    staffActor(await ceoId())
+  );
+  const ok = await sendQuote(app, taxQuote.id, staffActor(await ceoId()));
+  assert.ok(ok.url, 'tax work is unaffected');
+});

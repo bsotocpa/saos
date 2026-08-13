@@ -407,7 +407,12 @@ test('quoting extra work to an existing CLIENT never demotes them into the funne
 
   const created = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: client.id, lines: [{ itemCode: 'SPEC_TAX_PLANNING' }], expiresInDays: 14 },
+    // Was SPEC_TAX_PLANNING (specialized_cpa). GATE 1 in launch-readiness.md now
+    // blocks non-tax lines from being SENT until finding #19 is fixed, and this test
+    // is about not demoting an existing client — not about the service line. An
+    // individual-tax add-on exercises the same path without colliding with the gate;
+    // the gate has its own test in quote-consequence.spec.ts.
+    payload: { contactId: client.id, lines: [{ itemCode: 'IND_AMENDMENT_1040X' }], expiresInDays: 14 },
   });
   const quoteId = created.json().id as string;
   await app.inject({ method: 'POST', url: `/quotes/${quoteId}/send`, headers: auth(ana) });

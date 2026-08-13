@@ -193,6 +193,40 @@ export const templates = [
       'Por su seguridad, la forma más rápida de enviar documentos es su portal seguro: {{portal_link}}',
   },
   {
+    /*
+     * PORTAL-UPLOAD ack — its own template, deliberately NOT the inbound one.
+     *
+     * Brian's ruling (2026-08-13): receipt confirmation + what happens next, and no
+     * "visit the portal" copy, because they are already in it. The inbound template
+     * exists to redirect people away from email attachments; sending that to someone
+     * who just used the portal correctly would tell them to do the thing they did.
+     *
+     * Says what happens next rather than only "received", because "we got it" answers
+     * the question the client did not ask. The one they did ask is "so am I done?".
+     */
+    key: 'portal_upload_received_email',
+    name: 'Portal upload ack (email) — receipt + what happens next',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'document_summary'],
+    subjectEn: 'We have your documents',
+    subjectEs: 'Recibimos sus documentos',
+    bodyEn:
+      'Hi {{first_name}},\n\nWe have {{document_summary}} — it is filed to your record and ' +
+      'nothing further is needed from you on it.\n\nWhat happens next: we review what you sent, ' +
+      'and if anything is missing or unclear we will ask you for that specific item rather than ' +
+      'starting over. If you were working from a document request, anything still outstanding is ' +
+      'listed in your portal.\n\nYou do not need to email or text us a copy — what you uploaded ' +
+      'is the copy we work from.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}},\n\nRecibimos {{document_summary}} — está archivado en su expediente y ' +
+      'no necesitamos nada más de su parte al respecto.\n\nQué sigue: revisamos lo que envió, y si ' +
+      'algo falta o no está claro le pediremos ese documento específico en lugar de empezar de ' +
+      'nuevo. Si estaba respondiendo a una solicitud de documentos, lo que aún falta aparece en su ' +
+      'portal.\n\nNo necesita enviarnos una copia por correo ni por mensaje — lo que subió es la ' +
+      'copia con la que trabajamos.\n\n— Soto Accounting',
+  },
+  {
     key: 'attachment_received_email',
     name: 'Inbound attachment ack (email) — accept + portal nudge',
     channel: 'email',

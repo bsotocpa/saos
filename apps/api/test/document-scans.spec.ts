@@ -509,3 +509,89 @@ test('FINDING #16: the firm-wide overview leads with what is wrong', async () =>
   );
   assert.ok(audit.rows[0]!.n >= 2, 'both listings left an audit row');
 });
+
+test('PORTAL-UPLOAD ACK: one receipt per session, not per file, and never the portal-nudge copy', async () => {
+  verdict = 'clean';
+  const { contactId, cookie } = await portalClient('AckThrottle');
+
+  // createTestConfig arms every automation, so the ack is live here.
+  const first = await app.inject({
+    method: 'POST', url: '/portal/documents', ...upload(cookie, { category: 'tax_documents' }),
+  });
+  assert.equal(first.statusCode, 201);
+
+  const sentAfterOne = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM audit_log WHERE action = 'document.ack_sent' AND contact_id = $1`,
+    [contactId]
+  );
+  assert.equal(sentAfterOne.rows[0]!.n, 1, 'the first upload is acknowledged');
+
+  // Second upload in the same window: suppressed, and the suppression is COUNTED.
+  const second = await app.inject({
+    method: 'POST', url: '/portal/documents', ...upload(cookie, { category: 'business_records' }),
+  });
+  assert.equal(second.statusCode, 201, 'the upload still succeeds');
+
+  const after = await app.db.query<{ action: string; reason: string | null }>(
+    `SELECT action, details->>'reason' AS reason FROM audit_log
+      WHERE action IN ('document.ack_sent', 'document.ack_suppressed') AND contact_id = $1
+      ORDER BY occurred_at`,
+    [contactId]
+  );
+  assert.equal(after.rows.filter((r) => r.action === 'document.ack_sent').length, 1,
+    'ten files in one sitting is one receipt, not ten');
+  assert.equal(after.rows.at(-1)!.action, 'document.ack_suppressed');
+  assert.equal(after.rows.at(-1)!.reason, 'throttled', 'and the suppression says why');
+
+  // Brian's copy rule: no "use the portal" nudge to someone already in the portal.
+  const tpl = await app.db.query<{ body_en: string; body_es: string; subject_en: string }>(
+    `SELECT body_en, body_es, subject_en FROM templates WHERE key = 'portal_upload_received_email'`
+  );
+  const t = tpl.rows[0]!;
+  assert.ok(t, 'the ack has its OWN template, not the inbound one');
+  for (const body of [t.body_en, t.body_es]) {
+    assert.doesNotMatch(body, /\{\{portal_link\}\}/, 'no portal link — they are already in it');
+    assert.doesNotMatch(body, /secure portal|portal seguro/i, 'and no portal nudge copy');
+  }
+  assert.match(t.body_en, /What happens next/, 'it says what happens next, per the ruling');
+  assert.match(t.body_es, /Qué sigue/, 'in Spanish too');
+});
+
+test('an infected upload is never acknowledged — that conversation is Brian’s', async () => {
+  verdict = 'infected';
+  const { contactId, cookie } = await portalClient('AckInfected');
+  const res = await app.inject({
+    method: 'POST', url: '/portal/documents', ...upload(cookie, { category: 'tax_documents' }),
+  });
+  assert.equal(res.statusCode, 201, 'still accepted');
+
+  const acks = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM audit_log WHERE action = 'document.ack_sent' AND contact_id = $1`,
+    [contactId]
+  );
+  assert.equal(acks.rows[0]!.n, 0, 'no cheerful receipt for a quarantined file');
+  verdict = 'clean';
+});
+
+test('with the automation OFF the upload still works and the suppression is recorded', async () => {
+  verdict = 'clean';
+  await app.db.query(`UPDATE automations SET enabled = false WHERE key = 'portal_upload_acks'`);
+  try {
+    const { contactId, cookie } = await portalClient('AckDisarmed');
+    const res = await app.inject({
+      method: 'POST', url: '/portal/documents', ...upload(cookie, { category: 'tax_documents' }),
+    });
+    assert.equal(res.statusCode, 201, 'the file is still accepted, scanned and filed');
+
+    const rows = await app.db.query<{ reason: string | null }>(
+      `SELECT details->>'reason' AS reason FROM audit_log
+        WHERE action = 'document.ack_suppressed' AND contact_id = $1`,
+      [contactId]
+    );
+    assert.equal(rows.rowCount, 1);
+    assert.equal(rows.rows[0]!.reason, 'automation_disabled',
+      'every suppression is counted — arming it must be a decision with visible consequences');
+  } finally {
+    await app.db.query(`UPDATE automations SET enabled = true WHERE key = 'portal_upload_acks'`);
+  }
+});

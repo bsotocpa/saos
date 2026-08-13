@@ -132,7 +132,108 @@ export async function uploadDocument(
     }
   }
 
+  /*
+   * PORTAL-UPLOAD ACK (Brian's ruling, 2026-08-13).
+   *
+   * The rehearsal exercises the ack system on the path real clients use most, and
+   * attachment_acks does not cover it — that one exists to redirect people away from
+   * emailing files, and its copy points at the portal. Sending it to someone who just
+   * used the portal would tell them to do the thing they did.
+   *
+   * Client uploads only: a staff upload is not something to thank the client for.
+   * Never for an infected file — that conversation is Brian's, not an automation's.
+   * Throttled, because ten files in one sitting is one session, not ten receipts.
+   */
+  if (actor.type === 'client' && verdict !== 'infected') {
+    await maybeAckPortalUpload(app, input.contactId, input.filename).catch((err) =>
+      // A failed ack must not fail an upload that already succeeded.
+      app.log.error({ err, documentId: id }, 'portal upload ack failed')
+    );
+  }
+
   return { id };
+}
+
+/**
+ * Send at most one upload receipt per client per throttle window.
+ *
+ * The throttle reads the audit log rather than keeping its own state: `document.ack_sent`
+ * is already the durable record of what we told the client, so a second source of truth
+ * would only be able to disagree with it.
+ */
+async function maybeAckPortalUpload(
+  app: FastifyInstance,
+  contactId: string,
+  filename: string
+): Promise<void> {
+  if (!(await isAutomationEnabled(app, 'portal_upload_acks'))) {
+    await writeAudit(app.db, {
+      actorType: 'system',
+      actorLabel: 'portal upload ack',
+      action: 'document.ack_suppressed',
+      objectType: 'contact',
+      objectId: contactId,
+      contactId,
+      details: { reason: 'automation_disabled' },
+    });
+    return;
+  }
+
+  const throttle = await app.db.query<{ minutes: number }>(
+    `SELECT (value)::text::int AS minutes FROM app_settings
+      WHERE key = 'documents.upload_ack_throttle_minutes'`
+  );
+  const minutes = throttle.rows[0]?.minutes ?? 30;
+
+  if (minutes > 0) {
+    const recent = await app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM audit_log
+        WHERE action = 'document.ack_sent' AND contact_id = $1
+          AND occurred_at > now() - ($2 || ' minutes')::interval`,
+      [contactId, String(minutes)]
+    );
+    if (recent.rows[0]!.n > 0) {
+      await writeAudit(app.db, {
+        actorType: 'system',
+        actorLabel: 'portal upload ack',
+        action: 'document.ack_suppressed',
+        objectType: 'contact',
+        objectId: contactId,
+        contactId,
+        details: { reason: 'throttled', window_minutes: minutes },
+      });
+      return;
+    }
+  }
+
+  const contact = await app.db.query<{ first_name: string; email: string | null; language: 'en' | 'es' }>(
+    `SELECT first_name, email, language FROM contacts WHERE id = $1`,
+    [contactId]
+  );
+  const c = contact.rows[0];
+  if (!c?.email) return;
+
+  await sendTemplatedEmail(app, {
+    to: c.email,
+    templateKey: 'portal_upload_received_email',
+    language: c.language,
+    contactId,
+    vars: {
+      first_name: c.first_name,
+      // Names the file when there is one, stays honest when a session had several.
+      document_summary: `your upload (${filename})`,
+    },
+  });
+
+  await writeAudit(app.db, {
+    actorType: 'system',
+    actorLabel: 'portal upload ack',
+    action: 'document.ack_sent',
+    objectType: 'contact',
+    objectId: contactId,
+    contactId,
+    details: { filename },
+  });
 }
 
 export type ScanStatus = 'pending_scan' | 'clean' | 'infected' | 'skipped' | 'not_configured';

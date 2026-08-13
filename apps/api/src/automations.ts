@@ -27,6 +27,7 @@ export const AUTOMATION_KEYS = [
   'estimate_reminders',
   'annual_report_client_reminders',
   'attachment_acks',
+  'portal_upload_acks',
   'review_requests',
   'event_reminders',
   'session_recaps',

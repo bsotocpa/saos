@@ -40,7 +40,22 @@ const MAPPINGS = [
   ['attest', 'F', 'CPA review / audit / insurance-WC audit — the attest schedule.'],
   ['specialized_cpa', 'D', 'Specialized CPA advisory work.'],
   ['coo', 'D', 'Outsourced COO/CFO advisory work.'],
+  // Brian's ruling, 2026-08-13.
+  ['setup_conversion', 'C', 'Books setup and conversion is recurring-accounting work — Schedule C.'],
+  ['filings_1099_w2', 'C', '1099/W-2 filings are payroll-adjacent — Schedule C.'],
 ];
+
+/**
+ * PERMANENTLY unmapped, by ruling — not awaiting anything.
+ *
+ * scope_ladder: Brian ruled no schedule (2026-08-13). Scope-ladder items are add-on
+ *   tiers that ride on whatever engagement they are attached to; they do not bring a
+ *   schedule of their own. A quote of ONLY scope-ladder lines therefore implies no
+ *   schedule, which is correct and also means it cannot stand as an engagement by
+ *   itself.
+ * software_passthrough, deposit: not services under any schedule.
+ */
+const NEVER_MAPPED = ['scope_ladder', 'software_passthrough', 'deposit'];
 
 export async function seedSchedulePriceLines(db) {
   // Verify every target schedule exists before inserting, so a missing schedule is a
@@ -66,16 +81,19 @@ export async function seedSchedulePriceLines(db) {
     inserted += res.rowCount;
   }
 
-  // Report what is still unmapped, so "Brian has not ruled on scope_ladder yet" stays
-  // visible in the deploy output instead of being quietly forgotten.
+  // Anything neither mapped nor deliberately never-mapped is a genuine gap, and it
+  // stays visible in the deploy output rather than being quietly forgotten.
   const { rows: unmapped } = await db.query(
     `SELECT unnest(enum_range(NULL::price_service_line))::text AS service_line
      EXCEPT SELECT service_line::text FROM schedule_for_price_line
-     EXCEPT SELECT unnest(ARRAY['software_passthrough', 'deposit'])`
+     EXCEPT SELECT unnest($1::text[])`,
+    [NEVER_MAPPED]
   );
   const pending = unmapped.map((r) => r.service_line).sort();
   return (
     `${inserted} of ${MAPPINGS.length} price-line → schedule mappings inserted` +
-    (pending.length > 0 ? `; AWAITING A RULING: ${pending.join(', ')}` : '')
+    (pending.length > 0
+      ? `; AWAITING A RULING: ${pending.join(', ')}`
+      : `; no schedule by ruling: ${NEVER_MAPPED.join(', ')}`)
   );
 }

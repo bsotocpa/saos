@@ -22,6 +22,7 @@ import { composeBundle } from './bundles.ts';
 import { setLeadStage } from './pipeline.ts';
 import {
   assertSendableOverCoverage,
+  assertTaxOnlyUntil19,
   schedulesImpliedByQuote,
   type DuplicateIntent,
 } from './quote-coverage.ts';
@@ -256,6 +257,10 @@ export async function sendQuote(
    * who knows whether this is extra scope or a mistake, and the client has not yet
    * been asked to decide anything.
    */
+  // GATE 1 (launch-readiness.md): tax-only until #19. Checked BEFORE the coverage
+  // gate — "this cannot be quoted at all yet" outranks "is this a duplicate?".
+  await assertTaxOnlyUntil19(app, quoteId);
+
   const coverage = await assertSendableOverCoverage(
     app,
     quoteId,

@@ -95,6 +95,12 @@ export const settings = [
       'Lane 2: event-type slugs that are ALWAYS FREE ("Book a question call — no charge", codified retention asset).',
   },
   {
+    key: 'documents.upload_ack_throttle_minutes',
+    value: 30,
+    description:
+      'One portal-upload acknowledgement per client per this many minutes. A client uploading ten documents in one sitting should get one email, not ten — the ack is a receipt for the session, not for each file. Set to 0 to acknowledge every upload individually.',
+  },
+  {
     key: 'booking.client_booking_url',
     value: null,
     description:

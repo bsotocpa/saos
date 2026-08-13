@@ -122,6 +122,46 @@ export async function coverageOverlap(
   };
 }
 
+/**
+ * GATE 1 (launch-readiness.md) — tax-only quoting until finding #19 is fixed.
+ *
+ * acceptQuote() hardcodes serviceLine: 'tax' when it creates the engagement, and the
+ * engagement's service line is what drives schedule assembly. So a bookkeeping quote
+ * produces a Schedule A — an individual-tax agreement for work that is not individual
+ * tax. Verified by rendering the packet, which is the only thing that settles it.
+ *
+ * Brian's ruling: tax-only until #19 lands. Enforced here rather than only in the
+ * document, because a gate that lives in a document is a gate that gets forgotten.
+ *
+ * REMOVE THIS FUNCTION AND ITS CALL when #19 is fixed — not before, and not by
+ * loosening the list.
+ */
+const TAX_PRICE_LINES = new Set(['individual_tax', 'business_tax', 'deposit', 'software_passthrough']);
+
+export async function assertTaxOnlyUntil19(app: FastifyInstance, quoteId: string): Promise<void> {
+  const { rows } = await app.db.query<{ service_line: string; item_code: string }>(
+    `SELECT DISTINCT pbi.service_line::text AS service_line, qli.item_code
+       FROM quote_line_items qli
+       JOIN price_book_items pbi ON pbi.item_code = qli.item_code
+      WHERE qli.quote_id = $1 AND qli.chosen
+      ORDER BY 1`,
+    [quoteId]
+  );
+  const offenders = rows.filter((r) => !TAX_PRICE_LINES.has(r.service_line));
+  if (offenders.length === 0) return;
+
+  const { AppError } = await import('../../types.ts');
+  const detail = offenders.map((o) => `${o.item_code} (${o.service_line})`).join(', ');
+  throw new AppError(
+    409,
+    'non_tax_quote_gated',
+    `Non-tax lines cannot be quoted yet — finding #19: accepting a quote hardcodes a TAX ` +
+      `engagement, so this would produce a Schedule A agreement for work that is not ` +
+      `individual tax. Blocked lines: ${detail}. See tasks/launch-readiness.md GATE 1. ` +
+      `Tax-only until #19 is fixed.`
+  );
+}
+
 /** Intent a sender must declare to send a quote that duplicates existing coverage. */
 export type DuplicateIntent = 'additional_work' | 'replaces_existing';
 
