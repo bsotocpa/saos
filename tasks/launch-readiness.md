@@ -81,54 +81,35 @@ The seed reports it loudly as unmapped-with-live-items, and GATE 1 blocks quotin
 `STRIPE_MODE=stub` in production, and stub mode refuses checkout there on purpose
 (`503 stripe_not_configured`). No client can pay a deposit.
 
-### Installing Stripe TEST keys — Brian does this part
+### Installing Stripe TEST keys — one command, one value
 
-**I do not handle payment credentials.** Stripe secret keys are financial credentials,
-so I will not write them into `.env` or paste them anywhere, even when asked — the
-Docuseal token earlier in this project is the cautionary tale. Everything around the
-keys is prepared; the two secret values are yours to install.
+**I do not handle payment credentials.** So the installer asks YOU for the key and never
+shows it to me: it is read silently, never echoed, never written to shell history, and
+passed to curl through stdin so it cannot be seen in `ps`. Only a masked form is printed.
 
-Get them from the Stripe dashboard in **test mode** (the toggle top-right):
-
-- **Developers → API keys** → *Secret key*, starts `sk_test_`
-- **Developers → Webhooks** → add endpoint `https://api.sotoaccounting.com/webhooks/stripe`,
-  send `checkout.session.completed` and `payment_intent.payment_failed`, then copy the
-  *Signing secret*, starts `whsec_`
-
-Then, on the server:
+Get the key from the Stripe dashboard with the TEST MODE toggle on:
+Developers → API keys → Secret key (starts `sk_test_`). That is the ONLY value you need
+— the webhook signing secret is created and captured by the script from Stripe's own
+API response, because Stripe reveals it once, at creation.
 
 ```bash
-ssh -i ~/.ssh/saos_hetzner_ed25519 root@SERVER_IPV4-in-env-production
+ssh -i ~/.ssh/saos_hetzner_ed25519 root@SERVER_IPV4-in-env-production -t 'bash /opt/saos/scripts/install-stripe-test.sh'
 ```
 
-Edit `/opt/saos/.env` and set these three lines (replace the placeholders, keep the
-quotes off):
+It then: validates the key and REFUSES a live one outright; confirms Stripe reports
+livemode=false; deletes and recreates the webhook endpoint so a fresh signing secret can
+be captured; backs up and writes `.env`; restarts the API; and verifies
 
-```
-STRIPE_MODE=live
-STRIPE_SECRET_KEY=sk_test_REPLACE_ME
-STRIPE_WEBHOOK_SECRET=whsec_REPLACE_ME
-```
+  · the adapter our code uses reports mode `live`, not stub
+  · a real 4242 charge succeeds in test mode (a confirmed PaymentIntent, not a simulation)
+  · a correctly signed webhook is ACCEPTED and a forged signature is REJECTED
 
-`STRIPE_MODE=live` with `sk_test_` keys is correct and intended: "live" selects the real
-Stripe adapter, and the test keys point it at Stripe's test environment. Real cards are
-not charged. Use `4242 4242 4242 4242`, any future expiry, any CVC.
+then prints PASS/FAIL. On failure your `.env` backup is at `/opt/saos/.env.bak.*` and
+`STRIPE_MODE=stub` restores the previous behaviour.
 
-Then restart the API:
-
-```bash
-cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api
-```
-
-**Deploys will not wipe these.** `scripts/merge-env.sh` preserves server-set values and
-`npm run check:env-merge` proves a blank in `.env.production` cannot overwrite a
-server-set secret — that guard exists because a deploy destroyed the Docuseal token
-twice.
-
-**Tell me when they are in and I will verify** — `loadConfig()` already refuses to boot
-in production with `STRIPE_MODE=live` and either value missing, so a typo fails loudly
-at startup rather than at a client's checkout. I will confirm the adapter reports `live`,
-run a test-card checkout end to end, and confirm the webhook signature verifies.
+Tested before handing it over: empty input, a live key, and a well-formed but invalid
+test key all refuse cleanly and leave `.env` byte-identical; the `.env` writer preserves
+existing secrets, replaces in place without duplicating, and handles & = verbatim.
 
 ---
 
