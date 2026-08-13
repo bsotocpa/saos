@@ -382,6 +382,9 @@ test('the Spanish queue lists what is waiting, refuses to approve nothing, and r
   assert.ok(waiting.some((t) => t.key === 'consent_7216_use'));
 
   // Approving a template with no translation is a no-op with an explanation.
+  // The seeded consents now DO carry a (pending) translation, so clear one first —
+  // this is testing the empty case, not the seeded state.
+  await app.db.query(`UPDATE templates SET body_es = NULL WHERE key = 'consent_7216_use'`);
   const empty = await app.inject({
     method: 'POST', url: '/admin/templates/consent_7216_use/es-approve', headers: auth(brian),
   });

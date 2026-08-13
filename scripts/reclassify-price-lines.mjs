@@ -45,25 +45,36 @@ const EXECUTE = process.argv.includes('--execute');
  * SCOPE_ADMIN_TRAINING is deliberately NOT moved — see UNRULED below.
  */
 const RECLASSIFY = {
-  SCOPE_REVIEW_AUDIT: 'attest', // → Schedule F. Brian: this one first.
-  SALES_TAX_ST1_FILING: 'recurring_accounting', // → C
-  SCOPE_FULLMGMT_PAYROLL: 'recurring_accounting', // → C
-  SCOPE_FULLMGMT_SALES_TAX: 'recurring_accounting', // → C
-  SCOPE_REG_SETUP: 'recurring_accounting', // → C (my call)
-  SCORP_CONVERSION_2553: 'entity_services', // → E (my call; E is the entity home, not C)
+  // v3 (2026-08-13): Brian ruled SCOPE_ADMIN_TRAINING → Schedule C, the last item left
+  // in scope_ladder. With it moved, scope_ladder holds NO live items at all — so the
+  // seed's "unmapped with live items" warning falls silent on its own, and the enum
+  // value stays unmapped so anything filed there in future shows up loudly.
+  SCOPE_ADMIN_TRAINING: 'recurring_accounting',
 };
 
 /**
- * Left in scope_ladder on purpose, awaiting a ruling.
+ * Applied in v2 (2026-08-13), kept here as the record of what moved and why. Re-running
+ * with these would be a no-op; they are listed because "which version changed what" is
+ * a question someone will ask in a year.
  *
- * SCOPE_ADMIN_TRAINING is described in the book as "the deliberate Hilo bridge product —
- * DIY-minded entrepreneurs buy training." That is a product sold on its own, not a tier
- * modifier on an accounting engagement — so "scope_ladder means tier modifiers" does not
- * cover it. But which schedule governs training work is a question about what Soto is
- * agreeing to do, and that is not mine to answer. It stays where it is, unmapped and
- * therefore reported as UNKNOWN rather than silently absorbed.
+ *   SCOPE_REVIEW_AUDIT       scope_ladder     → attest              (F)
+ *   SALES_TAX_ST1_FILING     scope_ladder     → recurring_accounting (C)
+ *   SCOPE_FULLMGMT_PAYROLL   scope_ladder     → recurring_accounting (C)
+ *   SCOPE_FULLMGMT_SALES_TAX scope_ladder     → recurring_accounting (C)
+ *   SCOPE_REG_SETUP          scope_ladder     → recurring_accounting (C)
+ *   SCORP_CONVERSION_2553    setup_conversion → entity_services      (E)
  */
-const UNRULED = ['SCOPE_ADMIN_TRAINING'];
+
+/**
+ * Items still awaiting a ruling — none as of v3.
+ *
+ * SCOPE_ADMIN_TRAINING was the last one. It is described in the book as "the deliberate
+ * Hilo bridge product — DIY-minded entrepreneurs buy training", which is a product sold
+ * on its own rather than a tier modifier, so it could not keep riding on the
+ * "scope_ladder means modifiers" ruling. Brian ruled it to Schedule C on 2026-08-13 and
+ * it moves in v3.
+ */
+const UNRULED = [];
 
 const db = new pg.Client({
   connectionString:
@@ -99,7 +110,7 @@ if (missing.length > 0) console.log(`  ⚠ NOT IN THE BOOK (skipped): ${missing.
 
 for (const row of affected.rows) {
   const to = RECLASSIFY[row.item_code];
-  const flag = ['SCOPE_REG_SETUP', 'SCORP_CONVERSION_2553'].includes(row.item_code) ? '  ← my call' : '';
+  const flag = ['SCOPE_REG_SETUP', 'SCORP_CONVERSION_2553'].includes(row.item_code) ? '  <- my call' : '';
   console.log(`  ${row.item_code.padEnd(26)} ${row.service_line} → ${to}${flag}`);
   console.log(`      "${row.name_en}"`);
 }
@@ -114,7 +125,7 @@ console.log(
   `\n  copying ${totals.rows[0].items} items forward, ` +
     `${totals.rows[0].unconfirmed} still flagged needs_confirmation (preserved)`
 );
-console.log(`  left unruled in scope_ladder: ${UNRULED.join(', ')}`);
+console.log(`  awaiting a ruling: ${UNRULED.join(', ') || 'nothing'}`);
 
 if (!EXECUTE) {
   console.log('\nRe-run with --execute to create the new version.\n');
@@ -122,24 +133,57 @@ if (!EXECUTE) {
   process.exit(0);
 }
 
+/*
+ * WHEN does the new version take effect?
+ *
+ * price_book_versions enforces CHECK (effective_to IS NULL OR effective_to > effective_from),
+ * so a version cannot open and close on the same date — which means AT MOST ONE VERSION
+ * PER DAY. That is the constraint doing its job: two versions sharing a date would make
+ * "the book in force on 2026-08-13" ambiguous, and engagements pin a version forever.
+ *
+ * So: normally the new version starts today. But if the version currently in force also
+ * started today (a second correction on the same day), the new one starts TOMORROW and
+ * today's book is left exactly as it was. Nothing already quoted today shifts underneath
+ * anyone.
+ */
+// Ask the DATABASE whether the current version started today. Comparing in JS looked
+// obvious and was wrong twice over: node-postgres hands back a Date, so
+// String(effective_from).slice(0,10) is "Thu Aug 13" and never equals an ISO date — and
+// the timezone of the process is not the timezone of CURRENT_DATE. The database owns
+// CURRENT_DATE, so the database answers the question.
+const sameDay = await db.query(
+  `SELECT (effective_from = CURRENT_DATE) AS today FROM price_book_versions WHERE id = $1`,
+  [from.id]
+);
+const currentStartedToday = sameDay.rows[0].today === true;
+const EFFECTIVE = currentStartedToday ? "CURRENT_DATE + INTERVAL '1 day'" : 'CURRENT_DATE';
+if (currentStartedToday) {
+  console.log(
+    `\n  NOTE: v${from.version_number} also took effect today, and a version cannot open` +
+      ` and close\n  on the same date. v${from.version_number + 1} is dated TOMORROW; today's book is untouched.`
+  );
+}
+
 await db.query('BEGIN');
 try {
-  // Close the current version as of today and open the next one the same day, so
-  // currentVersion() (effective_from <= today AND effective_to > today) picks exactly
-  // one of them.
+  // Close the current version when the next one opens, so currentVersion()
+  // (effective_from <= today AND effective_to > today) picks exactly one of them on
+  // every date.
   const next = await db.query(
     `INSERT INTO price_book_versions (version_number, effective_from, effective_to, note)
-     VALUES ($1, CURRENT_DATE, NULL, $2)
-     RETURNING id, version_number`,
+     VALUES ($1, ${EFFECTIVE}, NULL, $2)
+     RETURNING id, version_number, effective_from`,
     [
       from.version_number + 1,
-      'GATE 2 reclassification (Brian, 2026-08-13): mis-filed scope_ladder and ' +
-        'setup_conversion items moved to the service lines that actually govern them. ' +
-        'SCOPE_REVIEW_AUDIT → attest is the license-relevant one. No prices changed.',
+      'GATE 2 (Brian, 2026-08-13): mis-filed items moved to the service lines that ' +
+        'actually govern them. No prices changed.',
     ]
   );
   const to = next.rows[0];
-  await db.query(`UPDATE price_book_versions SET effective_to = CURRENT_DATE WHERE id = $1`, [from.id]);
+  await db.query(
+    `UPDATE price_book_versions SET effective_to = ${EFFECTIVE} WHERE id = $1`,
+    [from.id]
+  );
 
   // Copy every column explicitly EXCEPT id/version_id/created_at, so a future column
   // addition fails loudly here rather than being silently dropped from the new version.
@@ -158,7 +202,7 @@ try {
     [to.id, JSON.stringify(RECLASSIFY), from.id]
   );
   await db.query('COMMIT');
-  console.log(`\n✓ created v${to.version_number}`);
+  console.log(`\n✓ created v${to.version_number}, effective ${String(to.effective_from).slice(0, 15)}`);
 } catch (err) {
   await db.query('ROLLBACK');
   console.error('\nFAILED — rolled back, the book is unchanged:\n', err.message);

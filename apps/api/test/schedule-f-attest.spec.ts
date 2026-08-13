@@ -101,7 +101,33 @@ test('Schedule F is loaded, mapped to attest, and queued for Spanish approval', 
   assert.equal(f.kind, 'schedule');
   assert.equal(f.is_active, true);
   assert.equal(f.needs_es_review, true, 'English controls until Brian approves the translation');
-  assert.equal(f.body_es, null, 'no unapproved Spanish ships');
+
+  // This used to assert body_es === null. That was a PROXY for "no unapproved Spanish
+  // ships", true only while no translations existed at all — and the translations now
+  // exist, written and pending approval. Rather than drop the assertion, it now tests
+  // the thing it was standing in for, which is also the stronger claim: an unapproved
+  // Spanish body may be PRESENT, and a Spanish render must still return English.
+  assert.ok(f.body_es && f.body_es.length > 0, 'Schedule F now has a pending translation');
+
+  const { renderTemplate } = await import('../src/modules/templates/service.ts');
+  // Schedule F carries the Addendum placeholders and renderTemplate refuses to render
+  // with any of them missing — the "a template variable nobody fills is a document with
+  // {{...}} in it" rule. Supply them; this test is about LANGUAGE, not the Addendum.
+  const rendered = await renderTemplate(app, 'schedule_f_attest', 'es', {
+    entity_name: 'Synthetic Entity LLC',
+    engagement_type: 'review',
+    statements_and_periods: 'FY2026',
+    reporting_framework: 'US GAAP',
+    fee_summary: 'per the Addendum',
+    deposit_summary: 'per the Addendum',
+    expected_report_date: '2026-10-01',
+  });
+  assert.match(
+    rendered.body,
+    /SCHEDULE F — ATTEST SERVICES/,
+    'a Spanish render still returns the ENGLISH body while the translation is unapproved'
+  );
+  assert.doesNotMatch(rendered.body, /ATESTIGUAMIENTO/, 'the pending Spanish did not leak');
   assert.equal(f.is_placeholder, false, 'final: flag cleared 2026-08-10 on Brian’s ruling');
 
   const mapped = await app.db.query<{ lines: string[] }>(

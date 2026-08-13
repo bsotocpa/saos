@@ -19,6 +19,7 @@ import { seedLegalV3 } from './seeds/data/legal_v3.mjs';
 import { seedScheduleF } from './seeds/data/schedule_f.mjs';
 import { seedTaxInterview } from './seeds/data/tax_interview.mjs';
 import { seedSchedulePriceLines } from './seeds/data/schedule_price_lines.mjs';
+import { seedLegalV3Es } from './seeds/data/legal_v3_es.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -64,6 +65,7 @@ export const SEEDS = [
   ['schedule_f', seedScheduleF],
   ['tax_interview', seedTaxInterview],
   ['schedule_price_lines', seedSchedulePriceLines],
+  ['legal_v3_es', seedLegalV3Es],
 ];
 
 /** Run all seeds (idempotent) using an already-connected pg client. */
