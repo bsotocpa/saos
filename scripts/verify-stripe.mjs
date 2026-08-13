@@ -12,7 +12,7 @@
 // No secret is printed. Amounts come from the price book, never a literal.
 
 import Stripe from 'stripe';
-import { createHmac } from 'node:crypto';
+// (the hand-rolled HMAC is gone — Stripe's own generateTestHeaderString does the signing)
 
 const { loadConfig } = await import('/app/apps/api/src/config.ts');
 const { makeStripeAdapter } = await import('/app/apps/api/src/modules/billing/stripe.ts');
@@ -90,12 +90,18 @@ if (!secret.startsWith('whsec_')) {
     type: 'checkout.session.completed',
     data: { object: { id: 'cs_verify', object: 'checkout.session', metadata: {} } },
   });
-  const ts = Math.floor(Date.now() / 1000);
-  const sig = createHmac('sha256', secret.replace(/^whsec_/, '')).update(`${ts}.${payload}`).digest('hex');
+  // Use STRIPE'S OWN signing helper rather than hand-rolling the HMAC.
+  //
+  // The first version of this check did roll its own and got it wrong: it stripped the
+  // `whsec_` prefix before signing, but Stripe uses the WHOLE secret string as the HMAC
+  // key. The result was a genuinely invalid signature, correctly rejected — a failing
+  // check that said nothing about the product. Signing with the library that does the
+  // verifying removes the whole class of mistake.
+  const header = stripe.webhooks.generateTestHeaderString({ payload, secret });
 
   try {
     const event = adapter.parseWebhookEvent(
-      { 'stripe-signature': `t=${ts},v1=${sig}` },
+      { 'stripe-signature': header },
       Buffer.from(payload),
       config.WEBHOOK_SECRET
     );
@@ -104,15 +110,50 @@ if (!secret.startsWith('whsec_')) {
     fail(`a correctly signed webhook was rejected: ${err.message}`);
   }
 
+  // And prove it through the REAL endpoint, not just the adapter function: this
+  // exercises Caddy, the raw-body content-type parser, and the route together. A
+  // signature that verifies in-process but fails over HTTP means the body was mangled
+  // somewhere in between, which is exactly the kind of thing that only shows up when a
+  // client has already paid.
   try {
-    adapter.parseWebhookEvent(
-      { 'stripe-signature': `t=${ts},v1=${'0'.repeat(64)}` },
-      Buffer.from(payload),
-      config.WEBHOOK_SECRET
-    );
-    fail('A FORGED SIGNATURE WAS ACCEPTED — anyone could mark invoices paid');
-  } catch {
-    pass('a forged signature is REJECTED');
+    const res = await fetch('https://api.sotoaccounting.com/webhooks/stripe', {
+      method: 'POST',
+      headers: { 'stripe-signature': header, 'content-type': 'application/json' },
+      body: payload,
+    });
+    const body = await res.text();
+    if (res.ok) pass(`the live endpoint accepts a signed event over HTTPS (${res.status} ${body.slice(0, 40)})`);
+    else fail(`the live endpoint rejected a correctly signed event: ${res.status} ${body.slice(0, 120)}`);
+  } catch (err) {
+    fail(`could not reach the live webhook endpoint: ${err.message}`);
+  }
+
+  // FORGERY: take the REAL header and corrupt only its v1 digest, so the timestamp and
+  // the header's shape stay valid. Anything else risks passing for the wrong reason.
+  //
+  // It already did once: this block used to interpolate a `ts` variable that a cleanup
+  // had deleted, so it threw a ReferenceError, the bare `catch` swallowed it, and the
+  // check reported "forged signature REJECTED" while testing nothing at all. A test
+  // that passes for the wrong reason is worse than no test — so the catch below now
+  // insists the rejection was a signature rejection.
+  const forged = header.replace(/v1=[0-9a-f]+/, `v1=${'0'.repeat(64)}`);
+  if (forged === header) {
+    fail('could not build a forged header — the check would prove nothing');
+  } else {
+    try {
+      adapter.parseWebhookEvent(
+        { 'stripe-signature': forged },
+        Buffer.from(payload),
+        config.WEBHOOK_SECRET
+      );
+      fail('A FORGED SIGNATURE WAS ACCEPTED — anyone could mark invoices paid');
+    } catch (err) {
+      if (/signature/i.test(String(err?.message))) {
+        pass('a forged signature is REJECTED (and rejected AS a signature failure)');
+      } else {
+        fail(`rejected, but for the wrong reason: ${err?.message}`);
+      }
+    }
   }
 }
 

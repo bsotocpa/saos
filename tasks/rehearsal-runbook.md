@@ -103,19 +103,25 @@ against Rehearsal Client 1, who has Schedule A signed.
 
 ## Step 6 — Deposit (PORTAL, then OPS)
 
-🔴 **KNOWN GAP — production runs `STRIPE_MODE=stub`, and stub mode refuses checkout in
-production on purpose** (503 `stripe_not_configured`). A real card payment is not
-possible today. You have two ways through:
+✅ **GAP CLOSED (2026-08-13) — real payments work.** Stripe test keys are installed and
+verified: a 4242 charge succeeds, and the webhook signature is accepted over HTTPS while
+a forgery is refused.
 
-- **Waive it (what you did last time, works now):** in OPS, on the quote, use the
+**Pay it for real:** use 4242 4242 4242 4242, any future expiry, any CVC. This exercises
+the deposit path a real client will use, which is the point of running it this way.
+
+Alternatives if you would rather not:
+
+- **Or waive it (what you did last time):** in OPS, on the quote, use the
   deposit override to set the deposit to $0 with a reason. Your CEO role holds
   `deposits.override` explicitly — verified in production — so the control is there.
-- **Or make payments real:** install Stripe **test** keys and set `STRIPE_MODE=live`.
-  That exercises the true checkout against Stripe's test environment. This is a config
-  change on the server plus a restart; say the word and I will do it.
+**You should see, after paying:** the deposit invoice marked **paid** — driven by the
+Stripe webhook arriving, not by anything you click. That is the part worth watching,
+because it is the half of the payment path a client never sees and the half that fails
+silently when it is wrong.
 
-**You should see, after waiving:** the deposit requirement satisfied, and an audit row
-recording the override with your reason.
+After waiving instead: the deposit requirement satisfied, and an audit row recording the
+override with your reason.
 
 ---
 
@@ -289,7 +295,7 @@ English until you approve those.
 | 3 | **TAX LINES ONLY** — a non-tax quote is refused at send (GATE 1, finding #19) | Enforced in code |
 | 4 | No decline/dispute path that holds the quote open | Item D, unbuilt |
 | 5 | ~~Accepted quote produces nothing~~ — **fixed, verified in production** | Closed |
-| 6 | Stripe is in stub mode; checkout refuses in production | Waive the deposit, or install test keys |
+| 6 | ~~Stripe stubbed~~ — **test keys installed and verified**; pay with 4242 | Closed |
 | 12 | ~~Portal-upload ack missing~~ — **built and armed**; throttled to one per 30 min | Closed |
 | 15 | Intake form not linked in portal nav; ES legal bodies unapproved | Small change / your approval |
 

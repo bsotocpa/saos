@@ -76,10 +76,16 @@ The seed reports it loudly as unmapped-with-live-items, and GATE 1 blocks quotin
 
 ---
 
-## GATE 3 — Payments are stubbed
+## GATE 3 — CLEARED 2026-08-13 (Stripe test keys installed)
 
-`STRIPE_MODE=stub` in production, and stub mode refuses checkout there on purpose
-(`503 stripe_not_configured`). No client can pay a deposit.
+Installed by Brian via scripts/install-stripe-test.sh. Verified in production:
+
+  · adapter reports mode 'live' — the real Stripe path, not the stub
+  · a 4242 card CHARGED in test mode (confirmed PaymentIntent, livemode=false)
+  · a correctly signed webhook is accepted, in-process AND over HTTPS through Caddy
+  · a forged signature is rejected, and rejected AS a signature failure
+
+Deposits can now be paid with 4242 4242 4242 4242, any future expiry, any CVC.
 
 ### Installing Stripe TEST keys — one command, one value
 
