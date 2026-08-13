@@ -84,17 +84,20 @@ this one.
 
 **You should see:** an acceptance confirmation.
 
-🔴 **KNOWN GAP — THIS IS FINDING #17, AND IT IS THE ONE THAT BIT YOU LAST TIME.**
-Acceptance currently produces **no visible consequence** on a client who already has a
-signed Master covering that schedule. Rehearsal Client 2 has no signed Master, so
-acceptance here should behave better than it did on Rehearsal Client 1 — but the fix is
-not built yet, so treat whatever you see at this step as unverified. I am building #17
-next; when it lands, acceptance either creates the engagement work and tasks for that
-schedule, or refuses at SEND time with "this client already has an active Schedule A —
-adding work or duplicating?"
+✅ **GAP CLOSED (2026-08-13) — finding #17 is fixed and verified in production.**
 
-**Do not stop the rehearsal here.** Carry on to step 6 — the packet path works
-independently of this gap.
+Acceptance now always produces visible consequence: an onboarding task naming the
+client AND the schedule the quote covers, assigned to you. The root cause was not the
+quote logic — the task sat inside `if (rene)` and nobody holds comms_billing, so it was
+skipped entirely. Task creation is now unconditional; only the assignee falls back.
+
+**You should see, in OPS → My Tasks:** "Start onboarding: Rehearsal Client 2 (quote
+accepted)" mentioning Schedule A.
+
+The other half of the ruling is live too: sending a quote for a schedule the client has
+ALREADY accepted is refused with "this client already has an active Schedule A — adding
+work, or duplicating?", and the answer you give is recorded on the quote. Verified
+against Rehearsal Client 1, who has Schedule A signed.
 
 ---
 
@@ -199,12 +202,20 @@ Behind it: the file is virus-scanned inline. Because ClamAV is healthy, the verd
 **still succeed** — it would sit as "awaiting scan", visible to you, and the rescan job
 would file it automatically when the scanner came back. Intake never refuses.
 
-🔴 **KNOWN GAP — the attachment acknowledgement will NOT fire here.** `attachment_acks`
-is armed, but it is wired only to the **inbound email/SMS** path, and its copy points the
-client *at* the portal ("please use the secure portal"). Sending that to someone who just
-used the portal would be nonsense, so I did not reuse it. A portal-upload confirmation
-needs its own registered automation and its own template, which you then arm. That is a
-build, not a config change — it is not in tonight's scope and I have logged it.
+✅ **GAP CLOSED (2026-08-13).** The acknowledgement now fires here. `portal_upload_acks`
+is a separate automation with its own template — receipt plus what happens next, and no
+"use the secure portal" nudge, since you are already in it. Armed in production.
+
+**You should get one email**, subject "We have your documents", naming the file, in
+English or Spanish per the client's language.
+
+🟡 **A second upload within 30 minutes will NOT send a second email.** That is the
+throttle, not a failure: ten files in one sitting is one session, not ten receipts.
+Every suppression is audited with its reason, so you can see it happened. The window is
+`documents.upload_ack_throttle_minutes` — set it to 0 to acknowledge every file.
+
+🟡 An **infected** file is never acknowledged. It is accepted and quarantined, and you
+get a task instead — that conversation is yours to have, not an automation's.
 
 ---
 
@@ -275,10 +286,11 @@ English until you approve those.
 | Step | Gap | Status |
 |---|---|---|
 | 3 | Guided tax interview has no UI — pick line items by hand | Item C, unbuilt |
+| 3 | **TAX LINES ONLY** — a non-tax quote is refused at send (GATE 1, finding #19) | Enforced in code |
 | 4 | No decline/dispute path that holds the quote open | Item D, unbuilt |
-| 5 | **Accepted quote may produce no visible consequence** | **Finding #17 — building next** |
+| 5 | ~~Accepted quote produces nothing~~ — **fixed, verified in production** | Closed |
 | 6 | Stripe is in stub mode; checkout refuses in production | Waive the deposit, or install test keys |
-| 12 | Portal-upload acknowledgement does not exist | Needs its own automation + template |
+| 12 | ~~Portal-upload ack missing~~ — **built and armed**; throttled to one per 30 min | Closed |
 | 15 | Intake form not linked in portal nav; ES legal bodies unapproved | Small change / your approval |
 
 Everything else on this path was verified working in production today.
