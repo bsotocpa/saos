@@ -468,9 +468,12 @@ const dict = {
     'Scheduling is not open yet — we will reach out to set this up.',
     'Las citas aún no están abiertas — nos comunicaremos para coordinarla.',
   ],
-  consent_en_only: [
-    '',
-    'Este texto legal se muestra en inglés porque la versión en inglés es la que rige. La traducción está en revisión y se la enviaremos cuando esté aprobada.',
+  // Shown between the Spanish and English renderings of a §7216 consent. Brian's
+  // ruling after attorney review: bilingual, with English operative. The Spanish is for
+  // comprehension; the English is the consent.
+  english_governs: [
+    'The English version governs. The Spanish is provided for your convenience.',
+    'La versión en inglés es la que rige. El texto en español se proporciona para su comodidad.',
   ],
 
   // Attachments in Messages (finding #11). The copy says where the file GOES —

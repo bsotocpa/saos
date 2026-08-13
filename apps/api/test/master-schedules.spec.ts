@@ -544,3 +544,77 @@ test('the portal accepts a later schedule, and refuses a code it was not offered
   const bad = await app.inject({ method: 'POST', url: '/portal/schedules/Z/accept', headers: cookie });
   assert.equal(bad.statusCode, 400, 'a code outside A–E is not a schedule');
 });
+
+test('a legal DOCUMENT can render in Spanish — a null subject is not "Spanish unavailable"', async () => {
+  // Found 2026-08-13, the morning after Brian approved nine translations: renderTemplate
+  // treated `subject_es === null` as "no Spanish", and every legal document has a null
+  // subject because a contract has no email subject line. So the Master, six Schedules
+  // and both consents would have rendered ENGLISH to Spanish clients forever while the
+  // admin screen showed them approved. A fallback that cannot be switched off is a wall.
+  const staffRow = await app.db.query<{ id: string }>(
+    `SELECT st.id FROM staff st JOIN roles r ON r.id = st.role_id WHERE r.key = 'ceo' LIMIT 1`
+  );
+  await app.db.query(
+    `UPDATE templates
+        SET body_es = 'CONTRATO DE PRUEBA — cuerpo en español.',
+            needs_es_review = false, es_approved_at = now(), es_approved_by_staff_id = $1
+      WHERE key = 'schedule_a_individual_tax'`,
+    [staffRow.rows[0]!.id]
+  );
+
+  const subj = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM templates
+      WHERE key = 'schedule_a_individual_tax' AND subject_en IS NULL AND subject_es IS NULL`
+  );
+  assert.equal(subj.rows[0]!.n, 1, 'the precondition: this document has no subject at all');
+
+  const { renderTemplate } = await import('../src/modules/templates/service.ts');
+  const es = await renderTemplate(app, 'schedule_a_individual_tax', 'es', {});
+  assert.match(es.body, /CONTRATO DE PRUEBA/, 'approved Spanish renders for a subjectless document');
+
+  // And an EMAIL template still requires its Spanish subject before Spanish is used —
+  // sending a Spanish body under an English subject line is worse than either.
+  await app.db.query(
+    `UPDATE templates
+        SET body_es = 'Cuerpo en español.', subject_es = NULL,
+            needs_es_review = false, es_approved_at = now(), es_approved_by_staff_id = $1
+      WHERE key = 'packet_ready_to_sign'`,
+    [staffRow.rows[0]!.id]
+  );
+  const email = await renderTemplate(app, 'packet_ready_to_sign', 'es', {
+    first_name: 'Sintética', schedules: 'A', sign_link: 'https://example.test/s',
+  });
+  assert.doesNotMatch(email.body, /Cuerpo en español/, 'an email with no Spanish subject stays English');
+});
+
+test('§7216: the client is shown the MANDATED text, bilingual, with English operative', async () => {
+  // The consent screen used to show benefit framing only, while the consent row stamped
+  // a template version whose text the client had never seen. Treas. Reg. §301.7216-3
+  // requires the mandatory statements to be IN the consent.
+  const { consentsToPresent } = await import('../src/modules/compliance/consent-presentation.ts');
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'ConsentText', email: 'consenttext@example.test', language: 'es',
+  });
+  await app.db.query(
+    `INSERT INTO engagement_packets
+       (contact_id, master_template_key, master_version, schedule_codes, status, signed_at, signature_method)
+     VALUES ($1, 'engagement_master',
+             (SELECT version FROM templates WHERE key = 'engagement_master'),
+             ARRAY['A'], 'signed', now(), 'portal_esign')`,
+    [c.id]
+  );
+
+  const { offers } = await consentsToPresent(app, c.id);
+  const use = offers.find((o) => o.kind === '7216_use');
+  assert.ok(use, 'the USE consent is offered after signing');
+
+  // The statements the regulation prescribes, in the text the client actually sees.
+  assert.match(use!.legalEn, /Federal law requires this consent form be provided to you/);
+  assert.match(use!.legalEn, /your consent will not be valid/, 'the invalid-if-conditioned statement');
+  assert.match(use!.legalEn, /1-800-366-4484/, 'the TIGTA contact');
+  assert.ok(use!.templateVersion >= 1, 'the version shown is the version stamped on the record');
+
+  // Wet-signature ruled lines are gone: this is signed by tapping a button.
+  assert.doesNotMatch(use!.legalEn, /_{6,}/, 'no ruled signature lines in an e-signed consent');
+  if (use!.legalEs) assert.doesNotMatch(use!.legalEs, /_{6,}/);
+});

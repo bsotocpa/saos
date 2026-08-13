@@ -146,7 +146,7 @@ export default function SignPage() {
         <section className="card" style={{ borderColor: 'var(--electric)' }}>
           <h2>{t('packet_title')}</h2>
           <p className="muted">{t('packet_intro')}</p>
-          {lang === 'es' ? <p className="muted small">{t('consent_en_only')}</p> : null}
+          {lang === 'es' ? <p className="muted small">{t('english_governs')}</p> : null}
 
           <p className="small">
             <strong>{t('packet_includes')}:</strong>{' '}
@@ -267,7 +267,7 @@ export default function SignPage() {
         <section className="card">
           <h2>{t('schedules_title')}</h2>
           <p className="muted">{t('schedules_intro')}</p>
-          {lang === 'es' ? <p className="muted small">{t('consent_en_only')}</p> : null}
+          {lang === 'es' ? <p className="muted small">{t('english_governs')}</p> : null}
           {schedules.map((s) => (
             <div key={s.schedule_code} style={{ marginTop: 16 }}>
               {/* The title already reads "Schedule D — …", so no badge repeating the letter. */}

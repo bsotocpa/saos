@@ -22,6 +22,7 @@
 //    incorporates it. Portal acceptance without a signed Master is refused.
 
 import type { FastifyInstance } from 'fastify';
+import { stripWetSignatureLines } from '../compliance/consent-presentation.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
 
@@ -657,7 +658,16 @@ export async function renderMasterForPacket(
   const rendered = await renderTemplate(app, p.master_template_key, language, {
     schedules_attached: titleRows.rows.map((r) => `${r.schedule_code} — ${r.title}`).join('; '),
   });
-  return { body: rendered.body, scheduleCodes: p.schedule_codes, titles };
+  // WET-SIGNATURE LINES DROPPED (Brian, 2026-08-13). This packet is signed in the
+  // portal by typing a name and tapping a button; ruled lines reading
+  // "Client signature: ______" tell the reader to look for a pen and imply the tap was
+  // not the signature. Stripped at render, not removed from the template, because the
+  // paper lane still exists for older filing years.
+  return {
+    body: stripWetSignatureLines(rendered.body),
+    scheduleCodes: p.schedule_codes,
+    titles,
+  };
 }
 
 /**

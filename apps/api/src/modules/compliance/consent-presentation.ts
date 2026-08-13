@@ -44,6 +44,46 @@ export interface ConsentOffer {
   /** Benefit framing, EN. Spanish follows Brian's translation approval. */
   headlineEn: string;
   bodyEn: string;
+  /**
+   * THE CONSENT ITSELF — the §7216 text with the statements the regulation prescribes.
+   *
+   * This was missing, and its absence was a compliance defect rather than a cosmetic
+   * one. The screen showed benefit framing and captured an answer, and the consent row
+   * stamped policy_version = v3-t{n} pointing at template text the client had never been
+   * shown. Treas. Reg. §301.7216-3 requires the mandatory statements to be IN the
+   * consent — "Federal law requires this consent form be provided to you", the
+   * invalid-if-conditioned sentence, the duration rule, the TIGTA contact. A summary is
+   * not a consent, however honestly it summarises.
+   */
+  legalEn: string;
+  /**
+   * The approved Spanish rendering, or null when it is unapproved or absent.
+   *
+   * Brian's ruling (attorney green light, 2026-08-13): ship BILINGUAL with English
+   * operative. So this never replaces legalEn — both are shown, and the English governs.
+   */
+  legalEs: string | null;
+  /** The template version stamped onto the consent record, so the screen and the audit row agree. */
+  templateVersion: number;
+}
+
+/**
+ * Wet-signature ruled lines have no place in an e-signed consent (Brian's ruling,
+ * 2026-08-13: "drop from e-sign rendering now").
+ *
+ * A screen where consent is given by tapping a button should not show
+ * "Client signature: ______" — it invites the reader to look for a pen, and it implies
+ * the tap was not the signature. Stripped at RENDER time rather than removed from the
+ * stored template, because the paper lane still exists for older filing years and the
+ * template is the same text either way.
+ */
+export function stripWetSignatureLines(body: string): string {
+  return body
+    .split('\n')
+    .filter((line) => !/_{6,}/.test(line))
+    .join('\n')
+    .replace(/\n{3,}$/, '\n')
+    .trimEnd();
 }
 
 const USE_OFFER = {
@@ -142,21 +182,46 @@ export async function consentsToPresent(
     return { masterSigned, offers, withheld };
   }
 
+  /**
+   * Load the actual §7216 texts. An offer that cannot carry its own consent text is not
+   * an offer we may present, so a missing or placeholder template WITHHOLDS the consent
+   * rather than showing framing with nothing behind it.
+   */
+  const texts = await loadConsentTexts(app);
+
   // USE — every client, benefit-framed.
   if (answered.has('7216_use')) {
     withheld.push({ kind: '7216_use', reason: 'Already answered — a declined consent is not re-asked.' });
+  } else if (!texts.consent_7216_use) {
+    withheld.push({
+      kind: '7216_use',
+      reason: 'The §7216 USE text is missing or still a placeholder — a consent cannot be presented without it.',
+    });
   } else {
-    offers.push({ ...USE_OFFER, reason: 'Every client is offered the USE consent after signing.' });
+    offers.push({
+      ...USE_OFFER,
+      reason: 'Every client is offered the USE consent after signing.',
+      ...texts.consent_7216_use,
+    });
   }
 
   // DISCLOSE — Hilo-bridge clients, or an actual referral moment.
   const hilo = await hasHiloBridge(app, contactId);
   if (answered.has('7216_disclose')) {
     withheld.push({ kind: '7216_disclose', reason: 'Already answered — a declined consent is not re-asked.' });
+  } else if (!texts.consent_7216_disclose) {
+    withheld.push({
+      kind: '7216_disclose',
+      reason: 'The §7216 DISCLOSE text is missing or still a placeholder — a consent cannot be presented without it.',
+    });
   } else if (hilo.bridge) {
-    offers.push({ ...DISCLOSE_OFFER, reason: `Hilo bridge — ${hilo.reason}` });
+    offers.push({ ...DISCLOSE_OFFER, reason: `Hilo bridge — ${hilo.reason}`, ...texts.consent_7216_disclose });
   } else if (opts.atReferralMoment) {
-    offers.push({ ...DISCLOSE_OFFER, reason: 'Presented at an actual referral moment.' });
+    offers.push({
+      ...DISCLOSE_OFFER,
+      reason: 'Presented at an actual referral moment.',
+      ...texts.consent_7216_disclose,
+    });
   } else {
     withheld.push({
       kind: '7216_disclose',
@@ -182,6 +247,46 @@ export async function consentsToPresent(
  * Record the client's answer. A DECLINE is stored, not ignored — it is what stops
  * the same consent being offered at every subsequent onboarding step.
  */
+/**
+ * The §7216 texts as the client must see them: mandated statements intact, wet-signature
+ * ruled lines stripped, Spanish included only once Brian has approved it.
+ *
+ * Returns null for a key whose template is missing, inactive, or still a placeholder —
+ * the caller withholds that consent rather than presenting framing with nothing behind
+ * it. The placeholder gate is the same one that blocks placeholder documents from
+ * reaching any production client; a consent is exactly the wrong place to make an
+ * exception.
+ */
+async function loadConsentTexts(
+  app: FastifyInstance
+): Promise<Record<string, { legalEn: string; legalEs: string | null; templateVersion: number } | null>> {
+  const { rows } = await app.db.query<{
+    key: string;
+    body_en: string;
+    body_es: string | null;
+    version: number;
+    needs_es_review: boolean;
+  }>(
+    `SELECT key, body_en, body_es, version, needs_es_review
+       FROM templates
+      WHERE key IN ('consent_7216_use', 'consent_7216_disclose')
+        AND is_active AND NOT is_placeholder`
+  );
+  const out: Record<string, { legalEn: string; legalEs: string | null; templateVersion: number } | null> = {
+    consent_7216_use: null,
+    consent_7216_disclose: null,
+  };
+  for (const r of rows) {
+    out[r.key] = {
+      legalEn: stripWetSignatureLines(r.body_en),
+      // Unapproved Spanish never ships — same rule the render path enforces.
+      legalEs: r.body_es && !r.needs_es_review ? stripWetSignatureLines(r.body_es) : null,
+      templateVersion: r.version,
+    };
+  }
+  return out;
+}
+
 export async function recordConsentAnswer(
   app: FastifyInstance,
   contactId: string,

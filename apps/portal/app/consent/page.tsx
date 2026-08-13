@@ -25,6 +25,9 @@ interface ConsentOffer {
   kind: '7216_use' | '7216_disclose';
   headlineEn: string;
   bodyEn: string;
+  legalEn: string;
+  legalEs: string | null;
+  templateVersion: number;
 }
 
 export default function ConsentPage() {
@@ -94,10 +97,25 @@ export default function ConsentPage() {
     <>
       {/* SOLELY the consent from here down. */}
       <h1>{offer.headlineEn}</h1>
-      {lang === 'es' ? <p className="muted small">{t('consent_en_only')}</p> : null}
 
       <section className="card">
         <p style={{ whiteSpace: 'pre-wrap' }}>{offer.bodyEn}</p>
+
+        {/* THE CONSENT ITSELF.
+            This screen used to show only the framing above and capture an answer, while
+            the consent row stamped a template version the client had never been shown.
+            §7216 requires the mandated statements to be IN the consent, so they are here.
+
+            Bilingual with English operative (Brian's ruling after attorney review):
+            Spanish first when that is the client's language and the translation is
+            approved, English always, and a line saying which one governs. */}
+        {offer.legalEs ? (
+          <>
+            <p className="small" style={{ whiteSpace: 'pre-wrap' }}>{offer.legalEs}</p>
+            <p className="muted small">{t('english_governs')}</p>
+          </>
+        ) : null}
+        <p className="small" style={{ whiteSpace: 'pre-wrap' }}>{offer.legalEn}</p>
 
         <p className="small">
           <strong>{t('consent_duration_label')}</strong> {t('consent_duration_body')}

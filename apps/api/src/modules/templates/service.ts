@@ -51,7 +51,23 @@ export async function renderTemplate(
   // Falling back to English rather than refusing is deliberate: a Spanish reader
   // receiving the controlling English text is imperfect; a Spanish reader
   // receiving NOTHING is worse, and English is what governs either way.
-  const esUnavailable = t.body_es === null || t.subject_es === null;
+  /*
+   * A SUBJECT IS ONLY REQUIRED WHERE THERE IS ONE.
+   *
+   * This used to read `t.body_es === null || t.subject_es === null`, which quietly made
+   * Spanish impossible for every legal DOCUMENT: the Master, the six Schedules and the
+   * two §7216 consents all have subject_en NULL, because a contract has no email
+   * subject line. subject_es was therefore also NULL, esUnavailable was permanently
+   * true, and the render fell back to English no matter how carefully the translation
+   * had been reviewed and approved.
+   *
+   * Found on 2026-08-13, the morning after Brian approved nine translations — every one
+   * of which would have rendered English to Spanish-speaking clients while the admin
+   * screen showed them as approved. A fallback that cannot be switched off is not a
+   * fallback, it is a wall.
+   */
+  const needsSubject = t.subject_en !== null;
+  const esUnavailable = t.body_es === null || (needsSubject && t.subject_es === null);
   const esUnapproved = t.needs_es_review === true;
   const useSpanish = language === 'es' && !esUnavailable && !esUnapproved;
 
