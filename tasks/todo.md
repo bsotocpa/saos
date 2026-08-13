@@ -911,9 +911,12 @@ not reachability."
       contacts, not one** — Jackson Flores, Josean Irizarry, Joseph Basilone, one
       recording each. My first report said "3 recordings on a contact" because I never
       grouped by `contact_id`; the ops Documents list showed three distinct client
-      names side by side and made the error obvious. Brian's ruling named Jackson
-      Flores; the same reasoning presumably covers the other two, but he has not ruled
-      on them and I am not extending a ruling by inference.
+      names side by side and made the error obvious.
+      **Brian then ruled explicitly for ALL THREE (2026-08-12)**: Jackson Flores,
+      Josean Irizarry and Joseph Basilone are all real contacts, same ruling — no
+      `is_test` flags, recordings stay on their records as client documents. All three
+      scanned clean in the backfill, so the corrected record stands: real client data
+      was present in production during the rehearsal, and there was no exposure.
       For Jackson Flores — business partner AND a real tax client — the record was
       already correct in every respect:
       · `is_test` stays FALSE — he is a real client, and flagging him would have
