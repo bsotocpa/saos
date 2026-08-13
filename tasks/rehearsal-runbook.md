@@ -15,7 +15,31 @@ so it works either way, but one tab each stops you losing your place.
 
 **Gaps are marked inline.** 🔴 means it will not work today and why. 🟡 means it works
 but not the way you would expect. Nothing below is a guess — each one was checked
-against production on 2026-08-12.
+against production, and everything was **re-confirmed on 2026-08-13** after the
+attorney changes.
+
+---
+
+## ⚠ BEFORE YOU START — two approvals, about thirty seconds
+
+Both are in **OPS → Admin → Templates**, and both are consequences of last night's
+changes rather than anything broken:
+
+1. **`engagement_master` — approve ES.** Adding the governing-language clause changed
+   the Spanish text, so the system re-queued your approval. It is working as designed:
+   an approval means you read *that* text, and that text now has a new section 10.
+   **Until you approve it, a Spanish-speaking client gets the English Master** (which is
+   legal and logged — but it is not what you want to see in the rehearsal).
+2. **`packet_ready_to_sign` — approve ES.** This one was never approved; you approved
+   the nine legal instruments and this is the covering email. Without it, an ES client
+   gets the "ready to sign" email in English while the documents are bilingual.
+
+Everything else is approved: both §7216 consents, the Master's English, all six
+Schedules.
+
+**Nothing else will stop you.** Every surface below returned 200 from production this
+morning, and Rehearsal Client 2 is confirmed at zero quotes, zero engagements, zero
+packets, zero documents, zero threads, zero consents, with an untouched checklist.
 
 ---
 
@@ -138,6 +162,17 @@ tax), with `{{schedules_attached}}` filled in with the actual schedule codes, an
 late-fee disclosure present. No `{{...}}` placeholders anywhere. If you see a raw
 template variable, stop and tell me.
 
+**New since you last read this (2026-08-13):**
+
+- **Section 10 is the governing-language clause**, exactly the attorney's text, with
+  Entire Agreement renumbered to 11. Verified rendering in **both** English and Spanish.
+  The version record carries the note that the attorney's third sentence — requiring all
+  communications in English — was deliberately omitted as contradicting bilingual
+  operations, pending his written confirmation.
+- **The wet-signature ruled lines are gone.** No "Client signature: ______" on a document
+  you sign by typing your name and tapping a button. They are stripped at render, not
+  deleted from the template, because the paper lane still exists for older filing years.
+
 ---
 
 ## Step 8 — Send for signature (OPS)
@@ -175,6 +210,29 @@ stamped on it.
 nav, no checklist, no progress bar, no thank-you residue. It states the consent text,
 its **duration**, an affirmative action, and a **decline styled exactly as prominently
 as the accept**.
+
+**This step changed materially on 2026-08-13, and it is worth reading the screen.**
+
+Until yesterday this page showed only the benefit framing ("Want us to look for savings
+you have not asked about?") and captured your answer — while the consent record stamped a
+template version whose text had never been put in front of you. That was a compliance
+defect, not a cosmetic one: §7216 requires the mandated statements to be **in** the
+consent.
+
+So the screen now carries the actual consent. You should see, below the framing:
+
+- **"Federal law requires this consent form be provided to you…"**
+- the sentence saying the consent is **invalid if we condition service on it**
+- the recipient, the information, the purpose, the **duration**
+- the **TIGTA** contact block (1-800-366-4484)
+- and **no ruled signature lines** — you consent by tapping, not signing
+
+If your client language is Spanish and the translation is approved, the **Spanish appears
+first, the English below it, and a line stating the English governs.** That is the
+attorney-approved shape: bilingual, English operative.
+
+🟡 RC2's language is **English**, so you will see the English consent only. To see the
+bilingual version, switch the language toggle in the portal before this step.
 
 This is the Rev. Proc. 2013-14 isolation rule and it is launch-gate tier. If you can see
 navigation or checklist chrome on that screen, that is a compliance defect, not a
@@ -286,6 +344,21 @@ English until you approve those.
 3. **My Tasks** — anything the journey generated.
 
 ---
+
+## Re-confirmed against production, 2026-08-13 (morning of the run)
+
+| surface | result |
+|---|---|
+| portal home, /sign, /consent, /documents, /messages, /intake/soto_intake | 200 |
+| ops home, /documents | 200 |
+| Cal.com onboarding-consultation | 200 |
+| Stripe webhook endpoint | 401 unauthenticated (route live) |
+| RC2 record | 0 quotes · 0 engagements · 0 packets · 0 documents · 0 threads · 0 consents · checklist untouched |
+| booking.client_booking_url | set to the sotocpa onboarding link |
+| armed automations | attachment_acks, portal_upload_acks |
+| price book in force today | v2 (v3 with SCOPE_ADMIN_TRAINING → C takes effect tomorrow; irrelevant to a tax run, and GATE 1 blocks non-tax anyway) |
+| Spanish rendering | Schedule A confirmed rendering ES in production |
+| governing-language clause | renders in EN and ES packet output, sections 10/11 correct, no wet lines |
 
 ## Summary of gaps you will hit, in order
 
