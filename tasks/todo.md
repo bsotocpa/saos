@@ -905,9 +905,16 @@ not reachability."
       healthy. Root `npm test`: **352/352**
 - [x] **#15 — RESOLVED: production DID contain real client data (Brian's ruling,
       2026-08-12). Not a data-hygiene defect — a corrected premise.**
-      The backfill checked rather than assumed and found 3 `recording` documents on a
-      contact with `soto_status = 'active'`, `is_test = false`. That contact is
-      **Jackson Flores — business partner AND a real tax client**. The record was
+      The backfill checked rather than assumed and found 3 `recording` documents on
+      non-test contacts with `soto_status = 'active'`.
+      **CORRECTION (mine, caught by the #16 page): those are THREE DIFFERENT
+      contacts, not one** — Jackson Flores, Josean Irizarry, Joseph Basilone, one
+      recording each. My first report said "3 recordings on a contact" because I never
+      grouped by `contact_id`; the ops Documents list showed three distinct client
+      names side by side and made the error obvious. Brian's ruling named Jackson
+      Flores; the same reasoning presumably covers the other two, but he has not ruled
+      on them and I am not extending a ruling by inference.
+      For Jackson Flores — business partner AND a real tax client — the record was
       already correct in every respect:
       · `is_test` stays FALSE — he is a real client, and flagging him would have
         excluded a real client from measurement, the mirror image of the bug the flag

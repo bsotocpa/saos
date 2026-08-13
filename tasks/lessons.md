@@ -475,3 +475,17 @@ store the transition, not the reading. `since` updates only when the state chang
 **And put the consequence next to it**: the dashboard names the client-facing effect
 ("4 uploads waiting to be filed — clients are still being chased for them"), because
 that is what makes it urgent rather than merely red.
+
+## Group by the key before reporting a count
+**What happened**: I reported "3 recordings on a contact with soto_status = active" to
+Brian. The query returned three rows each showing `is_test:false, status:active`; I read
+the repetition as one contact and never grouped by `contact_id`. They were THREE
+different real clients — Jackson Flores, Josean Irizarry, Joseph Basilone. Brian ruled
+on the one name I gave him, so my error narrowed the scope of his own decision.
+**Rule**: any statement of the form "N things on a X" must come from a query that
+GROUPS BY X, not from eyeballing N rows that happen to share column values. If the
+report names an entity, the query must have selected that entity's identity.
+**How it surfaced**: the ops Documents page listed three distinct client names side by
+side and the error was instantly obvious. Building the surface found the bug in my own
+reporting — which is the argument for surfaces over queries: a list a human reads gets
+audited by every human who reads it.
