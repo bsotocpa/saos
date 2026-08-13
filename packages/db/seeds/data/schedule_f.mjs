@@ -109,16 +109,46 @@ export async function seedScheduleF(client) {
     'reporting_framework', 'fee_summary', 'deposit_summary', 'expected_report_date',
   ];
 
-  const existing = await client.query(`SELECT key, is_placeholder FROM templates WHERE key = $1`, [KEY]);
+  const existing = await client.query(
+    `SELECT key, is_placeholder, body_en, version, es_approved_at IS NOT NULL AS es_approved
+       FROM templates WHERE key = $1`,
+    [KEY]
+  );
   if (existing.rows[0]) {
-    await client.query(
-      `UPDATE templates
-       SET body_en = $2, variables = $3::jsonb, kind = 'schedule', schedule_code = 'F',
-           is_active = true, is_placeholder = false, needs_es_review = true,
-           version = version + 1
-       WHERE key = $1`,
-      [KEY, SCHEDULE_F, JSON.stringify(variables)]
-    );
+    /*
+     * ONLY TOUCH IT IF IT ACTUALLY CHANGED.
+     *
+     * This block used to rewrite the body, set needs_es_review = true and bump the
+     * version on EVERY deploy. Schedule F reached v20 without its text ever changing,
+     * and — worse — every deploy silently un-approved the Spanish. Brian approved the
+     * translation on the 12th and a deploy the same night queued it again, leaving the
+     * contradictory state needs_es_review = true WITH es_approved_at set.
+     *
+     * A seed that undoes a human decision every time it runs is not idempotent, it is
+     * a treadmill.
+     */
+    if (existing.rows[0].body_en === SCHEDULE_F) {
+      // Text unchanged: leave version, approval and review flag exactly as they are.
+      await client.query(
+        `UPDATE templates
+           SET variables = $2::jsonb, kind = 'schedule', schedule_code = 'F',
+               is_active = true, is_placeholder = false
+         WHERE key = $1`,
+        [KEY, JSON.stringify(variables)]
+      );
+    } else {
+      // Text genuinely changed: re-queue the translation the way the admin path does,
+      // clearing the stale approval rather than leaving it contradicting the flag.
+      await client.query(
+        `UPDATE templates
+           SET body_en = $2, variables = $3::jsonb, kind = 'schedule', schedule_code = 'F',
+               is_active = true, is_placeholder = false,
+               needs_es_review = true, es_approved_at = NULL, es_approved_by_staff_id = NULL,
+               version = version + 1
+         WHERE key = $1`,
+        [KEY, SCHEDULE_F, JSON.stringify(variables)]
+      );
+    }
   } else {
     await client.query(
       `INSERT INTO templates
@@ -143,7 +173,16 @@ export async function seedScheduleF(client) {
 
   const emailAdded = await seedPacketEmail(client);
 
-  const flag = await client.query(`SELECT is_placeholder FROM templates WHERE key = $1`, [KEY]);
-  return `Schedule F: loaded (${flag.rows[0].is_placeholder ? 'PLACEHOLDER' : 'final'}), mapped to the attest service line, ES queued` +
-    (emailAdded ? '; packet_ready_to_sign email seeded' : '');
+  // Report what actually happened. "ES queued" was printed unconditionally and became a
+  // false statement the moment the seed stopped re-queueing unchanged text.
+  const flag = await client.query(
+    `SELECT is_placeholder, version, needs_es_review FROM templates WHERE key = $1`,
+    [KEY]
+  );
+  const f = flag.rows[0];
+  return (
+    `Schedule F: ${f.is_placeholder ? 'PLACEHOLDER' : 'final'}, v${f.version}, mapped to attest; ` +
+    `Spanish ${f.needs_es_review ? 'AWAITING approval' : 'approved'}` +
+    (emailAdded ? '; packet_ready_to_sign email seeded' : '')
+  );
 }
