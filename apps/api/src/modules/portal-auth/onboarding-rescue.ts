@@ -24,14 +24,14 @@ interface OnboardingRow {
   variant: string; created_at: Date;
   deposit_paid_at: Date | null; deposit_amount_cents: number | null;
   step_confirm_info_at: Date | null; step_sign_docs_at: Date | null;
-  step_upload_prior_return_at: Date | null; completed_at: Date | null;
+  step_upload_documents_at: Date | null; completed_at: Date | null;
   stalled_flagged_at: Date | null;
 }
 
 /** Where this onboarding actually stands (staff-visible pipeline stage). */
 export function stageOf(row: OnboardingRow): OnboardingStage {
   if (row.completed_at) return 'complete';
-  if (row.step_upload_prior_return_at) return 'docs';
+  if (row.step_upload_documents_at) return 'docs';
   if (row.step_confirm_info_at || row.step_sign_docs_at) return 'questionnaire';
   return 'deposit';
 }
@@ -78,7 +78,7 @@ export async function runOnboardingRescueJob(
   const { rows } = await app.db.query<OnboardingRow>(
     `SELECT o.contact_id, c.first_name, c.last_name, o.variant, o.created_at,
             o.deposit_paid_at, o.deposit_amount_cents,
-            o.step_confirm_info_at, o.step_sign_docs_at, o.step_upload_prior_return_at,
+            o.step_confirm_info_at, o.step_sign_docs_at, o.step_upload_documents_at,
             o.completed_at, o.stalled_flagged_at
      FROM portal_onboarding o
      JOIN contacts c ON c.id = o.contact_id
@@ -158,7 +158,7 @@ export async function onboardingPipeline(app: FastifyInstance) {
   const { rows } = await app.db.query<OnboardingRow & { email: string | null }>(
     `SELECT o.contact_id, c.first_name, c.last_name, c.email, o.variant, o.created_at,
             o.deposit_paid_at, o.deposit_amount_cents,
-            o.step_confirm_info_at, o.step_sign_docs_at, o.step_upload_prior_return_at,
+            o.step_confirm_info_at, o.step_sign_docs_at, o.step_upload_documents_at,
             o.completed_at, o.stalled_flagged_at
      FROM portal_onboarding o
      JOIN contacts c ON c.id = o.contact_id

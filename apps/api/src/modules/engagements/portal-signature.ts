@@ -197,10 +197,21 @@ export async function signPacketInPortal(
     [session.contactId]
   );
   await app.db.query(
-    `UPDATE portal_onboarding SET completed_at = now()
-     WHERE contact_id = $1 AND completed_at IS NULL
-       AND step_confirm_info_at IS NOT NULL AND step_sign_docs_at IS NOT NULL
-       AND step_upload_prior_return_at IS NOT NULL AND step_book_consult_at IS NOT NULL`,
+    // Same completion rule as the checklist route: the retired book_consult step is
+    // gone, and the deposit only counts when one was actually owed. Leaving the old
+    // condition here would have meant no client could finish onboarding again.
+    `UPDATE portal_onboarding o SET completed_at = now()
+      WHERE o.contact_id = $1 AND o.completed_at IS NULL
+        AND o.step_sign_docs_at IS NOT NULL
+        AND o.step_confirm_info_at IS NOT NULL
+        AND o.step_upload_documents_at IS NOT NULL
+        AND o.step_track_services_at IS NOT NULL
+        AND (
+          o.step_pay_deposit_at IS NOT NULL
+          OR NOT EXISTS (
+            SELECT 1 FROM quotes q WHERE q.contact_id = $1 AND q.deposit_invoice_id IS NOT NULL
+          )
+        )`,
     [session.contactId]
   );
 

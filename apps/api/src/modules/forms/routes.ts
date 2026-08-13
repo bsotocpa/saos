@@ -37,7 +37,18 @@ const SubmitBody = z.object({
 });
 
 const PUBLIC_FORMS = new Set(['soto_intake', 'hilo_intake']);
-const ONBOARDING_STEPS = ['confirm_info', 'sign_docs', 'upload_prior_return', 'book_consult'] as const;
+/*
+ * The client checklist, in the order Brian ruled after the rehearsal (2026-08-13).
+ *
+ * Deposit-first: services do not start before it is paid. "book_consult" is GONE —
+ * a client only reaches a quote after the discovery meeting, so asking them to book
+ * one asks for something already done. Its column survives (it holds real dates);
+ * booking moved to Quick actions as "Schedule a Call/Meeting".
+ *
+ * pay_deposit is NOT in this list on purpose: it completes itself when the deposit
+ * invoice is paid. A client cannot tick it and should not have to.
+ */
+const ONBOARDING_STEPS = ['sign_docs', 'confirm_info', 'upload_documents', 'track_services'] as const;
 
 async function loadSubmission(app: FastifyInstance, id: string, resumeToken: string) {
   const { rows } = await app.db.query<{ id: string; form_key: string; status: string; answers: Record<string, unknown> }>(
@@ -154,8 +165,8 @@ export function registerFormRoutes(app: FastifyInstance): void {
   app.get('/portal/onboarding', { preHandler: [app.authenticateClient] }, async (request) => {
     const client = request.client!;
     const { rows } = await app.db.query(
-      `SELECT variant, step_confirm_info_at, step_sign_docs_at, step_upload_prior_return_at,
-              step_book_consult_at, completed_at
+      `SELECT variant, step_sign_docs_at, step_pay_deposit_at, step_confirm_info_at,
+              step_upload_documents_at, step_track_services_at, completed_at
        FROM portal_onboarding WHERE contact_id = $1`,
       [client.contactId]
     );
@@ -180,12 +191,63 @@ export function registerFormRoutes(app: FastifyInstance): void {
       [client.contactId]
     );
     const rawBookingUrl = bookingUrl.rows[0]?.value ?? null;
+
+    /*
+     * PAY DEPOSIT completes itself.
+     *
+     * The client cannot tick this step and should not have to: the system already knows
+     * whether the deposit invoice is paid. Asking someone to confirm something we can
+     * see is how a checklist starts lying — and during the rehearsal the deposit was
+     * genuinely paid while the checklist would have shown it outstanding.
+     *
+     * Written back to the column rather than computed on the fly so the completion has
+     * a DATE, the same as every other step.
+     */
+    const deposit = await app.db.query<{ paid: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM invoices i
+          JOIN quotes q ON q.deposit_invoice_id = i.id
+         WHERE q.contact_id = $1 AND i.status = 'paid'
+       ) AS paid`,
+      [client.contactId]
+    );
+    if (deposit.rows[0]!.paid) {
+      await app.db.query(
+        `UPDATE portal_onboarding
+            SET step_pay_deposit_at = COALESCE(step_pay_deposit_at, now())
+          WHERE contact_id = $1 AND step_pay_deposit_at IS NULL`,
+        [client.contactId]
+      );
+      if (rows[0]) (rows[0] as Record<string, unknown>).step_pay_deposit_at = new Date().toISOString();
+    }
+
+    // Whether a deposit is even owed — a client with none should not stare at a step
+    // they can never complete.
+    const depositOwed = await app.db.query<{ owed: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM quotes q WHERE q.contact_id = $1 AND q.deposit_invoice_id IS NOT NULL
+       ) AS owed`,
+      [client.contactId]
+    );
+
+    const settings = await app.db.query<{ key: string; value: string | null }>(
+      `SELECT key, value #>> '{}' AS value FROM app_settings
+        WHERE key IN ('booking.support_booking_url', 'payments.irs_url', 'payments.state_url')`
+    );
+    const byKey = Object.fromEntries(settings.rows.map((r) => [r.key, r.value]));
+    const identityRow = identity.rows[0] ?? { name: null, email: null };
+
     return {
       onboarding: rows[0] ?? null,
       pendingSignatures: pendingEnvelopes.rows[0]!.n,
-      bookingUrl: rawBookingUrl
-        ? prefillBookingUrl(rawBookingUrl, identity.rows[0] ?? { name: null, email: null })
+      bookingUrl: rawBookingUrl ? prefillBookingUrl(rawBookingUrl, identityRow) : null,
+      depositApplies: depositOwed.rows[0]!.owed,
+      // "Schedule a Call/Meeting" (Quick actions) and the estimated-payment links.
+      supportBookingUrl: byKey['booking.support_booking_url']
+        ? prefillBookingUrl(byKey['booking.support_booking_url']!, identityRow)
         : null,
+      irsPaymentUrl: byKey['payments.irs_url'] ?? null,
+      statePaymentUrl: byKey['payments.state_url'] ?? null,
     };
   });
 
@@ -203,11 +265,28 @@ export function registerFormRoutes(app: FastifyInstance): void {
         `UPDATE portal_onboarding SET step_${step}_at = COALESCE(step_${step}_at, now()) WHERE contact_id = $1`,
         [client.contactId]
       );
+      /*
+       * The checklist is finished when every step the CLIENT can see is done.
+       *
+       * The deposit is conditional: a client who was never asked for one must not be
+       * held permanently at 4/5 by a step that cannot apply to them. And book_consult
+       * is deliberately absent — it is retired, and leaving it in this condition would
+       * have meant no client could ever finish onboarding again.
+       */
       await app.db.query(
-        `UPDATE portal_onboarding SET completed_at = now()
-         WHERE contact_id = $1 AND completed_at IS NULL
-           AND step_confirm_info_at IS NOT NULL AND step_sign_docs_at IS NOT NULL
-           AND step_upload_prior_return_at IS NOT NULL AND step_book_consult_at IS NOT NULL`,
+        `UPDATE portal_onboarding o SET completed_at = now()
+          WHERE o.contact_id = $1 AND o.completed_at IS NULL
+            AND o.step_sign_docs_at IS NOT NULL
+            AND o.step_confirm_info_at IS NOT NULL
+            AND o.step_upload_documents_at IS NOT NULL
+            AND o.step_track_services_at IS NOT NULL
+            AND (
+              o.step_pay_deposit_at IS NOT NULL
+              OR NOT EXISTS (
+                SELECT 1 FROM quotes q
+                 WHERE q.contact_id = $1 AND q.deposit_invoice_id IS NOT NULL
+              )
+            )`,
         [client.contactId]
       );
       return { status: 'ok' };

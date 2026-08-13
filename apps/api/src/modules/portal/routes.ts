@@ -236,13 +236,35 @@ export function registerPortalRoutes(app: FastifyInstance): void {
   app.get('/portal/documents', scoped, async (request) => {
     const client = request.client!;
     const { rows } = await app.db.query(
+      // Withdrawn files are gone from the client's view but not from the record —
+      // see withdrawDocument(). A client who uploaded the wrong thing should not keep
+      // seeing it; an auditor should still be able to.
       `SELECT id, category, status, filename, tax_year, uploaded_at
        FROM documents
-       WHERE contact_id = $1 AND archived_at IS NULL
+       WHERE contact_id = $1 AND archived_at IS NULL AND withdrawn_at IS NULL
        ORDER BY uploaded_at DESC`,
       [client.contactId]
     );
     return { documents: rows };
+  });
+
+  /**
+   * Withdraw a file uploaded by mistake (Brian's ruling: withdraw, never delete).
+   *
+   * Scoped to the session contact, so a client can only withdraw their own — and an
+   * unknown id returns the same 404 as someone else's, with no existence oracle.
+   */
+  app.post<{ Params: { id: string } }>('/portal/documents/:id/withdraw', scoped, async (request) => {
+    const client = request.client!;
+    const id = z.uuid().parse(request.params.id);
+    const body = z.object({ reason: z.string().max(300).optional() }).parse(request.body ?? {});
+    const { withdrawDocument } = await import('../documents/service.ts');
+    return withdrawDocument(
+      app,
+      id,
+      { type: 'client', id: client.portalUserId, label: client.email, ip: request.ip },
+      { reason: body.reason, clientContactId: client.contactId }
+    );
   });
 
   // My Returns: delivered final return PDFs (ATX handoff), all years.

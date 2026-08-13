@@ -140,6 +140,31 @@ export default function DocumentsPage() {
               >
                 {t('download')}
               </a>
+              {/* REMOVE = WITHDRAW, never delete (Brian's ruling, 2026-08-13). A client
+                  who uploads the wrong file needs an undo; the record needs to keep the
+                  fact that they sent it. So this hides the file, un-fulfils whatever it
+                  was answering — the chase resumes — and leaves the row stamped with
+                  who withdrew it. The confirm says exactly that, because "Remove" on its
+                  own implies a deletion we are not doing. */}
+              <button
+                className="btn ghost"
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  if (!window.confirm(t('doc_withdraw_confirm'))) return;
+                  setBusy(true);
+                  void (async () => {
+                    try {
+                      await api(`/portal/documents/${d.id}/withdraw`, { method: 'POST' });
+                      await load();
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+              >
+                {t('doc_withdraw')}
+              </button>
             </li>
           ))}
         </ul>

@@ -193,7 +193,22 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
         `INSERT INTO business_members (business_id, contact_id, member_role, is_primary) VALUES ($1, $2, 'owner', true)`,
         [businessId, contactId]
       );
-      await runSosCheck(app, businessId);
+      /*
+       * FINDING #25 — do NOT make the client wait on the Secretary of State.
+       *
+       * This was `await runSosCheck(app, businessId)`, a live lookup to the Illinois SOS
+       * inside the submit request. In Brian's rehearsal it hung for ~70 seconds and
+       * timed out; his browser gave up and showed "Request failed" while the submission
+       * had actually succeeded. He resubmitted, as any client would. The work was done
+       * and the person was told it had failed — the worst combination.
+       *
+       * Fire and forget: a failed lookup leaves sos_status 'unknown', which is exactly
+       * what runSosRecheckJob exists to pick up. An external registry being slow is
+       * never a reason to fail a client's intake.
+       */
+      void runSosCheck(app, businessId).catch((err) =>
+        app.log.warn({ err, businessId }, 'sos check failed at intake — recheck job will retry')
+      );
     }
     // Entity group (v4.2 #2): other co-owned businesses.
     const others = Array.isArray(a.other_businesses_list) ? (a.other_businesses_list as Array<{ name?: string; role?: string }>) : [];

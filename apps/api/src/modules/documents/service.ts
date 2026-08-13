@@ -236,6 +236,85 @@ async function maybeAckPortalUpload(
   });
 }
 
+/**
+ * A client uploaded the wrong file and needs an undo.
+ *
+ * Brian's ruling (2026-08-13): WITHDRAW, not delete. Client documents are audit-logged,
+ * virus-scanned and filed against document requests, and the retention rule says every
+ * access and change is recorded — so a hard delete would satisfy the button and violate
+ * the rule behind it.
+ *
+ * Withdrawing:
+ *   · hides the file from the client's active list and from staff filing surfaces
+ *   · UN-FULFILS the document request it was satisfying, so the chase RESUMES — the
+ *     alternative is a request that looks answered by a file nobody can see
+ *   · keeps the row and the stored object, stamped with who withdrew it and when
+ *
+ * Idempotent: withdrawing an already-withdrawn document is a no-op, not an error, so a
+ * double tap on a phone cannot produce a confusing failure.
+ */
+export async function withdrawDocument(
+  app: FastifyInstance,
+  documentId: string,
+  actor: UploadActor,
+  opts: { reason?: string | undefined; clientContactId?: string | undefined } = {}
+): Promise<{ withdrawn: boolean; requestItemReopened: boolean }> {
+  const { rows } = await app.db.query<{
+    id: string; contact_id: string; filename: string; withdrawn_at: Date | null;
+  }>(
+    `SELECT id, contact_id, filename, withdrawn_at FROM documents WHERE id = $1 AND archived_at IS NULL`,
+    [documentId]
+  );
+  const doc = rows[0];
+  // Same fail-closed rule as download: someone else's document does not exist to you.
+  if (!doc || (opts.clientContactId !== undefined && doc.contact_id !== opts.clientContactId)) {
+    throw new AppError(404, 'not_found', 'Document not found.');
+  }
+  if (doc.withdrawn_at) return { withdrawn: true, requestItemReopened: false };
+
+  await app.db.query(
+    `UPDATE documents
+        SET withdrawn_at = now(), withdrawn_by_type = $2::uploader_type,
+            withdrawn_by_id = $3, withdrawn_reason = $4
+      WHERE id = $1`,
+    [documentId, actor.type, actor.id ?? null, opts.reason ?? null]
+  );
+
+  // Re-open whatever this file was answering. A request that still reads "received"
+  // while the file is gone is worse than one that plainly still wants something.
+  const reopened = await app.db.query(
+    `UPDATE document_request_items
+        SET status = 'pending', document_id = NULL
+      WHERE document_id = $1
+      RETURNING request_id`,
+    [documentId]
+  );
+  for (const r of reopened.rows) {
+    await app.db.query(
+      `UPDATE document_requests
+          SET status = 'open', completed_at = NULL
+        WHERE id = $1`,
+      [(r as { request_id: string }).request_id]
+    );
+  }
+  // The deferred-filing pointer must go too, or the rescan job would re-file it.
+  await app.db.query(`UPDATE documents SET pending_request_item_id = NULL WHERE id = $1`, [documentId]);
+
+  await writeAudit(app.db, {
+    actorType: actor.type,
+    actorId: actor.id ?? null,
+    actorLabel: actor.label ?? null,
+    action: 'document.withdrawn',
+    objectType: 'document',
+    objectId: documentId,
+    contactId: doc.contact_id,
+    ip: actor.ip,
+    details: { filename: doc.filename, reason: opts.reason ?? null, request_items_reopened: reopened.rowCount },
+  });
+
+  return { withdrawn: true, requestItemReopened: (reopened.rowCount ?? 0) > 0 };
+}
+
 export type ScanStatus = 'pending_scan' | 'clean' | 'infected' | 'skipped' | 'not_configured';
 
 /**

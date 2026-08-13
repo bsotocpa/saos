@@ -28,11 +28,39 @@ const dict = {
   // Dashboard
   home_title: ['Welcome back', 'Bienvenido(a) de nuevo'],
   checklist_title: ['Let’s get you set up', 'Pongamos todo en marcha'],
-  checklist_step1: ['Confirm your info', 'Confirme sus datos'],
-  checklist_step2: ['Sign your documents', 'Firme sus documentos'],
-  checklist_step3: ['Upload your prior-year return', 'Suba su declaración anterior'],
-  checklist_step4: ['Book your consultation', 'Reserve su consulta'],
+  // Reordered 2026-08-13: deposit second, booking removed, 'prior-year return'
+  // renamed because clients send far more than last year's return.
+  checklist_sign: ['Sign your documents', 'Firme sus documentos'],
+  checklist_deposit: ['Pay your deposit', 'Pague su depósito'],
+  checklist_confirm: ['Confirm your information', 'Confirme su información'],
+  checklist_upload: ['Upload your documents', 'Suba sus documentos'],
+  checklist_track: ['Track your services', 'Siga el avance de sus servicios'],
+  checklist_track_note: [
+    'Work usually starts within two business days. You can watch each service move along below.',
+    'El trabajo suele comenzar dentro de dos días hábiles. Puede seguir el avance de cada servicio abajo.',
+  ],
+  checklist_deposit_waiting: ['Waiting on payment', 'Pendiente de pago'],
   checklist_go: ['Go', 'Ir'],
+  // Estimated payment due — its own container (Brian, 2026-08-13): the amount, where
+  // to pay it, and a way to ask whether it is still the right number.
+  estdue_title: ['Estimated payment due', 'Pago estimado'],
+  estdue_intro: [
+    'This is what we projected for this quarter. Pay it directly to the agencies — we never take estimated payments on your behalf.',
+    'Esto es lo que proyectamos para este trimestre. Páguelo directamente a las agencias — nunca hacemos pagos estimados en su nombre.',
+  ],
+  estdue_pay_irs: ['Pay the IRS', 'Pagar al IRS'],
+  estdue_pay_state: ['Pay Illinois', 'Pagar a Illinois'],
+  estdue_review: ['Something changed? Book a session', '¿Algo cambió? Reserve una sesión'],
+  estdue_review_note: [
+    'A new job, a baby, a house, a big invoice — any of those can change this number. Better to adjust it now than in April.',
+    'Un nuevo trabajo, un bebé, una casa, una factura grande — cualquiera de esos puede cambiar esta cifra. Mejor ajustarla ahora que en abril.',
+  ],
+  qa_schedule: ['Schedule a call or meeting', 'Agende una llamada o reunión'],
+  doc_withdraw: ['Remove', 'Quitar'],
+  doc_withdraw_confirm: [
+    'Remove this file? It stops counting toward anything we asked you for, and we will not work from it. Your record still shows it was sent, so nothing goes missing.',
+    '¿Quitar este archivo? Dejará de contar para lo que le pedimos y no trabajaremos con él. Su expediente seguirá mostrando que lo envió, así que nada se pierde.',
+  ],
   checklist_done: ['Done', 'Listo'],
   checklist_mark_done: ['Mark done', 'Marcar listo'],
   status_title: ['Your returns', 'Sus declaraciones'],

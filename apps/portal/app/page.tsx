@@ -15,10 +15,11 @@ import type { DictKey } from '../lib/i18n';
 interface Todo { id: string; title: string; description: string | null; due_date: string | null; kind: 'task' | 'upload' | 'signature' }
 interface Onboarding {
   variant: string;
-  step_confirm_info_at: string | null;
   step_sign_docs_at: string | null;
-  step_upload_prior_return_at: string | null;
-  step_book_consult_at: string | null;
+  step_pay_deposit_at: string | null;
+  step_confirm_info_at: string | null;
+  step_upload_documents_at: string | null;
+  step_track_services_at: string | null;
   completed_at: string | null;
 }
 interface Engagement { id: string; tax_year: number; return_type: string; stage: string; extension_filed: boolean; deadline: string | null }
@@ -26,11 +27,23 @@ interface DocRequest { id: string; title_en: string; title_es: string | null; it
 interface Envelope { id: string; type: string; status: string }
 interface Invoice { id: string; invoice_number: string; status: string; total_cents: number }
 
+/*
+ * The checklist, reordered by Brian after running the journey himself (2026-08-13).
+ *
+ * Deposit second, because services do not start before it is paid. "Book your
+ * consultation" is gone — a client only reaches this screen after the discovery
+ * meeting, so asking them to book one asked for something already done; booking moved
+ * to Quick actions as "Schedule a Call/Meeting".
+ *
+ * `selfCompleting` means the client cannot tick it and is not asked to: Pay deposit
+ * completes when the invoice is paid, because the system already knows.
+ */
 const STEPS = [
-  { key: 'step_confirm_info_at', label: 'checklist_step1', href: '/profile', step: 'confirm_info' },
-  { key: 'step_sign_docs_at', label: 'checklist_step2', href: '/sign', step: 'sign_docs' },
-  { key: 'step_upload_prior_return_at', label: 'checklist_step3', href: '/documents', step: 'upload_prior_return' },
-  { key: 'step_book_consult_at', label: 'checklist_step4', href: '/estimate', step: 'book_consult' },
+  { key: 'step_sign_docs_at', label: 'checklist_sign', href: '/sign', step: 'sign_docs', selfCompleting: false },
+  { key: 'step_pay_deposit_at', label: 'checklist_deposit', href: '/invoices', step: null, selfCompleting: true },
+  { key: 'step_confirm_info_at', label: 'checklist_confirm', href: '/profile', step: 'confirm_info', selfCompleting: false },
+  { key: 'step_upload_documents_at', label: 'checklist_upload', href: '/documents', step: 'upload_documents', selfCompleting: false },
+  { key: 'step_track_services_at', label: 'checklist_track', href: '#services', step: 'track_services', selfCompleting: false },
 ] as const;
 
 export default function Dashboard() {
@@ -46,6 +59,10 @@ export default function Dashboard() {
   const [pendingSchedules, setPendingSchedules] = useState(0);
   const [consentOffers, setConsentOffers] = useState(0);
   const [bookingUrl, setBookingUrl] = useState<string | null>(null);
+  const [supportUrl, setSupportUrl] = useState<string | null>(null);
+  const [irsUrl, setIrsUrl] = useState<string | null>(null);
+  const [stateUrl, setStateUrl] = useState<string | null>(null);
+  const [depositApplies, setDepositApplies] = useState(false);
 
   useEffect(() => {
     if (!isAuthed()) {
@@ -53,9 +70,20 @@ export default function Dashboard() {
       return;
     }
     void Promise.all([
-      api<{ onboarding: Onboarding | null; bookingUrl: string | null }>('/portal/onboarding').then((r) => {
+      api<{
+        onboarding: Onboarding | null;
+        bookingUrl: string | null;
+        supportBookingUrl: string | null;
+        irsPaymentUrl: string | null;
+        statePaymentUrl: string | null;
+        depositApplies: boolean;
+      }>('/portal/onboarding').then((r) => {
         setOnboarding(r.onboarding);
         setBookingUrl(r.bookingUrl ?? null);
+        setSupportUrl(r.supportBookingUrl ?? null);
+        setIrsUrl(r.irsPaymentUrl ?? null);
+        setStateUrl(r.statePaymentUrl ?? null);
+        setDepositApplies(Boolean(r.depositApplies));
       }),
       api<{ todos: Todo[] }>('/portal/todos').then((r) => setTodos(r.todos)),
       api<{ engagements: Engagement[] }>('/portal/engagements').then((r) => setEngagements(r.engagements)),
@@ -91,8 +119,10 @@ export default function Dashboard() {
   if (!ready) return <p>{t('loading')}</p>;
 
   const showChecklist = onboarding && !onboarding.completed_at;
+  // A client with no deposit owed should not stare at a step they can never complete.
+  const visibleSteps = STEPS.filter((s) => s.key !== 'step_pay_deposit_at' || depositApplies);
   const doneCount = onboarding
-    ? STEPS.filter((s) => onboarding[s.key as keyof Onboarding]).length
+    ? visibleSteps.filter((s) => onboarding[s.key as keyof Onboarding]).length
     : 0;
   /**
    * "You're all caught up" must not appear ABOVE an unfinished setup checklist —
@@ -118,64 +148,15 @@ export default function Dashboard() {
         {me ? `, ${me.first_name}` : ''}
       </h1>
 
-      {nextEstimate ? (
-        <p className="muted small" data-testid="estimate-line">
-          {t('dash_estimate_due')}: <strong>{nextEstimate.quarter}</strong> — {nextEstimate.date}
-        </p>
-      ) : null}
 
-      <section className="card" data-testid="todos">
-        <h2>{t('todos_title')}</h2>
-        {todos.length === 0 ? <p className="muted">{t('todos_empty')}</p> : null}
-        <ul className="list">
-          {todos.map((td) => (
-            <li key={`${td.kind}-${td.id}`}>
-              <span className="grow">
-                <strong className="small">{td.title}</strong>
-                {td.due_date ? <span className="muted small"> · {t('todos_due')} {td.due_date}</span> : null}
-                {td.description ? (
-                  <>
-                    <br />
-                    <span className="muted small">{td.description}</span>
-                  </>
-                ) : null}
-              </span>
-              {td.kind === 'upload' ? (
-                <Link className="btn ghost" href="/documents">{t('todos_kind_upload')}</Link>
-              ) : td.kind === 'signature' ? (
-                <Link className="btn ghost" href="/sign">{t('todos_kind_signature')}</Link>
-              ) : (
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={async () => {
-                    await api(`/portal/todos/${td.id}/complete`, { method: 'POST' });
-                    const r = await api<{ todos: Todo[] }>('/portal/todos');
-                    setTodos(r.todos);
-                  }}
-                >
-                  {t('todos_done')}
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {/* SMS opt-in rides with the welcome flow while the checklist is up, then
-          stays reachable in My Info. The migrated book has no SMS consent on
-          record, so first login is the only place it can realistically backfill. */}
-      {showChecklist && me ? (
-        <SmsOptIn smsConsent={me.sms_consent} phone={me.phone} onChange={() => void refresh()} />
-      ) : null}
 
       {showChecklist ? (
         <section className="card" data-testid="checklist">
           <h2>{t('checklist_title')}</h2>
           <div className="progress">
-            <div style={{ width: `${(doneCount / 4) * 100}%` }} />
+            <div style={{ width: `${(doneCount / visibleSteps.length) * 100}%` }} />
           </div>
-          {STEPS.map((s, i) => {
+          {visibleSteps.map((s, i) => {
             const done = Boolean(onboarding?.[s.key as keyof Onboarding]);
             return (
               <div className="checklist-step" key={s.step}>
@@ -183,28 +164,23 @@ export default function Dashboard() {
                 <span className="grow">{t(s.label)}</span>
                 {done ? (
                   <span className="badge ok">{t('checklist_done')}</span>
-                ) : s.step === 'book_consult' && !bookingUrl ? (
-                  /* FINDING #9: this step's Go button pointed at /estimate — the
-                     Estimates page, not a booking flow, because no portal booking
-                     exists yet. Sending a client to the wrong page is worse than
-                     telling them the truth, so it says so until
-                     booking.client_booking_url is set, at which point it becomes a
-                     real link with no deploy. */
-                  <span className="muted small">{t('checklist_step4_unavailable')}</span>
+                ) : s.selfCompleting ? (
+                  /* Pay deposit completes ITSELF when the invoice is paid. There is no
+                     "Mark done": a client cannot honestly tick this, and asking them to
+                     confirm something we can already see is how a checklist starts
+                     lying. Go takes them to the invoice; the tick follows the money. */
+                  <>
+                    <a className="btn ghost" href={s.href}>{t('checklist_go')}</a>
+                    <span className="muted small">{t('checklist_deposit_waiting')}</span>
+                  </>
                 ) : (
                   <>
-                    <a
-                      className="btn ghost"
-                      href={s.step === 'book_consult' && bookingUrl ? bookingUrl : s.href}
-                      {...(s.step === 'book_consult' && bookingUrl
-                        ? { target: '_blank', rel: 'noreferrer' }
-                        : {})}
-                    >
-                      {t('checklist_go')}
-                    </a>
-                    <button className="btn ghost" type="button" onClick={() => void markStep(s.step)}>
-                      {t('checklist_mark_done')}
-                    </button>
+                    <a className="btn ghost" href={s.href}>{t('checklist_go')}</a>
+                    {s.step ? (
+                      <button className="btn ghost" type="button" onClick={() => void markStep(s.step!)}>
+                        {t('checklist_mark_done')}
+                      </button>
+                    ) : null}
                   </>
                 )}
               </div>
@@ -214,7 +190,9 @@ export default function Dashboard() {
       ) : null}
 
       {engagements.length > 0 ? (
-        <section className="card">
+        /* Checklist step 5 ('Track your services') links here — Brian's ruling: the
+           existing engagement stages, not a new invented view. */
+        <section className="card" id="services">
           <h2>{t('status_title')}</h2>
           <ul className="list">
             {engagements.map((e) => (
@@ -303,8 +281,62 @@ export default function Dashboard() {
           <p>
             <Link className="btn ghost block" href="/estimate">{t('action_estimate')}</Link>
           </p>
+          {/* Replaced the 'Book your consultation' checklist step: a client reaching
+              this screen has already had the discovery meeting, but still needs a way
+              to reach us. Hidden entirely when no booking link is configured, rather
+              than offering a dead button. */}
+          {supportUrl ? (
+            <p>
+              <a className="btn ghost block" href={supportUrl} target="_blank" rel="noreferrer">
+                {t('qa_schedule')}
+              </a>
+            </p>
+          ) : null}
         </section>
       </div>
+
+      {/* ESTIMATED PAYMENT DUE — its own container now (Brian, 2026-08-13). It was one
+          grey line under the greeting: the largest number a client owes anyone, styled
+          like a footnote, with no way to act on it. */}
+      {nextEstimate ? (
+        <section className="card" data-testid="estimate-due">
+          <h2>{t('estdue_title')}</h2>
+          <p>
+            <strong>{nextEstimate.quarter}</strong> — {nextEstimate.date}
+          </p>
+          <p className="muted small">{t('estdue_intro')}</p>
+          {irsUrl ? (
+            <p>
+              <a className="btn ghost block" href={irsUrl} target="_blank" rel="noreferrer">
+                {t('estdue_pay_irs')}
+              </a>
+            </p>
+          ) : null}
+          {stateUrl ? (
+            <p>
+              <a className="btn ghost block" href={stateUrl} target="_blank" rel="noreferrer">
+                {t('estdue_pay_state')}
+              </a>
+            </p>
+          ) : null}
+          {supportUrl ? (
+            <>
+              <p>
+                <a className="btn ghost block" href={supportUrl} target="_blank" rel="noreferrer">
+                  {t('estdue_review')}
+                </a>
+              </p>
+              <p className="muted small">{t('estdue_review_note')}</p>
+            </>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* SMS opt-in LAST: it is optional, and it used to sit between the client and the
+          checklist we actually want them to start with. */}
+      {showChecklist && me ? (
+        <SmsOptIn smsConsent={me.sms_consent} phone={me.phone} onChange={() => void refresh()} />
+      ) : null}
     </>
   );
 }

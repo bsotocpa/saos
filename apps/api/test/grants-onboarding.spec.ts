@@ -163,7 +163,7 @@ test('onboarding rescue: one client-visible to-do per stage (arming the ladder),
   // A second client mid-pipeline (docs stage), only 5 days old.
   const midway = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Midway', email: 'midway@example.test' });
   await app.db.query(
-    `INSERT INTO portal_onboarding (contact_id, variant, created_at, step_confirm_info_at, step_sign_docs_at, step_upload_prior_return_at)
+    `INSERT INTO portal_onboarding (contact_id, variant, created_at, step_confirm_info_at, step_sign_docs_at, step_upload_documents_at)
      VALUES ($1, 'new', now() - interval '5 days', now(), now(), now())`,
     [midway.id]
   );
@@ -232,11 +232,11 @@ test('stage derivation walks the pipeline in order', () => {
   const base = {
     contact_id: 'x', first_name: 'A', last_name: 'B', variant: 'new', created_at: new Date(),
     deposit_paid_at: null, deposit_amount_cents: null,
-    step_confirm_info_at: null, step_sign_docs_at: null, step_upload_prior_return_at: null,
+    step_confirm_info_at: null, step_sign_docs_at: null, step_upload_documents_at: null,
     completed_at: null, stalled_flagged_at: null,
   };
   assert.equal(stageOf(base), 'deposit');
   assert.equal(stageOf({ ...base, step_confirm_info_at: new Date() }), 'questionnaire');
-  assert.equal(stageOf({ ...base, step_confirm_info_at: new Date(), step_upload_prior_return_at: new Date() }), 'docs');
+  assert.equal(stageOf({ ...base, step_confirm_info_at: new Date(), step_upload_documents_at: new Date() }), 'docs');
   assert.equal(stageOf({ ...base, completed_at: new Date() }), 'complete');
 });

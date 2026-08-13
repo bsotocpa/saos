@@ -95,6 +95,24 @@ export const settings = [
       'Lane 2: event-type slugs that are ALWAYS FREE ("Book a question call — no charge", codified retention asset).',
   },
   {
+    key: 'booking.support_booking_url',
+    value: null,
+    description:
+      'The Cal.com link behind "Schedule a Call/Meeting" in the portal Quick actions. Replaced the "Book your consultation" checklist step (Brian, 2026-08-13): a client only reaches a quote after the discovery meeting, so asking them to book one asks for something already done — but they still need a way to reach you. Points at the customer-support event. NULL hides the action rather than offering a dead link.',
+  },
+  {
+    key: 'payments.irs_url',
+    value: 'https://www.irs.gov/payments',
+    description:
+      'Federal estimated-payment link shown in the portal "Estimated payment due" container. A setting, not a literal, because the IRS moves this page and a client staring at a 404 mid-payment is worse than no link.',
+  },
+  {
+    key: 'payments.state_url',
+    value: 'https://mytax.illinois.gov',
+    description:
+      'State estimated-payment link (Illinois). Becomes per-state the day a client files somewhere else — that is why it is data.',
+  },
+  {
     key: 'documents.upload_ack_throttle_minutes',
     value: 30,
     description:
