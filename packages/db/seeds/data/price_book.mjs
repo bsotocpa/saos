@@ -8,6 +8,18 @@
 // This file and its sibling migration are the ONLY places prices may appear
 // as literals (scripts/check-no-hardcoded-prices.mjs enforces).
 
+/*
+ * pricing_mode is DERIVED from the shape rather than annotated on 84 items by hand.
+ * Hand-annotating would let a line say 'flat' while carrying a range — which is the
+ * exact drift the CHECK constraint exists to prevent, reintroduced one file earlier.
+ *
+ * 'hourly' is never produced here. Brian's ruling 2026-08-14: the three per_hour lines
+ * migrate as flat-with-a-per-hour-unit (behaviour preserved exactly) and go to his
+ * confirmation queue. If he confirms them as hourly, the mode gets built then.
+ */
+const modeFor = (amountCents, minCents, maxCents) =>
+  amountCents === null && minCents !== null && maxCents !== null ? 'range' : 'flat';
+
 const item = (code, serviceLine, nameEn, nameEs, amountCents, opts = {}) => ({
   code,
   serviceLine,
@@ -17,6 +29,13 @@ const item = (code, serviceLine, nameEn, nameEs, amountCents, opts = {}) => ({
   unit: opts.unit ?? 'flat',
   minCents: opts.minCents ?? null,
   maxCents: opts.maxCents ?? null,
+  isActive: opts.isActive ?? true,
+  pricingMode: modeFor(amountCents, opts.minCents ?? null, opts.maxCents ?? null),
+  structureNeedsConfirmation: opts.structureNeedsConfirmation ?? false,
+  structureConfirmationNote: opts.structureConfirmationNote ?? null,
+  // What this line asks for up front. NULL on almost every line — a deposit is a
+  // work-start commitment, not a property of every service.
+  depositCents: opts.depositCents ?? null,
   passThrough: opts.passThrough ?? false,
   displayOnQuote: opts.displayOnQuote ?? true,
   needsConfirmation: opts.needsConfirmation ?? false,
@@ -48,18 +67,80 @@ export const PRICE_BOOK_V1 = {
   note: 'v1 — seeded from MP v4.2 Pricing Seed Data (2025 pricing workbook + service sheet + 2026 transcripts). ⚠ conflicts carried as needs_confirmation.',
 };
 
+/*
+ * DEPOSITS (v4, Brian 2026-08-14). A deposit used to be its own sellable price-book item
+ * — DEPOSIT_1040 $250, DEPOSIT_BUSINESS_TAX $300 — picked one-per-quote. It is now an
+ * attribute of the line that starts the work, and a quote's deposit is the SUM of its
+ * lines' deposits.
+ *
+ * Placed on the lines that START AN ENGAGEMENT and nowhere else: the four individual
+ * base returns and the entity returns. Add-ons (extra states, extra K-1s, notices) do
+ * not each demand their own work-start commitment.
+ *
+ * Deliberately NOT on BIZ_SCH_C: a Schedule C is a schedule on someone's 1040, not a
+ * separate entity return, so its deposit is the 1040's. Giving it one would ask a sole
+ * proprietor for $250 + $300 where today they are asked for one deposit.
+ *
+ * EVERY line carrying a deposit is flagged. Brian's instruction was "flag any line where
+ * deposit-vs-price is ambiguous rather than guessing" — these amounts preserve today's
+ * behaviour for the common single-return quote, but WHICH lines carry a deposit is a
+ * pricing decision, so all of them land in his confirmation queue with the 13.
+ */
+const DEPOSIT_1040_CENTS = 25000;
+const DEPOSIT_BIZ_CENTS = 30000;
+const DEPOSIT_NOTE_IND =
+  '⚠ v4 deposit split: carried from the retired DEPOSIT_1040 item. Confirm this line should ask for a deposit, and the amount.';
+const DEPOSIT_NOTE_BIZ =
+  '⚠ v4 deposit split: carried from the retired DEPOSIT_BUSINESS_TAX item. Confirm this line should ask for a deposit, and the amount. A quote with two entity returns now asks for two deposits.';
+/*
+ * These use structureNeedsConfirmation, NOT needsConfirmation. The two mean different
+ * things and gate different things: needs_confirmation says the PRICE is unsettled,
+ * which makes any quote containing the line provisional. The $200 on an MFJ return is
+ * not in doubt — what awaits Brian is whether that line should ask for a deposit. Using
+ * the price flag for it marked every 1040 quote as unconfirmed, which the golden pricing
+ * test caught immediately and correctly.
+ */
+const indDeposit = {
+  depositCents: DEPOSIT_1040_CENTS,
+  structureNeedsConfirmation: true,
+  structureConfirmationNote: DEPOSIT_NOTE_IND,
+};
+const bizDeposit = {
+  depositCents: DEPOSIT_BIZ_CENTS,
+  structureNeedsConfirmation: true,
+  structureConfirmationNote: DEPOSIT_NOTE_BIZ,
+};
+
+/*
+ * The three lines already priced per hour. Brian's brief said "we don't bill hourly
+ * today"; the book said otherwise, and he corrected himself on 2026-08-14 — these
+ * rate-card lines are real.
+ *
+ * They migrate as pricing_mode 'flat' with unit 'per_hour', which is exactly how they
+ * behave today ($75 or $150, per hour). Flagged so he rules on them in the same sitting:
+ * if he confirms them as genuinely hourly, pricing_mode 'hourly' gets built then, against
+ * these three lines. Until that ruling, nothing constructs the hourly mode.
+ */
+const hourlyConfirm = {
+  structureNeedsConfirmation: true,
+  structureConfirmationNote:
+    '⚠ v4 mode: priced per hour. Confirm this is a rate card (a flat amount, quoted per hour) rather than tracked time-and-materials. Confirming it as true hourly is what triggers building pricing_mode = hourly.',
+};
+
 export const items = [
   // ── Individual tax — itemized calculator (one federal + one state included) ──
   item('IND_BASE_SINGLE', 'individual_tax', 'Individual return — Single', 'Declaración individual — Soltero(a)', 15000, {
+    ...indDeposit,
     descEn: 'Base price; one federal + one state included.',
     descEs: 'Precio base; incluye una declaración federal y un estado.',
   }),
   item('IND_BASE_MFJ', 'individual_tax', 'Individual return — Married filing jointly', 'Declaración individual — Casados en conjunto', 20000, {
+    ...indDeposit,
     descEn: 'Base price; one federal + one state included.',
     descEs: 'Precio base; incluye una declaración federal y un estado.',
   }),
-  item('IND_BASE_MFS', 'individual_tax', 'Individual return — Married filing separately', 'Declaración individual — Casados por separado', 20000),
-  item('IND_BASE_HOH', 'individual_tax', 'Individual return — Head of household', 'Declaración individual — Cabeza de familia', 20000),
+  item('IND_BASE_MFS', 'individual_tax', 'Individual return — Married filing separately', 'Declaración individual — Casados por separado', 20000, indDeposit),
+  item('IND_BASE_HOH', 'individual_tax', 'Individual return — Head of household', 'Declaración individual — Cabeza de familia', 20000, indDeposit),
   item('IND_ADDL_STATE', 'individual_tax', 'Additional state return', 'Estado adicional', 15000, { unit: 'per_state' }),
 
   // Individual add-ons
@@ -92,21 +173,21 @@ export const items = [
     needsConfirmation: true,
     confirmationNote: '⚠ Sheets conflict: $250–500 range. Overlaps Specialized CPA tax-planning item — Brian confirms canonical pricing before launch.',
   }),
-  item('IND_SPECIALIZED_HOURLY', 'individual_tax', 'Specialized services (hourly)', 'Servicios especializados (por hora)', 15000, { unit: 'per_hour' }),
+  item('IND_SPECIALIZED_HOURLY', 'individual_tax', 'Specialized services (hourly)', 'Servicios especializados (por hora)', 15000, { unit: 'per_hour', ...hourlyConfirm }),
 
   // ── Business tax returns (one federal + one state included) ──────────────────
   item('BIZ_SCH_C', 'business_tax', 'Schedule C (sole prop or SMLLC)', 'Anexo C (propietario único o SMLLC)', 18000, {
     descEn: 'Same service as IND_SCH_C — listed in both spec sections; the calculator (M12) applies it once.',
     descEs: 'Mismo servicio que IND_SCH_C; la calculadora lo aplica una sola vez.',
   }),
-  item('BIZ_1065', 'business_tax', 'Form 1065 — partnership', 'Formulario 1065 — sociedad', 60000),
-  item('BIZ_1120S', 'business_tax', 'Form 1120-S — S corporation', 'Formulario 1120-S — corporación S', 70000),
-  item('BIZ_1120', 'business_tax', 'Form 1120 — C corporation', 'Formulario 1120 — corporación C', 80000),
-  item('BIZ_990', 'business_tax', 'Form 990 / 990-EZ — exempt organization', 'Formulario 990 / 990-EZ — organización exenta', 80000),
-  item('BIZ_1120C', 'business_tax', 'Form 1120-C — housing co-op', 'Formulario 1120-C — cooperativa de vivienda', 80000),
-  item('BIZ_1120F', 'business_tax', 'Form 1120-F — foreign corporation', 'Formulario 1120-F — corporación extranjera', 80000),
-  item('BIZ_1120H', 'business_tax', 'Form 1120-H — homeowners association', 'Formulario 1120-H — asociación de propietarios', 80000),
-  item('BIZ_1120POL', 'business_tax', 'Form 1120-POL — political organization', 'Formulario 1120-POL — organización política', 80000),
+  item('BIZ_1065', 'business_tax', 'Form 1065 — partnership', 'Formulario 1065 — sociedad', 60000, bizDeposit),
+  item('BIZ_1120S', 'business_tax', 'Form 1120-S — S corporation', 'Formulario 1120-S — corporación S', 70000, bizDeposit),
+  item('BIZ_1120', 'business_tax', 'Form 1120 — C corporation', 'Formulario 1120 — corporación C', 80000, bizDeposit),
+  item('BIZ_990', 'business_tax', 'Form 990 / 990-EZ — exempt organization', 'Formulario 990 / 990-EZ — organización exenta', 80000, bizDeposit),
+  item('BIZ_1120C', 'business_tax', 'Form 1120-C — housing co-op', 'Formulario 1120-C — cooperativa de vivienda', 80000, bizDeposit),
+  item('BIZ_1120F', 'business_tax', 'Form 1120-F — foreign corporation', 'Formulario 1120-F — corporación extranjera', 80000, bizDeposit),
+  item('BIZ_1120H', 'business_tax', 'Form 1120-H — homeowners association', 'Formulario 1120-H — asociación de propietarios', 80000, bizDeposit),
+  item('BIZ_1120POL', 'business_tax', 'Form 1120-POL — political organization', 'Formulario 1120-POL — organización política', 80000, bizDeposit),
   item('BIZ_ADDL_STATE', 'business_tax', 'Additional state return (business)', 'Estado adicional (negocios)', 35000, { unit: 'per_state' }),
   item('BIZ_AMENDMENT', 'business_tax', 'Amended business return', 'Declaración enmendada (negocios)', 60000),
   item('BIZ_NOTICE_SUPPORT', 'business_tax', 'Notice support (business)', 'Apoyo con avisos (negocios)', 30000),
@@ -135,7 +216,7 @@ export const items = [
     // CONFIRMED by Brian 2026-08-09: $1,000 all-in is the ruling; the
     // sheet/workbook conflict ($900 / $800) is resolved.
   }),
-  item('ACCT_CATCHUP_HOURLY', 'recurring_accounting', 'Catch-up / cleanup (hourly)', 'Puesta al día / limpieza (por hora)', 7500, { unit: 'per_hour' }),
+  item('ACCT_CATCHUP_HOURLY', 'recurring_accounting', 'Catch-up / cleanup (hourly)', 'Puesta al día / limpieza (por hora)', 7500, { unit: 'per_hour', ...hourlyConfirm }),
 
   // ── Derivation components — NEVER client-facing ──────────────────────────────
   // Prep component = bookkeeper labour for one close period.
@@ -243,14 +324,37 @@ export const items = [
     descEs: 'Modalidades: asesoría recurrente · proyecto de alcance fijo · operaciones fraccionales.',
   }),
 
-  // ── Deposits (true-up model: deposit reconciles against the final quote) ────
+  /*
+   * ── Deposits — still ACTIVE, and that is a flagged question ────────────────
+   *
+   * v4 moves the QUOTE deposit onto the service lines. These two items were going to
+   * be retired with it, until doing so broke Lane 1: the New Client Discovery booking
+   * flow bills a discovery deposit by invoicing DEPOSIT_1040 / DEPOSIT_BUSINESS_TAX
+   * directly, with no quote and no lines to sum. That is a SECOND deposit path Brian's
+   * v4 brief does not mention.
+   *
+   * His instruction was "deposits still collected only through the quote flow", which
+   * reads as though Lane 1's deposit should not exist — but it is shipped, tested and
+   * charging real money, so switching it off is his call, not a side effect of a schema
+   * change. They stay active and flagged.
+   *
+   * They also must never be deleted regardless: two accepted quotes are price-locked
+   * against DEPOSIT_1040, and deleting the row would rewrite what those clients were
+   * actually quoted. Same rule as the superseded engagement letters.
+   */
   item('DEPOSIT_1040', 'deposit', 'Discovery deposit — 1040', 'Depósito inicial — declaración 1040', 25000, {
-    descEn: 'Collected at New Client Discovery booking (Lane 1); auto-credits or bills the difference at completion.',
+    structureNeedsConfirmation: true,
+    structureConfirmationNote:
+      '⚠ v4: a SECOND deposit path. Quote deposits now come from the service lines, but Lane 1 (New Client Discovery booking) still bills this item directly — no quote, nothing to sum. Confirm whether the booking-time discovery deposit stays, or deposits are collected only at quote acceptance as your brief said.',
+    descEn: 'Collected at New Client Discovery booking (Lane 1); auto-credits or bills the difference at completion. Quote deposits no longer use this item — see deposit_cents on the service lines.',
     descEs: 'Se cobra al reservar la consulta inicial; al finalizar se acredita o se factura la diferencia.',
   }),
   item('DEPOSIT_BUSINESS_TAX', 'deposit', 'Discovery deposit — business tax', 'Depósito inicial — impuestos de negocio', 30000, {
-    needsConfirmation: true,
-    confirmationNote: '⚠ Observed $300 discovery deposit — confirm one standard discovery deposit vs a per-service deposit schedule.',
+    structureNeedsConfirmation: true,
+    structureConfirmationNote:
+      '⚠ v4: see DEPOSIT_1040 — same question. Its $300 has also been placed on the entity-return lines, so confirming both paths would ask a booking client for a deposit twice.',
+    descEn: 'Collected at business-discovery booking (Lane 1). Quote deposits no longer use this item.',
+    descEs: 'Se cobra al reservar la consulta inicial de negocio.',
   }),
 
   // ── Tax resolution lane (v4.6) ──────────────────────────────────────────────
@@ -276,6 +380,7 @@ export const items = [
   }),
   item('RES_BOOKS_RECONSTRUCTION', 'recurring_accounting', 'Books reconstruction (per year, hourly)', 'Reconstrucción de libros (por año, por hora)', 7500, {
     unit: 'per_hour',
+    ...hourlyConfirm,
     descEn: 'Paired automatically with any resolution year whose books are partial or missing.',
     descEs: 'Se combina automáticamente con cualquier año de resolución cuyos libros estén incompletos o no existan.',
   }),
@@ -349,8 +454,10 @@ export async function seedPriceBook(client) {
          version_id, item_code, service_line, name_en, name_es,
          description_en, description_es, amount_cents, price_min_cents,
          price_max_cents, unit, is_pass_through, display_on_quote,
-         needs_confirmation, confirmation_note, sort_order, metadata
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb)
+         needs_confirmation, confirmation_note, sort_order, metadata,
+         pricing_mode, deposit_cents, is_active,
+         structure_needs_confirmation, structure_confirmation_note
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::price_pricing_mode,$19,$20,$21,$22)
        ON CONFLICT (version_id, item_code) DO UPDATE SET
          service_line = EXCLUDED.service_line,
          name_en = EXCLUDED.name_en,
@@ -377,12 +484,32 @@ export async function seedPriceBook(client) {
            ELSE NULL
          END,
          sort_order = EXCLUDED.sort_order,
-         metadata = EXCLUDED.metadata`,
+         metadata = EXCLUDED.metadata,
+         -- Both are plain assignments, unlike needs_confirmation. The seed owns v1, and
+         -- the ONLY in-place mutation the admin API performs is confirming a flag —
+         -- setting a price or a deposit creates a NEW version, which the seed never
+         -- touches. So re-seeding cannot overwrite a decision Brian made.
+         pricing_mode = EXCLUDED.pricing_mode,
+         deposit_cents = EXCLUDED.deposit_cents,
+         is_active = EXCLUDED.is_active,
+         -- Same rule as needs_confirmation: a HUMAN decision is never reversed by a
+         -- redeploy. AND keeps both directions honest — the seed can raise a new
+         -- structure question, and can resolve one, but a line Brian already ruled
+         -- on stays ruled on.
+         structure_needs_confirmation =
+           price_book_items.structure_needs_confirmation AND EXCLUDED.structure_needs_confirmation,
+         structure_confirmation_note = CASE
+           WHEN price_book_items.structure_needs_confirmation AND EXCLUDED.structure_needs_confirmation
+             THEN EXCLUDED.structure_confirmation_note
+           ELSE NULL
+         END`,
       [
         versionId, it.code, it.serviceLine, it.nameEn, it.nameEs,
         it.descEn, it.descEs, it.amountCents, it.minCents,
         it.maxCents, it.unit, it.passThrough, it.displayOnQuote,
         it.needsConfirmation, it.confirmationNote, sort, JSON.stringify(it.metadata),
+        it.pricingMode, it.depositCents, it.isActive,
+        it.structureNeedsConfirmation, it.structureConfirmationNote,
       ]
     );
   }

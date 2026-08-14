@@ -1901,6 +1901,13 @@ Chicago disagree on the date. Three assertions in document-chase, one in billing
 
 ## Post-season review items (logged, deliberately not built now)
 
+- [ ] **Item E scope note — cross-linking sessions to the Hilo client record.** Brian's
+      ruling 2026-08-14 on Jackson Flores's session: **no visibility change**. Jackson
+      is a tax client, and Hilo is itself a bookkeeping and tax client of the firm, so
+      Hilo-related discussion on his record is client-adjacent, not out of place. When
+      the Hilo workspace exists, sessions like this one may warrant cross-linking to
+      the Hilo client record. E-scope design note, not a task now.
+
 - [ ] **Base-return price ranges.** The four `IND_BASE_*` items carry flat amounts
       with no `price_min_cents`/`price_max_cents`, so a derived interview quote takes
       its range from `pricing.estimate_band_percent` (15% for launch). Brian's ruling

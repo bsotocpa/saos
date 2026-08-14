@@ -362,7 +362,7 @@ export async function quoteByToken(app: FastifyInstance, token: string) {
   const expired = quote.expires_at !== null && quote.expires_at.getTime() < Date.now();
   // The deposit the client will actually be asked for. Resolved rather than read
   // raw so a waiver reads as "waived", not as a silently missing line.
-  const deposit = await resolveDeposit(app, quote.deposit_item_code, quote.deposit_override_cents);
+  const deposit = await resolveDeposit(app, quote.deposit_item_code, quote.deposit_override_cents, quote.id);
   return {
     quote: { ...quote, expired },
     lines: lines.rows,
@@ -396,38 +396,88 @@ export interface ResolvedDeposit {
  * "override" that happens to equal the standard deposit is honestly recorded as
  * standard rather than flagged as an exception for A/R to chase.
  */
+/**
+ * The v4 standard deposit: the SUM of the quote's lines' own deposits.
+ *
+ * Deliberately does NOT multiply by quantity, unlike every price on the same lines.
+ * Brian's ruling 2026-08-14: "one line = one work-start commitment regardless of units."
+ * Three extra states on one return is still one piece of work starting, so reusing the
+ * line-total path here would be wrong in a way that shows up as an inflated invoice.
+ *
+ * The version is pinned to the QUOTE's locked version, not today's book, so a quote
+ * written under v4 keeps quoting v4 deposits after v5 ships.
+ */
+async function summedLineDeposits(app: FastifyInstance, quoteId: string): Promise<number | null> {
+  const { rows } = await app.db.query<{ total: string | null; n: number }>(
+    `SELECT SUM(pbi.deposit_cents)::text AS total, count(pbi.deposit_cents)::int AS n
+       FROM quote_line_items qli
+       JOIN quotes q ON q.id = qli.quote_id
+       JOIN price_book_items pbi
+         ON pbi.item_code = qli.item_code
+        AND pbi.version_id = q.price_book_version_id
+      WHERE qli.quote_id = $1
+        AND pbi.deposit_cents IS NOT NULL`,
+    [quoteId]
+  );
+  const row = rows[0];
+  // No line asks for a deposit → this quote has none, which is different from zero.
+  if (!row || row.n === 0 || row.total === null) return null;
+  return Number(row.total);
+}
+
 export async function resolveDeposit(
   app: FastifyInstance,
   depositItemCode: string | null,
-  overrideCents: number | null
+  overrideCents: number | null,
+  // v4: when given, the summed line deposits are the standard and the legacy
+  // deposit_item_code is ignored. Absent only for quotes written before v4.
+  quoteId?: string
 ): Promise<ResolvedDeposit> {
-  if (!depositItemCode) {
-    // No deposit item on the quote at all. An override cannot invent one — that
-    // would be a price with no book entry behind it.
+  const summed = quoteId ? await summedLineDeposits(app, quoteId) : null;
+
+  if (summed === null && !depositItemCode) {
+    // No deposit at all. An override cannot invent one — that would be a price with
+    // no book entry behind it.
     return { standardCents: null, chargeCents: null, isOverridden: false, treatment: null, label: 'Deposit' };
   }
-  const version = await currentVersion(app);
-  const { rows } = await app.db.query<{ name_en: string; amount_cents: number | null }>(
-    `SELECT name_en, amount_cents FROM price_book_items
-     WHERE version_id = $1 AND item_code = $2 AND is_active`,
-    [version.id, depositItemCode]
-  );
-  const item = rows[0];
-  if (!item || item.amount_cents === null) {
-    throw new AppError(
-      400,
-      'deposit_not_priced',
-      `${depositItemCode} is not a priced deposit item in the price book in force.`
+
+  let standardCents: number;
+  let label: string;
+
+  if (summed !== null) {
+    standardCents = summed;
+    label = 'Deposit';
+  } else {
+    /*
+     * LEGACY READ ONLY. Before v4 a deposit was its own sellable price-book item and a
+     * quote picked exactly one. Two accepted quotes still reference DEPOSIT_1040 and are
+     * price-locked against it, so this path exists to keep telling those clients the
+     * truth about what they were quoted. Nothing writes deposit_item_code any more.
+     */
+    const version = await currentVersion(app);
+    const { rows } = await app.db.query<{ name_en: string; amount_cents: number | null }>(
+      `SELECT name_en, amount_cents FROM price_book_items
+       WHERE version_id = $1 AND item_code = $2`,
+      [version.id, depositItemCode]
     );
+    const item = rows[0];
+    if (!item || item.amount_cents === null) {
+      throw new AppError(
+        400,
+        'deposit_not_priced',
+        `${depositItemCode} is not a priced deposit item in the price book in force.`
+      );
+    }
+    standardCents = item.amount_cents;
+    label = item.name_en;
   }
-  const standardCents = item.amount_cents;
   if (overrideCents === null) {
     return {
       standardCents,
       chargeCents: standardCents,
       isOverridden: false,
       treatment: 'standard',
-      label: item.name_en,
+      label,
     };
   }
   const treatment = overrideCents === 0 ? 'waived' : overrideCents < standardCents ? 'reduced' : 'standard';
@@ -437,7 +487,7 @@ export async function resolveDeposit(
     // An override equal to (or above) standard is not an exception to track.
     isOverridden: overrideCents !== standardCents,
     treatment,
-    label: overrideCents === 0 ? `${item.name_en} — waived` : `${item.name_en} (adjusted)`,
+    label: overrideCents === 0 ? `${label} — waived` : `${label} (adjusted)`,
   };
 }
 
@@ -500,7 +550,7 @@ export async function overrideQuoteDeposit(
     );
   }
 
-  const resolved = await resolveDeposit(app, quote.deposit_item_code, input.amountCents);
+  const resolved = await resolveDeposit(app, quote.deposit_item_code, input.amountCents, quoteId);
   await writeAudit(app.db, {
     actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
     action: input.amountCents === null ? 'quote.deposit_override_cleared' : 'quote.deposit_overridden',
@@ -586,7 +636,7 @@ export async function acceptQuote(
   // The standard figure always comes from the price book. An override replaces
   // the AMOUNT only, and is stamped onto the engagement so A/R can later ask
   // whether non-standard deposits collect worse.
-  const deposit = await resolveDeposit(app, row.deposit_item_code, row.deposit_override_cents);
+  const deposit = await resolveDeposit(app, row.deposit_item_code, row.deposit_override_cents, quote.id);
 
   let depositInvoiceId: string | null = null;
   if (deposit.chargeCents !== null && deposit.chargeCents > 0) {

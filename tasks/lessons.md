@@ -540,3 +540,27 @@ looked like strong evidence and was actually noise.
 **Rule**: sabotage must be the OLD BEHAVIOUR, not a crash. Replace the new branch with
 what the code used to do and confirm exactly the new test fails and the old ones still
 pass. A blast radius wider than the fix means the experiment was not controlled.
+
+## Schema plus seed is not a data migration
+**What happened**: I added `deposit_cents` in a migration and set the deposits in the
+price-book seed, ran 393 passing tests, and opened the admin page — every line said "no
+deposit". The seed only ever writes v1; the book in force was v3. Tests all passed
+because a fresh test database has v1 in force, so the seed and the live book are the same
+row set there and only there.
+**Rule**: when a table is versioned, ask "which version does the seed write, and which
+one does production read?" before believing a seeded value shipped. If they differ, the
+change needs a script that creates the next version — and that script, not the seed, is
+the deliverable.
+**How it surfaced**: by opening the page as Brian would, on the data he actually has.
+The test suite could not have caught this, because the fixture makes the two versions
+identical. A green suite is evidence about the code, not about production's data.
+
+## Ask what the flag already means before reusing it
+**What happened**: I flagged twelve lines with `needs_confirmation` so Brian could rule
+on their deposits. The golden pricing test went red: that flag means the PRICE is
+unsettled, so every 1040 quote started reporting itself as provisional over a $200 base
+return nobody had questioned.
+**Rule**: before reusing an existing flag for a new question, find out what reads it. A
+column with one meaning and two writers ends up with neither. Two columns feeding one
+queue cost nothing; one column meaning two things silently changes behaviour somewhere
+that never mentioned the feature.

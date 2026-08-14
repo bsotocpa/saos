@@ -23,10 +23,16 @@ const NewVersionBody = z.object({
     .array(
       z.object({
         itemCode: z.string().min(1),
-        amountCents: z.number().int().nonnegative().optional(),
-        priceMinCents: z.number().int().nonnegative().optional(),
-        priceMaxCents: z.number().int().nonnegative().optional(),
+        amountCents: z.number().int().nonnegative().nullable().optional(),
+        priceMinCents: z.number().int().nonnegative().nullable().optional(),
+        priceMaxCents: z.number().int().nonnegative().nullable().optional(),
         isActive: z.boolean().optional(),
+        // v4. Switching a line between flat and range means CLEARING the columns the
+        // other mode uses, which is why the price fields are nullable above — the
+        // mode CHECK refuses a row that carries both an amount and a range.
+        pricingMode: z.enum(['flat', 'range', 'hourly']).optional(),
+        // null = this line stops asking for a deposit.
+        depositCents: z.number().int().nonnegative().nullable().optional(),
         // Rate-carrying items (e.g. the late-fee percent) keep their value in
         // metadata — editable through this same versioned, audited flow.
         metadata: z.record(z.string(), z.unknown()).optional(),
@@ -101,7 +107,9 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const v = version.rows[0] as { id: string };
     const items = await app.db.query(
       `SELECT item_code, service_line, name_en, amount_cents, price_min_cents, price_max_cents,
-              unit, is_pass_through, needs_confirmation, confirmation_note, is_active
+              unit, is_pass_through, needs_confirmation, confirmation_note, is_active,
+              pricing_mode::text AS pricing_mode, deposit_cents,
+              structure_needs_confirmation, structure_confirmation_note
        FROM price_book_items WHERE version_id = $1 ORDER BY sort_order`,
       [v.id]
     );
@@ -145,13 +153,18 @@ export function registerAdminRoutes(app: FastifyInstance): void {
 
       // Full copy: items + bundle rules.
       await client.query(
+        // Every column is listed explicitly, so anything added to price_book_items and
+        // NOT added here is silently reset to its default in the new version — a price
+        // book that quietly loses a field one version after it was set.
         `INSERT INTO price_book_items
            (version_id, item_code, service_line, name_en, name_es, description_en, description_es,
             amount_cents, price_min_cents, price_max_cents, unit, is_pass_through, display_on_quote,
-            needs_confirmation, confirmation_note, is_active, sort_order, metadata)
+            needs_confirmation, confirmation_note, is_active, sort_order, metadata,
+            pricing_mode, deposit_cents, structure_needs_confirmation, structure_confirmation_note)
          SELECT $1, item_code, service_line, name_en, name_es, description_en, description_es,
                 amount_cents, price_min_cents, price_max_cents, unit, is_pass_through, display_on_quote,
-                needs_confirmation, confirmation_note, is_active, sort_order, metadata
+                needs_confirmation, confirmation_note, is_active, sort_order, metadata,
+                pricing_mode, deposit_cents, structure_needs_confirmation, structure_confirmation_note
          FROM price_book_items WHERE version_id = $2`,
         [newId, cur.id]
       );
@@ -173,6 +186,8 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         if (change.priceMinCents !== undefined) { params.push(change.priceMinCents); sets.push(`price_min_cents = $${params.length}`); }
         if (change.priceMaxCents !== undefined) { params.push(change.priceMaxCents); sets.push(`price_max_cents = $${params.length}`); }
         if (change.isActive !== undefined) { params.push(change.isActive); sets.push(`is_active = $${params.length}`); }
+        if (change.pricingMode !== undefined) { params.push(change.pricingMode); sets.push(`pricing_mode = $${params.length}::price_pricing_mode`); }
+        if (change.depositCents !== undefined) { params.push(change.depositCents); sets.push(`deposit_cents = $${params.length}`); }
         if (change.metadata !== undefined) { params.push(JSON.stringify(change.metadata)); sets.push(`metadata = $${params.length}::jsonb`); }
         if (sets.length === 0) continue;
         // An admin-set price is a deliberate decision — confirmation clears.
@@ -207,20 +222,37 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     }
   });
 
-  // Confirming a ⚠ seed item: metadata only — the price stands as seeded.
+  /**
+   * Confirming a ⚠ item: metadata only — what was seeded stands, no new version.
+   *
+   * `kind` says WHICH question is being answered. They are separate columns because
+   * they mean different things: a price question makes every quote containing the line
+   * provisional; a v4 structure question (should this line carry a deposit, is it really
+   * hourly) does not. One tap answers one question, and confirming the price does not
+   * quietly also confirm the deposit.
+   */
   app.post<{ Params: { code: string } }>('/admin/price-book/items/:code/confirm', pricing, async (request) => {
     const code = z.string().min(1).parse(request.params.code);
+    const { kind } = z
+      .object({ kind: z.enum(['price', 'structure']).default('price') })
+      .parse(request.query ?? {});
     const actor = request.staff!;
+    const [flag, note] =
+      kind === 'structure'
+        ? ['structure_needs_confirmation', 'structure_confirmation_note']
+        : ['needs_confirmation', 'confirmation_note'];
     const res = await app.db.query(
-      `UPDATE price_book_items SET needs_confirmation = false, confirmation_note = NULL
-       WHERE item_code = $1 AND needs_confirmation
+      `UPDATE price_book_items SET ${flag} = false, ${note} = NULL
+       WHERE item_code = $1 AND ${flag}
          AND version_id = (SELECT id FROM price_book_versions ORDER BY version_number DESC LIMIT 1)`,
       [code]
     );
     if (res.rowCount === 0) throw new AppError(404, 'not_found', 'No unconfirmed item with that code in the current version.');
     await writeAudit(app.db, {
       actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
-      action: 'price_book.item_confirmed', objectType: 'price_book_item', objectId: code,
+      action: kind === 'structure' ? 'price_book.item_structure_confirmed' : 'price_book.item_confirmed',
+      objectType: 'price_book_item', objectId: code,
+      details: { kind },
     });
     return { status: 'ok' };
   });
