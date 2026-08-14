@@ -9,7 +9,7 @@
 //
 // Runs as part of root `npm test`, alongside check:prices and check:sops.
 
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -82,6 +82,38 @@ try {
       failures++;
     }
   }
+
+  /*
+   * RUNTIME-MODE KEYS MUST BE BLANK IN .env.production.
+   *
+   * The merge rule "non-blank local wins" is right for SECRETS — shipping a rotated
+   * token should replace the old one. It is exactly wrong for a mode switch, because
+   * nobody ever intends "every deploy turns payments back off", and that is precisely
+   * what a literal here does. STRIPE_MODE=stub silently disabled live payments three
+   * times (2026-08-12, twice on 2026-08-13); each time the only symptom was a client's
+   * Pay Now returning 503 hours after it had worked.
+   *
+   * These keys are set on the SERVER and must survive a deploy, so the shipped file
+   * has to leave them blank. .env.production is gitignored, so this is skipped where
+   * the file does not exist (CI, a fresh clone) rather than failing.
+   */
+  {
+    const envProd = resolve(here, '..', '.env.production');
+    if (existsSync(envProd)) {
+      const MODE_KEYS = ['STRIPE_MODE'];
+      const text = readFileSync(envProd, 'utf8');
+      for (const key of MODE_KEYS) {
+        const m = new RegExp(`^${key}=(.*)$`, 'm').exec(text);
+        if (m && m[1].trim() !== '') {
+          console.error(
+            `  ✖ ${key} is set to "${m[1].trim()}" in .env.production — it must be BLANK.\n` +
+            `      A literal beats the server's value on every deploy. Set ${key} on the server.`
+          );
+          failures++;
+        }
+      }
+    }
+  }
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
@@ -90,4 +122,4 @@ if (failures > 0) {
   console.error(`\ncheck:env-merge FAILED (${failures}) — the deploy could destroy a server-set secret.`);
   process.exit(1);
 }
-console.log('check:env-merge: server-set secrets survive a deploy (6 cases)');
+console.log('check:env-merge: server-set secrets and runtime modes survive a deploy (7 cases)');
