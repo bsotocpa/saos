@@ -1,8 +1,8 @@
 'use client';
 
-// Dashboard (MP Soto Portal): 4-step first-login checklist (collapses when
-// done), plain-English engagement status, outstanding doc requests, unsigned
-// documents, open invoices with Pay Now, quick actions.
+// Dashboard (MP Soto Portal): the 5-step setup checklist first, engagement status,
+// document requests, open invoices, quick actions, estimated payment due, and the
+// optional SMS opt-in last. Reordered by Brian after running the journey himself.
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -12,7 +12,6 @@ import { useSession } from '../lib/session';
 import { SmsOptIn } from './sms-optin';
 import type { DictKey } from '../lib/i18n';
 
-interface Todo { id: string; title: string; description: string | null; due_date: string | null; kind: 'task' | 'upload' | 'signature' }
 interface Onboarding {
   variant: string;
   step_sign_docs_at: string | null;
@@ -50,7 +49,6 @@ export default function Dashboard() {
   const { t, me, nextEstimate, ready, lang, refresh } = useSession();
   const router = useRouter();
   const [onboarding, setOnboarding] = useState<Onboarding | null>(null);
-  const [todos, setTodos] = useState<Todo[]>([]);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [requests, setRequests] = useState<DocRequest[]>([]);
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
@@ -85,7 +83,6 @@ export default function Dashboard() {
         setStateUrl(r.statePaymentUrl ?? null);
         setDepositApplies(Boolean(r.depositApplies));
       }),
-      api<{ todos: Todo[] }>('/portal/todos').then((r) => setTodos(r.todos)),
       api<{ engagements: Engagement[] }>('/portal/engagements').then((r) => setEngagements(r.engagements)),
       api<{ requests: DocRequest[] }>('/portal/document-requests').then((r) => setRequests(r.requests)),
       api<{ envelopes: Envelope[] }>('/portal/signature-envelopes').then((r) =>
