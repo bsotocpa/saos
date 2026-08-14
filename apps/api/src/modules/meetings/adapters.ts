@@ -50,6 +50,15 @@ function stubTranscriber(): Transcriber {
   };
 }
 
+/*
+ * Whisper on CPU is slow — minutes for a long recording — so the ceiling is generous.
+ * But it is a CEILING, which it did not have (finding #18): an un-timed fetch to a
+ * hung Whisper leaves the meeting at `transcribing` forever, and because the promise
+ * never settles the catch block never runs, so nothing is marked failed and nobody is
+ * told. A timeout converts a silent permanent stall into a loud failure with an alert.
+ */
+const WHISPER_TIMEOUT_MS = 20 * 60 * 1000;
+
 function whisperTranscriber(config: Config): Transcriber {
   const base = config.WHISPER_URL.replace(/\/$/, '');
   return {
@@ -57,7 +66,23 @@ function whisperTranscriber(config: Config): Transcriber {
     async transcribe(audio, filename, mimeType) {
       const form = new FormData();
       form.append('audio_file', new Blob([new Uint8Array(audio)], { type: mimeType }), filename);
-      const res = await fetch(`${base}/asr?output=json&task=transcribe`, { method: 'POST', body: form });
+      let res: Response;
+      try {
+        res = await fetch(`${base}/asr?output=json&task=transcribe`, {
+          method: 'POST',
+          body: form,
+          signal: AbortSignal.timeout(WHISPER_TIMEOUT_MS),
+        });
+      } catch (err) {
+        const timedOut = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+        throw new AppError(
+          502,
+          'whisper_error',
+          timedOut
+            ? `Whisper did not respond within ${WHISPER_TIMEOUT_MS / 60000} minutes.`
+            : 'Whisper could not be reached.'
+        );
+      }
       if (!res.ok) throw new AppError(502, 'whisper_error', `Whisper transcription failed (${res.status}).`);
       const body = (await res.json()) as { text?: string; language?: string };
       return {

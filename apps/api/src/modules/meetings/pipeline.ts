@@ -217,11 +217,45 @@ export async function processMeeting(
   }
 }
 
-/** Restart safety: re-enqueue anything sitting in 'recorded' (called by the scheduler tick). */
+/**
+ * Restart safety: re-enqueue meetings the pipeline is no longer working on.
+ *
+ * FINDING #18 — this used to recover only `recorded`, i.e. work that never STARTED.
+ * Work that started and then vanished was recovered by nothing. Jackson Flores's
+ * 7-minute session went to `transcribing` 352ms after upload on 2026-08-11 and sat
+ * there for two days: the API container restarted mid-transcription, so the catch
+ * block never ran, the status never moved to `failed`, and no alert ever fired. It was
+ * not stuck-and-visible, it was stuck-and-silent — the same shape as the scanner that
+ * sat dead for thirteen hours and the webhook that stopped arriving.
+ *
+ * In-flight states get a longer grace than `recorded` because they are legitimately
+ * slow: Whisper on CPU takes minutes on a long recording, and re-enqueueing a job that
+ * is genuinely still running would transcribe it twice. Re-processing is safe when it
+ * does happen — transcripts and summaries are both ON CONFLICT DO UPDATE, and the
+ * action-item tasks are deduped by title.
+ */
+const IN_FLIGHT_GRACE_MINUTES = 45;
+
 export async function recoverStuckMeetings(app: FastifyInstance, queue: MeetingQueue): Promise<number> {
-  const { rows } = await app.db.query<{ id: string }>(
-    `SELECT id FROM meetings WHERE status = 'recorded' AND created_at < now() - interval '5 minutes' LIMIT 10`
+  const { rows } = await app.db.query<{ id: string; status: string }>(
+    `SELECT id, status::text AS status FROM meetings
+      WHERE (status = 'recorded'    AND updated_at < now() - interval '5 minutes')
+         OR (status IN ('transcribing', 'summarizing')
+             AND updated_at < now() - ($1 || ' minutes')::interval)
+      ORDER BY updated_at
+      LIMIT 10`,
+    [String(IN_FLIGHT_GRACE_MINUTES)]
   );
-  for (const r of rows) queue.enqueue(r.id);
+  for (const r of rows) {
+    if (r.status !== 'recorded') {
+      // Worth saying out loud: this one was abandoned mid-flight, which means a
+      // restart or a hung vendor call, not a slow queue.
+      app.log.warn(
+        { meetingId: r.id, status: r.status },
+        'meeting abandoned mid-processing — re-enqueueing'
+      );
+    }
+    queue.enqueue(r.id);
+  }
   return rows.length;
 }

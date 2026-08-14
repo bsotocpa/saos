@@ -9,6 +9,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
+import { writeAudit } from '../../audit.ts';
 import { uploadDocument } from '../documents/service.ts';
 import { makeMinioClient } from '../documents/storage.ts';
 import { makeSummarizer, makeTranscriber } from './adapters.ts';
@@ -107,6 +108,102 @@ export function registerMeetingRoutes(app: FastifyInstance): void {
 
     void queue.enqueue(meetingId);
     return reply.code(201).send({ id: meetingId, status: 'queued' });
+  });
+
+  const readMeetings = { preHandler: [app.authenticate, requirePermission('meetings.read')] };
+
+  /**
+   * FINDING #18 — the sessions a client has had, with what was said in them.
+   *
+   * Brian's ask: two or three sentences under each recording in the client record, and
+   * a link to the full transcript. The point is being able to review a session — one of
+   * these is with a business partner — without sitting through the audio again.
+   *
+   * `stalled` is computed here rather than left for the reader to work out: a recording
+   * that entered `transcribing` and stopped moving looks identical to one that is
+   * simply still running, and telling those apart by eye is how Jackson's sat for two
+   * days. Anything in flight for over an hour is named as stalled, and the recovery
+   * sweep is already re-enqueueing it.
+   */
+  app.get<{ Params: { id: string } }>('/contacts/:id/meetings', readMeetings, async (request) => {
+    const contactId = z.uuid().parse(request.params.id);
+    const { rows } = await app.db.query(
+      `SELECT m.id, m.type::text AS type, m.source::text AS source, m.status::text AS status,
+              m.title, m.started_at, m.duration_seconds, m.created_at,
+              s.summary, s.decisions, s.action_items, s.tax_need, s.model,
+              (t.meeting_id IS NOT NULL) AS has_transcript,
+              t.language AS transcript_language,
+              (st.full_name) AS staff_name,
+              (m.status IN ('transcribing', 'summarizing')
+                 AND m.updated_at < now() - interval '1 hour') AS stalled
+         FROM meetings m
+         LEFT JOIN meeting_summaries s ON s.meeting_id = m.id
+         LEFT JOIN transcripts t ON t.meeting_id = m.id
+         LEFT JOIN staff st ON st.id = m.staff_id
+        WHERE m.contact_id = $1
+        ORDER BY COALESCE(m.started_at, m.created_at) DESC`,
+      [contactId]
+    );
+    return { meetings: rows };
+  });
+
+  /**
+   * The full transcript. This is verbatim client conversation — the most sensitive
+   * text in the system — so it is a separate call behind its own permission and it is
+   * AUDITED on every read, like any other document access. Nobody should be able to
+   * read a client's session back without that being on the record.
+   */
+  app.get<{ Params: { id: string } }>('/meetings/:id/transcript', readMeetings, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const { rows } = await app.db.query<{
+      content: string; engine: string; language: string | null;
+      contact_id: string | null; title: string | null; started_at: string | null;
+      type: string; duration_seconds: number | null;
+    }>(
+      `SELECT t.content, t.engine, t.language, m.contact_id, m.title, m.started_at,
+              m.type::text AS type, m.duration_seconds
+         FROM transcripts t JOIN meetings m ON m.id = t.meeting_id
+        WHERE t.meeting_id = $1`,
+      [id]
+    );
+    const row = rows[0];
+    if (!row) throw new AppError(404, 'not_found', 'No transcript for this session yet.');
+
+    await writeAudit(app.db, {
+      actorType: 'staff',
+      actorId: request.staff!.id,
+      actorLabel: request.staff!.email,
+      action: 'transcript.read',
+      objectType: 'meeting',
+      objectId: id,
+      contactId: row.contact_id,
+      // The transcript CONTENT never enters the log — no-PII-in-logs applies hardest
+      // to the one table that holds whole conversations.
+      details: { engine: row.engine, language: row.language, chars: row.content.length },
+    });
+
+    return {
+      transcript: {
+        content: row.content, engine: row.engine, language: row.language,
+        title: row.title, startedAt: row.started_at, type: row.type,
+        durationSeconds: row.duration_seconds,
+      },
+    };
+  });
+
+  /** Re-run the pipeline for one session (finding #18 backfill; also the retry after a failure). */
+  app.post<{ Params: { id: string } }>('/meetings/:id/reprocess', staff, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const { rows } = await app.db.query<{ id: string; recording_document_id: string | null }>(
+      `SELECT id, recording_document_id FROM meetings WHERE id = $1`,
+      [id]
+    );
+    if (!rows[0]) throw new AppError(404, 'not_found', 'Meeting not found.');
+    if (!rows[0].recording_document_id) {
+      throw new AppError(409, 'no_recording', 'This session has no recording to process.');
+    }
+    void queue.enqueue(id); // serialized; the caller does not wait out a transcription
+    return { status: 'queued' };
   });
 
   app.get<{ Params: { id: string } }>('/meetings/:id', staff, async (request) => {

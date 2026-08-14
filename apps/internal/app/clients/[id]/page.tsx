@@ -66,6 +66,22 @@ interface PacketRow {
   id: string; status: string; schedule_codes: string[];
   sent_at: string | null; signed_at: string | null; created_at: string;
 }
+// FINDING #18: sessions with what was said in them, so a recording can be reviewed
+// without listening to it again.
+interface Session {
+  id: string; type: string; source: string; status: string;
+  title: string | null; started_at: string | null; created_at: string;
+  duration_seconds: number | null;
+  summary: string | null;
+  decisions: string[] | null;
+  action_items: Array<{ owner: string | null; due: string | null; text: string }> | null;
+  tax_need: boolean | null;
+  model: string | null;
+  has_transcript: boolean;
+  transcript_language: string | null;
+  staff_name: string | null;
+  stalled: boolean;
+}
 
 const okBadge = (s: string) => (s === 'signed' || s === 'granted' || s === 'on_file' ? 'ok' : 'warn');
 
@@ -86,6 +102,11 @@ export default function ClientPacketPage() {
   const [packetMsg, setPacketMsg] = useState('');
   const [packetErr, setPacketErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  // The transcript is a separate, audited fetch — it is never loaded just because
+  // someone opened the client record.
+  const [openTranscript, setOpenTranscript] = useState<{ id: string; content: string } | null>(null);
+  const [transcriptErr, setTranscriptErr] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -108,6 +129,9 @@ export default function ClientPacketPage() {
         api<{ packets: PacketRow[] }>(`/contacts/${params.id}/packets`)
           .then((r) => setPackets(r.packets ?? []))
           .catch(() => setPackets([])),
+        api<{ meetings: Session[] }>(`/contacts/${params.id}/meetings`)
+          .then((r) => setSessions(r.meetings ?? []))
+          .catch(() => setSessions([])),
         // The preview refuses when there is nothing to paper (no services, attest
         // without an Addendum, text not final). Its message IS the explanation, so
         // it is shown rather than swallowed.
@@ -476,6 +500,114 @@ export default function ClientPacketPage() {
             </div>
           ))
         )}
+      </section>
+
+      {/* SESSIONS (finding #18) — recordings with what was said in them. The whole
+          point is reviewing a conversation without listening to it again, so the
+          summary is the body of the row, not a detail behind a click. The transcript
+          IS behind a click, because reading one is an audited access. */}
+      <section className="card span" style={{ marginTop: 12 }}>
+        <h2>Sessions ({sessions.length})</h2>
+        {sessions.length === 0 ? (
+          <p className="muted small">No recorded sessions.</p>
+        ) : (
+          sessions.map((s) => (
+            <div key={s.id} style={{ padding: '10px 0', borderTop: '1px solid var(--line)' }}>
+              <p className="small" style={{ margin: 0 }}>
+                <span className="badge">{s.type.replaceAll('_', ' ')}</span>{' '}
+                {s.stalled ? (
+                  <span className="badge warn">stalled — re-queued</span>
+                ) : s.status !== 'ready' ? (
+                  <span className="badge warn">{s.status}</span>
+                ) : null}{' '}
+                <span className="muted">
+                  {(s.started_at ?? s.created_at).slice(0, 10)}
+                  {s.duration_seconds
+                    ? ` · ${Math.floor(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s`
+                    : ''}
+                  {s.staff_name ? ` · ${s.staff_name}` : ''}
+                </span>
+              </p>
+
+              {s.summary ? (
+                <p className="small" style={{ margin: '6px 0 0' }}>{s.summary}</p>
+              ) : s.stalled ? (
+                <p className="muted small" style={{ margin: '6px 0 0' }}>
+                  Processing stopped partway through and has been re-queued. It will
+                  summarize on the next run.
+                </p>
+              ) : s.status === 'failed' ? (
+                <p className="muted small" style={{ margin: '6px 0 0' }}>
+                  This recording could not be processed. Retry below, or check the audio.
+                </p>
+              ) : (
+                <p className="muted small" style={{ margin: '6px 0 0' }}>Still processing…</p>
+              )}
+
+              {s.decisions && s.decisions.length > 0 ? (
+                <p className="small" style={{ margin: '4px 0 0' }}>
+                  <strong>Decisions:</strong> {s.decisions.join(' · ')}
+                </p>
+              ) : null}
+              {s.action_items && s.action_items.length > 0 ? (
+                <p className="small" style={{ margin: '4px 0 0' }}>
+                  <strong>Action items:</strong> {s.action_items.map((a) => a.text).join(' · ')}
+                </p>
+              ) : null}
+              {s.tax_need ? <span className="badge warn">tax need flagged</span> : null}
+
+              <p className="small" style={{ margin: '6px 0 0' }}>
+                {s.has_transcript ? (
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => {
+                      if (openTranscript?.id === s.id) { setOpenTranscript(null); return; }
+                      setTranscriptErr('');
+                      void api<{ transcript: { content: string } }>(`/meetings/${s.id}/transcript`)
+                        .then((r) => setOpenTranscript({ id: s.id, content: r.transcript.content }))
+                        .catch((err: unknown) =>
+                          setTranscriptErr(err instanceof Error ? err.message : 'Could not load the transcript.')
+                        );
+                    }}
+                  >
+                    {openTranscript?.id === s.id ? 'Hide transcript' : 'Full transcript'}
+                  </button>
+                ) : null}{' '}
+                {s.status !== 'ready' ? (
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => {
+                      void api(`/meetings/${s.id}/reprocess`, { method: 'POST' })
+                        .then(() => setPacketMsg('Session re-queued for processing.'))
+                        .catch((err: unknown) =>
+                          setTranscriptErr(err instanceof Error ? err.message : 'Could not re-queue.')
+                        );
+                    }}
+                  >
+                    Retry processing
+                  </button>
+                ) : null}
+                {s.model ? <span className="muted small"> · summarized by {s.model}</span> : null}
+              </p>
+
+              {openTranscript?.id === s.id ? (
+                <pre
+                  className="small"
+                  style={{
+                    whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginTop: 8,
+                    maxHeight: 320, overflowY: 'auto', background: 'var(--paper)',
+                    padding: 10, borderRadius: 8,
+                  }}
+                >
+                  {openTranscript.content}
+                </pre>
+              ) : null}
+            </div>
+          ))
+        )}
+        {transcriptErr ? <p className="alert error small">{transcriptErr}</p> : null}
       </section>
 
       {c.notes ? (

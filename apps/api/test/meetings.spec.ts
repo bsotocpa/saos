@@ -65,6 +65,26 @@ async function waitForStatus(meetingId: string, wanted: string[], timeoutMs = 30
   }
 }
 
+/**
+ * Make a meeting look older than it is.
+ *
+ * `set_updated_at` fires BEFORE UPDATE and assigns now() unconditionally, so a plain
+ * `SET updated_at = ...` is stamped straight back over. The trigger is what makes
+ * updated_at trustworthy in production ("how long has this been in this state"), so
+ * the test suspends it rather than the code working around it.
+ */
+async function backdate(meetingId: string, interval: string): Promise<void> {
+  await app.db.query(`ALTER TABLE meetings DISABLE TRIGGER trg_meetings_updated_at`);
+  try {
+    await app.db.query(
+      `UPDATE meetings SET created_at = now() - $2::interval, updated_at = now() - $2::interval WHERE id = $1`,
+      [meetingId, interval]
+    );
+  } finally {
+    await app.db.query(`ALTER TABLE meetings ENABLE TRIGGER trg_meetings_updated_at`);
+  }
+}
+
 before(async () => {
   config = await createTestConfig('meet');
   app = buildServer(config);
@@ -238,10 +258,8 @@ test('recovery sweep re-enqueues stuck recordings', async () => {
   const meetingId = res.json().id as string;
   await waitForStatus(meetingId, ['ready']);
   // Simulate the crash state: force back to 'recorded', backdated.
-  await app.db.query(
-    `UPDATE meetings SET status = 'recorded', created_at = now() - interval '10 minutes' WHERE id = $1`,
-    [meetingId]
-  );
+  await app.db.query(`UPDATE meetings SET status = 'recorded' WHERE id = $1`, [meetingId]);
+  await backdate(meetingId, '10 minutes');
   await app.db.query(`DELETE FROM time_entries WHERE meeting_id = $1`, [meetingId]);
 
   const sweep = await app.inject({ method: 'POST', url: '/jobs/meeting-recovery', headers: auth(jackson) });
@@ -249,4 +267,130 @@ test('recovery sweep re-enqueues stuck recordings', async () => {
   assert.ok(sweep.json().recovered >= 1);
   const status = await waitForStatus(meetingId, ['ready']);
   assert.equal(status, 'ready');
+});
+
+/*
+ * FINDING #18 — the recovery hole that stranded a real session.
+ *
+ * Jackson Flores's 7-minute recording went to `transcribing` 352ms after upload on
+ * 2026-08-11 and stayed there for two days. The API container restarted mid-
+ * transcription, so processMeeting's catch never ran: the status never reached
+ * `failed`, no alert fired, and the recovery sweep only ever looked at `recorded` —
+ * work that never STARTED. Work that started and vanished was recovered by nothing.
+ */
+test('recovery sweep rescues a session abandoned MID-processing, not just one never started', async () => {
+  const contact = await makeContactRow('Meetmidflight', 'meet-midflight@example.test');
+  const up = multipartBody(
+    { contactId: contact, type: 'in_person', durationSeconds: '431' },
+    { field: 'file', filename: 'midflight.wav', contentType: 'audio/wav', data: WAV }
+  );
+  const res = await app.inject({
+    method: 'POST', url: '/meetings/upload', headers: { ...auth(jackson), ...up.headers }, payload: up.payload,
+  });
+  const meetingId = res.json().id as string;
+  await waitForStatus(meetingId, ['ready']);
+
+  // Exactly Jackson's state: mid-flight, transcript and summary wiped, long stale.
+  await app.db.query(`DELETE FROM transcripts WHERE meeting_id = $1`, [meetingId]);
+  await app.db.query(`DELETE FROM meeting_summaries WHERE meeting_id = $1`, [meetingId]);
+  await app.db.query(`DELETE FROM time_entries WHERE meeting_id = $1`, [meetingId]);
+  await app.db.query(`UPDATE meetings SET status = 'transcribing' WHERE id = $1`, [meetingId]);
+  await backdate(meetingId, '2 days');
+
+  const sweep = await app.inject({ method: 'POST', url: '/jobs/meeting-recovery', headers: auth(jackson) });
+  assert.equal(sweep.statusCode, 200, sweep.body);
+  assert.ok(sweep.json().recovered >= 1, 'the mid-flight session was picked up');
+
+  assert.equal(await waitForStatus(meetingId, ['ready']), 'ready');
+  const rebuilt = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM meeting_summaries WHERE meeting_id = $1`, [meetingId]);
+  assert.equal(rebuilt.rows[0]!.n, 1, 'and it produced the summary that was missing');
+});
+
+test('a session still genuinely in flight is left alone', async () => {
+  const contact = await makeContactRow('Meetinflight', 'meet-inflight@example.test');
+  const up = multipartBody(
+    { contactId: contact, type: 'phone', durationSeconds: '600' },
+    { field: 'file', filename: 'inflight.wav', contentType: 'audio/wav', data: WAV }
+  );
+  const res = await app.inject({
+    method: 'POST', url: '/meetings/upload', headers: { ...auth(jackson), ...up.headers }, payload: up.payload,
+  });
+  const meetingId = res.json().id as string;
+  await waitForStatus(meetingId, ['ready']);
+  // Transcribing for ten minutes is Whisper doing its job on CPU, not a stall.
+  // Re-enqueueing it would transcribe the same audio twice.
+  await app.db.query(`UPDATE meetings SET status = 'transcribing' WHERE id = $1`, [meetingId]);
+  await backdate(meetingId, '10 minutes');
+
+  const sweep = await app.inject({ method: 'POST', url: '/jobs/meeting-recovery', headers: auth(jackson) });
+  assert.equal(sweep.statusCode, 200, sweep.body);
+  const still = await app.db.query<{ status: string }>(
+    `SELECT status::text AS status FROM meetings WHERE id = $1`, [meetingId]);
+  assert.equal(still.rows[0]!.status, 'transcribing', 'left running, not restarted');
+});
+
+test('the client record lists sessions with their summaries; the transcript is separate and audited', async () => {
+  const contact = await makeContactRow('Meetrecord', 'meet-record@example.test');
+  const up = multipartBody(
+    { contactId: contact, type: 'in_person', durationSeconds: '431' },
+    { field: 'file', filename: 'record.wav', contentType: 'audio/wav', data: WAV }
+  );
+  const res = await app.inject({
+    method: 'POST', url: '/meetings/upload', headers: { ...auth(jackson), ...up.headers }, payload: up.payload,
+  });
+  const meetingId = res.json().id as string;
+  await waitForStatus(meetingId, ['ready']);
+
+  const list = await app.inject({
+    method: 'GET', url: `/contacts/${contact}/meetings`, headers: auth(ana),
+  });
+  assert.equal(list.statusCode, 200, list.body);
+  const row = (list.json().meetings as Array<Record<string, unknown>>)[0]!;
+  assert.equal(row.id, meetingId);
+  assert.ok(row.summary, 'the summary is IN the list — reviewing a session is the point');
+  assert.equal(row.has_transcript, true);
+  assert.equal(row.stalled, false);
+  assert.ok(!('content' in row), 'the transcript body is NOT in the list payload');
+
+  // Reading the transcript is its own call, and it lands in the audit log.
+  const before = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM audit_log WHERE action = 'transcript.read' AND object_id = $1`,
+    [meetingId]
+  );
+  const t = await app.inject({
+    method: 'GET', url: `/meetings/${meetingId}/transcript`, headers: auth(ana),
+  });
+  assert.equal(t.statusCode, 200, t.body);
+  assert.ok((t.json().transcript.content as string).length > 0);
+  const after = await app.db.query<{ n: number; details: Record<string, unknown> }>(
+    `SELECT count(*)::int AS n, (array_agg(details))[1] AS details FROM audit_log
+      WHERE action = 'transcript.read' AND object_id = $1`,
+    [meetingId]
+  );
+  assert.equal(after.rows[0]!.n, before.rows[0]!.n + 1, 'the read was audited');
+  // No-PII-in-logs applies hardest to the table holding whole conversations.
+  assert.ok(!JSON.stringify(after.rows[0]!.details).includes('transcript of'), 'content never enters the log');
+  assert.ok('chars' in after.rows[0]!.details, 'a length is recorded instead');
+});
+
+test('a stalled session is NAMED as stalled, not left looking busy', async () => {
+  const contact = await makeContactRow('Meetstalled', 'meet-stalled@example.test');
+  const up = multipartBody(
+    { contactId: contact, type: 'in_person', durationSeconds: '431' },
+    { field: 'file', filename: 'stalled.wav', contentType: 'audio/wav', data: WAV }
+  );
+  const res = await app.inject({
+    method: 'POST', url: '/meetings/upload', headers: { ...auth(jackson), ...up.headers }, payload: up.payload,
+  });
+  const meetingId = res.json().id as string;
+  await waitForStatus(meetingId, ['ready']);
+  await app.db.query(`UPDATE meetings SET status = 'transcribing' WHERE id = $1`, [meetingId]);
+  await backdate(meetingId, '2 days');
+
+  const list = await app.inject({
+    method: 'GET', url: `/contacts/${contact}/meetings`, headers: auth(ana),
+  });
+  const row = (list.json().meetings as Array<Record<string, unknown>>)[0]!;
+  assert.equal(row.stalled, true, 'two days in transcribing reads as stalled, not "still working"');
 });
