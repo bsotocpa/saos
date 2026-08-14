@@ -5,8 +5,12 @@
 //
 // THE QUEUE IS SERIAL (one job at a time): on the shared 16GB box, Whisper
 // and Ollama must never crunch two recordings concurrently. Failures land the
-// meeting in 'failed' with a staff notification — never a silent drop. A
-// recovery sweep re-enqueues anything stuck in 'recorded' (restart safety).
+// meeting in 'failed' with a staff notification — never a silent drop.
+//
+// "Never a silent drop" was not true for a CRASH, only for an exception: the
+// recovery sweep re-enqueued 'recorded' (work that never started) and nothing
+// else, so a restart mid-transcription stranded the session forever with no
+// alert. It now also sweeps the in-flight states — see recoverStuckMeetings.
 
 import type { FastifyInstance } from 'fastify';
 import type { Client as MinioClient } from 'minio';
@@ -127,11 +131,29 @@ export async function processMeeting(
     // type}"; the action item itself is the description.
     const sessionLabel = meeting.type.replaceAll('_', ' ');
     const meetingTaskTitle = `Meeting: ${contactName ?? 'Unlinked session'} — ${sessionLabel}`;
-    for (const item of summary.actionItems) {
+    /*
+     * A local model asked for action items will sometimes produce one anyway, with
+     * placeholder text, even while its own summary says there were none. Jackson
+     * Flores's re-processed session did exactly that: an action item whose text was
+     * literally "..." became a task in Brian's queue with "..." as its description.
+     *
+     * A task nobody can act on is worse than no task: it costs attention to open and
+     * teaches people to skim the queue. So an action item has to say something before
+     * it earns a place in the unified task system.
+     */
+    const actionable = summary.actionItems.filter((i) => {
+      const text = i.text.trim();
+      return text.length >= 4 && /[a-z0-9]/i.test(text);
+    });
+    const discarded = summary.actionItems.length - actionable.length;
+    if (discarded > 0) {
+      app.log.info({ meetingId, discarded }, 'discarded empty action item(s) from the summary');
+    }
+    for (const item of actionable) {
       await app.db.query(
         `INSERT INTO tasks (title, description, assigned_staff_id, contact_id, source, source_type, source_id)
          VALUES ($1, $2, $3, $4, 'meeting', 'meeting_action_item', $5)`,
-        [meetingTaskTitle, item.text.slice(0, 2000), meeting.staff_id, meeting.contact_id, meetingId]
+        [meetingTaskTitle, item.text.trim().slice(0, 2000), meeting.staff_id, meeting.contact_id, meetingId]
       );
     }
 

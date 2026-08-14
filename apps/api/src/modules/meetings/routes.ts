@@ -12,7 +12,7 @@ import { AppError } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
 import { uploadDocument } from '../documents/service.ts';
 import { makeMinioClient } from '../documents/storage.ts';
-import { makeSummarizer, makeTranscriber } from './adapters.ts';
+import { makeSummarizer, makeTranscriber, type Summarizer } from './adapters.ts';
 import { MeetingQueue, recoverStuckMeetings } from './pipeline.ts';
 
 const UploadFields = z.object({
@@ -41,11 +41,18 @@ function fieldValues(data: MultipartFile): Record<string, unknown> {
   return out;
 }
 
-export function registerMeetingRoutes(app: FastifyInstance): void {
+export function registerMeetingRoutes(
+  app: FastifyInstance,
+  // Injectable so a test can drive the pipeline with a KNOWN summary. Without it the
+  // stub regenerates its own action items on every re-process, so a test that seeds a
+  // bad one into the table proves nothing — it is overwritten before the code under
+  // test ever sees it.
+  overrides: { summarizer?: Summarizer } = {}
+): void {
   const minio = makeMinioClient(app.config);
   const queue = new MeetingQueue(app, {
     transcriber: makeTranscriber(app.config),
-    summarizer: makeSummarizer(app.config),
+    summarizer: overrides.summarizer ?? makeSummarizer(app.config),
     minio,
   });
   // The scheduler's recovery sweep needs the queue — expose it on the instance.

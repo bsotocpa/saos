@@ -12,6 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import { createTestConfig, makeStaff, multipartBody, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
+import type { Summarizer } from '../src/modules/meetings/adapters.ts';
 
 let app: FastifyInstance;
 let config: Config;
@@ -372,6 +373,87 @@ test('the client record lists sessions with their summaries; the transcript is s
   // No-PII-in-logs applies hardest to the table holding whole conversations.
   assert.ok(!JSON.stringify(after.rows[0]!.details).includes('transcript of'), 'content never enters the log');
   assert.ok('chars' in after.rows[0]!.details, 'a length is recorded instead');
+});
+
+/*
+ * The real case, from Jackson Flores's re-processed session: the summary text said
+ * "no major decisions or action items" and the model emitted an action item anyway,
+ * whose text was literally "...". The pipeline turned that into a task in Brian's
+ * queue described as "...". A task nobody can act on costs attention to open and
+ * teaches people to skim the queue.
+ *
+ * Driven by an injected summarizer, because the stub regenerates its own action items
+ * on every re-process — seeding a bad one into the table proves nothing, it is
+ * overwritten before the code under test ever sees it.
+ */
+test('a placeholder action item does not become a task nobody can act on', async () => {
+  const placeholderSummarizer: Summarizer = {
+    mode: 'stub',
+    async summarize() {
+      return {
+        summary: 'Caught up on the grant cycle. No major decisions or action items.',
+        decisions: [],
+        actionItems: [
+          { owner: null, due: null, text: '...' },        // the exact junk that shipped
+          { owner: null, due: null, text: '  ' },         // whitespace only
+          { owner: null, due: null, text: '-' },          // punctuation only
+          { owner: null, due: null, text: 'Send the 2025 organizer' }, // the real one
+        ],
+        taxNeed: false,
+        taxNeedDescription: null,
+        referralHiloToSoto: false,
+        referralSotoToHilo: false,
+      };
+    },
+  };
+
+  const cfg = await createTestConfig('meetph');
+  const app2 = buildServer(cfg, { summarizer: placeholderSummarizer });
+  await app2.ready();
+  try {
+    const secret = new OTPAuth.Secret({ size: 20 }).base32;
+    const st = await makeStaff(app2.db, cfg, {
+      email: 'ph-meet@example.test', name: 'Synthetic ED', role: 'ed_coo',
+      password: 'ph-password-123456', totpSecret: secret,
+    });
+    const code = new OTPAuth.TOTP({
+      algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(secret),
+    }).generate();
+    const login = await app2.inject({
+      method: 'POST', url: '/auth/login',
+      payload: { email: st.email, password: st.password, totp: code },
+    });
+    const token = login.json().token as string;
+
+    const { rows } = await app2.db.query<{ id: string }>(
+      `INSERT INTO contacts (first_name, last_name, email, hilo_status, soto_status)
+       VALUES ('Synthetic', 'Meetplaceholder', 'meet-placeholder@example.test', 'active', 'none') RETURNING id`
+    );
+    const up = multipartBody(
+      { contactId: rows[0]!.id, type: 'phone', durationSeconds: '60' },
+      { field: 'file', filename: 'placeholder.wav', contentType: 'audio/wav', data: WAV }
+    );
+    const res = await app2.inject({
+      method: 'POST', url: '/meetings/upload',
+      headers: { authorization: `Bearer ${token}`, ...up.headers }, payload: up.payload,
+    });
+    const meetingId = res.json().id as string;
+
+    for (let i = 0; i < 200; i += 1) {
+      const s = await app2.db.query<{ status: string }>(`SELECT status FROM meetings WHERE id = $1`, [meetingId]);
+      if (s.rows[0]?.status === 'ready' || s.rows[0]?.status === 'failed') break;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+
+    const tasks = await app2.db.query<{ description: string }>(
+      `SELECT description FROM tasks WHERE source_id = $1 AND source_type = 'meeting_action_item'`,
+      [meetingId]
+    );
+    assert.equal(tasks.rows.length, 1, 'exactly one of the four action items was actionable');
+    assert.equal(tasks.rows[0]!.description, 'Send the 2025 organizer');
+  } finally {
+    await app2.close();
+  }
 });
 
 test('a stalled session is NAMED as stalled, not left looking busy', async () => {

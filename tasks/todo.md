@@ -1008,10 +1008,28 @@ confirmation, every dead end is a new finding."
       Silent acceptance into the void is never valid. Root cause was class-wide (no
       owner → task silently dropped), so the fix is `ownerForRole()`: role holder →
       CEO → null, never a silent drop
-- [ ] **#18** Recording summaries — Whisper transcript → Ollama, 2–3 sentences under
-      each recording in the client record + full-transcript link; backfill Jackson
-      Flores, Josean Irizarry, Joseph Basilone. Brian needs Jackson's reviewed for
-      partner-sensitive material without listening to the audio. **Queued behind #24**
+- [x] **#18** Recording summaries. The Whisper→Ollama pipeline already existed and
+      worked — Josean's and Joseph's sessions were transcribed and summarized. What
+      was missing was (a) anywhere to SEE it and (b) a reason Jackson's never ran:
+      - **The recovery hole**: his 7-minute session went to `transcribing` 352ms after
+        upload on 2026-08-11 and sat there two days. The API container restarted
+        mid-transcription, so `processMeeting`'s catch never ran — status never
+        reached `failed`, no alert fired — and `recoverStuckMeetings` only looked at
+        `recorded`, i.e. work that never STARTED. Work that started and vanished was
+        recovered by nothing. Now covers `transcribing`/`summarizing` on a 45-minute
+        grace (a genuinely-running Whisper is left alone; re-processing is safe
+        because transcripts and summaries are ON CONFLICT DO UPDATE)
+      - **No Whisper timeout**: an un-timed fetch to a hung Whisper never settles, so
+        the catch can never run. 20-minute ceiling; a hang is now a loud failure
+      - **Sessions section** on the client record: summary is the BODY of each row,
+        not behind a click — reviewing a conversation without replaying it is the
+        whole point. Decisions, action items, tax-need flag, duration, staff. A
+        stalled session says "stalled — re-queued" instead of looking busy, and
+        carries a Retry control
+      - **Full transcript** is a separate call behind `meetings.read` and is AUDITED
+        on every read (`transcript.read`), like any other document access. The log
+        records engine, language and character count — never content
+      - Backfill: the deploy's own recovery sweep picked Jackson's up and re-queued it
 - [ ] **#19** `acceptQuote` hardcodes `serviceLine: 'tax'`. Brian: not tonight — hard
       gate in `launch-readiness.md` instead (GATE 1: no non-tax quote may be SENT
       until fixed). Scope expanded by his later ruling: the fix must also make

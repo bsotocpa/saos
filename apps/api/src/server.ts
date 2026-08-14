@@ -27,6 +27,7 @@ import { registerBillingRoutes } from './modules/billing/routes.ts';
 import { registerFormRoutes } from './modules/forms/routes.ts';
 import { registerReferralRoutes } from './modules/referrals/routes.ts';
 import { registerMeetingRoutes } from './modules/meetings/routes.ts';
+import type { Summarizer } from './modules/meetings/adapters.ts';
 import { registerBookingRoutes } from './modules/booking/routes.ts';
 import { registerBookkeepingRoutes } from './modules/bookkeeping/routes.ts';
 import { registerGrantVoucherRoutes } from './modules/grants/routes.ts';
@@ -56,7 +57,7 @@ function isPgError(err: unknown): err is { code: string; constraint?: string; ta
 
 export function buildServer(
   config: Config,
-  overrides: { mailer?: Mailer; stripe?: StripeAdapter } = {}
+  overrides: { mailer?: Mailer; stripe?: StripeAdapter; summarizer?: Summarizer } = {}
 ): FastifyInstance {
   const app = Fastify({
     logger: config.NODE_ENV === 'test' ? false : loggerOptions,
@@ -145,7 +146,7 @@ export function buildServer(
   registerBillingRoutes(app);
   registerFormRoutes(app);
   registerReferralRoutes(app);
-  registerMeetingRoutes(app);
+  registerMeetingRoutes(app, overrides.summarizer ? { summarizer: overrides.summarizer } : {});
   registerBookingRoutes(app);
   registerBookkeepingRoutes(app);
   registerGrantVoucherRoutes(app);
