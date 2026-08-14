@@ -1029,7 +1029,20 @@ confirmation, every dead end is a new finding."
       - **Full transcript** is a separate call behind `meetings.read` and is AUDITED
         on every read (`transcript.read`), like any other document access. The log
         records engine, language and character count — never content
-      - Backfill: the deploy's own recovery sweep picked Jackson's up and re-queued it
+      - **Placeholder action items**: Jackson's summary text said "no major decisions
+        or action items" and the model emitted one anyway whose text was literally
+        "...", which became a task in the queue described as "...". An action item now
+        has to say something before it earns a place in the task system. The already-
+        created junk task was CANCELLED with a reason, not deleted
+      - Backfill: the deploy's own recovery sweep picked Jackson's up and re-processed
+        it. All three sessions now `ready` — Jackson 431s / 4160-char transcript /
+        284-char summary, Josean 31s, Joseph 21s. Jackson's summary is coherent and
+        covers the CCSA reimbursement discussion and the rescheduled DCO plan meeting
+      - ⚠️ **Not verified by eye**: the ops app needs staff credentials + TOTP, which I
+        do not have and will not enter. Verified instead by build, typecheck, tests,
+        live endpoints (401-gated), correct DB state, and the presence of every
+        Sessions string in the deployed client-record bundle. Brian should open
+        Clients → Jackson Flores and confirm it reads right at 390px
 - [ ] **#19** `acceptQuote` hardcodes `serviceLine: 'tax'`. Brian: not tonight — hard
       gate in `launch-readiness.md` instead (GATE 1: no non-tax quote may be SENT
       until fixed). Scope expanded by his later ruling: the fix must also make

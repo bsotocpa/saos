@@ -516,3 +516,27 @@ explanatory comment. My first instinct was that the guard was over-broad.
 code, not the guard. A dollar figure in a comment goes stale the moment the price book
 moves, so removing it was the correct fix and the guard was right. Weakening a guard to
 make my own commit pass is how the guard stops meaning anything.
+
+## A test that the code under test overwrites proves nothing
+**What happened**: to test that placeholder action items no longer become tasks, I
+seeded a bad action item into `meeting_summaries` and re-ran the pipeline. It passed —
+and it was vacuous. Re-processing regenerates the summary from the summarizer, so my
+seeded row was overwritten before the filter ever saw it. The test asserted a property
+the stub's own output already satisfied.
+**Rule**: before believing a test, ask what the code does to my fixture BEFORE the
+assertion. If the path under test rewrites the state I set up, I am testing the fixture,
+not the code. The fix was an injectable summarizer — control the INPUT, not the
+intermediate state.
+**And then sabotage it**: I only knew the rewritten test was real because removing the
+filter made it fail. Every "prove it" claim in this build has come from breaking the
+fix and watching the specific test go red — a passing test on its own has never been
+evidence of anything.
+
+## Sabotage with a value the system accepts
+**What happened**: to prove the meeting-recovery test was live I changed a status
+literal to 'SABOTAGE'. Three tests failed instead of one — the string is not a valid
+`meeting_status`, so the whole query threw and took unrelated cases with it. The result
+looked like strong evidence and was actually noise.
+**Rule**: sabotage must be the OLD BEHAVIOUR, not a crash. Replace the new branch with
+what the code used to do and confirm exactly the new test fails and the old ones still
+pass. A blast radius wider than the fix means the experiment was not controlled.
