@@ -50,7 +50,11 @@ export default function InvoicesPage() {
       const params = new URLSearchParams(window.location.search);
       if (params.get('paid') !== '1') return;
       setPaidNotice('confirming');
-      const unpaid = list.filter((i) => i.status !== 'paid');
+      // The list is newest-first and the invoice just paid is effectively always the
+      // newest, so a handful covers it. Bounded because a client with twenty open
+      // invoices should not fire twenty Stripe lookups on a page load; the every-tick
+      // sweep picks up anything this misses.
+      const unpaid = list.filter((i) => i.status !== 'paid').slice(0, 5);
       try {
         const results = await Promise.all(
           unpaid.map((i) =>
