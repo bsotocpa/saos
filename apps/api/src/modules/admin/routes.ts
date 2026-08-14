@@ -96,14 +96,28 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   registerOpsRoutes(app); // WISP security summary (M21)
 
   // ── Price book ────────────────────────────────────────────────────────────
+  /*
+   * The admin surface reads the LATEST version, not the one in force today.
+   *
+   * They differ whenever a version has been staged to start on a future date, which is
+   * the normal case: at most one version may exist per day, so a book corrected on a day
+   * that already has a version starts tomorrow. The confirm endpoint below has always
+   * written to the LATEST version, so reading the in-force one here meant that during
+   * that window the page showed one version's flags while a tap cleared another's —
+   * confirm, reload, and the ⚠ is still there. It looks like a broken button and it
+   * silently answers a question about a different book.
+   *
+   * Latest is also the right thing to edit: you stage the next version, you do not amend
+   * the one clients are being quoted from. `pending` tells the page to say so.
+   */
   app.get('/admin/price-book', pricing, async () => {
     const version = await app.db.query(
-      `SELECT id, version_number, effective_from, effective_to, note
+      `SELECT id, version_number, effective_from, effective_to, note,
+              (effective_from > CURRENT_DATE) AS pending
        FROM price_book_versions
-       WHERE effective_from <= CURRENT_DATE AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
        ORDER BY version_number DESC LIMIT 1`
     );
-    if (!version.rows[0]) throw new AppError(500, 'price_book_missing', 'No price book version in force.');
+    if (!version.rows[0]) throw new AppError(500, 'price_book_missing', 'No price book version exists.');
     const v = version.rows[0] as { id: string };
     const items = await app.db.query(
       `SELECT item_code, service_line, name_en, amount_cents, price_min_cents, price_max_cents,

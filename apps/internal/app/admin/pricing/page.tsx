@@ -36,13 +36,13 @@ interface Item {
   structure_needs_confirmation: boolean; structure_confirmation_note: string | null;
 }
 interface Book {
-  version: { version_number: number; effective_from: string; note: string | null };
+  version: { version_number: number; effective_from: string; note: string | null; pending: boolean };
   items: Item[];
 }
 type Kind = 'price' | 'structure';
 interface Pending { kind: Kind; note: string; items: Item[] }
 
-const dollars = (cents: number | null): string => (cents === null ? '' : String(cents / 100));
+
 
 /** What this line charges, in the shape its mode says it is. */
 function priceLabel(i: Item): string {
@@ -149,8 +149,9 @@ export default function PricingAdminPage() {
     <>
       <h1>
         Price book{' '}
-        <span className="badge">
-          v{book.version.version_number} · effective {book.version.effective_from.slice(0, 10)}
+        <span className={`badge ${book.version.pending ? 'warn' : ''}`}>
+          v{book.version.version_number} ·{' '}
+          {book.version.pending ? 'takes effect' : 'effective'} {book.version.effective_from.slice(0, 10)}
         </span>
       </h1>
       {message ? <p className="alert info">{message}</p> : null}
