@@ -31,7 +31,8 @@ let ana: TestStaff & { token: string };
 
 const silentMailer: Mailer = { transport: 'console', async send() { return { id: 'silent' }; } };
 const auth = (t: { token: string }) => ({ authorization: `Bearer ${t.token}` });
-const DEPOSIT_CODE = 'DEPOSIT_1040';
+/** v4: the standard deposit is IND_BASE_MFJ's own deposit_cents, not a deposit item. */
+const DEPOSIT_LINE = 'IND_BASE_MFJ';
 
 async function staffWithToken(email: string, role: string): Promise<TestStaff & { token: string }> {
   const secret = new OTPAuth.Secret({ size: 20 }).base32;
@@ -53,7 +54,7 @@ async function quoteWithDeposit(label: string): Promise<{ quoteId: string; conta
   });
   const res = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(brian),
-    payload: { contactId: c.id, lines: [{ itemCode: 'IND_BASE_MFJ' }], depositItemCode: DEPOSIT_CODE },
+    payload: { contactId: c.id, lines: [{ itemCode: DEPOSIT_LINE }] },
   });
   assert.equal(res.statusCode, 201, res.body);
   return { quoteId: res.json().id as string, contactId: c.id };
@@ -61,9 +62,9 @@ async function quoteWithDeposit(label: string): Promise<{ quoteId: string; conta
 
 async function standardDeposit(): Promise<number> {
   const { rows } = await app.db.query<{ amount_cents: number }>(
-    `SELECT i.amount_cents FROM price_book_items i JOIN price_book_versions v ON v.id = i.version_id
+    `SELECT i.deposit_cents AS amount_cents FROM price_book_items i JOIN price_book_versions v ON v.id = i.version_id
      WHERE v.effective_to IS NULL AND i.item_code = $1`,
-    [DEPOSIT_CODE]
+    [DEPOSIT_LINE]
   );
   return rows[0]!.amount_cents;
 }
@@ -340,7 +341,10 @@ test('an override cannot invent a deposit where the quote has none', async () =>
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Nodeposit', email: 'nodep-dep@example.test' });
   const created = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(brian),
-    payload: { contactId: c.id, lines: [{ itemCode: 'IND_BASE_SINGLE' }] },
+    // Schedule A, not a base return. In v4 the base returns carry deposit_cents, so
+    // quoting one gives this quote a real deposit and the override is legitimate —
+    // the line has to be a genuine add-on for the rule under test to apply.
+    payload: { contactId: c.id, lines: [{ itemCode: 'IND_SCH_A' }] },
   });
   const res = await app.inject({
     method: 'POST', url: `/quotes/${created.json().id}/deposit-override`, headers: auth(brian),

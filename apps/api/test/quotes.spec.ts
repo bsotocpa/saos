@@ -218,7 +218,6 @@ test('accepting converts to an engagement + deposit invoice with zero re-entry',
         { itemCode: 'IND_SCH_E_RENTAL', quantity: 2 },          // $180 × 2
         { itemCode: 'IND_SCH_A', isOptional: true },            // $100, client's call
       ],
-      depositItemCode: 'DEPOSIT_1040',
     },
   });
   const quoteId = created.json().id as string;

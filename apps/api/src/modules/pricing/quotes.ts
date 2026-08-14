@@ -519,11 +519,23 @@ export async function overrideQuoteDeposit(
         `after that the deposit invoice exists and must be adjusted directly.`
     );
   }
-  if (!quote.deposit_item_code) {
+  /*
+   * "Does this quote have a deposit?" — asked properly.
+   *
+   * This used to test `deposit_item_code IS NULL`, which WAS the same question until v4
+   * moved the deposit onto the service lines. After that, a normal quote has a real
+   * deposit and no item code, so the guard refused every override with "add the deposit
+   * item first" — an instruction referring to a thing that no longer exists.
+   *
+   * The rule it protects is still right and still enforced: an override adjusts an
+   * amount, it never creates one out of nothing.
+   */
+  const summed = await summedLineDeposits(app, quoteId);
+  if (summed === null && !quote.deposit_item_code) {
     throw new AppError(
       400,
       'no_deposit_on_quote',
-      'This quote has no deposit. Add the deposit item first — an override adjusts an amount, it does not create one.'
+      'This quote has no deposit — none of its lines ask for one. An override adjusts a deposit, it does not create one.'
     );
   }
   if (input.amountCents !== null && input.amountCents < 0) {
@@ -646,12 +658,21 @@ export async function acceptQuote(
       {
         contactId: row.contact_id,
         engagementId: engagement.id,
-        // A reduced deposit is a custom-amount line: the price book holds the
-        // STANDARD deposit, and quoting its code would re-charge that figure.
-        // The amount comes from the override record (runtime data), not code.
-        lines: deposit.isOverridden
-          ? [{ description: deposit.label, unitCents: deposit.chargeCents }]
-          : [{ code: row.deposit_item_code! }],
+        /*
+         * ONE LINE, always a resolved amount — never an item code.
+         *
+         * This used to invoice the deposit ITEM (`{ code: deposit_item_code }`) for a
+         * standard deposit and fall back to a custom line only for an override. v4
+         * removes the item: a deposit is the SUM of the quote's lines' deposit_cents,
+         * so there is no single code that represents it, and the two deposit items are
+         * retired anyway (bookings are free — Brian, 2026-08-14).
+         *
+         * The amount is still price-book-derived — resolveDeposit summed it out of
+         * deposit_cents on the pinned version — so no price is invented here. Collapsing
+         * to one path also removes the branch where an override and a standard deposit
+         * were billed by different mechanisms.
+         */
+        lines: [{ description: deposit.label, unitCents: deposit.chargeCents }],
       }
     );
     depositInvoiceId = invoice.id;

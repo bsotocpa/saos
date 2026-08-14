@@ -79,6 +79,12 @@ export const automations = [
     description:
       'Sends the bilingual session recap to the client\'s portal thread and emails a pointer to it — only ever after YOU approve it; nothing here auto-sends. OFF: recaps still draft themselves after each session and still queue for your approval, and an approved recap waits at "approved" with the reason recorded instead of going out. Arm this once you are happy with the recap copy on a few real sessions.',
   },
+  {
+    key: 'booking_confirmations',
+    name: 'Booking confirmation email (discovery calls)',
+    description:
+      'Confirms a booked discovery call and says plainly that there is nothing to pay now — the deposit comes with the engagement quote. Cal.com already sends its own calendar confirmation, so this one exists to set the money expectation. OFF: the booking is still recorded, the contact is still created or linked, the discovery call still lands in the team\'s queue, and the suppression is counted in the audit record. Arm this when real clients start booking. Registered 2026-08-14, when the booking-time deposit charge was retired — that flow used to email a checkout link, so this is what replaced it.',
+  },
 ];
 
 export async function seedAutomations(client) {

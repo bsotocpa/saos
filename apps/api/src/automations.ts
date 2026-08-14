@@ -31,6 +31,7 @@ export const AUTOMATION_KEYS = [
   'review_requests',
   'event_reminders',
   'session_recaps',
+  'booking_confirmations',
 ] as const;
 
 export type AutomationKey = (typeof AUTOMATION_KEYS)[number];

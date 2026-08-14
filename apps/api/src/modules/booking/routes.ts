@@ -1,21 +1,34 @@
-// Two-lane booking (MP v4.2 module 8) driven by the Cal.com webhook:
-//   Lane 1 "New Client Discovery"  — collects the service-level DEPOSIT via
-//     Stripe at booking (true-up model): contact created/linked, deposit
-//     invoice from the price book, checkout link emailed.
-//   Lane 2 "General Inquiries"     — always free (codified retention asset):
-//     a task for the team, nothing billed, ever.
-// Lane mapping + deposit item codes live in app_settings (admin-tunable).
-// Zoom-only on initial consultations is enforced by the Cal.com event-type
-// config (M23 setup); the webhook flags non-Zoom discovery bookings to staff.
+// Two-lane booking (MP v4.2 module 8) driven by the Cal.com webhook.
+//
+// EVERY BOOKING IS FREE (Brian, 2026-08-14): "deposits exist ONLY on accepted quotes.
+// Discovery and all bookings are free; first client payment is always the quote deposit."
+//
+// Lane 1 used to collect a service-level deposit here — it created an invoice from
+// DEPOSIT_1040 / DEPOSIT_BUSINESS_TAX, opened a Stripe checkout session and emailed the
+// link. That was a SECOND deposit path alongside the quote flow, and once price book v4
+// put deposits on the service lines it became a double charge waiting to happen: a client
+// who booked and then accepted a quote would be asked twice. Retiring it removes the
+// double-charge scenario rather than guarding against it.
+//
+// So Lane 1 now does what Lane 2 always did — create/link the contact, task the team,
+// bill nothing — plus a confirmation email that sets the expectation the Cal.com event
+// description already sets: the deposit comes with the engagement quote.
+//
+//   Lane 1 "New Client Discovery"  — contact created/linked, team tasked, FREE.
+//   Lane 2 "General Inquiries"     — always free (codified retention asset).
+//
+// Lane membership lives in app_settings (admin-tunable). Zoom-only on initial
+// consultations is enforced by the Cal.com event-type config (M23 setup); the webhook
+// flags non-Zoom discovery bookings to staff.
 
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
+import { isAutomationEnabled } from '../../automations.ts';
 import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
-import { createInvoice } from '../billing/service.ts';
 
 const BookingPayload = z.object({
   triggerEvent: z.string(),
@@ -43,7 +56,6 @@ async function settingJson<T>(app: FastifyInstance, key: string, fallback: T): P
 }
 
 export function registerBookingRoutes(app: FastifyInstance): void {
-  const stripe = app.stripe;
 
   app.post('/webhooks/calcom', async (request, reply) => {
     const secret = request.headers['x-webhook-secret'];
@@ -62,7 +74,13 @@ export function registerBookingRoutes(app: FastifyInstance): void {
     const lastName = nameParts.slice(1).join(' ') || 'Client';
     const language = attendee.language === 'es' ? 'es' : 'en';
 
-    const depositItems = await settingJson<Record<string, string>>(app, 'booking.deposit_items', {});
+    /*
+     * Which slugs are discovery. This used to be `booking.deposit_items` — a map of
+     * slug → deposit item code — and after the Lane 1 ruling only the KEYS meant
+     * anything. A setting named for deposits in a system that takes no deposit at
+     * booking reads wrong, so it is retired in favour of a plain list of slugs.
+     */
+    const discoverySlugs = await settingJson<string[]>(app, 'booking.discovery_events', []);
     const questionSlugs = await settingJson<string[]>(app, 'booking.question_slugs', []);
 
     // Find-or-create the contact (same dedupe rule as intake: link by email).
@@ -108,9 +126,8 @@ export function registerBookingRoutes(app: FastifyInstance): void {
       return { status: 'ok', lane: 'questions' };
     }
 
-    // ── Lane 1: discovery — deposit from the price book + checkout link.
-    const depositCode = depositItems[slug];
-    if (!depositCode) {
+    // ── Lane 1: discovery — free, like every other booking.
+    if (!discoverySlugs.includes(slug)) {
       // Unknown event type: accept, flag for staff so nothing silently slips.
       const rene = await ownerForRole(app.db, 'comms_billing');
       if (rene) {
@@ -125,7 +142,7 @@ export function registerBookingRoutes(app: FastifyInstance): void {
         });
         // M25: mapping the slug is a work item, deduped per slug.
         await createTask(app, {
-          title: `Map Cal.com event type '${slug}' in Admin → Settings (booking.deposit_items)`,
+          title: `Map Cal.com event type '${slug}' in Admin → Settings (booking.discovery_events)`,
           assignedStaffId: rene,
           contactId,
           source: 'automation',
@@ -136,36 +153,43 @@ export function registerBookingRoutes(app: FastifyInstance): void {
       return { status: 'ok', lane: 'unmapped' };
     }
 
-    const invoice = await createInvoice(app, { type: 'system', label: 'booking deposit' }, {
+    /*
+     * The team gets the work item. This is the internal half and is NEVER gated —
+     * only the outbound client message is (CLAUDE.md).
+     */
+    const owner = await ownerForRole(app.db, 'comms_billing');
+    await createTask(app, {
+      title: `Discovery call booked: ${contactFirst} (${body.payload.startTime ?? 'time tbd'})`,
+      ...(owner ? { assignedStaffId: owner } : {}),
       contactId,
-      lines: [{ code: depositCode }],
-      send: false, // our own deposit email below carries the checkout link
+      priority: 1,
+      source: 'automation',
+      sourceType: 'booking_discovery',
+      sourceId: contactId,
     });
-    await app.db.query(`UPDATE invoices SET status = 'sent', sent_at = now() WHERE id = $1`, [invoice.id]);
 
-    const session = await stripe.createCheckoutSession({
-      invoiceId: invoice.id,
-      invoiceNumber: invoice.invoiceNumber,
-      amountCents: invoice.totalCents,
-      description: `Soto Accounting — discovery deposit (${invoice.invoiceNumber})`,
-      customerEmail: email,
-      successUrl: `${app.config.PORTAL_BASE_URL}/invoices?paid=1`,
-      cancelUrl: `${app.config.PORTAL_BASE_URL}/invoices`,
-    });
-    await app.db.query(`UPDATE invoices SET stripe_checkout_session_id = $2 WHERE id = $1`, [invoice.id, session.sessionId]);
-
-    await sendTemplatedEmail(app, {
-      to: email,
-      templateKey: 'discovery_deposit',
-      language: contactLang,
-      contactId,
-      vars: {
-        first_name: contactFirst,
-        checkout_link: session.url,
-        // Amount rendered from the invoice (price book) at runtime:
-        amount: `$${(invoice.totalCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      },
-    });
+    /*
+     * The confirmation email. Client-acting, so it is registered in `automations` and
+     * ships DISABLED — Brian arms it when real clients start booking. Every suppression
+     * is counted, because a send that silently does not happen is indistinguishable from
+     * a send that failed.
+     *
+     * The copy carries what the Cal.com event description already says: nothing to pay
+     * now, the deposit comes with the engagement quote. That expectation has to be set
+     * here precisely BECAUSE the old flow asked for money at this moment — a client who
+     * booked last month and books again should not be waiting for a checkout link.
+     */
+    let confirmationSent = false;
+    if (await isAutomationEnabled(app, 'booking_confirmations')) {
+      await sendTemplatedEmail(app, {
+        to: email,
+        templateKey: 'booking_confirmation',
+        language: contactLang,
+        contactId,
+        vars: { first_name: contactFirst },
+      });
+      confirmationSent = true;
+    }
 
     // Zoom-only rule (MP): flag discovery bookings that aren't on Zoom.
     const location = (body.payload.videoCallData?.type ?? body.payload.location ?? '').toLowerCase();
@@ -178,8 +202,10 @@ export function registerBookingRoutes(app: FastifyInstance): void {
           severity: 'warning',
           title: `Discovery booking is not on Zoom (${location || 'no location'}) — check the Cal.com event type`,
           contactId,
-          relatedObjectType: 'invoice',
-          relatedObjectId: invoice.id,
+          // Was the deposit invoice, which no longer exists. The contact IS the subject
+          // of this alert anyway — the invoice was only ever the nearest object to hand.
+          relatedObjectType: 'contact',
+          relatedObjectId: contactId,
         });
         await createTask(app, {
           title: `Fix non-Zoom discovery booking (${location || 'no location'}) — Zoom-only rule`,
@@ -188,11 +214,32 @@ export function registerBookingRoutes(app: FastifyInstance): void {
           priority: 1,
           source: 'automation',
           sourceType: 'booking_not_zoom',
-          sourceId: invoice.id,
+          sourceId: contactId,
         });
       }
     }
 
-    return { status: 'ok', lane: 'discovery', invoiceNumber: invoice.invoiceNumber };
+    /*
+     * On the record that this booking took no money, and whether the client heard
+     * anything. `confirmationSuppressed` is the counted suppression: the difference
+     * between "the toggle is off" and "the email failed" has to be visible, or the first
+     * client to book while it is off looks like a delivery bug.
+     */
+    await writeAudit(app.db, {
+      actorType: 'system',
+      actorLabel: 'cal.com booking',
+      action: 'booking.discovery_created',
+      objectType: 'contact',
+      objectId: contactId,
+      contactId,
+      details: {
+        slug,
+        charged: false,
+        confirmation_sent: confirmationSent,
+        confirmation_suppressed: !confirmationSent,
+      },
+    });
+
+    return { status: 'ok', lane: 'discovery', charged: false, confirmationSent };
   });
 }

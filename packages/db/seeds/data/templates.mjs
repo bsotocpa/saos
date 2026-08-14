@@ -478,28 +478,41 @@ export const templates = [
       'Revísela con calma — puede descargarla en cualquier momento. ' +
       'Luego le enviaremos la autorización de presentación electrónica.\n\n— Soto Accounting',
   },
+  /*
+   * Replaces `discovery_deposit`, which asked for money at booking and carried a Stripe
+   * checkout link. Brian retired that path on 2026-08-14: deposits exist only on
+   * accepted quotes. `discovery_deposit` is retired by the seed rather than edited,
+   * because a template whose key says "deposit" and whose body says "nothing to pay"
+   * is a trap for whoever opens Admin → Templates next.
+   *
+   * The copy treats the reader as a capable professional, per the standing rule: it
+   * states what happens next and what it will cost them now (nothing), without
+   * congratulating them or over-explaining.
+   */
   {
-    key: 'discovery_deposit',
-    name: 'Discovery booking deposit (Lane 1, true-up model)',
+    key: 'booking_confirmation',
+    name: 'Booking confirmation — discovery call (no charge)',
     channel: 'email',
     isPlaceholder: false,
-    variables: ['first_name', 'amount', 'checkout_link'],
-    subjectEn: 'Your consultation is booked — one quick step',
-    subjectEs: 'Su consulta está reservada — un paso rápido',
+    variables: ['first_name'],
+    subjectEn: 'Your consultation is booked',
+    subjectEs: 'Su consulta está reservada',
     bodyEn:
       'Hi {{first_name}},\n\n' +
-      'Great — your discovery consultation is on the calendar. To hold your spot we collect a ' +
-      '{{amount}} deposit, which applies in full toward your final invoice (any overpayment is ' +
-      'credited back — no surprises).\n\n' +
-      'Pay securely here:\n\n{{checkout_link}}\n\n' +
-      'Questions before we meet? Just reply — question calls are always free.\n\n— Soto Accounting',
+      'Your discovery consultation is on the calendar. You will get the calendar invite ' +
+      'separately, with the meeting link.\n\n' +
+      'There is nothing to pay for this call. After we meet, you will get a written quote for ' +
+      'the work we discussed; the deposit comes with that quote, and it applies in full toward ' +
+      'your invoice.\n\n' +
+      'If anything comes up before then, just reply to this email.\n\n— Soto Accounting',
     bodyEs:
       'Hola {{first_name}}:\n\n' +
-      'Perfecto — su consulta inicial está en el calendario. Para reservar su espacio cobramos un ' +
-      'depósito de {{amount}}, que se aplica por completo a su factura final (cualquier excedente ' +
-      'se acredita — sin sorpresas).\n\n' +
-      'Pague de forma segura aquí:\n\n{{checkout_link}}\n\n' +
-      '¿Preguntas antes de vernos? Responda este correo — las llamadas de preguntas siempre son gratis.\n\n— Soto Accounting',
+      'Su consulta inicial está en el calendario. Recibirá la invitación con el enlace de la ' +
+      'reunión por separado.\n\n' +
+      'Esta llamada no tiene ningún costo. Después de reunirnos, recibirá una cotización por ' +
+      'escrito del trabajo que conversemos; el depósito viene con esa cotización y se aplica por ' +
+      'completo a su factura.\n\n' +
+      'Si surge algo antes, responda a este correo.\n\n— Soto Accounting',
   },
   {
     key: 'referral_disclosure',
@@ -802,6 +815,19 @@ export const templates = [
   },
 ];
 
+/*
+ * Templates superseded by a decision, not by an edit. Retired rather than deleted, the
+ * same rule the legal-package seed uses: the row records copy that really went to real
+ * clients, and dropping it to tidy Admin → Templates would erase that.
+ */
+const RETIRED = [
+  {
+    key: 'discovery_deposit',
+    reason:
+      'Retired 2026-08-14 (Brian): the booking-time deposit charge is gone — deposits exist only on accepted quotes. Superseded by booking_confirmation, which says there is nothing to pay for the call.',
+  },
+];
+
 export async function seedTemplates(client) {
   let inserted = 0;
   for (const t of templates) {
@@ -824,5 +850,22 @@ export async function seedTemplates(client) {
     );
     inserted += res.rowCount;
   }
-  return `${inserted} of ${templates.length} templates inserted (existing keys left untouched)`;
+
+  // Idempotent: `AND is_active` means a second run reports 0 rather than re-stamping
+  // retired_at, so the retirement date stays the date it actually happened.
+  let retired = 0;
+  for (const r of RETIRED) {
+    const res = await client.query(
+      `UPDATE templates
+          SET is_active = false, retired_at = now(), retired_reason = $2
+        WHERE key = $1 AND is_active`,
+      [r.key, r.reason]
+    );
+    retired += res.rowCount;
+  }
+
+  return (
+    `${inserted} of ${templates.length} templates inserted (existing keys left untouched)` +
+    (retired > 0 ? `, ${retired} retired` : '')
+  );
 }

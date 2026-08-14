@@ -325,36 +325,31 @@ export const items = [
   }),
 
   /*
-   * ── Deposits — still ACTIVE, and that is a flagged question ────────────────
+   * ── Deposits — RETIRED 2026-08-14, never deleted ───────────────────────────
    *
-   * v4 moves the QUOTE deposit onto the service lines. These two items were going to
-   * be retired with it, until doing so broke Lane 1: the New Client Discovery booking
-   * flow bills a discovery deposit by invoicing DEPOSIT_1040 / DEPOSIT_BUSINESS_TAX
-   * directly, with no quote and no lines to sum. That is a SECOND deposit path Brian's
-   * v4 brief does not mention.
+   * These modelled a deposit as a service you could sell. They were briefly left active
+   * and flagged, because retiring them broke Lane 1 — the New Client Discovery booking
+   * flow invoiced them directly, with no quote and no lines to sum, and switching that
+   * off was Brian's call rather than a side effect of a schema change.
    *
-   * His instruction was "deposits still collected only through the quote flow", which
-   * reads as though Lane 1's deposit should not exist — but it is shipped, tested and
-   * charging real money, so switching it off is his call, not a side effect of a schema
-   * change. They stay active and flagged.
+   * He made it: "retire the direct-deposit invoice path entirely ... deposits exist ONLY
+   * on accepted quotes. Discovery and all bookings are free." Nothing invoices these now.
+   * A deposit is deposit_cents on the service line that starts the work.
    *
-   * They also must never be deleted regardless: two accepted quotes are price-locked
-   * against DEPOSIT_1040, and deleting the row would rewrite what those clients were
-   * actually quoted. Same rule as the superseded engagement letters.
+   * INACTIVE, not deleted: two accepted quotes are price-locked against DEPOSIT_1040, so
+   * dropping the row would rewrite what those clients were actually quoted. The legacy
+   * branch of resolveDeposit deliberately does not filter on is_active for that reason.
+   * Same rule as the superseded engagement letters.
    */
-  item('DEPOSIT_1040', 'deposit', 'Discovery deposit — 1040', 'Depósito inicial — declaración 1040', 25000, {
-    structureNeedsConfirmation: true,
-    structureConfirmationNote:
-      '⚠ v4: a SECOND deposit path. Quote deposits now come from the service lines, but Lane 1 (New Client Discovery booking) still bills this item directly — no quote, nothing to sum. Confirm whether the booking-time discovery deposit stays, or deposits are collected only at quote acceptance as your brief said.',
-    descEn: 'Collected at New Client Discovery booking (Lane 1); auto-credits or bills the difference at completion. Quote deposits no longer use this item — see deposit_cents on the service lines.',
-    descEs: 'Se cobra al reservar la consulta inicial; al finalizar se acredita o se factura la diferencia.',
+  item('DEPOSIT_1040', 'deposit', 'Discovery deposit — 1040 (retired)', 'Depósito inicial — declaración 1040 (retirado)', 25000, {
+    isActive: false,
+    descEn: 'RETIRED 2026-08-14. Bookings are free; a deposit exists only on an accepted quote, as deposit_cents on the service line that starts the work. Kept because accepted quotes are price-locked against this item.',
+    descEs: 'RETIRADO el 2026-08-14. Las reservas no tienen costo; el depósito existe solo en una cotización aceptada.',
   }),
-  item('DEPOSIT_BUSINESS_TAX', 'deposit', 'Discovery deposit — business tax', 'Depósito inicial — impuestos de negocio', 30000, {
-    structureNeedsConfirmation: true,
-    structureConfirmationNote:
-      '⚠ v4: see DEPOSIT_1040 — same question. Its $300 has also been placed on the entity-return lines, so confirming both paths would ask a booking client for a deposit twice.',
-    descEn: 'Collected at business-discovery booking (Lane 1). Quote deposits no longer use this item.',
-    descEs: 'Se cobra al reservar la consulta inicial de negocio.',
+  item('DEPOSIT_BUSINESS_TAX', 'deposit', 'Discovery deposit — business tax (retired)', 'Depósito inicial — impuestos de negocio (retirado)', 30000, {
+    isActive: false,
+    descEn: 'RETIRED 2026-08-14 — see DEPOSIT_1040. Its amount now lives on the entity-return lines as deposit_cents.',
+    descEs: 'RETIRADO el 2026-08-14 — ver DEPOSIT_1040.',
   }),
 
   // ── Tax resolution lane (v4.6) ──────────────────────────────────────────────

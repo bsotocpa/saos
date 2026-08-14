@@ -83,10 +83,16 @@ export const settings = [
       'Price-book item whose rate values pro bono hours for funder reports (hours × standard rate — MP Time Tracking). Never a hardcoded dollar figure.',
   },
   {
-    key: 'booking.deposit_items',
-    value: { 'new-client-discovery': 'DEPOSIT_1040', 'business-discovery': 'DEPOSIT_BUSINESS_TAX' },
+    key: 'booking.discovery_events',
+    value: ['new-client-discovery', 'business-discovery'],
     description:
-      'Lane 1 (v4.2 two-lane booking): Cal.com event-type slug → price_book deposit item collected at booking. Add slugs here when event types are created (M23).',
+      'Lane 1: Cal.com event-type slugs that are DISCOVERY calls. Every booking is free — Brian, 2026-08-14: "deposits exist ONLY on accepted quotes". This list only decides which lane a booking falls into. Add slugs here when event types are created.',
+  },
+  {
+    key: 'booking.deposit_items',
+    value: null,
+    description:
+      'RETIRED 2026-08-14. Was slug → price_book deposit item, collected at booking. That second deposit path is gone: deposits exist only on accepted quotes, so a booking takes no money. Superseded by booking.discovery_events, which carries the same slugs and no amounts. Kept as a row so the retirement is visible in Admin → Settings rather than the key simply vanishing.',
   },
   {
     key: 'booking.question_slugs',

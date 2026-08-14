@@ -64,6 +64,11 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   // ── Booking hygiene ───────────────────────────────────────────────────────
   booking_not_zoom: { sop: 'booking-zoom-only' },
   booking_unmapped: { sop: 'booking-unmapped-event-type' },
+  booking_discovery: {
+    sop: null,
+    reason:
+      'A booked discovery call needs no written procedure — the procedure is the meeting, which is Brian’s own work. This task exists so the booking is visible in someone’s queue at all, which used to be a side effect of the deposit invoice landing in A/R before the booking charge was retired (2026-08-14).',
+  },
 
   // Finding #14. Deliberately NOT null: the hard part of an infected client upload
   // is the conversation, not the quarantine. The technical side is automatic (stored,

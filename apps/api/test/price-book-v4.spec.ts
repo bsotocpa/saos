@@ -250,26 +250,28 @@ test('a new version carries pricing_mode and deposit_cents forward instead of re
 });
 
 /*
- * The deposit ITEMS were going to be retired with the quote deposit, until doing so
- * broke Lane 1: the New Client Discovery booking flow invoices DEPOSIT_1040 directly,
- * with no quote and no lines to sum. That is a second deposit path Brian's v4 brief does
- * not mention, and switching it off is his call rather than a side effect of a schema
- * change. So they stay ACTIVE and carry a structure flag asking him.
+ * The deposit items were briefly left ACTIVE and flagged, because retiring them broke
+ * Lane 1 — the booking flow invoiced them directly. Brian then ruled: "retire the
+ * direct-deposit invoice path entirely ... deposits exist ONLY on accepted quotes.
+ * Discovery and all bookings are free." The rows survive because two accepted quotes are
+ * price-locked against DEPOSIT_1040 and must keep reading true.
  */
-test('the deposit items stay active — Lane 1 still bills them, and that question is flagged', async () => {
+test('the retired deposit items are unsellable, and their questions are answered', async () => {
   const { rows } = await app.db.query<{
-    item_code: string; is_active: boolean; structure_needs_confirmation: boolean;
-    structure_confirmation_note: string | null;
+    item_code: string; is_active: boolean;
+    needs_confirmation: boolean; structure_needs_confirmation: boolean;
   }>(
-    `SELECT i.item_code, i.is_active, i.structure_needs_confirmation, i.structure_confirmation_note
+    `SELECT i.item_code, i.is_active, i.needs_confirmation, i.structure_needs_confirmation
        FROM price_book_items i JOIN price_book_versions v ON v.id = i.version_id
       WHERE v.effective_to IS NULL AND i.service_line = 'deposit' ORDER BY i.item_code`
   );
-  assert.equal(rows.length, 2, 'both deposit items are still in the book');
+  assert.equal(rows.length, 2, 'both rows survive — deleting them would rewrite history');
   for (const r of rows) {
-    assert.equal(r.is_active, true, `${r.item_code} still works — Lane 1 invoices it`);
-    assert.equal(r.structure_needs_confirmation, true, `${r.item_code} asks Brian whether it should`);
-    assert.match(String(r.structure_confirmation_note), /Lane 1|same question/i);
+    assert.equal(r.is_active, false, `${r.item_code} cannot be sold or invoiced`);
+    // Brian's ruling ANSWERED both questions these carried, so they must not still sit
+    // in his queue asking something he has decided.
+    assert.equal(r.needs_confirmation, false, `${r.item_code}: the price question is answered`);
+    assert.equal(r.structure_needs_confirmation, false, `${r.item_code}: and the structure question`);
   }
 
   // And the legacy read still resolves one for a pre-v4 quote whose own lines carry no
