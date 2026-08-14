@@ -99,9 +99,39 @@ if (!EXECUTE) {
   process.exit(0);
 }
 
+/*
+ * The setting has to be cleared here rather than by the seed. The settings seed is
+ * ON CONFLICT DO NOTHING — deliberately, so it never stomps a value Brian tuned in
+ * Admin — which means an existing key keeps its old value and description forever. So
+ * after the deploy, `booking.deposit_items` still advertised a slug → deposit-item map
+ * that nothing reads. The code was right and the admin screen was lying.
+ */
+const staleSetting = await db.query(
+  `SELECT (value IS NOT NULL) AS has_value FROM app_settings WHERE key = 'booking.deposit_items'`
+);
+const settingNeedsClearing = staleSetting.rows[0]?.has_value === true;
+console.log(
+  settingNeedsClearing
+    ? '  booking.deposit_items still holds its old map → clearing it and marking it retired'
+    : '  booking.deposit_items already cleared'
+);
+
 const client = await db.connect();
 try {
   await client.query('BEGIN');
+
+  if (settingNeedsClearing) {
+    await client.query(
+      `UPDATE app_settings
+          SET value = 'null'::jsonb,
+              description = $1
+        WHERE key = 'booking.deposit_items'`,
+      [
+        'RETIRED 2026-08-14. Was slug → price_book deposit item, collected at booking. That second deposit path is gone: deposits exist only on accepted quotes, so a booking takes no money. Superseded by booking.discovery_events, which carries the same slugs and no amounts.',
+      ]
+    );
+  }
+
   const res = await client.query(
     `UPDATE price_book_items
         SET is_active = false,

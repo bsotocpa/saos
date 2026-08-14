@@ -564,3 +564,29 @@ return nobody had questioned.
 column with one meaning and two writers ends up with neither. Two columns feeding one
 queue cost nothing; one column meaning two things silently changes behaviour somewhere
 that never mentioned the feature.
+
+## A guard can be right about the rule and wrong about the question
+**What happened**: the deposit-override guard tested `deposit_item_code IS NULL` to mean
+"this quote has no deposit". That was the same question until v4 moved deposits onto the
+service lines — after which every normal quote had a real deposit and no item code, so
+the guard refused every override with "add the deposit item first", naming a thing that
+no longer existed. The RULE it protected (an override adjusts an amount, it never invents
+one) was still exactly right.
+**Rule**: when a model changes, grep for the PROXIES for the thing that moved, not just
+its column. `deposit_item_code` was standing in for "has a deposit", and a proxy survives
+a refactor looking healthy while quietly answering a different question. The fix is to
+ask the real question — call the resolver — not to patch the proxy.
+**Same shape, same day**: two tests failed on stale PREMISES rather than stale
+assertions. `IND_BASE_SINGLE` gained a deposit, so "an override cannot invent a deposit
+where there is none" was no longer testing its rule — the setup had quietly stopped
+matching the scenario. A test can rot from underneath without its assertion changing.
+
+## The seed will not fix a row that already exists
+**What happened**: I retired `booking.deposit_items` by editing the settings seed. The
+deploy reported "1 of 33 settings inserted (existing keys left untouched)" — and the live
+row kept its old map and old description. The code no longer read it, so behaviour was
+right and Admin → Settings was lying.
+**Rule**: settings and templates seed with ON CONFLICT DO NOTHING on purpose, so a value
+Brian tuned is never stomped. That means editing a seed changes NOTHING that already
+exists. Retiring live data takes a script — the same lesson as "schema plus seed is not a
+data migration", one table over.

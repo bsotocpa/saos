@@ -156,11 +156,56 @@ unconfirmed **price** — the golden pricing test caught it immediately and was 
 A price question makes a quote provisional; "should this line carry a deposit" does not.
 Two columns, one queue, one tap each.
 
-### The deposit ITEMS stay active, and that is now a flagged question
+### The deposit ITEMS are retired — Brian ruled on the flagged question
 Retiring `DEPOSIT_1040` / `DEPOSIT_BUSINESS_TAX` broke **Lane 1**: the New Client
-Discovery booking flow invoices them directly — no quote, no lines to sum. That is a
-second deposit path the brief does not mention. Brian's "deposits collected only through
-the quote flow" reads as though it should not exist, but it is shipped, tested and
-charging real money, so switching it off is his call. Both items stay active and carry a
-structure flag asking him. **If he confirms both paths, a booking client would be asked
-for a deposit twice** — that is in the note.
+Discovery booking flow invoiced them directly — no quote, no lines to sum. A second
+deposit path the brief did not mention, and one that with v4 became a double charge
+waiting to happen. They were left active and flagged, because switching off a shipped
+flow that charges real money was his call.
+
+**He ruled the same day**: *"retire the direct-deposit invoice path entirely. My earlier
+ruling stands and extends — deposits exist ONLY on accepted quotes. Discovery and all
+bookings are free; first client payment is always the quote deposit. Kill the second
+path, which also kills the double-charge scenario."*
+
+Done and verified in production — see the Lane 1 section below.
+
+---
+
+## Lane 1 retirement (Brian's ruling, 2026-08-14)
+
+- Booking takes **no money**. Lane 1 creates/links the contact, tasks the team, and bills
+  nothing — what Lane 2 always did. The task matters: the discovery call's visibility used
+  to be a side effect of the deposit invoice appearing in A/R, so without it, retiring the
+  charge would have made bookings silent.
+- `booking_confirmation` template replaces `discovery_deposit` (retired, not edited — a
+  template keyed "deposit" whose body says "nothing to pay" is a trap). Copy says what the
+  Cal.com event says: nothing to pay for the call, the deposit comes with the quote.
+- Client-acting, so registered as `booking_confirmations` and **ships DISABLED**; the
+  suppression is counted in the `booking.discovery_created` audit record.
+- `booking.deposit_items` retired → `booking.discovery_events` (same slugs, no amounts).
+  The settings seed is ON CONFLICT DO NOTHING, so the old row had to be cleared by script
+  or Admin → Settings would have gone on advertising a map nothing reads.
+- Both deposit items `is_active = false`, **both flags cleared** — his ruling answered the
+  questions, so they must not sit in his queue asking what he decided.
+- v4 was amended IN PLACE rather than versioned again. Normally wrong; correct here
+  because v4 has never been in force, so no quote or engagement can pin it and there is no
+  history to rewrite. The script verifies that and refuses otherwise. The alternative —
+  v5 the day after tomorrow, since only one version may exist per day — would have delayed
+  the confirmation sitting to protect history that does not exist.
+
+### Three things it exposed, none of them about booking
+- `acceptQuote` invoiced the deposit **item** for a standard deposit and a custom line
+  only for an override. In v4 there is no item, so it is now always one resolved,
+  price-book-derived amount. One path instead of two.
+- The override guard asked *"is `deposit_item_code` set?"* — which **was** "does this quote
+  have a deposit?" until v4. Every override on a normal v4 quote was refused with "add the
+  deposit item first", naming a thing that no longer exists.
+- Two tests had stale **premises**, not stale assertions: `IND_BASE_SINGLE` now carries a
+  deposit, so "an override cannot invent a deposit" needed a real add-on line to still be
+  testing its own rule.
+
+### Final v4 queue: 27, not 30
+His ruling answered three of the thirty (the `DEPOSIT_1040` structure question, and both
+of `DEPOSIT_BUSINESS_TAX`'s). **12 price + 15 structure**, and — verified by query —
+**zero items carry both flags**, so no line ever presents a conflated tap.
