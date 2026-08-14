@@ -489,3 +489,30 @@ report names an entity, the query must have selected that entity's identity.
 side and the error was instantly obvious. Building the surface found the bug in my own
 reporting — which is the argument for surfaces over queries: a list a human reads gets
 audited by every human who reads it.
+
+## Restoring a value by hand is not fixing anything
+**What happened**: `STRIPE_MODE=stub` was a literal in `.env.production`, and the env
+merge only protects BLANK entries, so every deploy silently switched live payments back
+to stub. I restored it by hand three times — 2026-08-12, then twice on 2026-08-13 — and
+each time wrote "durable fix pending" and moved on. The third time was my own deploy of
+the fix for the payment bug, so I broke payments while shipping payments.
+**Rule**: the second time I perform the same manual restoration, that IS the task. Not
+after the current one. A fix I have described but not written does not exist, and
+"pending" on a thing that silently disables client payments is a decision to keep
+breaking it.
+**The design rule underneath**: "non-blank local wins" is right for SECRETS (shipping a
+rotated token should replace the old one) and exactly wrong for MODE switches, because
+nobody ever intends "every deploy turns the feature back off". Secrets rotate; modes are
+operational state that lives where the operator set them. Different rules, so
+`check:env-merge` now fails the build if a runtime-mode key reappears as a literal.
+**Verify a deploy fix by deploying**: I only believed this one after running a full
+deploy and reading `STRIPE_MODE` back out of the running container — three times. A
+merge script that passes its unit tests still has to survive the real deploy.
+
+## The guard firing on my own comment is the guard working
+**What happened**: `check:prices` failed my build on `$250` written inside an
+explanatory comment. My first instinct was that the guard was over-broad.
+**Rule**: when a build guard I wrote fires on my own code, the default is to change the
+code, not the guard. A dollar figure in a comment goes stale the moment the price book
+moves, so removing it was the correct fix and the guard was right. Weakening a guard to
+make my own commit pass is how the guard stops meaning anything.
