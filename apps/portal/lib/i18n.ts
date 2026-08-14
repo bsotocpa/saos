@@ -135,6 +135,14 @@ const dict = {
   inv_open: ['Open', 'Pendiente'],
   inv_overdue: ['Past due', 'Vencida'],
   inv_empty: ['No invoices yet.', 'Aún no hay facturas.'],
+  inv_paying: ['Opening checkout…', 'Abriendo el pago…'],
+  // The return from Stripe. Three honest states — never a blank screen (finding #23).
+  inv_confirming: ['Confirming your payment…', 'Confirmando su pago…'],
+  inv_paid_notice: ['Payment received. Thank you.', 'Pago recibido. Gracias.'],
+  inv_paid_pending: [
+    'We do not have confirmation from the payment processor yet. If you completed the payment it will appear here shortly — nothing further is needed from you.',
+    'Todavía no tenemos la confirmación del procesador de pagos. Si completó el pago, aparecerá aquí en unos minutos; no necesita hacer nada más.',
+  ],
 
   // Messages
   msg_title: ['Messages', 'Mensajes'],

@@ -16,7 +16,6 @@ import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { createInvoice } from '../billing/service.ts';
-import { makeStripeAdapter } from '../billing/stripe.ts';
 
 const BookingPayload = z.object({
   triggerEvent: z.string(),
@@ -44,7 +43,7 @@ async function settingJson<T>(app: FastifyInstance, key: string, fallback: T): P
 }
 
 export function registerBookingRoutes(app: FastifyInstance): void {
-  const stripe = makeStripeAdapter(app.config);
+  const stripe = app.stripe;
 
   app.post('/webhooks/calcom', async (request, reply) => {
     const secret = request.headers['x-webhook-secret'];

@@ -6,6 +6,7 @@ import type { Config } from './config.ts';
 import { createPool } from './db.ts';
 import { loggerOptions } from './logging.ts';
 import { createMailer, type Mailer } from './mailer.ts';
+import { makeStripeAdapter, type StripeAdapter } from './modules/billing/stripe.ts';
 import { buildAuthenticate } from './plugins/auth.ts';
 import { buildAuthenticateClient } from './plugins/client-auth.ts';
 import { registerAuthRoutes } from './modules/auth/routes.ts';
@@ -53,7 +54,10 @@ function isPgError(err: unknown): err is { code: string; constraint?: string; ta
   );
 }
 
-export function buildServer(config: Config, overrides: { mailer?: Mailer } = {}): FastifyInstance {
+export function buildServer(
+  config: Config,
+  overrides: { mailer?: Mailer; stripe?: StripeAdapter } = {}
+): FastifyInstance {
   const app = Fastify({
     logger: config.NODE_ENV === 'test' ? false : loggerOptions,
     trustProxy: true, // Caddy/Traefik terminates TLS in front of us (M23)
@@ -62,6 +66,7 @@ export function buildServer(config: Config, overrides: { mailer?: Mailer } = {})
   app.decorate('config', config);
   app.decorate('db', createPool(config.DATABASE_URL));
   app.decorate('mailer', overrides.mailer ?? createMailer(config));
+  app.decorate('stripe', overrides.stripe ?? makeStripeAdapter(config));
   app.decorate('authenticate', buildAuthenticate(app));
   app.decorate('authenticateClient', buildAuthenticateClient(app));
 

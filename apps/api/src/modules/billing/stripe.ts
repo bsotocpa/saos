@@ -30,6 +30,18 @@ export interface PaymentEvent {
 export interface StripeAdapter {
   readonly mode: 'stub' | 'live';
   createCheckoutSession(input: CheckoutInput): Promise<{ sessionId: string; url: string }>;
+  /**
+   * Ask Stripe the state of a checkout session (finding #24).
+   *
+   * A webhook is a notification; this is the source of truth, and it can be asked at
+   * any time. Exists so a lost webhook costs a round trip instead of leaving a client
+   * who paid marked unpaid indefinitely.
+   */
+  retrieveCheckoutSession(sessionId: string): Promise<{
+    status: string | null;
+    paymentStatus: string | null;
+    paymentIntentId?: string | undefined;
+  }>;
   /** Verify + parse a webhook. `rawBody` is the unparsed request body. */
   parseWebhookEvent(headers: Record<string, string | string[] | undefined>, rawBody: Buffer, sharedSecret: string): PaymentEvent;
 }
@@ -40,6 +52,12 @@ function stubAdapter(): StripeAdapter {
     async createCheckoutSession(input) {
       const sessionId = `cs_stub_${input.invoiceId}`;
       return { sessionId, url: `https://checkout.stripe.example/${sessionId}` };
+    },
+    // The stub NEVER reports a payment. A test double that answered 'paid' would make
+    // the reconcile path pass everywhere while settling nothing in production — the
+    // exact shape of a test that proves the opposite of what it claims.
+    async retrieveCheckoutSession() {
+      return { status: 'open', paymentStatus: 'unpaid' };
     },
     parseWebhookEvent(headers, rawBody, sharedSecret) {
       // Stub auth: same shared-secret header convention as our other webhooks.
@@ -87,6 +105,18 @@ function liveAdapter(config: Config): StripeAdapter {
       });
       if (!session.url) throw new AppError(502, 'stripe_error', 'Stripe returned no checkout URL.');
       return { sessionId: session.id, url: session.url };
+    },
+    async retrieveCheckoutSession(sessionId) {
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      return {
+        status: session.status ?? null,
+        paymentStatus: session.payment_status ?? null,
+        ...(typeof session.payment_intent === 'string'
+          ? { paymentIntentId: session.payment_intent }
+          : session.payment_intent
+            ? { paymentIntentId: session.payment_intent.id }
+            : {}),
+      };
     },
     parseWebhookEvent(headers, rawBody) {
       const signature = headers['stripe-signature'];

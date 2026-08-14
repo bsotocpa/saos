@@ -38,6 +38,12 @@ declare module 'fastify' {
     db: Db;
     config: Config;
     mailer: Mailer;
+    /**
+     * The payments adapter. Decorated once so checkout, the webhook, and the
+     * reconcile backstop all speak to the same Stripe — and so a test can inject
+     * a Stripe that reports a paid session, which the stub deliberately never does.
+     */
+    stripe: import('./modules/billing/stripe.ts').StripeAdapter;
     /** preHandler: verifies the staff Bearer session and populates request.staff. */
     authenticate: (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>;
     /** preHandler: verifies the client portal session and populates request.client. */

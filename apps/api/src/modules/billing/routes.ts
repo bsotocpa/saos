@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
 import { todayChicago } from '../tax/deadlines.ts';
-import { makeStripeAdapter } from './stripe.ts';
 import { createInvoice, markInvoicePaid, runInvoiceOverdueJob } from './service.ts';
 import { runDunningJob } from './dunning.ts';
 
@@ -26,7 +25,7 @@ const CreateInvoiceBody = z.object({
 });
 
 export function registerBillingRoutes(app: FastifyInstance): void {
-  const stripe = makeStripeAdapter(app.config);
+  const stripe = app.stripe;
   const billing = { preHandler: [app.authenticate, requirePermission('billing.manage')] };
 
   // ── Staff (Rene's queue) ──────────────────────────────────────────────────
@@ -74,6 +73,36 @@ export function registerBillingRoutes(app: FastifyInstance): void {
       [client.contactId]
     );
     return { invoices: rows };
+  });
+
+  /**
+   * FINDING #24 — the client comes back from Stripe and we ASK, instead of waiting.
+   *
+   * Called by the portal when Stripe returns the client with ?paid=1. It cannot mark
+   * anything paid on its own say-so: it reads the session id already stored on the
+   * invoice and settles only when STRIPE reports paid. Safe to call repeatedly.
+   *
+   * This exists because on 2026-08-13 a real payment succeeded and the invoice stayed
+   * Open — the webhook endpoint had vanished from Stripe and nothing else ever asked.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/portal/invoices/:id/reconcile',
+    { preHandler: [app.authenticateClient] },
+    async (request) => {
+      const client = request.client!;
+      const id = z.uuid().parse(request.params.id);
+      const { reconcileInvoice } = await import('./reconcile.ts');
+      return reconcileInvoice(app, id, { contactId: client.contactId });
+    }
+  );
+
+  /** Staff/cron sweep for checkouts that were started and never settled. */
+  app.post('/jobs/payment-reconcile', { preHandler: [app.authenticate, requirePermission('jobs.run')] }, async (request) => {
+    const q = z
+      .object({ graceMinutes: z.coerce.number().int().min(0).max(1440).optional() })
+      .parse(request.query ?? {});
+    const { runPaymentReconcileJob } = await import('./reconcile.ts');
+    return runPaymentReconcileJob(app, q.graceMinutes !== undefined ? { graceMinutes: q.graceMinutes } : {});
   });
 
   app.post<{ Params: { id: string } }>(

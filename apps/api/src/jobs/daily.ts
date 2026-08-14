@@ -121,6 +121,20 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   if (rescan.considered > 0) {
     app.log.info({ job: 'document_rescan', ...rescan }, 'rescanned documents awaiting a verdict');
   }
+
+  /*
+   * FINDING #24 — payment reconciliation, every tick.
+   *
+   * A client who pays and closes the tab never triggers the browser-side reconcile, so
+   * a lost webhook would leave them marked unpaid indefinitely. This asks Stripe about
+   * any checkout started and not settled. Every tick rather than daily: the gap between
+   * a client's money leaving and our record agreeing should be minutes.
+   */
+  const { runPaymentReconcileJob } = await import('../modules/billing/reconcile.ts');
+  const recon = await runPaymentReconcileJob(app);
+  if (recon.settled > 0 || recon.errors > 0) {
+    app.log.warn({ job: 'payment_reconcile', ...recon }, 'settled payments the webhook never delivered');
+  }
 }
 
 /** Kick off the scheduler loop; health refresh runs on the first tick of each day too. */

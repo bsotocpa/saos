@@ -961,14 +961,13 @@ not reachability."
 - [x] Verified in a browser at 390px, both states: with the setting, step 4 is a real
       prefilled link (`target=_blank rel=noreferrer`); with it null, the finding-#9
       copy still says scheduling is not open. Root `npm test`: **343/343**
-- [ ] **BLOCKED on Brian**: the Cal.com DB has ZERO users — first boot never done.
-      Event types belong to a user and the username IS the booking URL, so nothing
-      can be provisioned until he signs up at
-      https://book.sotoaccounting.com/auth/signup. Account creation sets a password,
-      which I do not handle
-- [ ] Then, in order: deploy the prefill code → run the provisioner dry run for his
-      review → `--execute` → set `booking.client_booking_url` →
-      production browser walkthrough of step 4
+- [x] ~~BLOCKED on Brian~~: the Cal.com DB had ZERO users — first boot never done.
+      Event types belong to a user and the username IS the booking URL. Brian signed
+      up at https://book.sotoaccounting.com/auth/signup (account creation sets a
+      password, which I do not handle) and the provisioner ran against his account
+- [x] Executed in order: prefill code deployed → dry run reviewed by Brian →
+      `--execute` → `booking.client_booking_url` set to the sotocpa
+      onboarding-consultation link → step 4 walked in production at 390px
 - [ ] Flagged choices in the provisioner he may want to flip (one toggle each):
       `in-person-tax-prep` and `customer-support` are PUBLIC (he specified hidden only
       for 1, 4, 5); service-interest is REQUIRED; "+ other" read as an
@@ -977,6 +976,77 @@ not reachability."
       not ask for and can strip
 - [ ] Deferred by Brian, no action: session recaps depend on Zoom→Whisper and Cal
       Video meetings will not feed that pipeline. Revisit when recaps are armed
+
+## M32 — Findings #13–#24 (Brian's own 16-step run, 2026-08-12 → 2026-08-13)
+Findings numbered as Brian reported them. #13–#17 came out of preparing the run;
+#20–#24 are dead ends he hit DURING it, under his standing instruction: "after your
+confirmation, every dead end is a new finding."
+
+- [ ] **#13** Portal sign-in state lives in `sessionStorage` — iPhone Safari clears it
+      on tab close, so a client who closes the tab is signed out. Brian: log it, no
+      change now
+- [x] **#14** Portal uploads were stored unscanned. Ruling: the email-path model
+      exactly — **intake never refuses**. Uploads are always accepted and held
+      `pending_scan`; the **filing gate** requires clean (fail-closed at filing, never
+      at intake); a dead clamd yields `skipped` → auto-rescan every tick until a
+      verdict. Migration 0045 + `mayFile()`. Backfill scanned every existing MinIO
+      object — all clean. `not_configured` added so a *broken* scanner and an
+      *unconfigured* one are never the same state, with a production boot assertion
+      making the distinction safe. ClamAV `mem_limit` 1600m → 3g after an OOM during
+      concurrent signature reload (costs 1.4 GB of the 16 GB box)
+- [x] **#15** A real client's data was in the rehearsal. Jackson Flores is a business
+      partner AND a real tax client — Brian: do NOT flag `is_test`, do NOT archive the
+      recordings. Record corrected: production DID contain real client data during the
+      rehearsal; the backfill scanned all of it clean, no exposure
+- [x] **#16** No Documents section reachable from the ops dashboard on mobile →
+      `/documents` ops page built and in the shell nav; Brian confirmed it in his run
+      (both uploads listed, scan status Clean, rows naming Rehearsal Client 2)
+- [x] **#17** Quote acceptance could complete and produce nothing. Ruling: acceptance
+      must ALWAYS produce visible consequence — either engagement work/tasks for that
+      schedule, or, if the schedule is already covered, **block at SEND time** with
+      "this client already has an active Schedule A — adding work or duplicating?"
+      Silent acceptance into the void is never valid. Root cause was class-wide (no
+      owner → task silently dropped), so the fix is `ownerForRole()`: role holder →
+      CEO → null, never a silent drop
+- [ ] **#18** Recording summaries — Whisper transcript → Ollama, 2–3 sentences under
+      each recording in the client record + full-transcript link; backfill Jackson
+      Flores, Josean Irizarry, Joseph Basilone. Brian needs Jackson's reviewed for
+      partner-sensitive material without listening to the audio. **Queued behind #24**
+- [ ] **#19** `acceptQuote` hardcodes `serviceLine: 'tax'`. Brian: not tonight — hard
+      gate in `launch-readiness.md` instead (GATE 1: no non-tax quote may be SENT
+      until fixed). Scope expanded by his later ruling: the fix must also make
+      engagement labels **service-line distinct**, so a client with two engagements
+      never reads "2 active engagements (tax, tax)" (RC2 ambiguity)
+- [ ] **#20** Packet heading renders "A — Schedule A —" (redundant label composition)
+- [ ] **#21** No portal invite email exists. Brian received an invoice link, clicked
+      it, was asked to sign in, and had never been sent a way to set the portal up;
+      requesting a sign-in link produced no email either. This is the one that most
+      directly blocks a real first client
+- [x] **#22** Pay Now was dead on click with no feedback of any kind — `void pay(id)`
+      with no catch and no busy state, so a 503 produced NOTHING. Now: busy state,
+      button disabled during the call, server message surfaced, `role="alert"`
+- [x] **#23** Returning from Stripe with `?paid=1` was ignored — Brian paid and landed
+      back on a screen still showing the invoice Open, with no acknowledgement. Now
+      three honest states on return: confirming / paid / not-confirmed-yet
+- [x] **#24** **Payment reconciliation.** The invoice stayed Open because the webhook
+      endpoint had vanished from the Stripe account (`pending_webhooks=0`) — SAOS only
+      ever waited to be TOLD about payments, so a lost webhook meant a client who paid
+      stayed marked unpaid forever. Now SAOS **asks**: `reconcileInvoice()` on the
+      client's return, and `runPaymentReconcileJob()` every tick for the client who
+      closed the tab. Both funnel into `markInvoicePaid` — one settlement path, or
+      two would eventually disagree about what "paid" means and a receipt would send
+      twice or not at all. Cannot be abused: it reads a session id already stored on
+      the invoice and settles only when STRIPE says paid, so a client hammering the
+      endpoint changes nothing. `StripeAdapter` is now decorated on the app
+      (`overrides.stripe`) instead of each module building its own, which is what made
+      the settle path testable — the stub deliberately never reports paid
+- [ ] Enrichment tasks: 611 open `source_type='enrichment'` tasks traced to the July
+      migration backlog, not a runaway. Brian: don't bulk-close — build the cheap
+      version, a separate filtered view, excluded from My Tasks by default. Migration
+      backlog to triage deliberately later, not noise to delete. **Not built yet**
+- [ ] Rehearsal's one open step: **intake in Spanish** was never walked. Brian offered
+      "I'll walk it myself today" or "assign to Rene or Laura once staff accounts
+      exist" — staff accounts do not exist, so him walking it is the only real option
 
 ## Review
 
