@@ -104,14 +104,17 @@ try {
   await client.query('BEGIN');
 
   // 1 + 2. The book line becomes a rate; every disclosing template declares that rate.
+  // The rate is passed TWICE — once as the numeric it is, once as the text it appears
+  // as in the description. One parameter used in both places makes PostgreSQL deduce
+  // two different types for it and refuse the statement outright.
   await client.query(
     `UPDATE price_book_items
-        SET pricing_mode = 'percent', percent_rate = $3,
+        SET pricing_mode = 'percent', percent_rate = $3::numeric,
             amount_cents = NULL, price_min_cents = NULL, price_max_cents = NULL,
             metadata = metadata - 'monthly_rate_percent',
-            description_en = 'Conforms to Master §3: ' || $3::text || '%/month (18% APR) on balances 30+ days past due, applied after all deposits and credits. Applies ONLY to clients whose signed engagement letter carries the late-fee disclosure, and is capped at the rate THEIR signed letter disclosed.'
+            description_en = 'Conforms to Master §3: ' || $4::text || '%/month (18% APR) on balances 30+ days past due, applied after all deposits and credits. Applies ONLY to clients whose signed engagement letter carries the late-fee disclosure, and is capped at the rate THEIR signed letter disclosed.'
       WHERE version_id = $1 AND item_code = $2`,
-    [v.id, ITEM, rate]
+    [v.id, ITEM, rate, String(rate)]
   );
   await client.query(
     `UPDATE templates SET late_fee_rate_percent = $1

@@ -233,13 +233,19 @@ test('accepting converts to an engagement + deposit invoice with zero re-entry',
   const { engagementId, depositInvoiceId, totalCents } = accepted.json();
   assert.equal(totalCents, 66000, 'the ticked add-on is priced from the book and included');
   assert.ok(engagementId, 'an engagement exists without anyone re-typing the scope');
-  assert.ok(depositInvoiceId, 'the deposit invoice was issued from the price book deposit item');
+  assert.ok(depositInvoiceId, 'the deposit invoice was issued from the price book');
 
-  // The invoice amount is the BOOK deposit, not a number the quote invented.
+  // The invoice amount is the BOOK deposit — the SUM of the quoted lines' own
+  // deposit_cents — not a number the quote invented. IND_BASE_MFJ is the only line here
+  // that starts work, and its deposit is capped at its own price (full prepay).
   const inv = await app.db.query<{ total_cents: number; contact_id: string }>(
     `SELECT total_cents, contact_id FROM invoices WHERE id = $1`, [depositInvoiceId]
   );
-  assert.equal(inv.rows[0]!.total_cents, 25000);
+  const lineDeposit = await app.db.query<{ deposit_cents: number }>(
+    `SELECT i.deposit_cents FROM price_book_items i JOIN price_book_versions v ON v.id = i.version_id
+      WHERE v.effective_to IS NULL AND i.item_code = 'IND_BASE_MFJ'`
+  );
+  assert.equal(inv.rows[0]!.total_cents, lineDeposit.rows[0]!.deposit_cents);
   assert.equal(inv.rows[0]!.contact_id, lead.id);
 
   // Rene gets the onboarding task; the pipeline moved to deposit_paid.

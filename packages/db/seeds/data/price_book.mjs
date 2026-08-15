@@ -105,11 +105,21 @@ const DEPOSIT_NOTE_BIZ =
  * the price flag for it marked every 1040 quote as unconfirmed, which the golden pricing
  * test caught immediately and correctly.
  */
-const indDeposit = {
-  depositCents: DEPOSIT_1040_CENTS,
+/*
+ * CAPPED AT THE LINE'S OWN PRICE. The retired DEPOSIT_1040 was $250 flat, but the base
+ * returns are priced $150–$200, so carrying it across unchanged asked a single filer to
+ * prepay $250 for a $150 engagement and be owed $100 back before any work started.
+ * That shipped in v4 and Brian's pricing sitting corrected it in v5.
+ *
+ * A deposit equal to the price is full prepay, which he confirmed as intentional on
+ * small engagements — so the cap is the honest derivation rather than an invented
+ * number, and the constraint added in migration 0053 now refuses the alternative.
+ */
+const indDepositFor = (priceCents) => ({
+  depositCents: Math.min(DEPOSIT_1040_CENTS, priceCents),
   structureNeedsConfirmation: true,
   structureConfirmationNote: DEPOSIT_NOTE_IND,
-};
+});
 const bizDeposit = {
   depositCents: DEPOSIT_BIZ_CENTS,
   structureNeedsConfirmation: true,
@@ -135,17 +145,17 @@ const hourlyConfirm = {
 export const items = [
   // ── Individual tax — itemized calculator (one federal + one state included) ──
   item('IND_BASE_SINGLE', 'individual_tax', 'Individual return — Single', 'Declaración individual — Soltero(a)', 15000, {
-    ...indDeposit,
+    ...indDepositFor(15000),
     descEn: 'Base price; one federal + one state included.',
     descEs: 'Precio base; incluye una declaración federal y un estado.',
   }),
   item('IND_BASE_MFJ', 'individual_tax', 'Individual return — Married filing jointly', 'Declaración individual — Casados en conjunto', 20000, {
-    ...indDeposit,
+    ...indDepositFor(20000),
     descEn: 'Base price; one federal + one state included.',
     descEs: 'Precio base; incluye una declaración federal y un estado.',
   }),
-  item('IND_BASE_MFS', 'individual_tax', 'Individual return — Married filing separately', 'Declaración individual — Casados por separado', 20000, indDeposit),
-  item('IND_BASE_HOH', 'individual_tax', 'Individual return — Head of household', 'Declaración individual — Cabeza de familia', 20000, indDeposit),
+  item('IND_BASE_MFS', 'individual_tax', 'Individual return — Married filing separately', 'Declaración individual — Casados por separado', 20000, indDepositFor(20000)),
+  item('IND_BASE_HOH', 'individual_tax', 'Individual return — Head of household', 'Declaración individual — Cabeza de familia', 20000, indDepositFor(20000)),
   item('IND_ADDL_STATE', 'individual_tax', 'Additional state return', 'Estado adicional', 15000, { unit: 'per_state' }),
 
   // Individual add-ons

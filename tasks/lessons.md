@@ -590,3 +590,27 @@ right and Admin → Settings was lying.
 Brian tuned is never stomped. That means editing a seed changes NOTHING that already
 exists. Retiring live data takes a script — the same lesson as "schema plus seed is not a
 data migration", one table over.
+
+## Carrying a value across means checking it still makes sense there
+**What happened**: the v4 script moved DEPOSIT_1040's $250 onto the individual base
+returns, which are priced $150–$200. So v4 — live for a day — asked a single filer to
+prepay $250 for a $150 engagement and be owed $100 back before any work started. I
+carried the number faithfully and never asked whether a deposit could be larger than the
+thing it is a deposit for. Brian's pricing sitting caught it as a reprice, not as a bug.
+**Rule**: when moving a value from one model to another, write down the invariants it
+now sits inside and check each one. "Deposit ≤ price" is obvious once stated and
+invisible while you are thinking about where the number goes.
+**And scope the guard to where it means something**: the first version of the constraint
+would have flagged ACCT_CATCHUP_HOURLY ($75/hour, $200 work-start deposit) as broken. A
+per-hour line has no total until it is quoted, so the comparison only applies to
+`unit = 'flat'`. A guard that fires on correct data teaches people to disable guards.
+
+## The seed is data too, and it breaks the same way
+**What happened**: I added the deposit-ceiling constraint, and the whole suite hung —
+because the SEED carried the same $250-on-a-$150-line defect, so every fresh test
+database failed to seed. I had fixed the symptom in production and left the source
+producing it.
+**Rule**: after adding a constraint, run the seed before running the suite. A seed
+violation surfaces as a slow, confusing test hang rather than a clear failure, and the
+scratch-database harness answers in thirty seconds what the suite takes ten minutes to
+half-say.

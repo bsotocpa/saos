@@ -208,14 +208,16 @@ test('the deposit follows the quote’s LOCKED version, not whatever the book sa
   const original = await lineDeposit('IND_BASE_MFJ');
   const quoteId = await draftQuote('Locked', [{ itemCode: 'IND_BASE_MFJ' }]);
 
-  // A new version doubles the deposit, effective tomorrow.
+  // A new version HALVES the deposit, effective tomorrow. Halved, not doubled: these
+  // lines are full prepay, so doubling would put the deposit above the price and the
+  // 0053 constraint would refuse it — correctly.
   const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
   const res = await app.inject({
     method: 'POST', url: '/admin/price-book/versions', headers: auth(brian),
     payload: {
       effectiveFrom: tomorrow,
       note: 'synthetic deposit change',
-      changes: [{ itemCode: 'IND_BASE_MFJ', depositCents: original * 2 }],
+      changes: [{ itemCode: 'IND_BASE_MFJ', depositCents: Math.round(original / 2) }],
     },
   });
   assert.equal(res.statusCode, 201, res.body);
@@ -229,7 +231,7 @@ test('the deposit follows the quote’s LOCKED version, not whatever the book sa
     `SELECT i.deposit_cents FROM price_book_items i JOIN price_book_versions v ON v.id = i.version_id
       WHERE i.item_code = 'IND_BASE_MFJ' ORDER BY v.version_number DESC LIMIT 1`
   );
-  assert.equal(rows[0]!.deposit_cents, original * 2, 'the new version has the doubled deposit');
+  assert.equal(rows[0]!.deposit_cents, Math.round(original / 2), 'the new version has the halved deposit');
 });
 
 test('a new version carries pricing_mode and deposit_cents forward instead of resetting them', async () => {
@@ -320,4 +322,39 @@ test('confirming the price and confirming the structure are separate taps', asyn
     method: 'POST', url: `/admin/price-book/items/${code}/confirm?kind=structure`, headers: auth(brian),
   });
   assert.equal(again.statusCode, 404, 'already confirmed');
+});
+
+/*
+ * A deposit may EQUAL the price — Brian confirmed full prepay on small engagements as
+ * intentional — but never exceed it. Price book v4 asked $250 on base returns priced
+ * $150–$200, so a single filer would have prepaid $250 for a $150 engagement and been
+ * owed $100 back before any work began. The v4 script carried the old deposit amount
+ * across without asking whether a deposit could be bigger than the thing it deposits on.
+ */
+test('a deposit may equal the price but never exceed it — and only flat lines are compared', async () => {
+  const versionId = (
+    await app.db.query<{ id: string }>(`SELECT id FROM price_book_versions WHERE effective_to IS NULL LIMIT 1`)
+  ).rows[0]!.id;
+
+  const attempt = async (label: string, unit: string, amount: number, deposit: number): Promise<boolean> => {
+    try {
+      await app.db.query(
+        `INSERT INTO price_book_items (version_id, item_code, service_line, name_en, name_es,
+                                       pricing_mode, unit, amount_cents, deposit_cents)
+         VALUES ($1, $2, 'individual_tax', 'x', 'x', 'flat', $3::price_unit, $4, $5)`,
+        [versionId, `VDEP_${label}`, unit, amount, deposit]
+      );
+      await app.db.query(`DELETE FROM price_book_items WHERE item_code = $1`, [`VDEP_${label}`]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  assert.equal(await attempt('UNDER', 'flat', 20000, 5000), true, 'a deposit below the price is normal');
+  assert.equal(await attempt('EQUAL', 'flat', 20000, 20000), true, 'full prepay is the LIMIT, not a violation');
+  assert.equal(await attempt('OVER', 'flat', 15000, 25000), false, 'exactly the v4 defect: $250 on a $150 line');
+  // A per-hour line has no total until it is quoted, so its deposit is legitimately
+  // larger than its unit price — ACCT_CATCHUP_HOURLY is $75/hr with a $200 deposit.
+  assert.equal(await attempt('HOURLY', 'per_hour', 7500, 20000), true, 'per-unit lines are not compared');
 });
