@@ -46,6 +46,32 @@ export function buildAuthenticateClient(app: FastifyInstance) {
       return;
     }
 
+    /*
+     * SLIDING RENEWAL (Brian's #13 ruling, 2026-08-15): a client who keeps using the
+     * portal keeps their session.
+     *
+     * The window only moves when it has actually aged — more than a day since the last
+     * extension — so an active client does not write a row on every request. Without
+     * that guard this is an UPDATE per API call, and the portal home alone makes half a
+     * dozen.
+     *
+     * Deliberately does NOT extend past the absolute window on a dead session: expiry is
+     * checked in the SELECT above, so a session that has already lapsed never reaches
+     * here and cannot be revived by touching it.
+     *
+     * Fire-and-forget. A failed extension must never 401 a client whose session is
+     * valid — the worst case is that they sign in again a few days earlier.
+     */
+    void app.db
+      .query(
+        `UPDATE portal_sessions
+            SET expires_at = now() + make_interval(days => $2)
+          WHERE id = $1
+            AND expires_at < now() + make_interval(days => $2 - 1)`,
+        [row.session_id, app.config.PORTAL_SESSION_DAYS]
+      )
+      .catch((err: unknown) => app.log.warn({ err }, 'portal session renewal failed'));
+
     const client: AuthedClient = {
       portalUserId: row.portal_user_id,
       contactId: row.contact_id,

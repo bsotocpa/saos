@@ -86,6 +86,39 @@ export function registerPortalAuthRoutes(app: FastifyInstance): void {
     return { status: 'ok' };
   });
 
+  /**
+   * Sign out EVERYWHERE (Brian's #13 ruling, 2026-08-15).
+   *
+   * Sessions now last 30 days and slide with use, which is right for a client on their
+   * own phone and wrong for a borrowed or shared device. This is the answer to that: one
+   * action that ends every session this client has anywhere, not just the browser they
+   * happen to be holding.
+   *
+   * Revoking rather than deleting — the rows are the record of where a client was signed
+   * in, and a client asking "sign me out everywhere" is exactly when that record starts
+   * mattering.
+   */
+  app.post('/portal/auth/logout-all', { preHandler: [app.authenticateClient] }, async (request, reply) => {
+    const client = request.client!;
+    const { rowCount } = await app.db.query(
+      `UPDATE portal_sessions
+          SET revoked_at = now()
+        WHERE portal_user_id = $1 AND revoked_at IS NULL AND expires_at > now()`,
+      [client.portalUserId]
+    );
+    reply.clearCookie(PORTAL_SESSION_COOKIE, clearCookieOptions(app.config));
+    await writeAudit(app.db, {
+      actorType: 'client',
+      actorId: client.portalUserId,
+      actorLabel: client.email,
+      action: 'portal.logout_all',
+      contactId: client.contactId,
+      details: { sessions_revoked: rowCount ?? 0 },
+      ip: request.ip,
+    });
+    return { status: 'ok', sessionsRevoked: rowCount ?? 0 };
+  });
+
   // Staff: grant portal access to a contact (creates the account + sends the
   // first magic link). Rene's role carries magic_links.manage.
   app.post(

@@ -139,6 +139,20 @@ const dict = {
   // Marks the invoice the email linked to, so a client who followed the link can see
   // they are looking at the right one.
   inv_from_email: ['from your email', 'de su correo'],
+
+  // Security (finding #13). Sessions last 30 days and slide with use, so the shared or
+  // borrowed device needs its own answer rather than shorter sessions for everyone.
+  sec_title: ['Security', 'Seguridad'],
+  sec_help: [
+    'You stay signed in on this device for 30 days. If you signed in on a shared or borrowed device — a work computer, a family tablet — you can end every session everywhere at once. You will need a new sign-in link afterwards.',
+    'Su sesión permanece activa en este dispositivo durante 30 días. Si inició sesión en un dispositivo compartido o prestado — una computadora del trabajo, una tableta familiar — puede cerrar todas las sesiones a la vez. Después necesitará un nuevo enlace de acceso.',
+  ],
+  sec_sign_out_all: ['Sign out everywhere', 'Cerrar sesión en todos los dispositivos'],
+  sec_signing_out: ['Signing out…', 'Cerrando sesión…'],
+  sec_done: [
+    'Signed out on every device. Enter your email on the sign-in page for a fresh link.',
+    'Sesión cerrada en todos los dispositivos. Ingrese su correo en la página de acceso para recibir un enlace nuevo.',
+  ],
   // The return from Stripe. Three honest states — never a blank screen (finding #23).
   inv_confirming: ['Confirming your payment…', 'Confirmando su pago…'],
   inv_paid_notice: ['Payment received. Thank you.', 'Pago recibido. Gracias.'],

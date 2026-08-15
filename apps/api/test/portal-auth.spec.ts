@@ -448,3 +448,99 @@ test('#21: the welcome email describes the checklist that actually exists', asyn
   assert.match(en, /pay your deposit/i, 'the deposit step is real and comes first');
   assert.doesNotMatch(rows[0]!.body_es, /reserve su consulta/i, 'the Spanish said it too');
 });
+
+/*
+ * FINDING #13 (Brian's ruling, 2026-08-15): persistent sessions — cookie-backed,
+ * 30-day, sliding on activity — with a shared-device answer rather than shorter
+ * sessions for everyone.
+ *
+ * Most of that was already the design; these pin the parts that were not, and the
+ * revocation guarantee the ruling depends on.
+ */
+test('#13: an active client keeps their session — the window slides on use', async () => {
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Sliding', email: 'sliding@example.test',
+  });
+  await grantAccess(c.id);
+  const token = extractToken(lastMailTo(c.email));
+  const verify = await app.inject({ method: 'POST', url: '/portal/auth/magic/verify', payload: { token } });
+  const session = verify.json().token as string;
+
+  // Age the session: still valid, but most of the window used up.
+  await app.db.query(
+    `UPDATE portal_sessions SET expires_at = now() + interval '3 days'
+      WHERE portal_user_id = (SELECT id FROM portal_users WHERE contact_id = $1)`,
+    [c.id]
+  );
+
+  const before = await app.db.query<{ expires_at: Date }>(
+    `SELECT expires_at FROM portal_sessions WHERE portal_user_id = (SELECT id FROM portal_users WHERE contact_id = $1)`,
+    [c.id]
+  );
+
+  const used = await app.inject({
+    method: 'GET', url: '/portal/me', headers: { authorization: `Bearer ${session}` },
+  });
+  assert.equal(used.statusCode, 200, used.body);
+
+  // The renewal is fire-and-forget, so give it a moment to land.
+  await new Promise((r) => setTimeout(r, 300));
+  const after = await app.db.query<{ expires_at: Date }>(
+    `SELECT expires_at FROM portal_sessions WHERE portal_user_id = (SELECT id FROM portal_users WHERE contact_id = $1)`,
+    [c.id]
+  );
+  assert.ok(
+    after.rows[0]!.expires_at.getTime() > before.rows[0]!.expires_at.getTime(),
+    'using the portal pushed the expiry out'
+  );
+});
+
+test('#13: sign out everywhere ends EVERY session, not just this browser', async () => {
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Everywhere', email: 'everywhere@example.test',
+  });
+  await grantAccess(c.id);
+
+  // Two devices: two links, two sessions.
+  const first = extractToken(lastMailTo(c.email));
+  const s1 = (await app.inject({ method: 'POST', url: '/portal/auth/magic/verify', payload: { token: first } })).json().token as string;
+  await grantAccess(c.id);
+  const second = extractToken(lastMailTo(c.email));
+  const s2 = (await app.inject({ method: 'POST', url: '/portal/auth/magic/verify', payload: { token: second } })).json().token as string;
+
+  for (const s of [s1, s2]) {
+    const ok = await app.inject({ method: 'GET', url: '/portal/me', headers: { authorization: `Bearer ${s}` } });
+    assert.equal(ok.statusCode, 200, 'both devices are signed in');
+  }
+
+  const out = await app.inject({
+    method: 'POST', url: '/portal/auth/logout-all', headers: { authorization: `Bearer ${s1}` },
+  });
+  assert.equal(out.statusCode, 200, out.body);
+  assert.ok(out.json().sessionsRevoked >= 2, 'both sessions revoked, not just the caller’s');
+
+  for (const s of [s1, s2]) {
+    const dead = await app.inject({ method: 'GET', url: '/portal/me', headers: { authorization: `Bearer ${s}` } });
+    assert.equal(dead.statusCode, 401, 'the other device is signed out too');
+  }
+});
+
+test('#13: revoking portal access kills live sessions immediately', async () => {
+  // The ruling depends on this: 30-day sessions are only safe if removing access ends
+  // them at once. It is enforced in the auth query (u.is_active) rather than by hunting
+  // down session rows, so it applies the moment the flag flips.
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Revoked', email: 'revoked-access@example.test',
+  });
+  await grantAccess(c.id);
+  const token = extractToken(lastMailTo(c.email));
+  const session = (await app.inject({ method: 'POST', url: '/portal/auth/magic/verify', payload: { token } })).json().token as string;
+
+  const before = await app.inject({ method: 'GET', url: '/portal/me', headers: { authorization: `Bearer ${session}` } });
+  assert.equal(before.statusCode, 200);
+
+  await app.db.query(`UPDATE portal_users SET is_active = false WHERE contact_id = $1`, [c.id]);
+
+  const after = await app.inject({ method: 'GET', url: '/portal/me', headers: { authorization: `Bearer ${session}` } });
+  assert.equal(after.statusCode, 401, 'no grace period — the next request is refused');
+});

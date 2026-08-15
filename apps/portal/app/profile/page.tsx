@@ -4,7 +4,8 @@
 // preference persists to the contact record and drives all outbound comms.
 
 import { useEffect, useState } from 'react';
-import { api } from '../../lib/api';
+import { useRouter } from 'next/navigation';
+import { api, clearAuthed } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import type { DictKey } from '../../lib/i18n';
 
@@ -16,6 +17,9 @@ export default function ProfilePage() {
   });
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signedOutAll, setSignedOutAll] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     if (me) {
@@ -132,6 +136,38 @@ export default function ProfilePage() {
             <span className="muted small">{t('notif_estimate_help')}</span>
           </span>
         </label>
+      </section>
+
+      {/*
+        FINDING #13 — the shared-device answer. Sessions last 30 days and slide with use,
+        which is right on your own phone and wrong on a borrowed one. This ends every
+        session everywhere, not just this browser.
+      */}
+      <section className="card">
+        <h2>{t('sec_title')}</h2>
+        <p className="muted small">{t('sec_help')}</p>
+        {signedOutAll ? (
+          <p className="alert info" role="status">{t('sec_done')}</p>
+        ) : (
+          <button
+            type="button"
+            className="btn ghost"
+            disabled={signingOut}
+            onClick={async () => {
+              setSigningOut(true);
+              try {
+                await api('/portal/auth/logout-all', { method: 'POST' });
+                clearAuthed();
+                setSignedOutAll(true);
+                router.push('/login');
+              } catch {
+                setSigningOut(false);
+              }
+            }}
+          >
+            {signingOut ? t('sec_signing_out') : t('sec_sign_out_all')}
+          </button>
+        )}
       </section>
     </>
   );
