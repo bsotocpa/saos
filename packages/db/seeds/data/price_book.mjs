@@ -24,13 +24,21 @@
 //   SCOPE_ADMIN_TRAINING     scope_ladder     → recurring_accounting
 //   SCORP_CONVERSION_2553    setup_conversion → entity_services
 //
-// PRODUCTION IS UNTOUCHED BY THIS. The seed only ever writes v1 and leaves existing rows
-// alone, and historical versions restore from backup exactly as they stood — a quote
-// pinned to v1 still means what it meant. This changes what a NEW database starts with,
-// nothing else.
+// I FIRST WROTE HERE THAT PRODUCTION WAS UNTOUCHED BY THIS. That was wrong, and the
+// correction is the reason the upsert below is now DO NOTHING. The seed's ON CONFLICT
+// clause was DO UPDATE SET nearly every column, so editing this file rewrote v1 in
+// production on the next deploy — for a version that stopped being in force on
+// 2026-08-13 and that quotes and engagements are pinned to forever.
+//
+// v1 was restored from the pre-deploy restic snapshot (scripts/restore-v1-from-backup.mjs)
+// and the seed is now INSERT-ONLY for versions that already exist. A fresh database still
+// gets current state, because there is no conflict to skip — which is exactly what
+// carrying the reclassification forward is for. An existing book is no longer edited from
+// underneath.
 //
 // Same principle as legal_v3_es: a seed that ships yesterday's state is a bug with a
-// delay on it.
+// delay on it. And the converse, learned the hard way: a seed that ships TODAY's state
+// into yesterday's records is a bug with no delay at all.
 
 /*
  * pricing_mode is DERIVED from the shape rather than annotated on 84 items by hand.
@@ -500,52 +508,31 @@ export async function seedPriceBook(client) {
          pricing_mode, deposit_cents, is_active,
          structure_needs_confirmation, structure_confirmation_note, percent_rate
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::price_pricing_mode,$19,$20,$21,$22,$23)
-       ON CONFLICT (version_id, item_code) DO UPDATE SET
-         service_line = EXCLUDED.service_line,
-         name_en = EXCLUDED.name_en,
-         name_es = EXCLUDED.name_es,
-         description_en = EXCLUDED.description_en,
-         description_es = EXCLUDED.description_es,
-         amount_cents = EXCLUDED.amount_cents,
-         price_min_cents = EXCLUDED.price_min_cents,
-         price_max_cents = EXCLUDED.price_max_cents,
-         unit = EXCLUDED.unit,
-         is_pass_through = EXCLUDED.is_pass_through,
-         display_on_quote = EXCLUDED.display_on_quote,
-         -- A CONFIRMATION IS A HUMAN DECISION AND THE SEED NEVER REVERSES IT.
-         -- Plain assignment here meant every deploy re-flagged any price Brian
-         -- had confirmed in Admin → Pricing: the ⚠ badge came back on a price he
-         -- had already ruled on, with nothing to say it had happened.
-         -- AND keeps both directions honest — the seed can still flag a NEW item,
-         -- and can still resolve one (true AND false = false), but a row that is
-         -- already confirmed (false) stays confirmed forever.
-         needs_confirmation = price_book_items.needs_confirmation AND EXCLUDED.needs_confirmation,
-         confirmation_note = CASE
-           WHEN price_book_items.needs_confirmation AND EXCLUDED.needs_confirmation
-             THEN EXCLUDED.confirmation_note
-           ELSE NULL
-         END,
-         sort_order = EXCLUDED.sort_order,
-         metadata = EXCLUDED.metadata,
-         -- Both are plain assignments, unlike needs_confirmation. The seed owns v1, and
-         -- the ONLY in-place mutation the admin API performs is confirming a flag —
-         -- setting a price or a deposit creates a NEW version, which the seed never
-         -- touches. So re-seeding cannot overwrite a decision Brian made.
-         pricing_mode = EXCLUDED.pricing_mode,
-         deposit_cents = EXCLUDED.deposit_cents,
-         is_active = EXCLUDED.is_active,
-         -- Same rule as needs_confirmation: a HUMAN decision is never reversed by a
-         -- redeploy. AND keeps both directions honest — the seed can raise a new
-         -- structure question, and can resolve one, but a line Brian already ruled
-         -- on stays ruled on.
-         structure_needs_confirmation =
-           price_book_items.structure_needs_confirmation AND EXCLUDED.structure_needs_confirmation,
-         structure_confirmation_note = CASE
-           WHEN price_book_items.structure_needs_confirmation AND EXCLUDED.structure_needs_confirmation
-             THEN EXCLUDED.structure_confirmation_note
-           ELSE NULL
-         END,
-         percent_rate = EXCLUDED.percent_rate`,
+       /*
+        * INSERT ONLY. The seed never rewrites a version that already exists.
+        *
+        * This clause used to be DO UPDATE SET nearly every column, so that re-running
+        * the seed "re-aligned v1 with this file (typo fixes propagate)". The cost of
+        * that convenience only became visible when the seed was edited: two deploys on
+        * 2026-08-15 silently rewrote v1 in production — seven items moved out of
+        * scope_ladder, and LATE_FEE_MONTHLY's $0 became percent-mode — for a version
+        * that stopped being in force on 2026-08-13. Quotes and engagements are pinned
+        * to v1 forever; rewriting it changes what an already-signed client was quoted
+        * under, retroactively, with no record that anything moved.
+        *
+        * Brian's ruling: "History means what was actually in force, not what the
+        * current seed thinks." v1 was restored from the pre-deploy backup
+        * (scripts/restore-v1-from-backup.mjs) and is now frozen by this clause.
+        *
+        * A FRESH DATABASE IS UNAFFECTED — there is no conflict to skip, so a new
+        * environment still starts at current state, which is the whole point of
+        * carrying the GATE 2 reclassification forward. What changes is only that an
+        * EXISTING book stops being edited from underneath.
+        *
+        * Correcting a live version is what a NEW VERSION is for; that is the mechanism
+        * GATE 2 already used, and admin edits already create one.
+        */
+       ON CONFLICT (version_id, item_code) DO NOTHING`,
       [
         versionId, it.code, it.serviceLine, it.nameEn, it.nameEs,
         it.descEn, it.descEs, it.amountCents, it.minCents,
