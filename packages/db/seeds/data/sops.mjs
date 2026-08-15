@@ -43,6 +43,26 @@ The client has been in "waiting for input" for 14 days. Two automated nudges
 3. If you reach them: agree a date and put it in the task.
 4. If you do not: log the attempt. At D30 the engagement flags STALLED to Brian.
 `),
+  sop('rene-portal-access', 'Client cannot sign in to the portal', 'comms_billing', 'Client communications', `
+## Why you have this task
+Someone we already have on file asked for a portal sign-in link and got nothing.
+Either they have no portal account, or their account is on a **different email
+address** than the one they typed.
+
+The portal cannot tell them which — saying "that address has no account" would
+confirm to any stranger who our clients are. So it gives everyone the same answer
+and raises this task instead.
+
+1. Open the client record. Check **Portal access**: is there an account, and on
+   which address?
+2. If the account is on another address (a work address, a +tag, an old one), call
+   or email them at an address you already trust and tell them which one to use.
+   Do not create a second account — one client, one portal.
+3. If there is no account, confirm the email is right and **Grant portal access**.
+   They get an invitation explaining what the portal is, not a bare link.
+4. If the address they tried is better than the one on file, update the contact
+   FIRST, then grant — the account is created from the contact's email.
+`),
   sop('rene-dunning-call', 'Overdue invoice call', 'comms_billing', 'Billing', `
 ## Why you have this task
 An invoice has been unpaid past the reminder window, or three dunning emails have

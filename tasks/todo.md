@@ -1049,10 +1049,41 @@ confirmation, every dead end is a new finding."
       engagement labels **service-line distinct**, so a client with two engagements
       never reads "2 active engagements (tax, tax)" (RC2 ambiguity)
 - [ ] **#20** Packet heading renders "A — Schedule A —" (redundant label composition)
-- [ ] **#21** No portal invite email exists. Brian received an invoice link, clicked
+- [~] **#21** No portal invite email exists. **BUILT, NOT VERIFIED — see below.** Brian received an invoice link, clicked
       it, was asked to sign in, and had never been sent a way to set the portal up;
       requesting a sign-in link produced no email either. This is the one that most
       directly blocks a real first client
+      **Diagnosis (from the production audit trail, not from guessing).** Two defects
+      behind one experience:
+      1. A brand-new client's first-ever email was  — "Here is your
+         secure link to sign in to your Soto Accounting portal" — for a portal nobody had
+         told them existed, expiring in 15 minutes, indistinguishable from phishing.
+          went out alongside it promising "a sign-in link is on its way",
+         so the promise was kept by an email that explained nothing.
+      2. The invoice went to ; Brian typed
+         , which had no portal account at that moment. The endpoint
+         correctly refused to enumerate and said "a link is on its way" while sending
+         nothing — leaving a real person at the door and nobody on our side aware.
+      **Built:**  template (EN+ES) sent on FIRST access, saying what the
+      portal is, what is waiting, and how to get a fresh link when this one expires; the
+      bare link only on later requests;  audited by purpose. A sign-in
+      attempt from a KNOWN contact with no access raises a Rene task (deduped per contact,
+      SOP ) while the client-facing answer stays word-for-word
+      unchanged; an unrecognised address is a log line, so the queue cannot be flooded.
+      Also fixed , which still described a "4-step checklist … upload last
+      year's return, and book your consultation" — a checklist the portal redesign
+      replaced, including removing booking entirely.
+      ⚠ **NOT VERIFIED AND NOT DEPLOYED.** Docker Desktop was stopped on Brian's machine,
+      so the 398-test suite could not run. Typecheck passes on all four workspaces and all
+      four build guards pass, but those are static. Needs Unknown command: "test"
+
+
+Did you mean this?
+  npm test # Test a package
+To see a list of supported npm commands, run:
+  npm help green before deploy —
+      it touches the sign-in path and two client-facing emails.
+
 - [x] **#22** Pay Now was dead on click with no feedback of any kind — `void pay(id)`
       with no catch and no busy state, so a 503 produced NOTHING. Now: busy state,
       button disabled during the call, server message surfaced, `role="alert"`

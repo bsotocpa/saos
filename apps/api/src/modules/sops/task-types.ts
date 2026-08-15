@@ -24,6 +24,9 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   // ── Client comms & billing (Rene) ──────────────────────────────────────────
   ladder_call: { sop: 'rene-escalation-call' },
   dunning_call: { sop: 'rene-dunning-call' },
+  // A known client asked for a sign-in link and could not get one. Same fix as a
+  // bounced link — confirm the address and grant access — so it shares that SOP.
+  portal_access_blocked: { sop: 'rene-portal-access' },
   call_ticket: { sop: 'rene-phone-flow' },
   sms_unmatched: { sop: 'rene-unmatched-inbound' },
   invoice_overdue: { sop: 'rene-dunning-call' },

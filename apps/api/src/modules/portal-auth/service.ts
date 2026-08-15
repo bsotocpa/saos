@@ -8,6 +8,8 @@ import { writeAudit } from '../../audit.ts';
 import { generateToken, hashToken } from '../../crypto.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { AppError } from '../../types.ts';
+import { firstActiveByRole } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 
 interface RequestMeta {
   ip?: string | null;
@@ -47,11 +49,24 @@ export async function ensurePortalUser(
 }
 
 /**
- * Issue a fresh magic link and email it (contact's language). Throttled: at
- * most 3 outstanding links per user per 10 minutes — extra requests succeed
- * silently without sending (no oracle for attackers, no mail spam).
+ * Issue a fresh magic link and email it (contact's language). Throttled: at most 3
+ * outstanding links per user per 10 minutes — extra requests succeed silently without
+ * sending (no oracle for attackers, no mail spam).
+ *
+ * And it chooses which message carries the link.
+ *
+ * FINDING #21: an invite and a re-login link are different emails. A first-time client
+ * used to receive "Here is your secure link to sign in to your Soto Accounting portal"
+ * for a portal nobody had told them about — no context, fifteen-minute expiry, and
+ * indistinguishable from phishing. `purpose: 'invite'` sends the welcome instead; every
+ * later request sends the bare link, which is the right message once you know what the
+ * portal is.
  */
-export async function issueMagicLink(app: FastifyInstance, portalUserId: string): Promise<void> {
+export async function issueMagicLink(
+  app: FastifyInstance,
+  portalUserId: string,
+  opts: { purpose?: 'invite' | 'login' } = {}
+): Promise<void> {
   const { rows } = await app.db.query<{
     id: string;
     email: string;
@@ -81,15 +96,19 @@ export async function issueMagicLink(app: FastifyInstance, portalUserId: string)
     [user.id, hash, app.config.MAGIC_LINK_TTL_MINUTES]
   );
 
+  const isInvite = opts.purpose === 'invite';
   await sendTemplatedEmail(app, {
     to: user.email,
-    templateKey: 'portal_magic_link',
+    templateKey: isInvite ? 'portal_invite' : 'portal_magic_link',
     language: user.language,
     contactId: user.contact_id,
     vars: {
       first_name: user.first_name,
       link: `${app.config.PORTAL_BASE_URL}/auth/verify?token=${token}`,
       ttl_minutes: String(app.config.MAGIC_LINK_TTL_MINUTES),
+      // The invite tells them where to get a fresh link when this one expires, because
+      // it will expire and "ask for another" has to be an instruction, not a dead end.
+      portal_url: app.config.PORTAL_BASE_URL,
     },
   });
 
@@ -99,6 +118,7 @@ export async function issueMagicLink(app: FastifyInstance, portalUserId: string)
     objectType: 'portal_user',
     objectId: user.id,
     contactId: user.contact_id,
+    details: { purpose: isInvite ? 'invite' : 'login' },
   });
 }
 
@@ -199,4 +219,68 @@ export async function handleMailBounce(app: FastifyInstance, recipient: string):
     details: { task_id: task.rows[0]!.id, assigned: assignee !== null },
   });
   return { matched: true };
+}
+
+/**
+ * A sign-in attempt for an address with no portal access (finding #21).
+ *
+ * The public endpoint's answer is deliberately vague and stays that way — it must not
+ * confirm who is a client. This is the internal half: when the address belongs to a
+ * contact we already know, somebody we have a relationship with is locked out and
+ * nobody was told. Rene gets a task naming the client and the fix (grant portal access).
+ *
+ * Scoped to known contacts on purpose. An unrecognised address produces a log line and
+ * nothing else: creating a task per unknown address would let anyone fill the queue by
+ * typing strangers' emails, and there would be nothing to act on anyway.
+ */
+export async function recordUnknownSignInAttempt(
+  app: FastifyInstance,
+  email: string
+): Promise<{ known: boolean }> {
+  const { rows } = await app.db.query<{
+    id: string; first_name: string; last_name: string; has_user: boolean;
+  }>(
+    `SELECT c.id, c.first_name, c.last_name,
+            EXISTS (SELECT 1 FROM portal_users u WHERE u.contact_id = c.id) AS has_user
+       FROM contacts c
+      WHERE c.email = $1 AND NOT c.is_archived
+      LIMIT 1`,
+    [email]
+  );
+  const contact = rows[0];
+  if (!contact) {
+    // No PII in logs: the fact, not the address.
+    app.log.info({ event: 'portal_signin_unknown_address' }, 'sign-in requested for an address we do not recognise');
+    return { known: false };
+  }
+
+  const rene = await firstActiveByRole(app.db, 'comms_billing');
+  const why = contact.has_user
+    ? 'Their portal account is on a DIFFERENT email address than the one they tried.'
+    : 'They have no portal account yet.';
+  const created = await createTask(app, {
+    title: `${contact.first_name} ${contact.last_name} tried to sign in and could not`,
+    description:
+      `${why} They asked for a sign-in link and received nothing, and the portal cannot tell them why ` +
+      `without confirming to strangers who our clients are.\n\n` +
+      `Grant portal access (or point them at the address that has it) from their client record.`,
+    ...(rene ? { assignedStaffId: rene } : {}),
+    contactId: contact.id,
+    priority: 2,
+    source: 'automation',
+    sourceType: 'portal_access_blocked',
+    // Deduped per contact while the task is open — a client retrying five times is one
+    // problem, not five.
+    sourceId: contact.id,
+  });
+
+  await writeAudit(app.db, {
+    actorType: 'system',
+    action: 'portal.signin_blocked',
+    objectType: 'contact',
+    objectId: contact.id,
+    contactId: contact.id,
+    details: { has_portal_user: contact.has_user, task_created: created.created },
+  });
+  return { known: true };
 }

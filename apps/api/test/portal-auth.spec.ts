@@ -96,9 +96,14 @@ test('staff grants portal access → magic link email → client session (audite
   });
   await grantAccess(ana.id);
 
+  // FINDING #21: a FIRST grant sends the invitation, not a bare sign-in link. A brand
+  // new client used to receive 'Here is your secure link to sign in to your Soto
+  // Accounting portal' for a portal nobody had told them existed.
   const mail = lastMailTo(ana.email);
-  assert.match(mail.subject, /sign-in link/i);
-  assert.match(mail.text, /works once and expires in 30 minutes/);
+  assert.match(mail.subject, /portal is ready/i);
+  assert.match(mail.text, /expires in 30 minutes/);
+  assert.match(mail.text, /upload documents securely/i, 'it says what the portal is FOR');
+  assert.match(mail.text, /send you a fresh one/i, 'and what to do when the link expires');
 
   const token = extractToken(mail);
   const verify = await app.inject({ method: 'POST', url: '/portal/auth/magic/verify', payload: { token } });
@@ -333,4 +338,105 @@ test('magic verify sets an httpOnly cookie that authenticates; logout clears it'
     cookies: { saos_portal_session: cookie.value },
   });
   assert.equal(replay.statusCode, 401, 'revoked session must not authenticate even if the cookie is replayed');
+});
+
+/*
+ * FINDING #21 (Brian, 2026-08-13): "No portal invite email exists. I received an invoice
+ * link, clicked it, was asked to sign in, and had never been sent a way to set the portal
+ * up; requesting a sign-in link produced no email either."
+ *
+ * Two separate defects behind one experience, and these cover both.
+ */
+test('#21: the first email is an INVITATION; the second is a bare sign-in link', async () => {
+  const nueva = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Invitee', email: 'invitee@example.test',
+  });
+  await grantAccess(nueva.id);
+  const invite = lastMailTo(nueva.email);
+  assert.match(invite.subject, /portal is ready/i);
+
+  // Granting again is not a second invitation — by now they know what the portal is.
+  await grantAccess(nueva.id);
+  const second = lastMailTo(nueva.email);
+  assert.match(second.subject, /sign-in link/i, 'the re-send is the plain link');
+  assert.doesNotMatch(second.text, /We have set up your secure client portal/);
+
+  // Both are audited by purpose, so "did they ever get an invite" is answerable.
+  const purposes = await app.db.query<{ purpose: string }>(
+    `SELECT details->>'purpose' AS purpose FROM audit_log
+      WHERE action = 'magic_link.issued' AND contact_id = $1 ORDER BY occurred_at`,
+    [nueva.id]
+  );
+  assert.deepEqual(purposes.rows.map((r) => r.purpose), ['invite', 'login']);
+});
+
+test('#21: a KNOWN client who cannot sign in becomes a task — the answer to them is unchanged', async () => {
+  // A contact we know, whose portal account is on a DIFFERENT address. Exactly Brian's
+  // case: the invoice went to a +tagged address, he typed his base one.
+  const known = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Mismatch', email: 'mismatch-base@example.test',
+  });
+  const sentBefore = sentMail.length;
+
+  const res = await app.inject({
+    method: 'POST', url: '/portal/auth/magic/request',
+    payload: { email: 'mismatch-base@example.test' },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(
+    res.json().message,
+    'If that address has portal access, a sign-in link is on its way.',
+    'the client-facing answer does not change by a word — it must not confirm who is a client'
+  );
+  assert.equal(sentMail.length, sentBefore, 'and nothing is sent to an address with no account');
+
+  // But we are no longer the only party unaware of it.
+  const task = await app.db.query<{ title: string; description: string; contact_id: string }>(
+    `SELECT title, description, contact_id FROM tasks
+      WHERE source_type = 'portal_access_blocked' AND source_id = $1`,
+    [known.id]
+  );
+  assert.equal(task.rows.length, 1, 'Rene gets a task naming the client');
+  assert.match(task.rows[0]!.title, /could not/i);
+  assert.match(task.rows[0]!.description, /no portal account yet/i);
+
+  // A client retrying is one problem, not five.
+  for (let i = 0; i < 3; i += 1) {
+    await app.inject({
+      method: 'POST', url: '/portal/auth/magic/request',
+      payload: { email: 'mismatch-base@example.test' },
+    });
+  }
+  const still = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'portal_access_blocked' AND source_id = $1`,
+    [known.id]
+  );
+  assert.equal(still.rows[0]!.n, 1, 'deduped while open');
+});
+
+test('#21: an address we do not recognise creates NO task — the queue cannot be flooded', async () => {
+  const before = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'portal_access_blocked'`
+  );
+  for (const email of ['nobody-1@example.test', 'nobody-2@example.test', 'nobody-3@example.test']) {
+    const res = await app.inject({ method: 'POST', url: '/portal/auth/magic/request', payload: { email } });
+    assert.equal(res.statusCode, 200);
+  }
+  const after = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'portal_access_blocked'`
+  );
+  assert.equal(after.rows[0]!.n, before.rows[0]!.n, 'strangers produce a log line, not a task');
+});
+
+test('#21: the welcome email describes the checklist that actually exists', async () => {
+  const { rows } = await app.db.query<{ body_en: string; body_es: string }>(
+    `SELECT body_en, body_es FROM templates WHERE key = 'welcome_soto'`
+  );
+  const en = rows[0]!.body_en;
+  // The portal redesign removed booking (a client only reaches this point AFTER the
+  // discovery meeting) and replaced "last year's return" with documents generally.
+  assert.doesNotMatch(en, /book your consultation/i, 'booking was removed from the checklist');
+  assert.doesNotMatch(en, /4-step/i, 'and it is no longer four steps');
+  assert.match(en, /pay your deposit/i, 'the deposit step is real and comes first');
+  assert.doesNotMatch(rows[0]!.body_es, /reserve su consulta/i, 'the Spanish said it too');
 });

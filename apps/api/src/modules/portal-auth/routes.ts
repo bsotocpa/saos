@@ -4,7 +4,13 @@ import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
 import { PORTAL_SESSION_COOKIE, clearCookieOptions, portalCookieOptions } from '../../cookies.ts';
-import { ensurePortalUser, handleMailBounce, issueMagicLink, verifyMagicLink } from './service.ts';
+import {
+  ensurePortalUser,
+  handleMailBounce,
+  issueMagicLink,
+  recordUnknownSignInAttempt,
+  verifyMagicLink,
+} from './service.ts';
 
 const RequestLinkBody = z.object({ email: z.email() });
 const VerifyBody = z.object({ token: z.string().min(1) });
@@ -30,6 +36,26 @@ export function registerPortalAuthRoutes(app: FastifyInstance): void {
     );
     if (rows[0]) {
       await issueMagicLink(app, rows[0].id);
+    } else {
+      /*
+       * FINDING #21 — the silent half.
+       *
+       * Brian asked for a sign-in link using his base address while his portal account
+       * was on a plus-addressed one. The response said a link was on its way; nothing
+       * was sent, because that address had no account. That behaviour is CORRECT — the
+       * vague answer is what stops this endpoint confirming who is a client — but it
+       * left a real person at the door with no way to tell "sent" from "you have no
+       * account", and left nobody on our side aware of it.
+       *
+       * So the client-facing answer does not change by a word. The system just stops
+       * being the only party that doesn't know.
+       *
+       * A task only when the address belongs to a CONTACT WE KNOW. That is the
+       * actionable case — someone we have a relationship with cannot get in — and it
+       * cannot be used to flood the queue, because producing one requires already
+       * knowing a real client's address. An unrecognised address is a log line.
+       */
+      await recordUnknownSignInAttempt(app, body.email);
     }
     return { status: 'ok', message: 'If that address has portal access, a sign-in link is on its way.' };
   });
@@ -69,7 +95,9 @@ export function registerPortalAuthRoutes(app: FastifyInstance): void {
       const body = GrantAccessBody.parse(request.body);
       const actor = request.staff!;
       const user = await ensurePortalUser(app, body.contactId);
-      await issueMagicLink(app, user.id);
+      // A brand-new account gets the INVITE; an existing one gets the plain sign-in
+      // link, because by then they know what the portal is (finding #21).
+      await issueMagicLink(app, user.id, { purpose: user.created ? 'invite' : 'login' });
       if (user.created) {
         await writeAudit(app.db, {
           actorType: 'staff',

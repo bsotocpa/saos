@@ -81,6 +81,62 @@ export const templates = [
       'fiscal de {{client_name}} entre entidades, incluidas referencias y ofertas.',
   },
   {
+    /*
+     * FINDING #21 — the first thing a new client ever hears from us.
+     *
+     * Before this, a brand-new client's opening email was portal_magic_link: "Here is
+     * your secure link to sign in to your Soto Accounting portal" — for a portal they
+     * had never been told existed, expiring in fifteen minutes, with no explanation of
+     * what it was or why they had it. That reads like phishing, and a careful person is
+     * right not to click it.
+     *
+     * An invite and a re-login link are different messages. This one says what the
+     * portal is, what is waiting there, and what to do when the link expires — because
+     * it will, and "request a new one" has to be an instruction rather than a dead end.
+     */
+    key: 'portal_invite',
+    name: 'Portal invitation (first-time access)',
+    channel: 'email',
+    isPlaceholder: false, // functional copy, not legal language — admin-editable, no deploy
+    variables: ['first_name', 'link', 'ttl_minutes', 'portal_url'],
+    subjectEn: 'Your Soto Accounting client portal is ready',
+    subjectEs: 'Su portal de cliente de Soto Accounting está listo',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'We have set up your secure client portal at Soto Accounting. It is where your ' +
+      'documents, invoices, engagement letters and messages live — everything in one ' +
+      'place, and nothing sensitive travelling by email or text.\n\n' +
+      'Open it here:\n\n' +
+      '{{link}}\n\n' +
+      'In the portal you can:\n' +
+      '  · upload documents securely (photos from your phone are fine)\n' +
+      '  · sign your engagement letter and authorizations\n' +
+      '  · see and pay invoices\n' +
+      '  · message us, and track where your work stands\n\n' +
+      'That link signs you in once and expires in {{ttl_minutes}} minutes. If it expires ' +
+      'before you use it, go to {{portal_url}} and enter this same email address — we ' +
+      'will send you a fresh one. There is no password to create or remember.\n\n' +
+      'If anything looks wrong, reply to this email and a person will answer.\n\n' +
+      '— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Hemos creado su portal seguro de cliente en Soto Accounting. Allí viven sus ' +
+      'documentos, facturas, cartas de compromiso y mensajes — todo en un solo lugar, ' +
+      'sin que nada confidencial viaje por correo o mensaje de texto.\n\n' +
+      'Ábralo aquí:\n\n' +
+      '{{link}}\n\n' +
+      'En el portal usted puede:\n' +
+      '  · subir documentos de forma segura (las fotos desde su teléfono funcionan bien)\n' +
+      '  · firmar su carta de compromiso y autorizaciones\n' +
+      '  · ver y pagar facturas\n' +
+      '  · escribirnos y seguir el estado de su trabajo\n\n' +
+      'Ese enlace le da acceso una sola vez y vence en {{ttl_minutes}} minutos. Si vence ' +
+      'antes de usarlo, visite {{portal_url}} e ingrese este mismo correo electrónico — ' +
+      'le enviaremos uno nuevo. No hay contraseña que crear ni recordar.\n\n' +
+      'Si algo no se ve bien, responda a este correo y una persona le contestará.\n\n' +
+      '— Soto Accounting',
+  },
+  {
     key: 'portal_magic_link',
     name: 'Portal magic-link sign-in email',
     channel: 'email',
@@ -584,15 +640,21 @@ export const templates = [
       'Hi {{first_name}},\n\n' +
       'Welcome — we’re glad you’re here. Your secure client portal is being set up now; ' +
       'a sign-in link is on its way in a separate email.\n\n' +
-      'Once you’re in, a short 4-step checklist gets everything moving: confirm your info, ' +
-      'sign your documents, upload last year’s return, and book your consultation.\n\n' +
+      // The old copy promised a "4-step checklist … upload last year's return, and book
+      // your consultation". The portal redesign made it five steps, replaced the
+      // prior-year-return step with documents generally, and REMOVED booking entirely —
+      // a client only reaches this point after the discovery meeting, so asking them to
+      // book one asks for something they have already done. Describing a checklist that
+      // no longer exists is the first instruction a new client gets from us.
+      'Once you’re in, a short checklist gets everything moving: sign your documents, ' +
+      'pay your deposit, confirm your information, and upload what we need.\n\n' +
       'You run your business. We’ve got the numbers.\n\n— Soto Accounting',
     bodyEs:
       'Hola {{first_name}}:\n\n' +
       'Bienvenido(a) — nos alegra tenerle aquí. Su portal seguro de cliente se está configurando; ' +
       'un enlace de acceso llega en un correo aparte.\n\n' +
-      'Al entrar, una lista de 4 pasos pone todo en marcha: confirme sus datos, firme sus documentos, ' +
-      'suba su declaración del año pasado y reserve su consulta.\n\n' +
+      'Al entrar, una lista breve pone todo en marcha: firme sus documentos, pague su depósito, ' +
+      'confirme sus datos y suba lo que necesitamos.\n\n' +
       'Usted dirige su negocio. Nosotros nos encargamos de los números.\n\n— Soto Accounting',
   },
   {
