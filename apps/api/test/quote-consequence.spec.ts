@@ -260,62 +260,132 @@ test('a quote with no overlap sends with no intent and records none', async () =
   assert.equal(row.rows[0]!.schedules, null);
 });
 
-test('GATE 1: a non-tax quote cannot be SENT until finding #19 is fixed', async () => {
-  // #19: acceptQuote hardcodes serviceLine 'tax', so accepting a bookkeeping quote
-  // produces a Schedule A — an individual-tax agreement for work that is not
-  // individual tax. Brian's ruling: tax-only until it is fixed, enforced in code
-  // rather than only in launch-readiness.md.
+/*
+ * GATE 1 IS LIFTED (#19 fixed, 2026-08-15).
+ *
+ * The gate existed because acceptQuote hardcoded serviceLine 'tax', so accepting a
+ * bookkeeping quote produced a Schedule A — an individual-tax agreement for work that is
+ * not individual tax. Acceptance now derives the line from the price book, so this test
+ * is the old one inverted: the same quote that was refused must now send AND accept into
+ * a bookkeeping engagement.
+ */
+test('#19: a bookkeeping quote sends, and accepts into a BOOKKEEPING engagement', async () => {
   const c = await makeContact(app.db, {
     firstName: 'Synthetic',
-    lastName: 'NonTaxGated',
-    email: 'nontaxgated@example.test',
+    lastName: 'BookkeepingOk',
+    email: 'bookkeeping-ok@example.test',
   });
 
-  const nonTax = await app.db.query<{ item_code: string; service_line: string }>(
-    `SELECT pbi.item_code, pbi.service_line::text AS service_line
+  const bk = await app.db.query<{ item_code: string }>(
+    `SELECT pbi.item_code
        FROM price_book_items pbi
        JOIN price_book_versions v ON v.id = pbi.version_id
       WHERE pbi.service_line::text = 'recurring_accounting' AND pbi.is_active
         AND pbi.display_on_quote AND pbi.amount_cents IS NOT NULL
+        AND pbi.item_code NOT IN ('SCOPE_FULLMGMT_PAYROLL', 'SCOPE_FULLMGMT_SALES_TAX', 'SALES_TAX_ST1_FILING')
         AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
       ORDER BY pbi.item_code LIMIT 1`
   );
-  assert.ok(nonTax.rows[0], 'the price book has a bookkeeping item');
+  assert.ok(bk.rows[0], 'the price book has a bookkeeping item');
 
   const quote = await createQuote(
     app,
-    { contactId: c.id, lines: [{ itemCode: nonTax.rows[0]!.item_code }] },
+    { contactId: c.id, lines: [{ itemCode: bk.rows[0]!.item_code }] },
     staffActor(await ceoId())
   );
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  assert.ok(sent.url, 'no longer refused at send');
 
-  const actor = staffActor(await ceoId());
-  await assert.rejects(
-    () => sendQuote(app, quote.id, actor),
-    (err: unknown) => {
-      assert.ok(err instanceof AppError);
-      assert.equal(err.statusCode, 409);
-      assert.equal(err.code, 'non_tax_quote_gated');
-      assert.match(err.message, /finding #19/);
-      assert.match(err.message, new RegExp(nonTax.rows[0]!.item_code));
-      assert.match(err.message, /launch-readiness/);
-      return true;
-    }
+  const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
+  const eng = await app.db.query<{ service_line: string; title: string }>(
+    `SELECT service_line::text AS service_line, title FROM engagements WHERE id = ANY($1)`,
+    [accepted.engagements.map((e) => e.id)]
   );
+  assert.equal(eng.rows.length, 1, 'one service line on this quote → one engagement');
+  assert.equal(eng.rows[0]!.service_line, 'bookkeeping', 'NOT tax — the whole point of #19');
+  assert.notEqual(eng.rows[0]!.title, 'Accepted quote', 'and it is not the old generic title');
+  assert.match(eng.rows[0]!.title, /^Bookkeeping — /, 'the title names the line and the work');
+});
 
-  const still = await app.db.query<{ status: string }>(
-    `SELECT status::text AS status FROM quotes WHERE id = $1`,
-    [quote.id]
+test('#19: a quote spanning two service lines creates two DISTINCT engagements', async () => {
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic',
+    lastName: 'TwoLines',
+    email: 'two-lines@example.test',
+  });
+
+  /*
+   * The second line is derived from the BOOK, not hardcoded.
+   *
+   * SCOPE_FULLMGMT_PAYROLL was the obvious pick and it is classified differently in v1
+   * (scope_ladder) than in v5 (recurring_accounting): GATE 2's reclassification landed in
+   * a new version and deliberately left v1 alone, so a fresh database and production
+   * genuinely disagree about what that item is. A test naming it passes or fails
+   * depending on which version happens to be in force — which is a property of the
+   * fixture, not of the code under test.
+   */
+  const other = await app.db.query<{ item_code: string }>(
+    `SELECT pbi.item_code
+       FROM price_book_items pbi
+       JOIN price_book_versions v ON v.id = pbi.version_id
+      WHERE pbi.service_line::text = 'entity_services' AND pbi.is_active
+        AND pbi.display_on_quote AND pbi.amount_cents IS NOT NULL
+        AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
+      ORDER BY pbi.item_code LIMIT 1`
   );
-  assert.equal(still.rows[0]!.status, 'draft', 'blocked at send — the client never sees it');
+  assert.ok(other.rows[0], 'the book in force has a quotable entity item');
 
-  // A tax quote for the same client still sends, so the gate is a scalpel.
-  const taxQuote = await createQuote(
+  const quote = await createQuote(
     app,
-    { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] },
+    { contactId: c.id, lines: [{ itemCode: await taxItemCode() }, { itemCode: other.rows[0]!.item_code }] },
     staffActor(await ceoId())
   );
-  const ok = await sendQuote(app, taxQuote.id, staffActor(await ceoId()));
-  assert.ok(ok.url, 'tax work is unaffected');
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
+
+  const eng = await app.db.query<{ service_line: string; title: string }>(
+    `SELECT service_line::text AS service_line, title FROM engagements
+       WHERE contact_id = $1 ORDER BY service_line`,
+    [c.id]
+  );
+  assert.equal(eng.rows.length, 2, 'one engagement per distinct service line');
+  const linesFound = eng.rows.map((r) => r.service_line);
+  assert.deepEqual(linesFound, ['entity', 'tax'], 'two different agreements, derived from the book');
+
+  // Brian's RC2 finding: "2 active engagements (tax, tax)" with nothing to tell them
+  // apart. Both the line AND the title must now distinguish them.
+  assert.equal(new Set(linesFound).size, 2, 'service lines are distinct');
+  assert.equal(new Set(eng.rows.map((r) => r.title)).size, 2, 'and so are the titles');
+  assert.equal(accepted.engagements.length, 2, 'the caller is told about both');
+});
+
+test('#19 successor gate: a line mapping to no engagement is refused at SEND', async () => {
+  // GATE 1's replacement. A priced line that maps to no engagement service line would be
+  // silently dropped when the engagements are built — the client would agree to work that
+  // produces no agreement and no schedule.
+  const { engagementLineFor } = await import('../src/modules/pricing/engagement-lines.ts');
+
+  // The mapping itself is the unit under test; every ACTIVE, quotable price line must
+  // resolve, or sending a quote containing it now throws.
+  const priceLines = await app.db.query<{ service_line: string; item_code: string }>(
+    `SELECT DISTINCT pbi.service_line::text AS service_line, pbi.item_code
+       FROM price_book_items pbi
+       JOIN price_book_versions v ON v.id = pbi.version_id
+      WHERE pbi.is_active AND pbi.display_on_quote
+        AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)`
+  );
+  const unmapped = priceLines.rows.filter(
+    (r) => !['deposit', 'software_passthrough', 'scope_ladder'].includes(r.service_line)
+      && engagementLineFor(r.service_line, r.item_code) === null
+  );
+  assert.deepEqual(unmapped, [], 'every quotable line in the live book maps to an engagement line');
+
+  // And the mapping is per-ITEM where the price line is ambiguous.
+  assert.equal(engagementLineFor('recurring_accounting', 'SCOPE_FULLMGMT_PAYROLL'), 'payroll');
+  assert.equal(engagementLineFor('recurring_accounting', 'SCOPE_FULLMGMT_SALES_TAX'), 'sales_tax');
+  assert.equal(engagementLineFor('recurring_accounting', 'SALES_TAX_ST1_FILING'), 'sales_tax');
+  assert.equal(engagementLineFor('recurring_accounting', 'ACCT_MONTHLY'), 'bookkeeping');
+  assert.equal(engagementLineFor('deposit', 'ANYTHING'), null, 'a deposit is not work');
 });
 
 test('schedule resolution PINS the price-book version — a reclassification is not retroactive', async () => {

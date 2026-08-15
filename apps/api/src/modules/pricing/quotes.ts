@@ -19,10 +19,14 @@ import { createEngagement } from '../engagements/service.ts';
 import { createInvoice } from '../billing/service.ts';
 import { addDays, todayChicago } from '../tax/deadlines.ts';
 import { composeBundle } from './bundles.ts';
+import {
+  assertEveryLineCreatesWork,
+  engagementLinesForQuote,
+  engagementTitle,
+} from './engagement-lines.ts';
 import { setLeadStage } from './pipeline.ts';
 import {
   assertSendableOverCoverage,
-  assertTaxOnlyUntil19,
   schedulesImpliedByQuote,
   type DuplicateIntent,
 } from './quote-coverage.ts';
@@ -257,9 +261,10 @@ export async function sendQuote(
    * who knows whether this is extra scope or a mistake, and the client has not yet
    * been asked to decide anything.
    */
-  // GATE 1 (launch-readiness.md): tax-only until #19. Checked BEFORE the coverage
-  // gate — "this cannot be quoted at all yet" outranks "is this a duplicate?".
-  await assertTaxOnlyUntil19(app, quoteId);
+  // GATE 1 IS LIFTED (#19 fixed, 2026-08-15): acceptance derives the service line from
+  // the book, so a non-tax quote no longer produces a tax engagement. Its successor
+  // still runs first — "this cannot be quoted at all" outranks "is this a duplicate?".
+  await assertEveryLineCreatesWork(app, quoteId);
 
   const coverage = await assertSendableOverCoverage(
     app,
@@ -587,7 +592,14 @@ export async function acceptQuote(
   app: FastifyInstance,
   token: string,
   opts: { chooseOptional?: string[] | undefined } = {}
-): Promise<{ engagementId: string; depositInvoiceId: string | null; totalCents: number }> {
+): Promise<{
+  /** The primary engagement — the quote's first line by price-book sort order. */
+  engagementId: string;
+  /** Every engagement created, one per distinct service line on the quote (#19). */
+  engagements: Array<{ id: string; serviceLine: string; title: string }>;
+  depositInvoiceId: string | null;
+  totalCents: number;
+}> {
   const { quote } = await quoteByToken(app, token);
   if (quote.status === 'accepted') throw new AppError(409, 'already_accepted', 'This quote was already accepted.');
   if (quote.status !== 'sent') throw new AppError(409, 'not_open', `This quote is '${quote.status}'.`);
@@ -631,18 +643,55 @@ export async function acceptQuote(
     permissions: ['*'],
     sessionId: 'quote-accept',
   };
-  const engagement = await createEngagement(
-    app,
-    system,
-    {
-      contactId: row.contact_id,
-      ...(row.business_id ? { businessId: row.business_id } : {}),
-      serviceLine: 'tax',
-      title: row.bundle_slug ? `Accepted quote — ${row.bundle_slug}` : 'Accepted quote',
-      status: 'active',
-    },
-    {}
-  );
+  /*
+   * FINDING #19 — one engagement per SERVICE LINE the quote actually contains.
+   *
+   * This used to create exactly one engagement, hardcoded `serviceLine: 'tax'` and
+   * titled "Accepted quote". So a bookkeeping quote produced a tax engagement (which is
+   * why GATE 1 refused to send one at all), and a client with two engagements read
+   * "2 active engagements (tax, tax)" with nothing distinguishing them.
+   *
+   * Brian's ruling 2026-08-15: one per distinct line, matching how schedules already
+   * work — a packet attaches Schedule A AND Schedule C, so the agreements behind them
+   * are two different agreements.
+   */
+  const quotedLines = await engagementLinesForQuote(app, quote.id);
+  if (quotedLines.length === 0) {
+    // Every chosen line was a deposit, a pass-through or a scope ladder. Accepting that
+    // would produce an engagement for nothing — the #17 rule inverted: consequence
+    // without work is as wrong as work without consequence.
+    throw new AppError(
+      400,
+      'no_engageable_lines',
+      'This quote contains no service lines that create an engagement (only deposits, ' +
+        'pass-through software or scope ladders). Add the work being agreed to.'
+    );
+  }
+
+  const engagements: Array<{ id: string; serviceLine: string; title: string }> = [];
+  for (const line of quotedLines) {
+    const title = engagementTitle(line);
+    const created = await createEngagement(
+      app,
+      system,
+      {
+        contactId: row.contact_id,
+        ...(row.business_id ? { businessId: row.business_id } : {}),
+        serviceLine: line.serviceLine,
+        title,
+        status: 'active',
+      },
+      {}
+    );
+    engagements.push({ id: created.id, serviceLine: line.serviceLine, title });
+  }
+  /*
+   * The deposit invoice, the quote's converted_engagement_id and the lead-stage move all
+   * need ONE engagement to hang from. The first is the quote's primary line — price-book
+   * sort_order, so it is the same one a reader would call the main service rather than
+   * whichever row the database returned first.
+   */
+  const engagement = engagements[0]!;
 
   // ── DEPOSIT (standard, reduced, or waived) ──────────────────────────────────
   // The standard figure always comes from the price book. An override replaces
@@ -753,9 +802,23 @@ export async function acceptQuote(
     actorType: 'client', actorId: row.contact_id, actorLabel: `${quote.first_name} ${quote.last_name}`,
     action: 'quote.accepted', objectType: 'quote', objectId: quote.id,
     contactId: row.contact_id,
-    details: { total_cents: totalCents, engagement_id: engagement.id, deposit_invoice_id: depositInvoiceId },
+    details: {
+      total_cents: totalCents,
+      // EVERY engagement, not just the primary — a two-line quote creating two
+      // agreements must not be recorded as if it created one.
+      engagement_id: engagement.id,
+      engagements: engagements.map((e) => ({ id: e.id, service_line: e.serviceLine, title: e.title })),
+      deposit_invoice_id: depositInvoiceId,
+    },
   });
-  return { engagementId: engagement.id, depositInvoiceId, totalCents };
+  // engagementId stays the primary, so existing callers and the portal are unchanged;
+  // engagements carries the full set for anything that needs to show them all.
+  return {
+    engagementId: engagement.id,
+    engagements: engagements.map((e) => ({ id: e.id, serviceLine: e.serviceLine, title: e.title })),
+    depositInvoiceId,
+    totalCents,
+  };
 }
 
 /** Client declines — the REASON is the point (it feeds conversion analysis). */

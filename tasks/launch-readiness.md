@@ -6,49 +6,60 @@ it is probably fine.
 
 ---
 
-## GATE 1 — TAX-ONLY QUOTING until finding #19 is fixed
+## GATE 1 — CLEARED 2026-08-15 (finding #19 fixed)
 
-**Ruling: Brian, 2026-08-13.** No non-tax quote (bookkeeping, formation, entity,
-payroll) may be sent until #19 is fixed. Tax-only until then.
+**Was:** no non-tax quote (bookkeeping, formation, entity, payroll) could be SENT,
+because `acceptQuote()` hardcoded `serviceLine: 'tax'` — accepting a bookkeeping quote
+would have produced a Schedule A, an individual-tax agreement for work that is not
+individual tax.
 
-**Enforced in code**, not only here: `sendQuote()` refuses any quote whose price-book
-lines are not individual/business tax with `409 non_tax_quote_gated`. A gate that lives
-only in a document is a gate that gets forgotten at 11pm.
+**Fixed.** Acceptance now derives the engagement line from the price book
+(`engagement-lines.ts`) and creates **one engagement per distinct service line on the
+quote** — Brian's ruling 2026-08-15, matching how schedules already work: a packet
+attaches Schedule A *and* Schedule C, so the agreements behind them are two agreements.
 
-### Why (#19)
+Titles are service-line distinct too ("Tax — 2025 individual return", "Entity services —
+Entity formation with EIN"), which closes the RC2 finding: a client with two engagements
+read "2 active engagements (tax, tax)" with nothing to tell them apart.
 
-`acceptQuote()` hardcodes `serviceLine: 'tax'` when it creates the engagement. So every
-accepted quote produces a **tax** engagement regardless of what was sold, and the
-engagement's service line is what drives schedule assembly. A bookkeeping quote
-therefore produces a Schedule A (individual tax) agreement.
+`recurring_accounting` maps **per item**, because that one price line genuinely covers
+three engagement lines — Schedule C holds bookkeeping, payroll and sales tax together and
+only the item says which. `SCOPE_FULLMGMT_PAYROLL` → payroll; `SCOPE_FULLMGMT_SALES_TAX`
+and `SALES_TAX_ST1_FILING` → sales_tax; everything else in the line → bookkeeping.
 
-### What the verification actually showed
+**The gate was deleted, not left dormant.** `assertTaxOnlyUntil19` is gone; a gate that
+no longer gates is a comment pretending to be a control. Its successor,
+`assertEveryLineCreatesWork`, guards the failure that remains: a priced line mapping to
+no engagement line would be silently dropped, so the client would agree to work that
+produces no agreement and no schedule. Still refused at SEND, where a staff member can
+fix it before the client is asked to decide anything.
 
-Brian's standard: *"Seeded data is a claim; the rendered packet is the fact."* Applied to
-the three newly-ruled price lines, quote → accept → packet → **rendered Master**:
+**Verified:** removing the mapping (returning `'tax'` unconditionally, the old behaviour)
+fails all three #19 tests and nothing else. Root npm test 405/405.
 
-| price line | mapping says | rendered packet attaches | control: correct engagement line |
-|---|---|---|---|
-| `setup_conversion` | C ✓ | **A ✗** | `bookkeeping` → C ✓ |
-| `filings_1099_w2` | C ✓ | **A ✗** | `payroll` → C ✓ |
-| `scope_ladder` | none ✓ | **A ✗** | n/a |
+### Noted while fixing it — v1 and production disagree about two items
 
-So the mapping data is right and the schedule → packet path is right. The broken link is
-quote → engagement, which is #19. The claim verifies; the fact does not, and the fact is
-what matters.
+GATE 2's reclassification landed in a **new version** and deliberately left v1 alone, so
+`SCOPE_FULLMGMT_PAYROLL` is `scope_ladder` in v1 and `recurring_accounting` in v5. That
+is versioning working as intended — v1 is history — but it means a **from-scratch seed**
+(tests, a brand-new environment) starts with the pre-GATE-2 classifications and only
+reaches the corrected state by running `scripts/reclassify-price-lines.mjs`. A restore
+from backup is unaffected: it restores every version as it stood.
 
-Worse than mis-filing: the third row means a quote containing only add-on lines still
-produces a Schedule A. A client would be asked to sign an **individual tax** agreement
-for a sales-tax filing.
+## ATTORNEY FOLLOW-UP — Master v-next carries two amendments
 
-### Fixing #19 needs a mapping that does not exist yet
+Brian, 2026-08-15: one email, both items. Neither ships before attorney sign-off, and
+neither is urgent — exposure on the first is nil while we control the behaviour.
 
-`schedule_for_price_line` maps price line → **schedule code** (A–F). Assembly needs
-price line → **engagement `service_line`** (`tax`, `bookkeeping`, `payroll`, …). Those
-are different enums and the second mapping has never existed — that is why the hardcode
-was there.
+1. **§2 booking-deposit language.** "Where a deposit is collected **at booking or
+   onboarding** …" still authorises a path that no longer exists: the Lane 1 booking
+   deposit was retired 2026-08-14 and deposits now exist only on accepted quotes. The
+   clause is over-broad rather than false. Narrow it to acceptance.
+2. **Governing-language third sentence.** The attorney's draft required all
+   communications in English; it was deliberately omitted when the clause shipped
+   (2026-08-13) because it contradicts bilingual operations. Deletion still pending his
+   written confirmation.
 
----
 
 ## GATE 2 — CLEARED 2026-08-13 (price book v2)
 

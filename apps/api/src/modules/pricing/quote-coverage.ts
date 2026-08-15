@@ -150,38 +150,19 @@ export async function coverageOverlap(
  * REMOVE THIS FUNCTION AND ITS CALL when #19 is fixed — not before, and not by
  * loosening the list.
  */
-const TAX_PRICE_LINES = new Set(['individual_tax', 'business_tax', 'deposit', 'software_passthrough']);
-
-export async function assertTaxOnlyUntil19(app: FastifyInstance, quoteId: string): Promise<void> {
-  const { rows } = await app.db.query<{ service_line: string; item_code: string }>(
-    `SELECT DISTINCT pbi.service_line::text AS service_line, qli.item_code
-       FROM quote_line_items qli
-       JOIN quotes q ON q.id = qli.quote_id
-       JOIN price_book_items pbi ON pbi.item_code = qli.item_code
-       -- PIN THE VERSION. Joining on item_code alone matched the item in EVERY price
-       -- book version, so the moment a second version existed a single quote resolved
-       -- to the union of its old and new classifications (a GATE 2 reclassification
-       -- made SCORP_CONVERSION_2553 imply both C and E). A quote means what the book
-       -- said when it was written.
-       AND pbi.version_id = q.price_book_version_id
-      WHERE qli.quote_id = $1 AND qli.chosen
-      ORDER BY 1`,
-    [quoteId]
-  );
-  const offenders = rows.filter((r) => !TAX_PRICE_LINES.has(r.service_line));
-  if (offenders.length === 0) return;
-
-  const { AppError } = await import('../../types.ts');
-  const detail = offenders.map((o) => `${o.item_code} (${o.service_line})`).join(', ');
-  throw new AppError(
-    409,
-    'non_tax_quote_gated',
-    `Non-tax lines cannot be quoted yet — finding #19: accepting a quote hardcodes a TAX ` +
-      `engagement, so this would produce a Schedule A agreement for work that is not ` +
-      `individual tax. Blocked lines: ${detail}. See tasks/launch-readiness.md GATE 1. ` +
-      `Tax-only until #19 is fixed.`
-  );
-}
+/*
+ * GATE 1 lived here: assertTaxOnlyUntil19 refused any quote whose lines were not
+ * individual/business tax, because acceptQuote hardcoded a 'tax' engagement and would
+ * have papered bookkeeping work with a Schedule A agreement.
+ *
+ * REMOVED 2026-08-15 — #19 is fixed. Acceptance now derives the service line from the
+ * price book (engagement-lines.ts), so the reason the gate existed is gone. Its successor,
+ * assertEveryLineCreatesWork, guards the failure that remains: a line mapping to no
+ * engagement line at all.
+ *
+ * Deleted rather than left dormant. A gate that no longer gates is a comment pretending
+ * to be a control, and the next person to read it cannot tell which.
+ */
 
 /** Intent a sender must declare to send a quote that duplicates existing coverage. */
 export type DuplicateIntent = 'additional_work' | 'replaces_existing';
