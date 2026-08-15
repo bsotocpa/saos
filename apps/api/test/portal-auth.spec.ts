@@ -133,10 +133,18 @@ test('spanish-language contact receives the spanish template', async () => {
     email: 'client-es@example.test',
     language: 'es',
   });
+  // The FIRST grant is the invitation (finding #21) — in Spanish, like everything else
+  // client-facing. The bare sign-in link follows on the next request.
   await grantAccess(luz.id);
-  const mail = lastMailTo(luz.email);
-  assert.match(mail.subject, /enlace seguro/i);
-  assert.match(mail.text, /funciona una sola vez/);
+  const invite = lastMailTo(luz.email);
+  assert.match(invite.subject, /portal de cliente/i);
+  assert.match(invite.text, /subir documentos de forma segura/i, 'the invitation, in Spanish');
+  assert.doesNotMatch(invite.text, /securely/i, 'no English leaked into it');
+
+  await grantAccess(luz.id);
+  const link = lastMailTo(luz.email);
+  assert.match(link.subject, /enlace seguro/i);
+  assert.match(link.text, /funciona una sola vez/);
 });
 
 test('expired links are refused', async () => {
