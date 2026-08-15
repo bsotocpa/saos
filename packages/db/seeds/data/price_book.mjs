@@ -1,12 +1,36 @@
-// Price book v1 — faithful transcription of MP v4.2 "PRICING SEED DATA".
-// Source: 2025_new_process_buildoutpricing_v2.xlsx ("pricing packages" =
-// canonical calculator), 2025 Business/Personal Service Sheet, 2026 session
-// transcripts. Where sources conflict the spec's primary value is seeded and
-// needsConfirmation carries the conflict for Brian to resolve BEFORE LAUNCH
-// (launch gate, M23). All amounts in integer cents.
+// Price book v1 — the spec's PRICING SEED DATA, carried forward to current state.
+// Source: 2025_new_process_buildoutpricing_v2.xlsx ("pricing packages" = canonical
+// calculator), 2025 Business/Personal Service Sheet, 2026 session transcripts. Where
+// sources conflict the spec's primary value is seeded and needsConfirmation carries the
+// conflict for Brian. All amounts in integer cents.
 //
-// This file and its sibling migration are the ONLY places prices may appear
-// as literals (scripts/check-no-hardcoded-prices.mjs enforces).
+// This file and its sibling migration are the ONLY places prices may appear as literals
+// (scripts/check-no-hardcoded-prices.mjs enforces).
+//
+// SEEDS ARE INITIAL STATE, AND INITIAL STATE SHOULD BE CURRENT STATE (Brian, 2026-08-15).
+// The GATE 2 reclassification (2026-08-13) moved seven mis-filed items in a NEW VERSION
+// and deliberately left v1 alone — correct for the live book, where v1 is history that
+// quotes are still pinned to. But it meant a from-scratch seed produced the SUPERSEDED
+// classifications, so every new dev and test environment started wrong and only became
+// right if someone remembered to run scripts/reclassify-price-lines.mjs. A correctness
+// that depends on remembering is a divergence trap.
+//
+// So the seven moves are folded in here:
+//   SCOPE_REVIEW_AUDIT       scope_ladder     → attest
+//   SALES_TAX_ST1_FILING     scope_ladder     → recurring_accounting
+//   SCOPE_FULLMGMT_PAYROLL   scope_ladder     → recurring_accounting
+//   SCOPE_FULLMGMT_SALES_TAX scope_ladder     → recurring_accounting
+//   SCOPE_REG_SETUP          scope_ladder     → recurring_accounting
+//   SCOPE_ADMIN_TRAINING     scope_ladder     → recurring_accounting
+//   SCORP_CONVERSION_2553    setup_conversion → entity_services
+//
+// PRODUCTION IS UNTOUCHED BY THIS. The seed only ever writes v1 and leaves existing rows
+// alone, and historical versions restore from backup exactly as they stood — a quote
+// pinned to v1 still means what it meant. This changes what a NEW database starts with,
+// nothing else.
+//
+// Same principle as legal_v3_es: a seed that ships yesterday's state is a bug with a
+// delay on it.
 
 /*
  * pricing_mode is DERIVED from the shape rather than annotated on 84 items by hand.
@@ -243,23 +267,23 @@ export const items = [
   item('CPA_SESSION', 'recurring_accounting', 'Session component — one CPA session', 'Componente de sesión — una sesión CPA', 10000, { unit: 'per_session', ...COMPONENT }),
 
   // ── Scope ladder (per service line: Accounting, Payroll, Sales Tax) ──────────
-  item('SCOPE_REG_SETUP', 'scope_ladder', 'Registration & Setup', 'Registro y configuración', 25000),
-  item('SCOPE_REVIEW_AUDIT', 'scope_ladder', 'Review / Audit rung', 'Revisión / auditoría interna', 15000),
-  item('SCOPE_ADMIN_TRAINING', 'scope_ladder', 'Admin & Training Support', 'Soporte administrativo y capacitación', 15000, {
+  item('SCOPE_REG_SETUP', 'recurring_accounting', 'Registration & Setup', 'Registro y configuración', 25000),
+  item('SCOPE_REVIEW_AUDIT', 'attest', 'Review / Audit rung', 'Revisión / auditoría interna', 15000),
+  item('SCOPE_ADMIN_TRAINING', 'recurring_accounting', 'Admin & Training Support', 'Soporte administrativo y capacitación', 15000, {
     descEn: 'The deliberate Hilo bridge product — DIY-minded entrepreneurs buy training.',
     descEs: 'El producto puente con Hilo — para emprendedores que prefieren hacerlo ellos mismos.',
   }),
-  item('SCOPE_FULLMGMT_PAYROLL', 'scope_ladder', 'Payroll — full management & compliance (W-2/940/941/944/UI)', 'Nómina — gestión completa (W-2/940/941/944/UI)', 50000, {
+  item('SCOPE_FULLMGMT_PAYROLL', 'recurring_accounting', 'Payroll — full management & compliance (W-2/940/941/944/UI)', 'Nómina — gestión completa (W-2/940/941/944/UI)', 50000, {
     unit: 'per_month',
     needsConfirmation: true,
     confirmationNote: 'Spec gives $500 without a billing unit; seeded as monthly (recurring service). Brian confirms unit.',
   }),
-  item('SCOPE_FULLMGMT_SALES_TAX', 'scope_ladder', 'Sales tax — full management & compliance', 'Impuesto sobre ventas — gestión completa', 10000, {
+  item('SCOPE_FULLMGMT_SALES_TAX', 'recurring_accounting', 'Sales tax — full management & compliance', 'Impuesto sobre ventas — gestión completa', 10000, {
     unit: 'per_month',
     needsConfirmation: true,
     confirmationNote: '⚠ $100 in workbook vs ST-1 $50/filing on service sheet; free with monthly package (bundle rule FREE_ST1_WITH_MONTHLY). Unit assumed monthly. Brian confirms.',
   }),
-  item('SALES_TAX_ST1_FILING', 'scope_ladder', 'ST-1 sales tax filing', 'Presentación ST-1 de impuesto sobre ventas', 5000, {
+  item('SALES_TAX_ST1_FILING', 'recurring_accounting', 'ST-1 sales tax filing', 'Presentación ST-1 de impuesto sobre ventas', 5000, {
     unit: 'per_filing',
     needsConfirmation: true,
     confirmationNote: '⚠ Service-sheet per-filing price ($50) — same conflict as SCOPE_FULLMGMT_SALES_TAX; free with monthly package via bundle rule.',
@@ -271,7 +295,7 @@ export const items = [
     descEn: 'Bundled with QBO setup = one combined fee (bundle rule BUNDLE_QBO_PAYROLL_SETUP).',
     descEs: 'En paquete con la configuración de QBO = una sola tarifa combinada.',
   }),
-  item('SCORP_CONVERSION_2553', 'setup_conversion', 'S corp conversion (Form 2553)', 'Conversión a corporación S (Formulario 2553)', 25000, {
+  item('SCORP_CONVERSION_2553', 'entity_services', 'S corp conversion (Form 2553)', 'Conversión a corporación S (Formulario 2553)', 25000, {
     descEn: 'Owner-comp default: 1/3 of net profits (app_settings.owner_comp_default_fraction).',
     descEs: 'Compensación del dueño por defecto: 1/3 de las utilidades netas.',
   }),

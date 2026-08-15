@@ -722,6 +722,9 @@ export async function acceptQuote(
          * were billed by different mechanisms.
          */
         lines: [{ description: deposit.label, unitCents: deposit.chargeCents }],
+        // THIS is the deposit (finding #26) — it must not try to credit itself, and the
+        // invoice that follows it is the one that carries the credit.
+        isDepositInvoice: true,
       }
     );
     depositInvoiceId = invoice.id;

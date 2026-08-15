@@ -636,3 +636,22 @@ silence — and neither was a slow test.
 code: is it up, and does the seed still apply cleanly against a scratch database? That
 answers in thirty seconds what the suite takes ten minutes to not say. npm buffers
 output, so a backgrounded run shows nothing at all until it finishes.
+
+## RETURNING sees the row AFTER the update
+**What happened**: `UPDATE invoices SET applied = applied + LEAST($2, total - applied)
+... RETURNING LEAST($2, total - applied)` reported 0 every time. RETURNING evaluates
+against the POST-update row, where the remaining balance is already zero — so the credit
+was applied and then reported as not applied, and the caller skipped it. Money silently
+vanished from an invoice that was otherwise correct.
+**Rule**: never compute a returned delta from columns the same statement just changed.
+Capture the pre-state in a CTE (`WITH before AS (SELECT ... FOR UPDATE)`) and return from
+that. The wrong version reads as obviously correct, which is why it needs a test that
+asserts the AMOUNT rather than just that a row was touched.
+
+## Sabotage the whole path, not one branch of it
+**What happened**: to prove the #19 tests were live I replaced `LINE_MAP[x] ?? null` with
+`'tax'` — and one test still passed, because the bookkeeping path returns from an earlier
+branch and never reaches that line. I nearly read the pass as "that test is weak".
+**Rule**: when a sabotage leaves a test green, first ask whether the sabotage reached the
+code that test exercises. Put it at the function's entry, where every caller goes
+through it, rather than at the first line that looks load-bearing.

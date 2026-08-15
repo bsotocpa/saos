@@ -6,6 +6,13 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { isAutomationEnabled } from '../../automations.ts';
 import { AppError } from '../../types.ts';
+import {
+  DEPOSIT_CREDIT_LABEL_EN,
+  DEPOSIT_CREDIT_LABEL_ES,
+  assertDepositCreditApplied,
+  availableDepositCredit,
+  consumeDepositCredit,
+} from './deposit-credit.ts';
 import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
@@ -39,8 +46,16 @@ export async function createInvoice(
     lines: InvoiceLineInput[];
     dueDate?: string | undefined;
     send?: boolean | undefined; // send immediately (default true)
+    /*
+     * THE deposit invoice itself (finding #26). Set only by quote acceptance.
+     *
+     * Explicit rather than inferred: a deposit invoice must not try to credit itself,
+     * and working that out from the shape of the lines would be a guess that breaks the
+     * first time a deposit is worded differently.
+     */
+    isDepositInvoice?: boolean | undefined;
   }
-): Promise<{ id: string; invoiceNumber: string; totalCents: number }> {
+): Promise<{ id: string; invoiceNumber: string; totalCents: number; depositCreditCents: number }> {
   if (input.lines.length === 0) throw new AppError(400, 'empty_invoice', 'Provide at least one line.');
 
   const contact = await app.db.query<{ first_name: string; email: string | null; language: 'en' | 'es' }>(
@@ -108,6 +123,54 @@ export async function createInvoice(
     };
   });
 
+  /*
+   * FINDING #26 — the deposit is credited HERE, where no caller can forget it.
+   *
+   * Master §2 promises the reconciliation and nothing performed it, so the filed-to-
+   * invoice automation billed the full fee over a paid deposit. Applying it inside
+   * createInvoice rather than at each call site means every future invoice path gets it
+   * for free; the guard below then catches anything that builds lines another way.
+   *
+   * Capped at the invoice subtotal: a deposit larger than the work leaves its remainder
+   * available for the next invoice rather than producing a negative total. Master §2
+   * says overpayments are credited to the account, not refunded on the spot.
+   */
+  let depositCreditCents = 0;
+  let depositCreditFromInvoiceId: string | null = null;
+  const subtotal = resolved.reduce((sum, l) => sum + l.totalCents, 0);
+
+  if (input.engagementId && !input.isDepositInvoice && subtotal > 0) {
+    const available = await availableDepositCredit(app, input.engagementId);
+    let remaining = subtotal;
+    for (const dep of available) {
+      if (remaining <= 0) break;
+      const want = Math.min(remaining, dep.availableCents);
+      const applied = await consumeDepositCredit(app, dep.depositInvoiceId, want);
+      if (applied <= 0) continue;
+      depositCreditCents += applied;
+      remaining -= applied;
+      depositCreditFromInvoiceId ??= dep.depositInvoiceId;
+    }
+    if (depositCreditCents > 0) {
+      resolved.push({
+        code: null,
+        description: c.language === 'es' ? DEPOSIT_CREDIT_LABEL_ES : DEPOSIT_CREDIT_LABEL_EN,
+        qty: 1,
+        unitCents: -depositCreditCents,
+        totalCents: -depositCreditCents,
+        sort: resolved.length,
+      });
+    }
+  }
+
+  // "No silent full-price bills" — if a paid deposit is still outstanding and these lines
+  // do not carry it, stop rather than invoice over money the client already paid.
+  await assertDepositCreditApplied(
+    app,
+    input.isDepositInvoice ? undefined : input.engagementId,
+    resolved.map((l) => l.description)
+  );
+
   const total = resolved.reduce((sum, l) => sum + l.totalCents, 0);
   const invoiceNumber = await nextInvoiceNumber(app);
   const send = input.send ?? true;
@@ -125,6 +188,14 @@ export async function createInvoice(
     ]
   );
   const id = rows[0]!.id;
+  // Record WHICH deposit was consumed, so the reconciliation is auditable without
+  // parsing line descriptions.
+  if (depositCreditFromInvoiceId) {
+    await app.db.query(`UPDATE invoices SET deposit_credit_from_invoice_id = $2 WHERE id = $1`, [
+      id,
+      depositCreditFromInvoiceId,
+    ]);
+  }
   for (const line of resolved) {
     await app.db.query(
       `INSERT INTO invoice_line_items (invoice_id, item_code, description, qty, unit_cents, total_cents, sort_order)
@@ -164,7 +235,7 @@ export async function createInvoice(
     action: 'invoice.created', objectType: 'invoice', objectId: id, contactId: input.contactId,
     details: { invoice_number: invoiceNumber, total_cents: total, sent: send },
   });
-  return { id, invoiceNumber, totalCents: total };
+  return { id, invoiceNumber, totalCents: total, depositCreditCents };
 }
 
 /**
