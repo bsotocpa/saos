@@ -614,3 +614,25 @@ producing it.
 violation surfaces as a slow, confusing test hang rather than a clear failure, and the
 scratch-database harness answers in thirty seconds what the suite takes ten minutes to
 half-say.
+
+## Stop putting backticks and $ inside shell-quoted node -e
+**What happened**: three times in one session. A `node -e "..."` containing backticked
+identifiers had them executed as shell commands, so the file I wrote had every
+identifier replaced by empty output and one replaced by `npm help`'s error text. Another
+lost the `$` from `$${params.length}`, producing `deposit_cents = 6` instead of a bind
+placeholder and a 500 from the version endpoint. I have a lesson about exactly this and
+kept doing it because `node -e` feels faster than opening the file.
+**Rule**: content containing backticks, `$`, or `${...}` goes through Write/Edit, or a
+`.mjs` file executed by path. Never through a shell-quoted `-e`. It is not faster: each
+of these cost a debugging round trip, and one of them shipped a broken query into a test
+run I then had to diagnose.
+
+## A hanging test suite is usually the database, not the code
+**What happened**: twice the full suite blew past a ten-minute timeout with no output.
+The first time the seed violated a constraint I had just added; the second time Docker
+Desktop had stopped and Postgres was simply gone. Both looked identical from outside —
+silence — and neither was a slow test.
+**Rule**: when the suite hangs rather than fails, check the database before reading any
+code: is it up, and does the seed still apply cleanly against a scratch database? That
+answers in thirty seconds what the suite takes ten minutes to not say. npm buffers
+output, so a backgrounded run shows nothing at all until it finishes.

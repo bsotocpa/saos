@@ -1049,41 +1049,47 @@ confirmation, every dead end is a new finding."
       engagement labels **service-line distinct**, so a client with two engagements
       never reads "2 active engagements (tax, tax)" (RC2 ambiguity)
 - [ ] **#20** Packet heading renders "A — Schedule A —" (redundant label composition)
-- [~] **#21** No portal invite email exists. **BUILT, NOT VERIFIED — see below.** Brian received an invoice link, clicked
-      it, was asked to sign in, and had never been sent a way to set the portal up;
-      requesting a sign-in link produced no email either. This is the one that most
-      directly blocks a real first client
-      **Diagnosis (from the production audit trail, not from guessing).** Two defects
-      behind one experience:
-      1. A brand-new client's first-ever email was  — "Here is your
-         secure link to sign in to your Soto Accounting portal" — for a portal nobody had
-         told them existed, expiring in 15 minutes, indistinguishable from phishing.
-          went out alongside it promising "a sign-in link is on its way",
-         so the promise was kept by an email that explained nothing.
-      2. The invoice went to ; Brian typed
-         , which had no portal account at that moment. The endpoint
-         correctly refused to enumerate and said "a link is on its way" while sending
-         nothing — leaving a real person at the door and nobody on our side aware.
-      **Built:**  template (EN+ES) sent on FIRST access, saying what the
-      portal is, what is waiting, and how to get a fresh link when this one expires; the
-      bare link only on later requests;  audited by purpose. A sign-in
-      attempt from a KNOWN contact with no access raises a Rene task (deduped per contact,
-      SOP ) while the client-facing answer stays word-for-word
-      unchanged; an unrecognised address is a log line, so the queue cannot be flooded.
-      Also fixed , which still described a "4-step checklist … upload last
-      year's return, and book your consultation" — a checklist the portal redesign
-      replaced, including removing booking entirely.
-      ⚠ **NOT VERIFIED AND NOT DEPLOYED.** Docker Desktop was stopped on Brian's machine,
-      so the 398-test suite could not run. Typecheck passes on all four workspaces and all
-      four build guards pass, but those are static. Needs Unknown command: "test"
+- [~] **#21** Portal invite email. **BUILT, NOT VERIFIED — see below.** Brian received an
+      invoice link, clicked it, was asked to sign in, and had never been sent a way to set
+      the portal up; requesting a sign-in link produced no email either. The one that most
+      directly blocks a real first client.
 
+      **Diagnosis — read from the production audit trail, not guessed.** Two defects behind
+      one experience:
 
-Did you mean this?
-  npm test # Test a package
-To see a list of supported npm commands, run:
-  npm help green before deploy —
-      it touches the sign-in path and two client-facing emails.
+      1. A brand-new client's first-ever email from us was `portal_magic_link` — "Here is
+         your secure link to sign in to your Soto Accounting portal" — for a portal nobody
+         had told them existed, expiring in 15 minutes, with no explanation of what it was.
+         `welcome_soto` went out beside it promising "a sign-in link is on its way", so
+         the promise was kept by an email that explained nothing. That reads like phishing,
+         and a careful person is right not to click it.
+      2. The invoice went to the +tagged rehearsal address; Brian typed his base address,
+         which had no portal account at that moment. The endpoint correctly refused to
+         enumerate and answered "a link is on its way" while sending nothing — leaving a
+         real person at the door and nobody on our side aware of it.
 
+      **Built.** `portal_invite` (EN + ES) on FIRST access: what the portal is, what is
+      waiting there, and how to get a fresh link when this one expires — because it will,
+      and "ask for another" has to be an instruction rather than a dead end. The bare link
+      only on later requests, when they know what the portal is. `magic_link.issued` now
+      records which was sent, so "did they ever get an invite" is answerable.
+
+      The client-facing answer to a failed request does not change by a word — that
+      vagueness is what stops the endpoint confirming who our clients are. The system just
+      stops being the only party unaware: a KNOWN contact who cannot get in raises a task
+      for Rene, deduped per contact, SOP `rene-portal-access` (which covers the
+      address-mismatch case explicitly). An unrecognised address is a log line, so nobody
+      can flood the queue by typing strangers' emails.
+
+      Also fixed `welcome_soto`, which still promised a "4-step checklist … upload last
+      year's return, and book your consultation" — the redesign made it five steps,
+      generalised the upload, and removed booking entirely, because a client only reaches
+      this point after the discovery meeting.
+
+      ⚠ **NOT VERIFIED, NOT DEPLOYED.** Docker Desktop was stopped, so the 398-test suite
+      could not run. All four workspaces typecheck and all four build guards pass, but
+      those are static checks. This touches the sign-in path and two client-facing emails;
+      it needs `npm test` green before it ships.
 - [x] **#22** Pay Now was dead on click with no feedback of any kind — `void pay(id)`
       with no catch and no busy state, so a 503 produced NOTHING. Now: busy state,
       button disabled during the call, server message surfaced, `role="alert"`
