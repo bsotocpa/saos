@@ -6,12 +6,16 @@
 // reason ("account needs attention").
 //
 // LATE FEES, three hard rules:
-//   1. The rate comes from the price book (LATE_FEE_MONTHLY.metadata), never
+//   1. The rate comes from the price book (LATE_FEE_MONTHLY.percent_rate), never
 //      from code (CLAUDE.md).
 //   2. The client's signed engagement letter must carry the late-fee
 //      disclosure — enforced by a stamp written at signing. No stamp, no fee,
 //      ever.
 //   3. Deposits and credits net against the balance BEFORE the fee computes.
+//   4. FINDING #25: the charge is capped at the rate the client's OWN signed
+//      letter disclosed. The book says what we charge today; the stamp says what
+//      they agreed to. Where they differ the client wins, and a client whose
+//      disclosed rate is unknown is not charged at all.
 // Both halves are gated by their own kill switches (ar_dunning, late_fees).
 
 import type { FastifyInstance } from 'fastify';
@@ -32,17 +36,19 @@ function formatUsd(cents: number): string {
 
 /** Late-fee rate + grace period, straight from the price book in force. */
 export async function lateFeeTerms(app: FastifyInstance): Promise<{ ratePercent: number; graceDays: number } | null> {
-  const { rows } = await app.db.query<{ metadata: { monthly_rate_percent?: number; grace_days?: number } }>(
-    `SELECT i.metadata
+  const { rows } = await app.db.query<{ percent_rate: string | null; metadata: { grace_days?: number } }>(
+    `SELECT i.percent_rate, i.metadata
      FROM price_book_items i
      JOIN price_book_versions v ON v.id = i.version_id
      WHERE i.item_code = 'LATE_FEE_MONTHLY' AND i.is_active
        AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
      ORDER BY v.version_number DESC LIMIT 1`
   );
-  const meta = rows[0]?.metadata;
-  if (!meta?.monthly_rate_percent) return null; // no rate configured → no fees
-  return { ratePercent: Number(meta.monthly_rate_percent), graceDays: Number(meta.grace_days ?? 30) };
+  const row = rows[0];
+  // The rate IS the price now (finding #25): percent_rate, not a metadata key the
+  // pricing UI never showed. No rate configured → no fees, rather than a guessed default.
+  if (!row?.percent_rate) return null;
+  return { ratePercent: Number(row.percent_rate), graceDays: Number(row.metadata?.grace_days ?? 30) };
 }
 
 interface OverdueRow {
@@ -50,7 +56,7 @@ interface OverdueRow {
   credit_cents: number; contact_id: string; engagement_id: string | null;
   first_name: string; last_name: string; email: string | null; language: 'en' | 'es';
   overdue_since: string; dunning_attempts: number; last_dunning_at: string | null;
-  disclosure_signed: boolean; late_fee_cents: number;
+  disclosure_signed: boolean; late_fee_cents: number; disclosed_rate_percent: string | null;
 }
 
 /**
@@ -63,6 +69,7 @@ export async function runDunningJob(
 ): Promise<{
   skipped: boolean; reminders: number; suppressed: number; callTasks: number;
   paused: number; feesAssessed: number; feesBlockedNoDisclosure: number;
+  feesBlockedNoDisclosedRate: number; feesCappedByDisclosure: number;
 }> {
   const ACTION = 'job.ar_dunning';
   const already = await app.db.query(
@@ -70,7 +77,11 @@ export async function runDunningJob(
     [ACTION, today]
   );
   if (already.rows.length > 0) {
-    return { skipped: true, reminders: 0, suppressed: 0, callTasks: 0, paused: 0, feesAssessed: 0, feesBlockedNoDisclosure: 0 };
+    return {
+      skipped: true, reminders: 0, suppressed: 0, callTasks: 0, paused: 0,
+      feesAssessed: 0, feesBlockedNoDisclosure: 0,
+      feesBlockedNoDisclosedRate: 0, feesCappedByDisclosure: 0,
+    };
   }
 
   const dunningArmed = await isAutomationEnabled(app, 'ar_dunning');
@@ -86,6 +97,7 @@ export async function runDunningJob(
             COALESCE(i.overdue_since, i.due_date, i.sent_at::date)::text AS overdue_since,
             i.dunning_attempts, i.last_dunning_at::text AS last_dunning_at,
             (c.late_fee_disclosure_signed_at IS NOT NULL) AS disclosure_signed,
+            c.late_fee_disclosed_rate_percent AS disclosed_rate_percent,
             i.late_fee_cents
      FROM invoices i JOIN contacts c ON c.id = i.contact_id
      WHERE i.status = 'overdue'`
@@ -97,6 +109,10 @@ export async function runDunningJob(
   let paused = 0;
   let feesAssessed = 0;
   let feesBlockedNoDisclosure = 0;
+  // A client we decline to charge, and a client we charge LESS than the book, are both
+  // decisions worth surfacing rather than differences someone has to reverse-engineer.
+  let feesBlockedNoDisclosedRate = 0;
+  let feesCappedByDisclosure = 0;
   const rene = await firstActiveByRole(app.db, 'comms_billing');
 
   for (const inv of rows) {
@@ -211,12 +227,36 @@ export async function runDunningJob(
     if (last && daysBetween(last, today) < 30) continue;
     if (!last && daysOverdue < terms.graceDays) continue;
 
-    const feeCents = Math.round((balance * terms.ratePercent) / 100);
+    /*
+     * THE DISCLOSURE CAP (finding #25, Brian 2026-08-14): "the late-fee automation must
+     * never charge more than the Master-disclosed rate for the client's signed version."
+     *
+     * The book rate and the disclosed rate are different facts and can legitimately
+     * diverge — the book is what we charge today, the disclosed rate is what a
+     * particular client agreed to on a particular day. Charging the book rate to someone
+     * who signed a lower one is charging past the disclosure, which is the whole finding.
+     *
+     * FAIL CLOSED when the signed rate is unknown. A client with a disclosure stamp but
+     * no stamped rate signed before rates were recorded; we cannot prove what they
+     * agreed to, so they are not charged. Counted, not silent — an uncharged client is a
+     * decision someone should see.
+     */
+    const disclosedRate = inv.disclosed_rate_percent;
+    if (disclosedRate === null) {
+      feesBlockedNoDisclosedRate++;
+      continue;
+    }
+    const effectiveRate = Math.min(terms.ratePercent, Number(disclosedRate));
+    if (effectiveRate < terms.ratePercent) feesCappedByDisclosure++;
+
+    const feeCents = Math.round((balance * effectiveRate) / 100);
     if (feeCents <= 0) continue;
     const ins = await app.db.query(
-      `INSERT INTO invoice_late_fees (invoice_id, assessed_on, basis_cents, rate_percent, fee_cents)
-       VALUES ($1, $2, $3, $4, $5) ON CONFLICT (invoice_id, assessed_on) DO NOTHING`,
-      [inv.id, today, balance, terms.ratePercent, feeCents]
+      `INSERT INTO invoice_late_fees
+         (invoice_id, assessed_on, basis_cents, rate_percent, fee_cents,
+          book_rate_percent, disclosed_rate_percent)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (invoice_id, assessed_on) DO NOTHING`,
+      [inv.id, today, balance, effectiveRate, feeCents, terms.ratePercent, disclosedRate]
     );
     if ((ins.rowCount ?? 0) === 0) continue;
     await app.db.query(
@@ -245,10 +285,16 @@ export async function runDunningJob(
     details: {
       run_date: today, reminders, suppressed, call_tasks: callTasks, paused,
       fees_assessed: feesAssessed, fees_blocked_no_disclosure: feesBlockedNoDisclosure,
+      fees_blocked_no_disclosed_rate: feesBlockedNoDisclosedRate,
+      fees_capped_by_disclosure: feesCappedByDisclosure,
+      book_rate_percent: terms?.ratePercent ?? null,
       dunning_armed: dunningArmed, fees_armed: feesArmed,
     },
   });
-  return { skipped: false, reminders, suppressed, callTasks, paused, feesAssessed, feesBlockedNoDisclosure };
+  return {
+    skipped: false, reminders, suppressed, callTasks, paused, feesAssessed,
+    feesBlockedNoDisclosure, feesBlockedNoDisclosedRate, feesCappedByDisclosure,
+  };
 }
 
 /** Payment clears the ladder: closes the call task and lifts any work pause. */

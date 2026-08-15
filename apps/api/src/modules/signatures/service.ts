@@ -481,13 +481,24 @@ export async function completeEnvelopeBySubmission(
     }
 
     // v4.3 flow 4 GATE: late fees are only ever applied to clients whose
-    // SIGNED letter carries the late-fee disclosure. Stamp it here — the fee
-    // job reads this stamp and nothing else (CLAUDE.md hard rule).
+    /*
+     * SIGNED letter carries the late-fee disclosure. Stamp it here — the fee job reads
+     * this stamp and nothing else (CLAUDE.md hard rule).
+     *
+     * The RATE is stamped with it (finding #25). Templates are versioned by mutation, so
+     * the text signed in March cannot be recovered from the table in June; copying the
+     * disclosed rate at signature is what lets the assessment cap a charge at what THIS
+     * client actually agreed to, and stops a later edit to the Master raising it for
+     * people who signed the old one.
+     */
     if (env.template_key) {
       await app.db.query(
-        `UPDATE contacts SET late_fee_disclosure_signed_at = COALESCE(late_fee_disclosure_signed_at, now())
-         WHERE id = $1
-           AND EXISTS (SELECT 1 FROM templates t WHERE t.key = $2 AND t.has_late_fee_disclosure)`,
+        `UPDATE contacts c
+            SET late_fee_disclosure_signed_at = COALESCE(c.late_fee_disclosure_signed_at, now()),
+                late_fee_disclosed_rate_percent =
+                  COALESCE(c.late_fee_disclosed_rate_percent, t.late_fee_rate_percent)
+           FROM templates t
+          WHERE c.id = $1 AND t.key = $2 AND t.has_late_fee_disclosure`,
         [env.contact_id, env.template_key]
       );
     }

@@ -172,13 +172,17 @@ export async function signPacketInPortal(
   // the same statement that marks the packet signed.
   const result = await recordMasterSignature(app, presented.packetId, { ...meta, method: 'portal_esign' });
 
+  // The disclosed RATE is stamped with the timestamp (finding #25): the assessment caps
+  // every charge at the rate the client's own signed letter disclosed, and a later edit
+  // to the Master must not raise it for someone who signed the earlier text.
   await app.db.query(
-    `UPDATE contacts SET late_fee_disclosure_signed_at = COALESCE(late_fee_disclosure_signed_at, now())
-     WHERE id = $1
-       AND EXISTS (
-         SELECT 1 FROM engagement_packets p JOIN templates t ON t.key = p.master_template_key
-         WHERE p.id = $2 AND t.has_late_fee_disclosure
-       )`,
+    `UPDATE contacts c
+        SET late_fee_disclosure_signed_at = COALESCE(c.late_fee_disclosure_signed_at, now()),
+            late_fee_disclosed_rate_percent =
+              COALESCE(c.late_fee_disclosed_rate_percent, t.late_fee_rate_percent)
+       FROM engagement_packets p
+       JOIN templates t ON t.key = p.master_template_key
+      WHERE c.id = $1 AND p.id = $2 AND t.has_late_fee_disclosure`,
     [session.contactId, presented.packetId]
   );
 

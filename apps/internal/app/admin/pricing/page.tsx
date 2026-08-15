@@ -31,8 +31,9 @@ interface Item {
   amount_cents: number | null; price_min_cents: number | null; price_max_cents: number | null;
   unit: string; is_pass_through: boolean; is_active: boolean;
   needs_confirmation: boolean; confirmation_note: string | null;
-  pricing_mode: 'flat' | 'range' | 'hourly';
+  pricing_mode: 'flat' | 'range' | 'hourly' | 'percent';
   deposit_cents: number | null;
+  percent_rate: string | null;
   structure_needs_confirmation: boolean; structure_confirmation_note: string | null;
 }
 interface Book {
@@ -46,6 +47,11 @@ interface Pending { kind: Kind; note: string; items: Item[] }
 
 /** What this line charges, in the shape its mode says it is. */
 function priceLabel(i: Item): string {
+  // A percent line has no fixed price — the RATE is the price. Showing a dollar figure
+  // here is what let a flat $25 sit on the late-fee line while 1.5% did the charging.
+  if (i.pricing_mode === 'percent') {
+    return i.percent_rate === null ? '—' : `${Number(i.percent_rate)}% per ${i.unit.replace('per_', '')}`;
+  }
   if (i.pricing_mode === 'range') {
     return `${formatMoney(i.price_min_cents ?? 0)}–${formatMoney(i.price_max_cents ?? 0)}`;
   }
@@ -53,7 +59,7 @@ function priceLabel(i: Item): string {
 }
 
 const modeBadge = (m: Item['pricing_mode']): string =>
-  m === 'range' ? 'warn' : m === 'hourly' ? 'ok' : '';
+  m === 'range' ? 'warn' : m === 'hourly' || m === 'percent' ? 'ok' : '';
 
 export default function PricingAdminPage() {
   const [book, setBook] = useState<Book | null>(null);
@@ -122,7 +128,15 @@ export default function PricingAdminPage() {
       const d = depositEdits[i.item_code];
       if (p === undefined && d === undefined) return null;
       const change: Record<string, unknown> = { itemCode: i.item_code };
-      if (p !== undefined) change.amountCents = Math.round(Number(p) * 100);
+      /*
+       * On a percent line the number in the box IS the rate, not dollars. Sending it as
+       * amountCents is what produced finding #25 — a flat $25 written onto a line whose
+       * real 1.5% lived somewhere the page never showed.
+       */
+      if (p !== undefined) {
+        if (i.pricing_mode === 'percent') change.percentRate = Number(p);
+        else change.amountCents = Math.round(Number(p) * 100);
+      }
       // Empty deposit field = this line stops asking for one, which is a real edit.
       if (d !== undefined) change.depositCents = d === '' ? null : Math.round(Number(d) * 100);
       return change;
@@ -218,7 +232,7 @@ export default function PricingAdminPage() {
           <thead>
             <tr>
               <th>Item</th><th>Mode</th><th>Price</th><th>Deposit</th>
-              <th>New price ($)</th><th>New deposit ($)</th>
+              <th>New price / rate</th><th>New deposit ($)</th>
             </tr>
           </thead>
           <tbody>
@@ -241,11 +255,15 @@ export default function PricingAdminPage() {
                   />
                 </td>
                 <td style={{ width: 110 }}>
-                  <input
-                    type="number" step="0.01" min="0" inputMode="decimal"
-                    value={depositEdits[i.item_code] ?? ''}
-                    onChange={(e) => setEdit(setDepositEdits, i.item_code, e.target.value, true)}
-                  />
+                  {i.pricing_mode === 'percent' ? (
+                    <span className="muted small">n/a</span>
+                  ) : (
+                    <input
+                      type="number" step="0.01" min="0" inputMode="decimal"
+                      value={depositEdits[i.item_code] ?? ''}
+                      onChange={(e) => setEdit(setDepositEdits, i.item_code, e.target.value, true)}
+                    />
+                  )}
                 </td>
               </tr>
             ))}
@@ -268,21 +286,23 @@ export default function PricingAdminPage() {
                 {i.unit !== 'flat' ? ` · ${i.unit.replaceAll('_', ' ')}` : ''}
               </p>
               <label className="field">
-                New price ($)
+                {i.pricing_mode === 'percent' ? 'New rate (%)' : 'New price ($)'}
                 <input
                   type="number" step="0.01" min="0" inputMode="decimal"
                   value={priceEdits[i.item_code] ?? ''}
                   onChange={(e) => setEdit(setPriceEdits, i.item_code, e.target.value, false)}
                 />
               </label>
-              <label className="field">
-                New deposit ($) — blank removes it
-                <input
-                  type="number" step="0.01" min="0" inputMode="decimal"
-                  value={depositEdits[i.item_code] ?? ''}
-                  onChange={(e) => setEdit(setDepositEdits, i.item_code, e.target.value, true)}
-                />
-              </label>
+              {i.pricing_mode === 'percent' ? null : (
+                <label className="field">
+                  New deposit ($) — blank removes it
+                  <input
+                    type="number" step="0.01" min="0" inputMode="decimal"
+                    value={depositEdits[i.item_code] ?? ''}
+                    onChange={(e) => setEdit(setDepositEdits, i.item_code, e.target.value, true)}
+                  />
+                </label>
+              )}
             </div>
           ))}
         </div>

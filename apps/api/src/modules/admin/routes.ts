@@ -30,7 +30,10 @@ const NewVersionBody = z.object({
         // v4. Switching a line between flat and range means CLEARING the columns the
         // other mode uses, which is why the price fields are nullable above — the
         // mode CHECK refuses a row that carries both an amount and a range.
-        pricingMode: z.enum(['flat', 'range', 'hourly']).optional(),
+        pricingMode: z.enum(['flat', 'range', 'hourly', 'percent']).optional(),
+        // A rate, for percent-mode lines (the late fee). Editable like any other price,
+        // because CLAUDE.md puts the rate in the price book and nowhere else.
+        percentRate: z.number().positive().max(100).nullable().optional(),
         // null = this line stops asking for a deposit.
         depositCents: z.number().int().nonnegative().nullable().optional(),
         // Rate-carrying items (e.g. the late-fee percent) keep their value in
@@ -122,7 +125,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const items = await app.db.query(
       `SELECT item_code, service_line, name_en, amount_cents, price_min_cents, price_max_cents,
               unit, is_pass_through, needs_confirmation, confirmation_note, is_active,
-              pricing_mode::text AS pricing_mode, deposit_cents,
+              pricing_mode::text AS pricing_mode, deposit_cents, percent_rate,
               structure_needs_confirmation, structure_confirmation_note
        FROM price_book_items WHERE version_id = $1 ORDER BY sort_order`,
       [v.id]
@@ -174,11 +177,13 @@ export function registerAdminRoutes(app: FastifyInstance): void {
            (version_id, item_code, service_line, name_en, name_es, description_en, description_es,
             amount_cents, price_min_cents, price_max_cents, unit, is_pass_through, display_on_quote,
             needs_confirmation, confirmation_note, is_active, sort_order, metadata,
-            pricing_mode, deposit_cents, structure_needs_confirmation, structure_confirmation_note)
+            pricing_mode, deposit_cents, structure_needs_confirmation, structure_confirmation_note,
+            percent_rate)
          SELECT $1, item_code, service_line, name_en, name_es, description_en, description_es,
                 amount_cents, price_min_cents, price_max_cents, unit, is_pass_through, display_on_quote,
                 needs_confirmation, confirmation_note, is_active, sort_order, metadata,
-                pricing_mode, deposit_cents, structure_needs_confirmation, structure_confirmation_note
+                pricing_mode, deposit_cents, structure_needs_confirmation, structure_confirmation_note,
+                percent_rate
          FROM price_book_items WHERE version_id = $2`,
         [newId, cur.id]
       );
@@ -202,6 +207,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         if (change.isActive !== undefined) { params.push(change.isActive); sets.push(`is_active = $${params.length}`); }
         if (change.pricingMode !== undefined) { params.push(change.pricingMode); sets.push(`pricing_mode = $${params.length}::price_pricing_mode`); }
         if (change.depositCents !== undefined) { params.push(change.depositCents); sets.push(`deposit_cents = $${params.length}`); }
+        if (change.percentRate !== undefined) { params.push(change.percentRate); sets.push(`percent_rate = $${params.length}`); }
         if (change.metadata !== undefined) { params.push(JSON.stringify(change.metadata)); sets.push(`metadata = $${params.length}::jsonb`); }
         if (sets.length === 0) continue;
         // An admin-set price is a deliberate decision — confirmation clears.

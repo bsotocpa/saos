@@ -17,8 +17,10 @@
  * migrate as flat-with-a-per-hour-unit (behaviour preserved exactly) and go to his
  * confirmation queue. If he confirms them as hourly, the mode gets built then.
  */
-const modeFor = (amountCents, minCents, maxCents) =>
-  amountCents === null && minCents !== null && maxCents !== null ? 'range' : 'flat';
+const modeFor = (amountCents, minCents, maxCents, percentRate) => {
+  if (percentRate !== null) return 'percent';
+  return amountCents === null && minCents !== null && maxCents !== null ? 'range' : 'flat';
+};
 
 const item = (code, serviceLine, nameEn, nameEs, amountCents, opts = {}) => ({
   code,
@@ -30,7 +32,10 @@ const item = (code, serviceLine, nameEn, nameEs, amountCents, opts = {}) => ({
   minCents: opts.minCents ?? null,
   maxCents: opts.maxCents ?? null,
   isActive: opts.isActive ?? true,
-  pricingMode: modeFor(amountCents, opts.minCents ?? null, opts.maxCents ?? null),
+  // A rate, not a price: 1.5 = 1.5% per the line's unit. Setting it makes the line
+  // percent-mode, and the CHECK then refuses any fixed amount alongside it.
+  percentRate: opts.percentRate ?? null,
+  pricingMode: modeFor(amountCents, opts.minCents ?? null, opts.maxCents ?? null, opts.percentRate ?? null),
   structureNeedsConfirmation: opts.structureNeedsConfirmation ?? false,
   structureConfirmationNote: opts.structureConfirmationNote ?? null,
   // What this line asks for up front. NULL on almost every line — a deposit is a
@@ -383,18 +388,26 @@ export const items = [
   // ── Late fee (v4.3 flow 4) ──────────────────────────────────────────────────
   // The RATE lives here, never in code (CLAUDE.md). Percent-per-month sits in
   // metadata because it is a rate, not a dollar amount; edit it through the
-  // normal versioned price-book flow. amount_cents stays null — a fee amount is
-  // always computed from the overdue balance.
-  // amount_cents = 0 because a late fee has NO fixed price — the amount is
-  // always computed from metadata.monthly_rate_percent × the overdue balance.
-  // (The table requires a price or a range; 0 is the honest "not a fixed fee",
-  // and display_on_quote = false keeps it off every quote.)
-  item('LATE_FEE_MONTHLY', 'specialized_cpa', 'Late fee — monthly rate on past-due balances', 'Cargo por mora — tasa mensual sobre saldos vencidos', 0, {
+  /*
+   * FINDING #25 (Brian, 2026-08-14): "the book conforms to the Master."
+   *
+   * This line used to be priced — amount_cents 0, with the real 1.5% buried in a
+   * metadata key the pricing UI never showed. During his confirmation sitting the page
+   * displayed it as "$0.00 per month" beside an editable price box, so he set $25, then
+   * spotted that a flat $25 exceeds Master §3's disclosed 1.5% on any balance under
+   * $1,667. The visible number was meaningless and the meaningful number was invisible.
+   *
+   * Now it is a percent-mode line: percent_rate IS the price, first-class and editable,
+   * and the CHECK forbids a fixed amount sitting next to it. grace_days stays in metadata
+   * because it is a term, not a price.
+   */
+  item('LATE_FEE_MONTHLY', 'specialized_cpa', 'Late fee — monthly rate on past-due balances', 'Cargo por mora — tasa mensual sobre saldos vencidos', null, {
+    percentRate: 1.5,
     unit: 'per_month',
     displayOnQuote: false,
-    metadata: { monthly_rate_percent: 1.5, grace_days: 30 },
-    descEn: '1.5%/month (18% APR) on balances 30+ days past due. Applies ONLY to clients whose signed engagement letter carries the late-fee disclosure.',
-    descEs: '1.5% mensual (18% anual) sobre saldos con 30+ días de atraso. Solo aplica a clientes cuya carta de compromiso firmada incluye la cláusula de cargo por mora.',
+    metadata: { grace_days: 30 },
+    descEn: 'Conforms to Master §3: 1.5%/month (18% APR) on balances 30+ days past due, applied after all deposits and credits. Applies ONLY to clients whose signed engagement letter carries the late-fee disclosure, and is capped at the rate THEIR signed letter disclosed.',
+    descEs: 'Conforme a la §3 del Acuerdo Maestro: 1.5% mensual (18% anual) sobre saldos con 30+ días de atraso, después de depósitos y créditos. Solo aplica a clientes cuya carta de compromiso firmada incluye la cláusula, y se limita a la tasa divulgada en la carta que firmaron.',
   }),
 ];
 
@@ -451,8 +464,8 @@ export async function seedPriceBook(client) {
          price_max_cents, unit, is_pass_through, display_on_quote,
          needs_confirmation, confirmation_note, sort_order, metadata,
          pricing_mode, deposit_cents, is_active,
-         structure_needs_confirmation, structure_confirmation_note
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::price_pricing_mode,$19,$20,$21,$22)
+         structure_needs_confirmation, structure_confirmation_note, percent_rate
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::price_pricing_mode,$19,$20,$21,$22,$23)
        ON CONFLICT (version_id, item_code) DO UPDATE SET
          service_line = EXCLUDED.service_line,
          name_en = EXCLUDED.name_en,
@@ -497,14 +510,15 @@ export async function seedPriceBook(client) {
            WHEN price_book_items.structure_needs_confirmation AND EXCLUDED.structure_needs_confirmation
              THEN EXCLUDED.structure_confirmation_note
            ELSE NULL
-         END`,
+         END,
+         percent_rate = EXCLUDED.percent_rate`,
       [
         versionId, it.code, it.serviceLine, it.nameEn, it.nameEs,
         it.descEn, it.descEs, it.amountCents, it.minCents,
         it.maxCents, it.unit, it.passThrough, it.displayOnQuote,
         it.needsConfirmation, it.confirmationNote, sort, JSON.stringify(it.metadata),
         it.pricingMode, it.depositCents, it.isActive,
-        it.structureNeedsConfirmation, it.structureConfirmationNote,
+        it.structureNeedsConfirmation, it.structureConfirmationNote, it.percentRate,
       ]
     );
   }

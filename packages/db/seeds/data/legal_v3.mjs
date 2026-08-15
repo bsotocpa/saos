@@ -207,6 +207,10 @@ const LEGAL_TEMPLATES = [
     // which matches LATE_FEE_MONTHLY metadata in the price book exactly. Verified
     // before setting this flag — a flag on a body without the block is a false gate.
     hasLateFeeDisclosure: true,
+    // The rate the body actually discloses, machine-readable (finding #25). The CHECK
+    // ties the two together, so a Master can never disclose a late fee at no stated
+    // rate — and the assessment caps every charge at the rate the client signed.
+    lateFeeRatePercent: 1.5,
   },
   ...SCHEDULES.map((s) => ({
     key: s.key,
@@ -216,6 +220,7 @@ const LEGAL_TEMPLATES = [
     body: s.body,
     variables: [],
     hasLateFeeDisclosure: false,
+    lateFeeRatePercent: null,
   })),
   {
     key: 'consent_7216_use',
@@ -263,19 +268,21 @@ export async function seedLegalV3(client) {
              is_placeholder = false, needs_es_review = true,
              kind = $4::template_kind, schedule_code = $5,
              variables = $6::jsonb, has_late_fee_disclosure = $7,
+             late_fee_rate_percent = $8,
              version = version + 1, updated_at = now()
          WHERE key = $1`,
-        [t.key, t.name, t.body, t.kind, t.scheduleCode, JSON.stringify(t.variables), t.hasLateFeeDisclosure]
+        [t.key, t.name, t.body, t.kind, t.scheduleCode, JSON.stringify(t.variables), t.hasLateFeeDisclosure, t.lateFeeRatePercent ?? null]
       );
       updated += 1;
       continue;
     }
     await client.query(
       `INSERT INTO templates (key, name, channel, body_en, body_es, is_placeholder, variables,
-                              has_late_fee_disclosure, kind, schedule_code, needs_es_review)
-       VALUES ($1, $2, 'document', $3, NULL, false, $4::jsonb, $5, $6::template_kind, $7, true)
+                              has_late_fee_disclosure, kind, schedule_code, needs_es_review,
+                              late_fee_rate_percent)
+       VALUES ($1, $2, 'document', $3, NULL, false, $4::jsonb, $5, $6::template_kind, $7, true, $8)
        ON CONFLICT (key) DO NOTHING`,
-      [t.key, t.name, t.body, JSON.stringify(t.variables), t.hasLateFeeDisclosure, t.kind, t.scheduleCode]
+      [t.key, t.name, t.body, JSON.stringify(t.variables), t.hasLateFeeDisclosure, t.kind, t.scheduleCode, t.lateFeeRatePercent ?? null]
     );
     inserted += 1;
   }

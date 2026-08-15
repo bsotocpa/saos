@@ -414,7 +414,7 @@ test('late fees: BLOCKED without a signed disclosure; rate comes from the price 
 
   // The rate is data, not code.
   const terms = await lateFeeTerms(app);
-  assert.deepEqual(terms, { ratePercent: 1.5, graceDays: 30 }, 'rate + grace from LATE_FEE_MONTHLY metadata');
+  assert.deepEqual(terms, { ratePercent: 1.5, graceDays: 30 }, 'rate from LATE_FEE_MONTHLY.percent_rate, grace from its metadata');
 
   const nora = await makeClient('Feenora', 'fee-nora@example.test');
   const created = await app.inject({
@@ -432,8 +432,14 @@ test('late fees: BLOCKED without a signed disclosure; rate comes from the price 
   const noFee = await app.db.query<{ late_fee_cents: number }>(`SELECT late_fee_cents FROM invoices WHERE id = $1`, [invoiceId]);
   assert.equal(noFee.rows[0]!.late_fee_cents, 0);
 
-  // Sign a letter carrying the disclosure → the stamp opens the gate.
-  await app.db.query(`UPDATE contacts SET late_fee_disclosure_signed_at = now() WHERE id = $1`, [nora.contactId]);
+  // Sign a letter carrying the disclosure → the stamp opens the gate. Signing stamps the
+  // DISCLOSED RATE with it (finding #25); without it the assessment fails closed.
+  await app.db.query(
+    `UPDATE contacts SET late_fee_disclosure_signed_at = now(),
+            late_fee_disclosed_rate_percent = (SELECT late_fee_rate_percent FROM templates WHERE key = 'engagement_master')
+      WHERE id = $1`,
+    [nora.contactId]
+  );
   // A $100 deposit/credit nets against the balance BEFORE the fee computes.
   await app.db.query(`UPDATE invoices SET credit_cents = 10000 WHERE id = $1`, [invoiceId]);
   const assessed = await runDunningJob(app, '2031-02-06');
@@ -464,4 +470,110 @@ test('late fees: BLOCKED without a signed disclosure; rate comes from the price 
     `SELECT count(*)::int AS n FROM invoice_late_fees WHERE invoice_id = $1`, [invoiceId]);
   assert.equal(stillOneFee.rows[0]!.n, 1);
   await app.db.query(`UPDATE automations SET enabled = true WHERE key = 'late_fees'`);
+});
+
+/*
+ * FINDING #25 (Brian, 2026-08-14). The book line said flat $25/month while Master §3
+ * discloses 1.5%/month, so on any past-due balance under $1,667 the book authorised a
+ * charge larger than the one every signed client agreed to.
+ *
+ * Two separate things had to be true, and these test both:
+ *   the book states a RATE, not a fixed fee — the shape that made $25 expressible at all;
+ *   the charge is capped at what THIS client's signed letter disclosed.
+ */
+test('#25: the late-fee line is a rate, and a fixed amount cannot sit beside it', async () => {
+  const { rows } = await app.db.query<{
+    mode: string; percent_rate: string | null; amount_cents: number | null;
+  }>(
+    `SELECT i.pricing_mode::text AS mode, i.percent_rate, i.amount_cents
+       FROM price_book_items i JOIN price_book_versions v ON v.id = i.version_id
+      WHERE v.effective_to IS NULL AND i.item_code = 'LATE_FEE_MONTHLY'`
+  );
+  assert.equal(rows[0]!.mode, 'percent');
+  assert.equal(Number(rows[0]!.percent_rate), 1.5, 'conforms to Master §3');
+  assert.equal(rows[0]!.amount_cents, null, 'a rate line has no fixed price');
+
+  // The CHECK is what stops $25 being written back onto it.
+  const versionId = (
+    await app.db.query<{ id: string }>(`SELECT id FROM price_book_versions WHERE effective_to IS NULL LIMIT 1`)
+  ).rows[0]!.id;
+  await assert.rejects(
+    app.db.query(
+      `INSERT INTO price_book_items (version_id, item_code, service_line, name_en, name_es,
+                                     pricing_mode, percent_rate, amount_cents)
+       VALUES ($1, 'V25_BOTH', 'specialized_cpa', 'x', 'x', 'percent', 1.5, 2500)`,
+      [versionId]
+    ),
+    'a percent line may not also carry a fixed amount'
+  );
+
+  // And the Master declares the rate it discloses, so the two can be compared.
+  const master = await app.db.query<{ rate: string | null }>(
+    `SELECT late_fee_rate_percent AS rate FROM templates WHERE key = 'engagement_master'`
+  );
+  assert.equal(Number(master.rows[0]!.rate), 1.5, 'the disclosed rate is machine-readable');
+});
+
+test('#25: a client is never charged above the rate THEIR signed letter disclosed', async () => {
+  const { runDunningJob } = await import('../src/modules/billing/dunning.ts');
+  const cappy = await makeClient('Feecap', 'fee-cap@example.test');
+  const created = await app.inject({
+    method: 'POST', url: '/invoices', headers: auth(rene),
+    payload: { contactId: cappy.contactId, lines: [{ code: 'BIZ_1120S' }] }, // $700.00
+  });
+  const invoiceId = created.json().id as string;
+  await app.db.query(
+    `UPDATE invoices SET status = 'overdue', overdue_since = '2032-01-01' WHERE id = $1`,
+    [invoiceId]
+  );
+
+  // This client signed an OLDER letter disclosing 1%. The book says 1.5%.
+  await app.db.query(
+    `UPDATE contacts SET late_fee_disclosure_signed_at = now(), late_fee_disclosed_rate_percent = 1.0
+      WHERE id = $1`,
+    [cappy.contactId]
+  );
+
+  const run = await runDunningJob(app, '2032-02-06');
+  assert.ok(run.feesCappedByDisclosure >= 1, 'the cap is reported, not silent');
+
+  const fee = await app.db.query<{
+    rate_percent: string; book_rate_percent: string; disclosed_rate_percent: string; fee_cents: number;
+  }>(
+    `SELECT rate_percent::text, book_rate_percent::text, disclosed_rate_percent::text, fee_cents
+       FROM invoice_late_fees WHERE invoice_id = $1`,
+    [invoiceId]
+  );
+  const f = fee.rows[0]!;
+  assert.equal(Number(f.rate_percent), 1.0, 'charged at the DISCLOSED rate');
+  assert.equal(Number(f.book_rate_percent), 1.5, 'and the book rate is recorded beside it');
+  assert.equal(Number(f.disclosed_rate_percent), 1.0);
+  // 1% of $700, not 1.5% of $700 ($10.50). The whole finding in one number.
+  assert.equal(f.fee_cents, 700, '1% of $700 = $7.00');
+});
+
+test('#25: an unprovable disclosed rate charges nothing rather than guessing', async () => {
+  const { runDunningJob } = await import('../src/modules/billing/dunning.ts');
+  const vague = await makeClient('Feevague', 'fee-vague@example.test');
+  const created = await app.inject({
+    method: 'POST', url: '/invoices', headers: auth(rene),
+    payload: { contactId: vague.contactId, lines: [{ code: 'BIZ_1120S' }] },
+  });
+  const invoiceId = created.json().id as string;
+  await app.db.query(
+    `UPDATE invoices SET status = 'overdue', overdue_since = '2033-01-01' WHERE id = $1`,
+    [invoiceId]
+  );
+  // Signed the disclosure, but the rate was never captured — a pre-#25 signature.
+  await app.db.query(
+    `UPDATE contacts SET late_fee_disclosure_signed_at = now(), late_fee_disclosed_rate_percent = NULL
+      WHERE id = $1`,
+    [vague.contactId]
+  );
+
+  const run = await runDunningJob(app, '2033-02-06');
+  assert.ok(run.feesBlockedNoDisclosedRate >= 1, 'counted, not silently skipped');
+  const charged = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM invoice_late_fees WHERE invoice_id = $1`, [invoiceId]);
+  assert.equal(charged.rows[0]!.n, 0, 'we cannot prove what they agreed to, so we charge nothing');
 });

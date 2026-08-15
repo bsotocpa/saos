@@ -57,7 +57,9 @@ Backfill is unambiguous against v3 data: no row has both `amount_cents` and a ra
 No composer, packet, or letter work yet. The CHECK admits the value so the data can
 never be malformed later; nothing constructs it.
 
-**Contingent next step (Brian, 2026-08-14):** he corrected his own premise — *"'we don't
+**CLOSED (Brian, 2026-08-15):** the pricing sitting confirmed all three per-hour lines as **flat per-hour rate cards**, so hourly mode stays unbuilt and this contingency is closed. The enum value remains, constructed by nothing.
+
+~~Contingent next step (Brian, 2026-08-14):~~ he corrected his own premise — *"'we don't
 bill hourly today' was wrong — those three rate-card lines are real."* The three
 `per_hour` lines go to his confirmation queue. **If he confirms them as hourly in his
 review sitting, hourly mode gets built then, against those three lines.** That is a
@@ -209,3 +211,53 @@ Done and verified in production — see the Lane 1 section below.
 His ruling answered three of the thirty (the `DEPOSIT_1040` structure question, and both
 of `DEPOSIT_BUSINESS_TAX`'s). **12 price + 15 structure**, and — verified by query —
 **zero items carry both flags**, so no line ever presents a conflated tap.
+
+---
+
+## Finding #25 — the book contradicted the engagement letter (Brian, 2026-08-14)
+
+`LATE_FEE_MONTHLY` read as a flat **$25/month** while Master §3 discloses **1.5%/month
+(18% APR)**. On any past-due balance under **$1,667** a flat $25 exceeds the rate every
+signed client agreed to. Ruling: *"the book conforms to the Master."*
+
+**Nothing was ever overcharged** — the job read `metadata.monthly_rate_percent` (1.5) and
+ignored `amount_cents`, `late_fees` has never been armed, and `invoice_late_fees` is
+empty. That was luck, not design.
+
+### Where the $25 came from — my UI
+v1–v4 carried `amount_cents = 0`. **v5, the confirmation sitting, set 2500.** The page I
+built showed the late-fee line as "$0.00 per month" beside an editable price box, while
+the number that actually charges lived in a metadata key the page never displayed.
+Editing the visible price changed nothing; "fixing" the code to honour it would have
+overcharged. The UI invited exactly the edit that produced the finding.
+
+### The fix
+- **`pricing_mode` gains `percent`** + `price_book_items.percent_rate`. A
+  percentage-of-balance is a genuine fourth price shape — the axis the enum exists for.
+  The rate is now a first-class, visible, editable price-book value; the CHECK forbids a
+  fixed amount sitting beside it, so $25 is no longer expressible on that line.
+- **The pricing UI edits the RATE on percent lines** ("New rate (%)"), and offers no
+  deposit box on them.
+- **`templates.late_fee_rate_percent`** — the Master declares the rate it discloses,
+  machine-readable and admin-editable. CHECK: a **live** template disclosing a late fee
+  must state its rate. Scoped to non-placeholders, because `engagement_letter_tax` is a
+  placeholder whose body carries a `{{late_fee_rate}}` VARIABLE and has no fixed rate to
+  declare — which also makes clearing `is_placeholder` the moment the rate is required.
+- **`contacts.late_fee_disclosed_rate_percent`, stamped AT SIGNING.** Templates are
+  versioned by mutation, so the text signed in March is not recoverable in June. Freezing
+  the rate at the moment of agreement is what makes "for the client's signed version"
+  true without version archaeology — and stops a later edit to the Master raising what an
+  already-signed client can be charged.
+
+### The guard
+`effectiveRate = min(bookRate, disclosedRate)`, and **fail closed**: a client with a
+disclosure stamp but no stamped rate is charged **nothing**, because we cannot prove what
+they agreed to. Both outcomes are counted in the run record
+(`fees_capped_by_disclosure`, `fees_blocked_no_disclosed_rate`), and
+`invoice_late_fees` records the book rate, the disclosed rate and the rate charged — so a
+capped assessment reads as capped rather than looking like a cheaper month.
+
+### Verified
+`#25: a client is never charged above the rate THEIR signed letter disclosed` — a client
+who signed at 1% is charged **$7.00** on a $700 balance, not the book's $10.50. Removing
+the `Math.min` fails that test and nothing else.
