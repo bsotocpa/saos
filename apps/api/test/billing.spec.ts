@@ -577,3 +577,33 @@ test('#25: an unprovable disclosed rate charges nothing rather than guessing', a
     `SELECT count(*)::int AS n FROM invoice_late_fees WHERE invoice_id = $1`, [invoiceId]);
   assert.equal(charged.rows[0]!.n, 0, 'we cannot prove what they agreed to, so we charge nothing');
 });
+
+/*
+ * The invoice email pointed at the portal HOME (Brian's template audit, 2026-08-15).
+ * "Your invoice is ready in your portal" followed by a link to a dashboard, leaving the
+ * client to go find it — and the copy claimed "pay securely with one click", which was
+ * never true because paying requires a signed-in session.
+ */
+test('the invoice email deep-links to THAT invoice, and no longer promises one click', async () => {
+  const deep = await makeClient('Feedeep', 'fee-deep@example.test');
+  const before = sentMail.length;
+  const created = await app.inject({
+    method: 'POST', url: '/invoices', headers: auth(rene),
+    payload: { contactId: deep.contactId, send: true, lines: [{ description: 'Work', unitCents: 12345 }] },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const invoiceId = created.json().id as string;
+
+  const mail = sentMail.slice(before).find((m) => m.to === 'fee-deep@example.test');
+  assert.ok(mail, 'the invoice email went out');
+  // Plain substring, not a RegExp: the URL contains '?' and the id contains hyphens, and
+  // escaping those through a template literal is how this assertion silently passed for
+  // the wrong reason the first time.
+  assert.ok(
+    mail.text.includes(`/invoices?invoice=${invoiceId}`),
+    `the link names this invoice, not the portal root — got: ${mail.text.slice(0, 200)}`
+  );
+  assert.doesNotMatch(mail.text, /one click/i, 'and no longer claims a click count it cannot deliver');
+  // A client who is signed out used to hit a dead end here — the same failure as #21.
+  assert.match(mail.text, /sign in/i, 'it says what to do if asked to sign in');
+});

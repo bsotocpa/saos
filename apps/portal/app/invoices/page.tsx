@@ -23,6 +23,14 @@ export default function InvoicesPage() {
   const [error, setError] = useState<string | null>(null);
   // FINDING #23/#24: Stripe returns the client to ?paid=1 and the page ignored it.
   const [paidNotice, setPaidNotice] = useState<'confirming' | 'paid' | 'pending' | null>(null);
+  /*
+   * The invoice the email pointed at (?invoice=<id>).
+   *
+   * invoice_sent used to link to the portal HOME, so a client told "your invoice is
+   * ready" landed on a dashboard and had to go find it. Naming it here lets the page
+   * put that one first and mark it, which is what the email is promising.
+   */
+  const [focusInvoiceId, setFocusInvoiceId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -34,6 +42,10 @@ export default function InvoicesPage() {
 
     void (async () => {
       const list = await load();
+
+      // Read before the ?paid=1 branch clears the query string below.
+      const focus = new URLSearchParams(window.location.search).get('invoice');
+      if (focus) setFocusInvoiceId(focus);
 
       /*
        * FINDINGS #23 + #24 — the return from Stripe.
@@ -104,10 +116,25 @@ export default function InvoicesPage() {
       <section className="card">
         {loaded && invoices.length === 0 ? <p className="muted">{t('inv_empty')}</p> : null}
         <ul className="list">
-          {invoices.map((i) => (
-            <li key={i.id}>
+          {/*
+            The invoice the email named comes first. Sorting rather than filtering: the
+            client may have others, and hiding them to honour a link would be a worse
+            surprise than reordering them.
+          */}
+          {[...invoices]
+            .sort((a, b) => Number(b.id === focusInvoiceId) - Number(a.id === focusInvoiceId))
+            .map((i) => (
+            <li
+              key={i.id}
+              {...(i.id === focusInvoiceId
+                ? { style: { borderLeft: '3px solid var(--electric)', paddingLeft: 10 } }
+                : {})}
+            >
               <span className="grow">
                 <strong>{i.invoice_number}</strong> · {formatMoney(i.total_cents)}
+                {i.id === focusInvoiceId ? (
+                  <span className="badge" style={{ marginLeft: 6 }}>{t('inv_from_email')}</span>
+                ) : null}
                 <br />
                 <span className="muted small">{i.lines.map((l) => l.description).join(' · ')}</span>
               </span>

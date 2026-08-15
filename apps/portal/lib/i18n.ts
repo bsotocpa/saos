@@ -136,6 +136,9 @@ const dict = {
   inv_overdue: ['Past due', 'Vencida'],
   inv_empty: ['No invoices yet.', 'Aún no hay facturas.'],
   inv_paying: ['Opening checkout…', 'Abriendo el pago…'],
+  // Marks the invoice the email linked to, so a client who followed the link can see
+  // they are looking at the right one.
+  inv_from_email: ['from your email', 'de su correo'],
   // The return from Stripe. Three honest states — never a blank screen (finding #23).
   inv_confirming: ['Confirming your payment…', 'Confirmando su pago…'],
   inv_paid_notice: ['Payment received. Thank you.', 'Pago recibido. Gracias.'],

@@ -225,7 +225,10 @@ export async function createInvoice(
         first_name: c.first_name,
         invoice_number: invoiceNumber,
         amount: formatUsd(total),
-        portal_link: app.config.PORTAL_BASE_URL,
+        // DEEP LINK to this invoice, not the portal home. "Your invoice is ready in your
+        // portal" followed by a link to a dashboard makes the client go find it, which is
+        // the opposite of what the sentence promises.
+        portal_link: `${app.config.PORTAL_BASE_URL}/invoices?invoice=${id}`,
       },
     });
   }
@@ -445,7 +448,10 @@ export async function runInvoiceOverdueJob(
           first_name: inv.first_name,
           invoice_number: inv.invoice_number,
           amount: formatUsd(inv.total_cents),
-          portal_link: app.config.PORTAL_BASE_URL,
+          // Same deep link as invoice_sent. A reminder naming an invoice and pointing at
+          // the portal home is the defect Brian's audit found, and it matters more here:
+          // this one is chasing someone, so making them hunt for it is worse.
+          portal_link: `${app.config.PORTAL_BASE_URL}/invoices?invoice=${inv.id}`,
         },
       });
     }

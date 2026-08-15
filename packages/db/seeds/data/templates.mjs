@@ -705,15 +705,35 @@ export const templates = [
     variables: ['first_name', 'invoice_number', 'amount', 'portal_link'],
     subjectEn: 'Invoice {{invoice_number}} — {{amount}}',
     subjectEs: 'Factura {{invoice_number}} — {{amount}}',
+    /*
+     * Two things were wrong here (Brian's template audit, 2026-08-15).
+     *
+     * The link went to PORTAL_BASE_URL — the portal home — so "your invoice is ready in
+     * your portal" was followed by a link to a dashboard the client then had to search.
+     * It now deep-links to the invoice itself, which the portal marks as the one the
+     * email named.
+     *
+     * And "pay securely with one click" was not true and could not be made true: paying
+     * requires a signed-in session, so the honest floor is open the link, then pay. The
+     * copy now describes that rather than promising a click count we cannot deliver. It
+     * also says what happens for a client who is signed out, because that is the moment
+     * the old copy left them stranded — the same failure as finding #21.
+     */
     bodyEn:
       'Hi {{first_name}},\n\n' +
-      'Your invoice {{invoice_number}} for {{amount}} is ready in your portal. ' +
-      'You can review the details and pay securely with one click:\n\n{{portal_link}}\n\n' +
+      'Your invoice {{invoice_number}} for {{amount}} is ready. This link opens it ' +
+      'directly:\n\n{{portal_link}}\n\n' +
+      'You can review every line and pay there by card. If you are asked to sign in ' +
+      'first, enter this email address and we will send you a link — there is no ' +
+      'password to remember.\n\n' +
       'Questions about anything on it? Reply here — happy to walk through it.\n\n— Soto Accounting',
     bodyEs:
       'Hola {{first_name}}:\n\n' +
-      'Su factura {{invoice_number}} por {{amount}} está lista en su portal. ' +
-      'Puede revisar los detalles y pagar de forma segura con un clic:\n\n{{portal_link}}\n\n' +
+      'Su factura {{invoice_number}} por {{amount}} está lista. Este enlace la abre ' +
+      'directamente:\n\n{{portal_link}}\n\n' +
+      'Allí puede revisar cada línea y pagar con tarjeta. Si le pide iniciar sesión, ' +
+      'ingrese este mismo correo electrónico y le enviaremos un enlace — no hay ' +
+      'contraseña que recordar.\n\n' +
       '¿Preguntas sobre algún cargo? Responda aquí — con gusto lo repasamos.\n\n— Soto Accounting',
   },
   {
