@@ -612,3 +612,58 @@ happened, and a text box beside them invites asserting a fact rather than record
   none has been clicked through.
 - **`engagements.title` holds legacy junk** ("Accepted quote" on four active rows). Clients
   no longer see it; the ops side still does.
+
+---
+
+## #27 — BUILT AND DEPLOYED (2026-08-16). BATCH COMPLETE.
+
+Prefill only behind an authenticated portal session. The unauthenticated pre-engagement
+form prefills nothing — verified in production: the public route returns
+`key, version, definition, consentTextPending, rehearsalBanner*` and no contact block.
+
+That is a privacy shape, not a convenience one. A public form is resumable by whoever
+holds its link, so prefilling it would turn that link into a disclosure of data the client
+never typed there. Behind a portal session there is no new exposure — it is the same data
+they can already read on `/profile`. The sabotage pass adds the tempting shortcut (a
+contact block on the public route) and the test fails, which is the point.
+
+**`confirm_info` dropped, per the earlier ruling.** The questionnaire opens with the held
+fields prefilled and correctable, so a separate confirm-your-info step is duplicate work.
+Email is shown and NOT editable: it is the login identity, `/portal/me` has never accepted
+a change to it, and someone who needs it changed should reach a person. Saving goes
+through that same endpoint — a second write path for a contact would eventually disagree
+with the first about what a client may change.
+
+**Consequence worth noting:** the questionnaire now applies to EVERY client, not only
+those whose services fire a module, because every client has details. That inverts the
+#31 test which asserted the opposite; it now guards what did *not* change — that no module
+is invented for a client whose services do not call for one.
+
+### The canonical journey, as shipped
+
+| Step | Surface | Completes |
+|---|---|---|
+| 1 · Login setup | one email carrying welcome + link | arriving |
+| 2 · Review & sign packet | `/sign` | by hand |
+| 3 · §7216 consent | `/consent` | on ANSWER — yes or no |
+| 4 · Questionnaire | `/questionnaire` | on submit |
+| 5 · Upload documents | `/documents` | by hand |
+| 6 · Book kickoff *(optional)* | scheduler | when Cal.com says so |
+
+Deposit is collected at quote acceptance, before the journey. `confirm_info` and
+`track_services` were absorbed (by #27 and #35). All their columns survive.
+
+### Batch status: 27–35 all built and deployed
+
+Also cleared while here: `engagements.title` backfilled from the same composition the
+client sees — 4 rows of "Accepted quote" → "Taxes", **0 placeholders remaining**. Narrow
+on purpose: "2025 intake" and a human-written withdrawal note were left alone, because
+neither is placeholder text.
+
+### What remains open across the whole batch
+
+1. **Spanish is mine and unreviewed** — the questionnaire's 161 option labels, the #28
+   free-text companions, the #29 revenue label, and now the #27 details screen. Brian is
+   walking `/questionnaire` in Spanish as RC2; findings come back numbered.
+2. **No authenticated flow has been walked at phone width** — questionnaire, portal home,
+   client record. All API-tested and sabotage-verified; none clicked through.
