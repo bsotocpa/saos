@@ -49,6 +49,13 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   // ── Books (Marian) ────────────────────────────────────────────────────────
   close_cycle: { sop: 'marian-month-end-close' },
   close_session_scheduling: { sop: 'marian-close-session-scheduling' },
+  /*
+   * #33: the same act, asked for from the client record instead of falling out of a
+   * books close. It points at the same SOP because the work is identical once the task
+   * exists — send the booking link, do not double-book — and the calendar cross-check
+   * that decides whether the task should exist at all is enforced in the endpoint.
+   */
+  client_session_scheduling: { sop: 'marian-close-session-scheduling' },
 
   // ── Nonprofit / grants (Jackson) ──────────────────────────────────────────
   voucher_period: { sop: 'jackson-grant-voucher-period' },

@@ -10,6 +10,8 @@ import { requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
 import { makeMinioClient } from '../documents/storage.ts';
+import { createTask } from '../tasks/service.ts';
+import { firstActiveByRole } from '../../staffing.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import {
   CLOSE_STEPS, closeWorkbench, completeClose, createCloseCycle, markCloseStep, upcomingSession,
@@ -128,5 +130,80 @@ export function registerBookkeepingRoutes(app: FastifyInstance): void {
     const contactId = z.uuid().parse(request.params.contactId);
     const session = await upcomingSession(app, contactId, todayChicago());
     return { session };
+  });
+
+  /*
+   * ASK FOR A MEETING TO BE SCHEDULED, from the client record (#33).
+   *
+   * THE CALENDAR CROSS-CHECK IS ENFORCED HERE, not in the button. CLAUDE.md: never
+   * create a session-scheduling task without first checking for an existing session with
+   * that client — attach to the existing one, and only create a task when none exists.
+   *
+   * So a client who already has something on the calendar gets a 409, and the screen
+   * re-reads their next session and shows it instead. Putting the rule in the endpoint rather
+   * than the UI is the difference between a rule and a habit: a second surface that
+   * forgets to look cannot double-book through this route.
+   *
+   * SCOPED TO AN OPEN ENGAGEMENT, per the finding. "Book a meeting" with no subject
+   * produces a task nobody can prioritise; naming the engagement says what the meeting
+   * is for and puts it on that piece of work.
+   */
+  const clientWrite = { preHandler: [app.authenticate, requirePermission('contacts.write')] };
+  app.post<{ Params: { contactId: string } }>('/contacts/:contactId/schedule-session', clientWrite, async (request, reply) => {
+    const contactId = z.uuid().parse(request.params.contactId);
+    const b = z
+      .object({ engagementId: z.uuid().optional(), note: z.string().max(500).optional() })
+      .parse(request.body ?? {});
+    const actor = request.staff!;
+
+    const existing = await upcomingSession(app, contactId, todayChicago());
+    if (existing) {
+      // The refusal carries no payload: the error handler serialises `error` and
+      // `message` only, so attaching the session here would look informative and arrive
+      // nowhere. The screen re-reads /contacts/:id/next-session and shows it from there.
+      throw new AppError(
+        409,
+        'session_already_scheduled',
+        'This client already has a session on the calendar. Attach to that one rather than booking a second.'
+      );
+    }
+
+    // The engagement has to be this client's AND open — a meeting cannot be "for" work
+    // that belongs to someone else or finished last year.
+    let engagementTitle: string | null = null;
+    if (b.engagementId) {
+      const eng = await app.db.query<{ id: string; service_line: string }>(
+        `SELECT id, service_line::text AS service_line FROM engagements
+          WHERE id = $1 AND contact_id = $2 AND status = 'active'`,
+        [b.engagementId, contactId]
+      );
+      if (!eng.rows[0]) {
+        throw new AppError(404, 'engagement_not_open', 'That engagement is not open for this client.');
+      }
+      engagementTitle = eng.rows[0].service_line;
+    }
+
+    const owner = await firstActiveByRole(app.db, 'comms_billing');
+    const task = await createTask(app, {
+      title: engagementTitle
+        ? `Schedule a meeting — ${engagementTitle}`
+        : 'Schedule a meeting with this client',
+      description: b.note ?? 'Requested from the client record. Nothing is on their calendar.',
+      assignedStaffId: owner,
+      contactId,
+      engagementId: b.engagementId ?? null,
+      priority: 1,
+      source: 'manual',
+      sourceType: 'client_session_scheduling',
+      createdByStaffId: actor.id,
+    });
+
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      action: 'client_session.scheduling_requested', objectType: 'task', objectId: task.id,
+      contactId, ip: request.ip,
+      details: { engagement_id: b.engagementId ?? null },
+    });
+    return reply.code(201).send({ taskId: task.id, created: task.created });
   });
 }

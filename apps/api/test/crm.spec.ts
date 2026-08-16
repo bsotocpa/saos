@@ -516,3 +516,142 @@ test('granting portal access needs the permission, and an intern does not have i
   const still = await app.inject({ method: 'GET', url: `/contacts/${contactId}`, headers: auth(brian) });
   assert.equal(still.json().contact.portal_state, 'not_invited', 'and nothing was created by the attempt');
 });
+
+/*
+ * #33 — THE CLIENT RECORD AS AN OPERATING SURFACE (Brian, 2026-08-16).
+ *
+ * Two rulings carry the weight, and both are enforced server-side rather than in the
+ * buttons:
+ *
+ *   STAFF NEVER TAKE A CARD. "Take payment" means sending the client their pay link.
+ *   The Stripe session is created under the CLIENT's own portal session, so there is no
+ *   staff-side checkout to abuse and card data never comes near us.
+ *
+ *   THE CALENDAR CROSS-CHECK RUNS OR THE BUTTON DOES NOT SHIP. A client with something
+ *   already booked cannot get a second scheduling task through this route.
+ */
+test('a reminder sends the pay link and moves no money — there is no staff-side checkout', async () => {
+  const created = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Remindme', email: 'remindme@example.test' },
+  });
+  const contactId = created.json().id as string;
+
+  const inv = await app.db.query<{ id: string }>(
+    `INSERT INTO invoices (contact_id, invoice_number, status, total_cents)
+     VALUES ($1, 'SA-REMIND-0001', 'sent', 42000) RETURNING id`,
+    [contactId]
+  );
+  const invoiceId = inv.rows[0]!.id;
+
+  const sent = await app.inject({
+    method: 'POST', url: `/invoices/${invoiceId}/remind`, headers: auth(brian),
+  });
+  assert.equal(sent.statusCode, 200, sent.body);
+  assert.equal(sent.json().to, 'remindme@example.test');
+
+  // Nothing about the money changed. The only path that marks an invoice paid is the
+  // one Stripe confirms (#24), and a reminder is not it.
+  const after = await app.db.query<{ status: string; amount_paid_cents: number }>(
+    `SELECT status, amount_paid_cents FROM invoices WHERE id = $1`,
+    [invoiceId]
+  );
+  assert.equal(after.rows[0]!.status, 'sent', 'still unpaid — a reminder is a message, not a payment');
+  assert.equal(after.rows[0]!.amount_paid_cents, 0);
+
+  // Who decided is on the record: this send is a person's choice, not an automation.
+  const audit = await app.db.query<{ details: { manual?: boolean } }>(
+    `SELECT details FROM audit_log WHERE action = 'invoice.reminder_sent' AND object_id = $1`,
+    [invoiceId]
+  );
+  assert.equal(audit.rows.length, 1);
+  assert.equal(audit.rows[0]!.details.manual, true);
+
+  // A paid invoice has nothing to chase, and saying so is better than sending it.
+  await app.db.query(`UPDATE invoices SET status = 'paid', paid_at = now() WHERE id = $1`, [invoiceId]);
+  const again = await app.inject({
+    method: 'POST', url: `/invoices/${invoiceId}/remind`, headers: auth(brian),
+  });
+  assert.equal(again.statusCode, 409, 'no chasing a paid invoice');
+});
+
+test('the calendar cross-check is in the endpoint: an existing session refuses a second task', async () => {
+  const created = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Alreadybooked', email: 'alreadybooked@example.test' },
+  });
+  const contactId = created.json().id as string;
+
+  // Nothing booked → a task is warranted, and it is the ONLY circumstance in which
+  // one is.
+  const first = await app.inject({
+    method: 'POST', url: `/contacts/${contactId}/schedule-session`, headers: auth(brian),
+    payload: {},
+  });
+  assert.equal(first.statusCode, 201, first.body);
+
+  const task = await app.db.query<{ source_type: string; sop_link: string | null }>(
+    `SELECT source_type, sop_link FROM tasks WHERE id = $1`,
+    [first.json().taskId]
+  );
+  assert.equal(task.rows[0]!.source_type, 'client_session_scheduling');
+  assert.ok(task.rows[0]!.sop_link, 'a task-generating feature ships with its SOP hook');
+
+  // Now put something on their calendar.
+  await app.db.query(
+    `INSERT INTO client_sessions (contact_id, starts_at, status, is_recurring)
+     VALUES ($1, now() + interval '7 days', 'scheduled', true)`,
+    [contactId]
+  );
+
+  /*
+   * THE HARD RULE: never create a session-scheduling task without checking for an
+   * existing session — attach to that one instead. Enforced here rather than in the UI,
+   * so a second surface that forgets to look cannot double-book through this route.
+   */
+  const refused = await app.inject({
+    method: 'POST', url: `/contacts/${contactId}/schedule-session`, headers: auth(brian),
+    payload: {},
+  });
+  assert.equal(refused.statusCode, 409, 'a client with a session on the calendar is not booked again');
+  assert.equal(refused.json().error, 'session_already_scheduled');
+});
+
+test('a meeting can only be scoped to an OPEN engagement belonging to this client', async () => {
+  const mine = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Scoped', email: 'scoped@example.test' },
+  });
+  const contactId = mine.json().id as string;
+  const other = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Elsewhere', email: 'elsewhere@example.test' },
+  });
+  const otherId = other.json().id as string;
+
+  const version = await app.db.query<{ id: string }>(
+    `SELECT id FROM price_book_versions ORDER BY version_number DESC LIMIT 1`
+  );
+  const theirs = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, status, price_book_version_id)
+     VALUES ($1, 'bookkeeping', 'active', $2) RETURNING id`,
+    [otherId, version.rows[0]!.id]
+  );
+  const closed = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, status, price_book_version_id)
+     VALUES ($1, 'tax', 'completed', $2) RETURNING id`,
+    [contactId, version.rows[0]!.id]
+  );
+
+  const wrongClient = await app.inject({
+    method: 'POST', url: `/contacts/${contactId}/schedule-session`, headers: auth(brian),
+    payload: { engagementId: theirs.rows[0]!.id },
+  });
+  assert.equal(wrongClient.statusCode, 404, 'a meeting cannot be "for" someone else’s work');
+
+  const finished = await app.inject({
+    method: 'POST', url: `/contacts/${contactId}/schedule-session`, headers: auth(brian),
+    payload: { engagementId: closed.rows[0]!.id },
+  });
+  assert.equal(finished.statusCode, 404, 'nor for work that finished');
+});

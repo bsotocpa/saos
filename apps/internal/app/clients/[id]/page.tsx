@@ -41,6 +41,7 @@ interface Packet {
   entityGroups: Array<{ id: string; name: string }>;
   enrichmentGaps: string[];
   magicLinkTtlMinutes: number;
+  portalBaseUrl: string;
 }
 interface TaxEngagement {
   id: string; tax_year: number; return_type: string; stage: string;
@@ -66,6 +67,12 @@ interface PacketPreview {
   alreadyAccepted: string[];
   newSchedules: string[];
 }
+interface Invoice {
+  id: string; invoice_number: string; status: string;
+  total_cents: number; amount_paid_cents: number;
+  sent_at: string | null; paid_at: string | null;
+}
+interface NextSession { id: string; starts_at: string; is_recurring: boolean }
 interface PacketRow {
   id: string; status: string; schedule_codes: string[];
   sent_at: string | null; signed_at: string | null; created_at: string;
@@ -139,6 +146,11 @@ export default function ClientPacketPage() {
   const [packetMsg, setPacketMsg] = useState('');
   const [packetErr, setPacketErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [nextSession, setNextSession] = useState<NextSession | null>(null);
+  const [scheduleEngagementId, setScheduleEngagementId] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [edits, setEdits] = useState<Record<string, string>>({});
   const [sessions, setSessions] = useState<Session[]>([]);
   // The transcript is a separate, audited fetch — it is never loaded just because
   // someone opened the client record.
@@ -163,6 +175,12 @@ export default function ClientPacketPage() {
         api<{ engagements: Engagement[] }>(`/engagements?contactId=${params.id}`)
           .then((r) => setEngagements(r.engagements ?? []))
           .catch(() => setEngagements([])),
+        api<{ invoices: Invoice[] }>(`/invoices?contactId=${params.id}`)
+          .then((r) => setInvoices(r.invoices ?? []))
+          .catch(() => setInvoices([])),
+        api<{ session: NextSession | null }>(`/contacts/${params.id}/next-session`)
+          .then((r) => setNextSession(r.session ?? null))
+          .catch(() => setNextSession(null)),
         api<{ packets: PacketRow[] }>(`/contacts/${params.id}/packets`)
           .then((r) => setPackets(r.packets ?? []))
           .catch(() => setPackets([])),
@@ -243,7 +261,91 @@ export default function ClientPacketPage() {
 
       <div className="cards">
         <section className="card">
-          <h2>Contact</h2>
+          <h2>
+            Contact{' '}
+            {/*
+              EDITABLE BASIC INFO (#33). A wrong phone number was a reason to leave the
+              client record and go somewhere else to fix it, which is exactly the
+              "everything runs from Clients" problem. Deliberately limited to the fields
+              that go stale — name, contact details, language. Status, consent and the
+              gates are not editable here: those change because something HAPPENED, and a
+              text box beside them would invite someone to assert a fact instead.
+            */}
+            <button className="btn ghost" type="button" onClick={() => setEditing((v) => !v)}>
+              {editing ? 'Cancel' : 'Edit'}
+            </button>
+          </h2>
+          {editing ? (
+            <div>
+              {(
+                [
+                  ['firstName', 'First name', c.first_name],
+                  ['lastName', 'Last name', c.last_name],
+                  ['email', 'Email', c.email ?? ''],
+                  ['phone', 'Phone', c.phone ?? ''],
+                ] as const
+              ).map(([field, label, current]) => (
+                <label className="field" key={field}>
+                  {label}
+                  <input
+                    value={edits[field] ?? current}
+                    onChange={(e) => setEdits((v) => ({ ...v, [field]: e.target.value }))}
+                  />
+                </label>
+              ))}
+              <label className="field">
+                Language
+                <select
+                  value={edits.language ?? c.language}
+                  onChange={(e) => setEdits((v) => ({ ...v, language: e.target.value }))}
+                >
+                  <option value="en">English</option>
+                  <option value="es">Spanish</option>
+                </select>
+              </label>
+              <label className="field">
+                Best way to reach them
+                <select
+                  value={edits.preferredContactMethod ?? c.preferred_contact_method ?? ''}
+                  onChange={(e) => setEdits((v) => ({ ...v, preferredContactMethod: e.target.value }))}
+                >
+                  <option value="">not set</option>
+                  <option value="phone">phone</option>
+                  <option value="email">email</option>
+                  <option value="text">text</option>
+                  <option value="portal">portal</option>
+                </select>
+              </label>
+              <button
+                className="btn accent"
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setPacketErr('');
+                  try {
+                    // Only what actually changed — a PATCH that resends every field
+                    // would overwrite anything edited elsewhere since this page loaded.
+                    const body = Object.fromEntries(
+                      Object.entries(edits).filter(([, v]) => v !== undefined && v !== '')
+                    );
+                    if (Object.keys(body).length === 0) { setEditing(false); return; }
+                    await api(`/contacts/${params.id}`, { method: 'PATCH', body });
+                    setPacketMsg('Saved.');
+                    setEdits({});
+                    setEditing(false);
+                    await load();
+                  } catch (e) {
+                    setPacketErr(e instanceof Error ? e.message : 'Could not save.');
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Save
+              </button>
+            </div>
+          ) : null}
           <p className="small" style={{ overflowWrap: 'anywhere' }}>
             {c.email ?? 'no email'}
             <br />
@@ -709,6 +811,130 @@ export default function ClientPacketPage() {
           ))
         )}
         {transcriptErr ? <p className="alert error small">{transcriptErr}</p> : null}
+      </section>
+
+      {/*
+        INVOICES (#33). The record could show quotes, packets, returns and sessions and
+        say nothing about money, so "how are they doing on payment" meant leaving for
+        another screen.
+
+        WHAT IS NOT HERE: any way for staff to take a card. Brian's ruling — staff "take
+        payment" means sending the client their pay link, and settlement runs the single
+        markInvoicePaid path from #24. The Stripe session is created under the CLIENT's
+        own portal session, which is what keeps card data away from us entirely. So the
+        action here is Send reminder, and the pay link is shown so it can be read out on
+        a call.
+      */}
+      <section className="card" style={{ marginTop: 12 }}>
+        <h2>Invoices ({invoices.length})</h2>
+        {invoices.length === 0 ? (
+          <p className="muted small">Nothing invoiced yet.</p>
+        ) : (
+          <ul className="list">
+            {invoices.map((inv) => (
+              <li key={inv.id}>
+                <span className="grow">
+                  <strong>{inv.invoice_number}</strong> · {formatMoney(inv.total_cents)}
+                  {inv.amount_paid_cents > 0 && inv.status !== 'paid' ? (
+                    <span className="muted"> · {formatMoney(inv.amount_paid_cents)} paid</span>
+                  ) : null}
+                  <br />
+                  <span className={`badge ${inv.status === 'paid' ? 'ok' : inv.status === 'overdue' ? 'warn' : ''}`}>
+                    {inv.status}
+                  </span>
+                  {inv.sent_at ? <span className="muted small"> sent {new Date(inv.sent_at).toLocaleDateString()}</span> : null}
+                </span>
+                {inv.status !== 'paid' && inv.status !== 'void' ? (
+                  <>
+                    <button
+                      className="btn ghost"
+                      type="button"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!window.confirm(`Email ${c.first_name} a reminder for ${inv.invoice_number}?`)) return;
+                        setBusy(true);
+                        setPacketErr('');
+                        try {
+                          const r = await api<{ to: string }>(`/invoices/${inv.id}/remind`, { method: 'POST' });
+                          setPacketMsg(`Reminder sent to ${r.to}.`);
+                          await load();
+                        } catch (e) {
+                          setPacketErr(e instanceof Error ? e.message : 'Could not send the reminder.');
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Send reminder
+                    </button>{' '}
+                    {/* The client's own pay screen. Read it to them; do not take the card. */}
+                    <span className="muted small" style={{ overflowWrap: 'anywhere' }}>
+                      {packet.portalBaseUrl}/invoices?invoice={inv.id}
+                    </span>
+                  </>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/*
+        SCHEDULING (#33). The cross-check is enforced in the API, not here: asking for a
+        meeting when one is already booked returns 409 with the session, and this screen
+        shows that instead of creating a second task. The button cannot double-book even
+        if this component forgets to look first.
+      */}
+      <section className="card" style={{ marginTop: 12 }}>
+        <h2>Meetings</h2>
+        {nextSession ? (
+          <p className="small">
+            <span className="badge ok">scheduled</span>{' '}
+            Next session {new Date(nextSession.starts_at).toLocaleString()}
+            {nextSession.is_recurring ? <span className="muted"> · recurring</span> : null}
+            <br />
+            <span className="muted small">Attach work to this session rather than booking a second one.</span>
+          </p>
+        ) : (
+          <>
+            <p className="muted small">Nothing on their calendar.</p>
+            <label className="field">
+              For which engagement?
+              <select value={scheduleEngagementId} onChange={(e) => setScheduleEngagementId(e.target.value)}>
+                <option value="">Not specific to one</option>
+                {engagements
+                  .filter((e) => e.status === 'active')
+                  .map((e) => (
+                    <option key={e.id} value={e.id}>{e.service_line}</option>
+                  ))}
+              </select>
+            </label>
+            <button
+              className="btn accent"
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setPacketErr('');
+                try {
+                  await api(`/contacts/${params.id}/schedule-session`, {
+                    method: 'POST',
+                    body: scheduleEngagementId ? { engagementId: scheduleEngagementId } : {},
+                  });
+                  setPacketMsg('Scheduling task created — it is in the owner’s queue with the booking link.');
+                  await load();
+                } catch (e) {
+                  setPacketErr(e instanceof Error ? e.message : 'Could not request scheduling.');
+                  await load();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Request a meeting
+            </button>
+          </>
+        )}
       </section>
 
       {c.notes ? (

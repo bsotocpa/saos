@@ -2,8 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
+import { writeAudit } from '../../audit.ts';
+import { sendTemplatedEmail } from '../templates/service.ts';
 import { todayChicago } from '../tax/deadlines.ts';
-import { createInvoice, markInvoicePaid, runInvoiceOverdueJob } from './service.ts';
+import { createInvoice, formatUsd, markInvoicePaid, runInvoiceOverdueJob } from './service.ts';
 import { runDunningJob } from './dunning.ts';
 
 const CreateInvoiceBody = z.object({
@@ -37,6 +39,68 @@ export function registerBillingRoutes(app: FastifyInstance): void {
       b
     );
     return reply.code(201).send(result);
+  });
+
+  /*
+   * SEND A CLIENT THEIR INVOICE AGAIN — the "reminder / take payment" of finding #33.
+   *
+   * Brian's ruling on what staff "taking payment" may mean: send the client their pay
+   * link, never a staff-entered card, and settle through the same markInvoicePaid path
+   * as #24 — one settlement path, no exceptions. So this endpoint sends an EMAIL and
+   * touches no money. There is deliberately no staff-side checkout: the Stripe session is
+   * created by /portal/invoices/:id/checkout under the CLIENT's own session, which is
+   * what makes the payment theirs and keeps card data away from us entirely.
+   *
+   * NOT gated by isAutomationEnabled. That gate exists so no client receives an
+   * AUTOMATED message before Brian arms it — ar_dunning suppresses the automatic chase
+   * while still flipping invoices overdue. A person clicking this button about a named
+   * client is the decision the gate is standing in for, and the same is already true of
+   * sending an engagement packet. The audit row records who decided.
+   */
+  app.post<{ Params: { id: string } }>('/invoices/:id/remind', billing, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const actor = request.staff!;
+    const { rows } = await app.db.query<{
+      id: string; invoice_number: string; status: string; total_cents: number;
+      contact_id: string; email: string | null; first_name: string; language: 'en' | 'es';
+    }>(
+      `SELECT i.id, i.invoice_number, i.status, i.total_cents,
+              c.id AS contact_id, c.email, c.first_name, c.language
+         FROM invoices i JOIN contacts c ON c.id = i.contact_id
+        WHERE i.id = $1`,
+      [id]
+    );
+    const inv = rows[0];
+    if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
+    if (inv.status === 'paid') {
+      throw new AppError(409, 'already_paid', 'This invoice is paid — there is nothing to chase.');
+    }
+    if (!inv.email) {
+      throw new AppError(400, 'no_email', 'This client has no email address, so there is nowhere to send it.');
+    }
+
+    await sendTemplatedEmail(app, {
+      to: inv.email,
+      templateKey: 'invoice_reminder',
+      language: inv.language,
+      contactId: inv.contact_id,
+      vars: {
+        first_name: inv.first_name,
+        invoice_number: inv.invoice_number,
+        amount: formatUsd(inv.total_cents),
+        // The SAME deep link the dunning job and invoice_sent use. A reminder that names
+        // an invoice and then points at the portal home makes the client hunt for it.
+        portal_link: `${app.config.PORTAL_BASE_URL}/invoices?invoice=${inv.id}`,
+      },
+    });
+
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      action: 'invoice.reminder_sent', objectType: 'invoice', objectId: inv.id,
+      contactId: inv.contact_id, ip: request.ip,
+      details: { invoice_number: inv.invoice_number, manual: true },
+    });
+    return { status: 'sent', to: inv.email };
   });
 
   app.get('/invoices', billing, async (request) => {

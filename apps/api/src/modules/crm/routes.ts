@@ -268,6 +268,9 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       // How long a sign-in link lives, so the client record can say whether the one we
       // sent is still usable rather than leaving staff to guess (#32).
       magicLinkTtlMinutes: app.config.MAGIC_LINK_TTL_MINUTES,
+      // Where the client's own screens live, so the record can show the pay link staff
+      // read out on a call (#33) instead of hardcoding the domain in the ops app.
+      portalBaseUrl: app.config.PORTAL_BASE_URL,
     };
   });
 

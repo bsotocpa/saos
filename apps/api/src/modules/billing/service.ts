@@ -26,7 +26,7 @@ export interface InvoiceLineInput {
   unitCents?: number | undefined;
 }
 
-function formatUsd(cents: number): string {
+export function formatUsd(cents: number): string {
   return `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
