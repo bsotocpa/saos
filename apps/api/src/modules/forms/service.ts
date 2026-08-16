@@ -8,7 +8,6 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
-import { sendTemplatedEmail } from '../templates/service.ts';
 import { ensurePortalUser, issueMagicLink } from '../portal-auth/service.ts';
 import { refreshEnrichmentGaps } from '../crm/service.ts';
 import { createEnvelope, templateKeyFor } from '../signatures/service.ts';
@@ -284,14 +283,24 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
     contactId, type: 'consent_7216', templateKey: templateKeyFor('consent_7216'),
   });
 
-  // Welcome + portal magic link (their language) + routing flags.
-  const contact = await app.db.query<{ first_name: string }>(`SELECT first_name FROM contacts WHERE id = $1`, [contactId]);
-  await sendTemplatedEmail(app, {
-    to: email, templateKey: 'welcome_soto', language, contactId,
-    vars: { first_name: contact.rows[0]!.first_name, portal_link: app.config.PORTAL_BASE_URL },
-  });
+  // ONE welcome, and it is the one carrying the link (Brian, 2026-08-15).
+  //
+  // This sent two: `welcome_soto` saying "a sign-in link is on its way in a separate
+  // email", and then a bare `portal_magic_link` — the exact email finding #21 called
+  // indistinguishable from phishing, still going to every self-serve client months after
+  // #21 was closed. `portal_invite` IS the welcome: it explains what the portal is, what
+  // is in it, and what to do when the link expires.
+  //
+  // Splitting them also raced the clock. The link expires in MAGIC_LINK_TTL_MINUTES; a
+  // client who read the welcome first and went looking for the second email could arrive
+  // at a dead link having been told to expect it.
+  //
+  // `welcome_soto` is left in the templates table rather than retired — its copy still
+  // describes the pre-ruling checklist (it lists paying a deposit as a step, which the
+  // canonical journey no longer has), so it needs Brian's rewrite or his retirement, not
+  // a silent delete by me.
   const portalUser = await ensurePortalUser(app, contactId);
-  await issueMagicLink(app, portalUser.id);
+  await issueMagicLink(app, portalUser.id, { purpose: portalUser.created ? 'invite' : 'login' });
 
   const rene = await firstActiveByRole(app.db, 'comms_billing');
   if (rene) {
@@ -371,12 +380,16 @@ export async function processHiloIntake(app: FastifyInstance, submissionId: stri
   // Demographics (screen 3) stay in the SUBMISSION for aggregate funder
   // reporting only — deliberately NOT copied to the contact record.
 
-  await sendTemplatedEmail(app, {
-    to: email, templateKey: 'welcome_hilo', language, contactId,
-    vars: { first_name: String(a.first_name), portal_link: app.config.PORTAL_BASE_URL },
-  });
+  // Same one-welcome fix as the Soto path, in Hilo's voice and under Hilo's name.
+  // `portal_invite` says "your Soto Accounting portal is ready", which is the wrong
+  // firm's name to put in front of an entrepreneur who came through Hilo — so the brand
+  // is passed explicitly rather than guessed from `hilo_status`, which Soto clients
+  // carry too.
   const portalUser = await ensurePortalUser(app, contactId);
-  await issueMagicLink(app, portalUser.id);
+  await issueMagicLink(app, portalUser.id, {
+    purpose: portalUser.created ? 'invite' : 'login',
+    brand: 'hilo',
+  });
 
   await writeAudit(app.db, {
     actorType: 'client', actorLabel: email, action: 'intake.submitted',

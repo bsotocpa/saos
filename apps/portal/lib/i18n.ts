@@ -430,9 +430,15 @@ const dict = {
   ],
   intake_add_another: ['Add another', 'Agregar otro'],
   intake_remove: ['Remove', 'Quitar'],
+  // This string promised "close this and come back" for months while the page threw
+  // the resume token away on every reload. As of 2026-08-15 it is true.
   intake_saved_note: [
     'Your answers save as you go, so you can close this and come back.',
     'Sus respuestas se guardan solas, así que puede cerrar y volver después.',
+  ],
+  intake_resumed: [
+    'Welcome back — we picked up where you left off.',
+    'Bienvenido(a) de nuevo — continuamos donde lo dejó.',
   ],
   intake_done_title: ['Got it — thank you', 'Listo — gracias'],
   intake_done_body: [

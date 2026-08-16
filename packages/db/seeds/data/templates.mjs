@@ -159,6 +159,78 @@ export const templates = [
       'puede ignorar este correo — su cuenta está segura.\n\n' +
       '— Soto Accounting',
   },
+  /*
+   * HILO'S OWN LINK EMAILS (2026-08-15).
+   *
+   * Hilo entrepreneurs get portal accounts from the Hilo intake, but every portal email
+   * above says "Soto Accounting" — so someone who came through Hilo was being welcomed by
+   * a firm they had not contacted. `issueMagicLink` picks the pair by brand.
+   *
+   * Voice carries over from `welcome_hilo`, which these replace as the first thing a Hilo
+   * entrepreneur receives: you are building something, you are not doing it alone, this is
+   * your space. Hilo's guidelines put warmth and the thread motif ahead of feature lists,
+   * so these do not enumerate portal capabilities the way the Soto invite does.
+   */
+  {
+    key: 'portal_invite_hilo',
+    name: 'Portal invitation — Hilo (first-time access)',
+    channel: 'email',
+    isPlaceholder: false, // functional copy, not legal language — admin-editable, no deploy
+    variables: ['first_name', 'link', 'ttl_minutes', 'portal_url'],
+    subjectEn: 'You’re in, {{first_name}} — here’s your Hilo portal',
+    subjectEs: 'Ya está adentro, {{first_name}} — este es su portal de Hilo',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Welcome to Hilo. You’re building something — and you don’t have to figure it all ' +
+      'out alone.\n\n' +
+      'Your portal is ready. It’s where you book sessions, share documents securely, and ' +
+      'keep track of what you’re working on with us:\n\n' +
+      '{{link}}\n\n' +
+      'That link signs you in once and expires in {{ttl_minutes}} minutes. If it expires ' +
+      'before you get to it, go to {{portal_url}} and enter this same email address — ' +
+      'we’ll send a fresh one. There’s no password to create or remember.\n\n' +
+      'Book a session whenever you’re ready, and bring whatever’s on your mind. This is ' +
+      'your space.\n\n' +
+      'If anything looks wrong, reply to this email and a person will answer.\n\n' +
+      '— The Hilo team',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Bienvenido(a) a Hilo. Usted está construyendo algo — y no tiene que resolverlo ' +
+      'todo por su cuenta.\n\n' +
+      'Su portal está listo. Allí reserva sus sesiones, comparte documentos de forma ' +
+      'segura y sigue el rumbo de lo que está trabajando con nosotros:\n\n' +
+      '{{link}}\n\n' +
+      'Ese enlace le da acceso una sola vez y vence en {{ttl_minutes}} minutos. Si vence ' +
+      'antes de que lo use, visite {{portal_url}} e ingrese este mismo correo ' +
+      'electrónico — le enviaremos uno nuevo. No hay contraseña que crear ni recordar.\n\n' +
+      'Reserve una sesión cuando esté listo(a), y traiga lo que tenga en mente. Este es ' +
+      'su espacio.\n\n' +
+      'Si algo no se ve bien, responda a este correo y una persona le contestará.\n\n' +
+      '— El equipo de Hilo',
+  },
+  {
+    key: 'portal_magic_link_hilo',
+    name: 'Portal magic-link sign-in email — Hilo',
+    channel: 'email',
+    isPlaceholder: false, // functional copy, not legal language — live from day one, admin-editable
+    variables: ['first_name', 'link', 'ttl_minutes'],
+    subjectEn: 'Your secure sign-in link — Hilo',
+    subjectEs: 'Su enlace seguro de acceso — Hilo',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Here is your secure link to sign in to your Hilo portal:\n\n' +
+      '{{link}}\n\n' +
+      'The link works once and expires in {{ttl_minutes}} minutes. If you did not request it, ' +
+      'you can ignore this email — your account is safe.\n\n' +
+      '— The Hilo team',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Aquí está su enlace seguro para entrar a su portal de Hilo:\n\n' +
+      '{{link}}\n\n' +
+      'El enlace funciona una sola vez y vence en {{ttl_minutes}} minutos. Si usted no lo solicitó, ' +
+      'puede ignorar este correo — su cuenta está segura.\n\n' +
+      '— El equipo de Hilo',
+  },
   {
     key: 'ladder_portal_reminder',
     name: 'Escalation ladder — D3 portal reminder (waiting on client)',

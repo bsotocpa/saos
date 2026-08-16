@@ -174,9 +174,18 @@ test('Form 1 full branch: F&B owner, ES, IRS letters, SSN by phone, co-owned ent
   assert.deepEqual(envelopes.rows.map((r: { type: string }) => r.type).sort(), ['consent_7216', 'engagement_letter']);
   assert.ok(envelopes.rows.every((r: { status: string }) => r.status === 'draft'), 'queued, not sent — placeholder gate governs sending');
 
-  // Welcome (ES) + magic link mails; Rene + Ana notifications; SSN task.
-  assert.ok(sentMail.some((m) => m.to === 'taquera@example.test' && /Bienvenido/.test(m.subject)), 'ES welcome');
-  assert.ok(sentMail.some((m) => m.to === 'taquera@example.test' && /enlace seguro/i.test(m.subject)), 'ES magic link');
+  // ONE welcome (ES), carrying the link; Rene + Ana notifications; SSN task.
+  //
+  // This asserted the opposite until 2026-08-15 — a welcome AND a separate "enlace
+  // seguro" magic link — which is precisely the bug: the second of those two was the
+  // bare sign-in email finding #21 called indistinguishable from phishing, and the
+  // first told the client to go looking for it while its 15 minutes ran down. Inverted
+  // rather than deleted: the premise changed, so the assertion states the new premise.
+  const hers = sentMail.filter((m) => m.to === 'taquera@example.test');
+  assert.equal(hers.length, 1, `one welcome, got ${hers.length}: ${hers.map((m) => m.subject).join(' | ')}`);
+  assert.match(hers[0]!.subject, /portal de cliente/i, 'the ES invite, not the bare ES sign-in link');
+  assert.ok(!/enlace seguro/i.test(hers[0]!.subject), 'a first-time client never gets the bare link');
+  assert.ok(hers[0]!.text.includes('/auth/verify?token='), 'and it carries the link itself');
   const reneNote = await app.db.query(
     `SELECT count(*)::int AS n FROM notifications WHERE type = 'new_intake' AND staff_id = $1 AND contact_id = $2`,
     [rene.id, c.id]
@@ -503,4 +512,136 @@ test('the rehearsal banner keys off the placeholder flag, so it removes itself',
   );
   const restored = await app.inject({ method: 'GET', url: '/public/forms/soto_intake' });
   assert.equal(restored.json().rehearsalBannerEn, null, 'gone by itself');
+});
+
+/*
+ * BUG 1 (Brian, 2026-08-15). Finding #21 said an invite and a re-login link are
+ * different emails, and it was closed after fixing the STAFF-GRANT path — while the
+ * intake processor, the path every self-serve client actually walks, kept calling
+ * issueMagicLink with no purpose and sending the bare link #21 described as
+ * indistinguishable from phishing.
+ *
+ * Asserted on the audit line, not on subject copy: these templates are admin-editable
+ * by design, so a test that pins Brian's wording would fail the next time he improves
+ * it. The audit records WHICH email a client got, which is the thing that was wrong.
+ */
+test('#21 for real: a new client from intake gets the invite, and only one welcome', async () => {
+  const before = sentMail.length;
+  const { submissionId, resumeToken } = await startForm('soto_intake');
+  const submit = await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Invitee',
+        email: 'invitee@example.test', mobile_phone: '+13125550188', sms_ok: 'no',
+        preferred_contact_method: 'email', owns_business: 'no',
+        services: ['tax_personal'], filed_last_year: 'yes', irs_letters: 'no',
+        how_heard: 'google', communication_consent: true, esign_consent: true,
+      },
+    },
+  });
+  assert.equal(submit.statusCode, 200, submit.body);
+
+  const inviteeId = (await app.db.query<{ id: string }>(`SELECT id FROM contacts WHERE email = $1`, ['invitee@example.test'])).rows[0]!.id;
+  const audit = await app.db.query(
+    `SELECT details FROM audit_log
+      WHERE action = 'magic_link.issued' AND contact_id = $1
+      ORDER BY occurred_at DESC LIMIT 1`,
+    [inviteeId]
+  );
+  assert.equal(audit.rows.length, 1, 'the link was issued');
+  assert.equal(audit.rows[0].details.purpose, 'invite', 'a brand-new client gets the INVITE, not the bare link');
+  assert.equal(audit.rows[0].details.brand, 'soto');
+
+  // One welcome, not two. The old path sent welcome_soto ("a sign-in link is on its
+  // way in a separate email") and then the link, which raced the link's own expiry.
+  const theirs = sentMail.slice(before).filter((m) => m.to === 'invitee@example.test');
+  assert.equal(theirs.length, 1, `exactly one email to a new client, got ${theirs.length}: ${theirs.map((m) => m.subject).join(' | ')}`);
+  assert.ok(theirs[0]!.text.includes('/auth/verify?token='), 'and it is the one carrying the sign-in link');
+});
+
+test('Hilo entrepreneurs are welcomed by Hilo, not by Soto Accounting', async () => {
+  const before = sentMail.length;
+  const { submissionId, resumeToken } = await startForm('hilo_intake');
+  const submit = await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Founder',
+        email: 'founder@example.test', mobile_phone: '+13125550189', sms_ok: 'no', zip: '60623',
+        stage: 'idea', business_kind: 'services', help_domains: ['money'],
+        communication_consent: true,
+      },
+    },
+  });
+  assert.equal(submit.statusCode, 200, submit.body);
+
+  const founderId = (await app.db.query<{ id: string }>(`SELECT id FROM contacts WHERE email = $1`, ['founder@example.test'])).rows[0]!.id;
+  const audit = await app.db.query(
+    `SELECT details FROM audit_log
+      WHERE action = 'magic_link.issued' AND contact_id = $1
+      ORDER BY occurred_at DESC LIMIT 1`,
+    [founderId]
+  );
+  assert.equal(audit.rows[0].details.purpose, 'invite');
+  assert.equal(audit.rows[0].details.brand, 'hilo', 'brand is passed by the caller, never inferred from hilo_status');
+
+  const theirs = sentMail.slice(before).filter((m) => m.to === 'founder@example.test');
+  assert.equal(theirs.length, 1);
+  // The point of the brand split: no other firm's name in front of a Hilo entrepreneur.
+  assert.ok(!/Soto Accounting/i.test(theirs[0]!.subject + theirs[0]!.text), 'no Soto branding in a Hilo welcome');
+  assert.ok(/Hilo/.test(theirs[0]!.subject + theirs[0]!.text), 'Hilo signs its own email');
+});
+
+/*
+ * BUG 2. Autosave has PATCHed answers since M28 and nothing could ever read them back,
+ * so the portal started a new submission on every page load — the save was write-only
+ * and "you can close this and come back" was untrue.
+ */
+test('an interrupted intake resumes: answers and place come back, stale handles do not', async () => {
+  const { submissionId, resumeToken } = await startForm('soto_intake');
+  await app.inject({
+    method: 'PATCH', url: `/public/forms/submissions/${submissionId}`,
+    payload: {
+      resumeToken, screenReached: 2,
+      answers: { first_name: 'Synthetic', last_name: 'Interrupted', owns_business: 'yes' },
+    },
+  });
+
+  const resumed = await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/resume`,
+    payload: { resumeToken },
+  });
+  assert.equal(resumed.statusCode, 200, resumed.body);
+  assert.equal(resumed.json().formKey, 'soto_intake');
+  assert.equal(resumed.json().answers.first_name, 'Synthetic', 'what they typed comes back');
+  assert.equal(resumed.json().answers.owns_business, 'yes');
+  assert.equal(resumed.json().screenReached, 2, 'and so does where they were');
+
+  const wrong = await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/resume`,
+    payload: { resumeToken: 'not-the-token' },
+  });
+  assert.equal(wrong.statusCode, 404, 'a stolen id without the token reads nothing');
+
+  await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Interrupted',
+        email: 'interrupted@example.test', mobile_phone: '+13125550190', sms_ok: 'no',
+        preferred_contact_method: 'email', owns_business: 'no',
+        services: ['tax_personal'], filed_last_year: 'no', irs_letters: 'no',
+        how_heard: 'google', communication_consent: true, esign_consent: true,
+      },
+    },
+  });
+  const after = await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/resume`,
+    payload: { resumeToken },
+  });
+  assert.equal(after.statusCode, 409, 'a submitted form does not reopen — the client starts fresh');
 });

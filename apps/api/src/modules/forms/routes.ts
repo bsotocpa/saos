@@ -36,6 +36,8 @@ const SubmitBody = z.object({
   answers: z.record(z.string(), z.unknown()),
 });
 
+const ResumeBody = z.object({ resumeToken: z.string().min(1) });
+
 const PUBLIC_FORMS = new Set(['soto_intake', 'hilo_intake']);
 /*
  * The client checklist, in the order Brian ruled after the rehearsal (2026-08-13).
@@ -111,6 +113,33 @@ export function registerFormRoutes(app: FastifyInstance): void {
       rows[0]!.id,
     ]);
     return reply.code(201).send({ submissionId: rows[0]!.id, resumeToken: token });
+  });
+
+  /*
+   * RESUME an in-progress submission (2026-08-15).
+   *
+   * Autosave has worked since M28 — every screen PATCHes its answers — but nothing could
+   * ever read them back, so the save was write-only and the renderer started a brand new
+   * submission on every page load. A client who backgrounded the form on a phone lost the
+   * lot, which is the opposite of what the autosave was built for.
+   *
+   * POST, not GET, so the resume token stays out of access logs and browser history.
+   * `loadSubmission` is the only gate needed: wrong token → 404, already submitted → 409,
+   * both of which the client treats as "start fresh".
+   */
+  app.post<{ Params: { id: string } }>('/public/forms/submissions/:id/resume', async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = ResumeBody.parse(request.body);
+    const sub = await loadSubmission(app, id, b.resumeToken);
+    const { rows } = await app.db.query<{ screen_reached: number }>(
+      `SELECT screen_reached FROM form_submissions WHERE id = $1`,
+      [id]
+    );
+    return {
+      formKey: sub.form_key,
+      answers: sub.answers,
+      screenReached: rows[0]?.screen_reached ?? 0,
+    };
   });
 
   app.patch<{ Params: { id: string } }>('/public/forms/submissions/:id', async (request) => {

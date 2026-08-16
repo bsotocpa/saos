@@ -61,11 +61,29 @@ export async function ensurePortalUser(
  * indistinguishable from phishing. `purpose: 'invite'` sends the welcome instead; every
  * later request sends the bare link, which is the right message once you know what the
  * portal is.
+ *
+ * #21 ONLY EVER SHIPPED FOR THE STAFF-GRANT PATH (2026-08-15). The intake processor —
+ * the path every self-serve client actually walks — called this with no purpose at all,
+ * so the people the finding was written about kept getting the phishing-shaped link.
+ * The default stays 'login' because a bare link is the safe thing to send to someone who
+ * already knows the portal; callers that CREATE an account are the ones who must say so.
+ *
+ * BRAND is a parameter, not an inference. A Hilo entrepreneur receiving "your Soto
+ * Accounting portal is ready" is a brand violation, and `contacts.hilo_status` cannot
+ * stand in for brand — Soto clients carry it too (referrals, program participants). The
+ * caller knows which front door someone came through; nothing else reliably does.
  */
+type Brand = 'soto' | 'hilo';
+
+const LINK_TEMPLATES: Record<Brand, { invite: string; login: string }> = {
+  soto: { invite: 'portal_invite', login: 'portal_magic_link' },
+  hilo: { invite: 'portal_invite_hilo', login: 'portal_magic_link_hilo' },
+};
+
 export async function issueMagicLink(
   app: FastifyInstance,
   portalUserId: string,
-  opts: { purpose?: 'invite' | 'login' } = {}
+  opts: { purpose?: 'invite' | 'login'; brand?: Brand } = {}
 ): Promise<void> {
   const { rows } = await app.db.query<{
     id: string;
@@ -97,9 +115,10 @@ export async function issueMagicLink(
   );
 
   const isInvite = opts.purpose === 'invite';
+  const templates = LINK_TEMPLATES[opts.brand ?? 'soto'];
   await sendTemplatedEmail(app, {
     to: user.email,
-    templateKey: isInvite ? 'portal_invite' : 'portal_magic_link',
+    templateKey: isInvite ? templates.invite : templates.login,
     language: user.language,
     contactId: user.contact_id,
     vars: {
@@ -118,7 +137,9 @@ export async function issueMagicLink(
     objectType: 'portal_user',
     objectId: user.id,
     contactId: user.contact_id,
-    details: { purpose: isInvite ? 'invite' : 'login' },
+    // The brand is on the audit line because "which email did this client actually
+    // get" is the question #21 was reopened to answer.
+    details: { purpose: isInvite ? 'invite' : 'login', brand: opts.brand ?? 'soto' },
   });
 }
 

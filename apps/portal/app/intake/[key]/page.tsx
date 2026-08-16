@@ -12,8 +12,12 @@
 //     text all come from the definition, so Brian changes wording or adds an
 //     industry without a deploy. This file knows about FIELD TYPES, not questions.
 //
-//  2. PROGRESS IS SAVED AS YOU GO. Each screen PATCHes its answers with the resume
-//     token, so a client who loses signal on a phone mid-intake does not start over.
+//  2. PROGRESS IS SAVED AS YOU GO, AND CAN BE READ BACK. Each screen PATCHes its
+//     answers with the resume token, and the token is kept in localStorage so a client
+//     who loses signal, backgrounds the tab or closes the phone picks up where they
+//     stopped. Until 2026-08-15 the token lived only in React state and this page
+//     POSTed /start on every mount, so the save was real and the resume was fiction:
+//     a refresh silently abandoned the submission and began another.
 //
 //  3. THE TCPA DISCLOSURE RENDERS WITH THE CONSENT QUESTION. The seed comment is
 //     explicit that the A2P campaign registration references that exact language at
@@ -65,6 +69,44 @@ function conditionMet(
   return true;
 }
 
+/*
+ * Where the resume handle lives. Not sessionStorage: closing the tab is exactly the
+ * case this exists for, and sessionStorage dies with the tab. The token grants access
+ * to answers the client typed themselves on this device, which is the same thing the
+ * form already shows on screen.
+ */
+const resumeKey = (formKey: string) => `saos.intake.${formKey}`;
+
+function readResume(formKey: string): { submissionId: string; resumeToken: string } | null {
+  try {
+    const raw = window.localStorage.getItem(resumeKey(formKey));
+    if (!raw) return null;
+    const v = JSON.parse(raw) as { submissionId?: unknown; resumeToken?: unknown };
+    if (typeof v.submissionId !== 'string' || typeof v.resumeToken !== 'string') return null;
+    return { submissionId: v.submissionId, resumeToken: v.resumeToken };
+  } catch {
+    // Private mode, disabled storage, or a value someone hand-edited. Losing resume is
+    // survivable; failing to render the form is not.
+    return null;
+  }
+}
+
+function writeResume(formKey: string, v: { submissionId: string; resumeToken: string }): void {
+  try {
+    window.localStorage.setItem(resumeKey(formKey), JSON.stringify(v));
+  } catch {
+    /* see above — resume is a convenience, never a precondition */
+  }
+}
+
+function clearResume(formKey: string): void {
+  try {
+    window.localStorage.removeItem(resumeKey(formKey));
+  } catch {
+    /* nothing to do */
+  }
+}
+
 function isRequired(f: Field, answers: Answers): boolean {
   if (typeof f.required === 'boolean') return f.required;
   if (!f.required) return false;
@@ -84,6 +126,9 @@ export default function IntakePage() {
   const [answers, setAnswers] = useState<Answers>({});
   const [screenIndex, setScreenIndex] = useState(0);
   const [state, setState] = useState<'loading' | 'ready' | 'invalid' | 'done'>('loading');
+  // Says so out loud when we put someone back where they were, so a half-filled form
+  // reads as "we kept your place" rather than "why does this already know things".
+  const [resumed, setResumed] = useState(false);
   const [rehearsalBanner, setRehearsalBanner] = useState<{ en: string | null; es: string | null }>({ en: null, es: null });
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
@@ -97,20 +142,49 @@ export default function IntakePage() {
     void (async () => {
       try {
         const d = await api<{ definition: Definition; rehearsalBannerEn: string | null; rehearsalBannerEs: string | null }>(`/public/forms/${formKey}`);
+        setDefinition(d.definition);
+        setRehearsalBanner({ en: d.rehearsalBannerEn, es: d.rehearsalBannerEs });
+
+        // Resume before starting. A stored handle can be stale in ways the client should
+        // never see — already submitted (409), garbage-collected, token rotated — so any
+        // failure quietly falls through to a fresh submission rather than showing an error
+        // about a form they have not begun.
+        const saved = readResume(formKey);
+        if (saved) {
+          try {
+            const prior = await api<{ answers: Answers; screenReached: number }>(
+              `/public/forms/submissions/${saved.submissionId}/resume`,
+              { method: 'POST', body: { resumeToken: saved.resumeToken } }
+            );
+            setSubmissionId(saved.submissionId);
+            setResumeToken(saved.resumeToken);
+            setAnswers(prior.answers ?? {});
+            // screenReached counts COMPLETED screens, so it is also the index of the
+            // first unfinished one. Clamped: a definition that lost a screen since they
+            // started must not land them past the end.
+            const total = d.definition.screens.length;
+            setScreenIndex(Math.min(prior.screenReached ?? 0, Math.max(total - 1, 0)));
+            setResumed(true);
+            setState('ready');
+            return;
+          } catch {
+            clearResume(formKey);
+          }
+        }
+
         const started = await api<{ submissionId: string; resumeToken: string }>(
           `/public/forms/${formKey}/start`,
           { method: 'POST', body: { language: lang, source: 'portal' } }
         );
-        setDefinition(d.definition);
-        setRehearsalBanner({ en: d.rehearsalBannerEn, es: d.rehearsalBannerEs });
         setSubmissionId(started.submissionId);
         setResumeToken(started.resumeToken);
+        writeResume(formKey, started);
         setState('ready');
       } catch {
         setState('invalid');
       }
     })();
-    // Starting a submission is a one-time act per page load.
+    // Starting or resuming a submission is a one-time act per page load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formKey]);
 
@@ -186,6 +260,7 @@ export default function IntakePage() {
         method: 'POST',
         body: { resumeToken, answers },
       });
+      clearResume(formKey);
       setState('done');
     } catch (err) {
       if (err instanceof ApiError && err.code === 'form_validation_failed') {
@@ -195,6 +270,19 @@ export default function IntakePage() {
         for (const i of raw ?? []) if (i.field) mapped[i.field] = i.message ?? t('intake_required');
         setIssues(mapped);
         setError(t('intake_fix_below'));
+
+        // "Fix the issues below" with nothing below it is a dead end. The server
+        // validates EVERY screen; this page renders one. So a field that became
+        // required after this client passed its screen — or any answer the server
+        // rejects that the client-side check does not — fails on a question they
+        // cannot see. Go to the earliest screen that actually holds one.
+        const offending = Object.keys(mapped);
+        if (offending.length > 0 && definition) {
+          const target = definition.screens.findIndex((s) =>
+            s.fields.some((f) => offending.includes(f.key))
+          );
+          if (target >= 0 && target !== screenIndex) setScreenIndex(target);
+        }
       } else {
         setError(err instanceof ApiError ? err.message : t('error_generic'));
       }
@@ -242,6 +330,8 @@ export default function IntakePage() {
           <strong>{lang === 'es' ? rehearsalBanner.es : rehearsalBanner.en}</strong>
         </div>
       ) : null}
+
+      {resumed ? <div className="alert">{t('intake_resumed')}</div> : null}
 
       {error ? <div className="alert error">{error}</div> : null}
 
