@@ -411,11 +411,14 @@ export default function ClientPacketPage() {
           </>
         ) : preview ? (
           <>
+            {/* #20: the title already reads "Schedule A — Individual Tax", so prefixing
+                the code produced "A — Schedule A — …" both here and in the signed Master.
+                Falls back to the bare code only if a title is genuinely missing. */}
             <p className="small">
               <strong>Would contain:</strong>{' '}
               {preview.codes.length === 0
                 ? 'nothing yet — no active services'
-                : preview.codes.map((c) => `${c} — ${preview.titles[c] ?? ''}`).join(' · ')}
+                : preview.codes.map((c) => preview.titles[c] || c).join(' · ')}
             </p>
             {preview.codes.length > 0 ? (
               <p className="muted small">

@@ -656,7 +656,18 @@ export async function renderMasterForPacket(
 
   const { renderTemplate } = await import('../templates/service.ts');
   const rendered = await renderTemplate(app, p.master_template_key, language, {
-    schedules_attached: titleRows.rows.map((r) => `${r.schedule_code} — ${r.title}`).join('; '),
+    /*
+     * FINDING #20 — the title ALREADY carries the code.
+     *
+     * This composed `${code} — ${title}`, and every title is stored as "Schedule A —
+     * Individual Tax", so the signed Master read "Service Schedules attached at signing:
+     * A — Schedule A — Individual Tax; C — Schedule C — Bookkeeping…". The client's own
+     * agreement stuttered its way through the list of what they were agreeing to.
+     *
+     * The title is the label; the code is part of it. Prefixing it again was composing a
+     * name out of a name.
+     */
+    schedules_attached: titleRows.rows.map((r) => r.title).join('; '),
   });
   // WET-SIGNATURE LINES DROPPED (Brian, 2026-08-13). This packet is signed in the
   // portal by typing a name and tapping a button; ruled lines reading

@@ -370,7 +370,11 @@ test('the attached-schedule list in the Master comes from the packet, not from a
   const packet = await createPacket(app, id, actor);
   const rendered = await renderMasterForPacket(app, packet.packetId);
   assert.deepEqual(rendered.scheduleCodes, ['C', 'E']);
-  assert.match(rendered.body, /Service Schedules attached at signing: C — .*; E — /);
+  // #20: the TITLE carries the code, so the line reads "Schedule C — …; Schedule E — …".
+  // The point of this assertion is unchanged — the list comes from the packet, not a
+  // caller — so it is the expected FORMAT that moved, not the guarantee.
+  assert.match(rendered.body, /Service Schedules attached at signing: Schedule C — .*; Schedule E — /);
+  assert.doesNotMatch(rendered.body, /signing: C — Schedule C/, "the code is not prefixed twice");
   assert.doesNotMatch(rendered.body, /\{\{/, 'no unfilled variable reaches a signer');
 });
 

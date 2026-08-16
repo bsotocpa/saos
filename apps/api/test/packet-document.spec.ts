@@ -153,7 +153,8 @@ test('nothing unfilled reaches a signer, including the attest Addendum blanks', 
   assert.match(scheduleF.body, /US GAAP/);
   assert.match(scheduleF.body, /2026-05-15/);
   // And the Master's attached-schedule sentence names F rather than being blank.
-  assert.match(doc.html, /Service Schedules attached at signing: F — /);
+  // #20: named by its own title, which already begins "Schedule F —".
+  assert.match(doc.html, /Service Schedules attached at signing: Schedule F — /);
 });
 
 test('the document records which template VERSION each section came from', async () => {
@@ -194,4 +195,37 @@ test('the document is reviewable over HTTP before anything is sent', async () =>
   assert.ok(body.sections.every((s) => s.characters > 100), 'every section has real text in it');
   assert.equal(body.deliberatelyExcluded.length, 2, 'both consents listed as excluded');
   assert.match(body.html, /data-signature-block="client"/);
+});
+
+/*
+ * FINDING #20 (Brian, 2026-08-13): the packet heading rendered "A — Schedule A —".
+ *
+ * Every schedule title is stored as "Schedule A — Individual Tax", and two places
+ * prefixed the code onto it again. One was an ops preview; the other was
+ * `schedules_attached`, which is substituted into the MASTER — so the agreement a client
+ * signs listed "A — Schedule A — Individual Tax; C — Schedule C — Bookkeeping…". The
+ * document stuttered through the list of what they were agreeing to.
+ */
+test('#20: the signed Master lists each schedule ONCE, by its own title', async () => {
+  const id = await clientWithLines('DoubleLabel', ['tax', 'bookkeeping']);
+  const packet = await createPacket(app, id, ceo);
+  assert.deepEqual(packet.scheduleCodes, ['A', 'C']);
+
+  const doc = await buildPacketDocument(app, packet.packetId);
+  const master = doc.sections.find((s) => s.kind === 'master');
+  assert.ok(master, 'the master is in the packet');
+
+  const at = master.body.indexOf('Service Schedules attached at signing:');
+  assert.ok(at >= 0, 'the schedules line is rendered');
+  const line = master.body.slice(at, master.body.indexOf('\n', at) > at ? master.body.indexOf('\n', at) : at + 200);
+
+  assert.match(line, /Schedule A — /, 'the title carries the code, as stored');
+  assert.doesNotMatch(line, /A — Schedule A/, 'and the code is not prefixed onto it again');
+  assert.doesNotMatch(line, /C — Schedule C/, 'for any schedule');
+
+  // Each schedule appears exactly once in that line.
+  for (const code of ['A', 'C']) {
+    const occurrences = line.split(`Schedule ${code} —`).length - 1;
+    assert.equal(occurrences, 1, `Schedule ${code} is listed once, not twice`);
+  }
 });

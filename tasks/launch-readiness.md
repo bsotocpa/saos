@@ -88,8 +88,10 @@ comprehension failure rather than a legal one, which is worse in the way that ma
 client. "al momento de reservar o de incorporarse" became "al aceptar una
 cotización", using vocabulary already in that paragraph.
 
-⚠ **That Spanish phrasing is the one piece of wording Brian has not signed off verbatim** —
-flagged for his confirmation.
+**Spanish phrasing approved by Brian 2026-08-15** — "al aceptar una cotización" confirmed
+correct and consistent with the paragraph's vocabulary. Both the EN and ES final §2 go to
+the attorney's file verbatim in the FYI, so counsel holds the exact text of both
+renderings rather than the English plus a description of the Spanish.
 
 **Already-signed clients are unaffected.** The rendered HTML of a signed packet is stored
 in `saos-signed-docs` at signature time, so what a client signed is a preserved artifact
