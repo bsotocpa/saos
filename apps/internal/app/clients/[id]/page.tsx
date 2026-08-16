@@ -22,6 +22,9 @@ interface Contact {
   soto_status: string; hilo_status: string; client_since: string | null;
   consent_7216_status: string; engagement_letter_status: string;
   has_portal_access: boolean;
+  portal_state: string;
+  portal_last_login_at: string | null;
+  portal_link_sent_at: string | null;
   health_score: number | null; health_components: Record<string, unknown> | null;
   sms_consent: boolean; source: string; ssn_status: string | null; ssn_last4: string | null;
   notes: string | null;
@@ -37,6 +40,7 @@ interface Packet {
   businesses: Business[];
   entityGroups: Array<{ id: string; name: string }>;
   enrichmentGaps: string[];
+  magicLinkTtlMinutes: number;
 }
 interface TaxEngagement {
   id: string; tax_year: number; return_type: string; stage: string;
@@ -99,6 +103,24 @@ interface Session {
  */
 const isOnFile = (s: string) => s === 'signed';
 const okBadge = (s: string) => (isOnFile(s) ? 'ok' : 'warn');
+
+/*
+ * Portal access, in the words a staffer would use (#32). "Invited" is the state worth
+ * naming: it means we asked and they have not arrived, which is a person to follow up
+ * with rather than a system to fix.
+ */
+const PORTAL_LABEL: Record<string, string> = {
+  not_invited: 'not invited',
+  invited: 'invited',
+  active: 'active',
+  revoked: 'revoked',
+};
+const portalBadge = (s: string) => (s === 'active' ? 'ok' : s === 'revoked' ? 'warn' : s === 'invited' ? '' : 'warn');
+
+/** A sign-in link outlives its usefulness in minutes, so say when it already has. */
+function linkExpired(sentAt: string, ttlMinutes: number): boolean {
+  return Date.now() - new Date(sentAt).getTime() > ttlMinutes * 60_000;
+}
 
 export default function ClientPacketPage() {
   const router = useRouter();
@@ -243,6 +265,67 @@ export default function ClientPacketPage() {
           {packet.enrichmentGaps.length > 0 ? (
             <p className="muted small">Missing: {packet.enrichmentGaps.join(', ')}</p>
           ) : null}
+
+          {/*
+            PORTAL ACCESS (#32). It was a boolean, surfaced only inside the packet
+            section when a draft existed — so the state that actually needs chasing,
+            "invited and never arrived", was invisible everywhere.
+
+            The button never disappears once an account exists. A sign-in link expires in
+            minutes, so an invite from three days ago is functionally not-invited, and a
+            screen that hides Resend because a row exists is hiding the one action that
+            helps.
+          */}
+          <p className="small" style={{ marginTop: 10 }}>
+            <span className={`badge ${portalBadge(c.portal_state)}`}>{PORTAL_LABEL[c.portal_state] ?? c.portal_state}</span>{' '}
+            Portal access
+            {c.portal_state === 'active' && c.portal_last_login_at ? (
+              <span className="muted"> · last signed in {new Date(c.portal_last_login_at).toLocaleDateString()}</span>
+            ) : null}
+            {c.portal_state === 'invited' && c.portal_link_sent_at ? (
+              <span className="muted">
+                {' · link sent '}{new Date(c.portal_link_sent_at).toLocaleString()}
+                {linkExpired(c.portal_link_sent_at, packet.magicLinkTtlMinutes)
+                  ? ' — expired, send another'
+                  : ' — still valid'}
+              </span>
+            ) : null}
+          </p>
+          {c.portal_state === 'revoked' ? (
+            /* Deliberately no one-click restore. Access was taken away on purpose, and
+               the reason lives outside this screen — re-granting it should be a decision
+               someone makes knowingly, not a button next to a red badge. */
+            <p className="muted small">
+              Access was revoked. Re-granting is deliberate — reactivate the portal account first.
+            </p>
+          ) : (
+            <button
+              className="btn ghost"
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                const first = c.portal_state === 'not_invited';
+                if (!window.confirm(
+                  first
+                    ? 'Grant portal access? The client is emailed a secure sign-in link and a welcome.'
+                    : 'Send another sign-in link? The previous one stops working.'
+                )) return;
+                setBusy(true);
+                setPacketErr('');
+                try {
+                  await api('/portal-users', { method: 'POST', body: { contactId: params.id } });
+                  setPacketMsg(first ? 'Invited — the client was emailed a sign-in link.' : 'A fresh sign-in link is on its way.');
+                  await load();
+                } catch (e) {
+                  setPacketErr(e instanceof Error ? e.message : 'Could not send the link.');
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {c.portal_state === 'not_invited' ? 'Grant access' : 'Resend sign-in link'}
+            </button>
+          )}
         </section>
 
         <section className="card">

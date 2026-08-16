@@ -446,3 +446,73 @@ test('health baseline (2026-08-09): never-engaged = gray; yellow only on signals
   assert.equal(byId[signalId], 'yellow', 'yellow is reserved for actual signals (overdue docs)');
   assert.equal(byId[cleanId], 'green', 'active and clean is green even at a middling score');
 });
+
+/*
+ * #32 — PORTAL ACCESS IS FOUR STATES, NOT A BOOLEAN (Brian, 2026-08-16).
+ *
+ * The client record carried `has_portal_access`, which conflated a client who was
+ * invited and never arrived with one who is using the portal. The first is the state
+ * that needs a person to follow up, and it was invisible everywhere.
+ */
+test('portal access reads not_invited → invited → active, and revoked is its own state', async () => {
+  const created = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Portalstate', email: 'portalstate@example.test' },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const contactId = created.json().id as string;
+
+  const fresh = await app.inject({ method: 'GET', url: `/contacts/${contactId}`, headers: auth(brian) });
+  assert.equal(fresh.statusCode, 200, fresh.body);
+  /*
+   * "No account" is the ABSENCE of a portal_users row, so this has to survive a
+   * subquery that returns nothing at all — a CASE arm inside it would never be reached.
+   */
+  assert.equal(fresh.json().contact.portal_state, 'not_invited');
+  assert.equal(fresh.json().contact.portal_link_sent_at, null, 'nothing sent yet');
+
+  // Grant access the way the client record does.
+  const granted = await app.inject({
+    method: 'POST', url: '/portal-users', headers: auth(brian),
+    payload: { contactId },
+  });
+  assert.equal(granted.statusCode, 201, granted.body);
+
+  const invited = await app.inject({ method: 'GET', url: `/contacts/${contactId}`, headers: auth(brian) });
+  assert.equal(invited.json().contact.portal_state, 'invited', 'asked, not yet arrived — the state worth chasing');
+  assert.ok(invited.json().contact.portal_link_sent_at, 'and WHEN we asked, because links expire in minutes');
+  assert.equal(invited.json().contact.portal_last_login_at, null);
+  assert.ok(invited.json().magicLinkTtlMinutes > 0, 'the screen can say whether that link still works');
+
+  // They arrive.
+  await app.db.query(`UPDATE portal_users SET last_login_at = now() WHERE contact_id = $1`, [contactId]);
+  const active = await app.inject({ method: 'GET', url: `/contacts/${contactId}`, headers: auth(brian) });
+  assert.equal(active.json().contact.portal_state, 'active');
+  assert.ok(active.json().contact.portal_last_login_at);
+
+  /*
+   * Revoked is a FOURTH state and must never read as merely "not invited" — someone
+   * whose access was deliberately taken away should not be re-granted by reflex.
+   */
+  await app.db.query(`UPDATE portal_users SET is_active = false WHERE contact_id = $1`, [contactId]);
+  const revoked = await app.inject({ method: 'GET', url: `/contacts/${contactId}`, headers: auth(brian) });
+  assert.equal(revoked.json().contact.portal_state, 'revoked');
+  assert.notEqual(revoked.json().contact.portal_state, 'not_invited', 'revoked is not the same as never asked');
+});
+
+test('granting portal access needs the permission, and an intern does not have it', async () => {
+  const created = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Notyours', email: 'notyours@example.test' },
+  });
+  const contactId = created.json().id as string;
+
+  const refused = await app.inject({
+    method: 'POST', url: '/portal-users', headers: auth(intern),
+    payload: { contactId },
+  });
+  assert.equal(refused.statusCode, 403, 'the inline button is still permission-gated');
+
+  const still = await app.inject({ method: 'GET', url: `/contacts/${contactId}`, headers: auth(brian) });
+  assert.equal(still.json().contact.portal_state, 'not_invited', 'and nothing was created by the attempt');
+});

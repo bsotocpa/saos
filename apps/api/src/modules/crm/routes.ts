@@ -192,7 +192,43 @@ export function registerCrmRoutes(app: FastifyInstance): void {
               -- (packets are signed in the portal), so the client page has to be able
               -- to see it and offer to grant it.
               EXISTS (SELECT 1 FROM portal_users pu WHERE pu.contact_id = c.id AND pu.is_active)
-                AS has_portal_access
+                AS has_portal_access,
+              /*
+               * #32 — the four states of portal access, derived rather than stored.
+               *
+               * has_portal_access above is a boolean, and it conflates two different
+               * situations that need different actions from staff: a client who was
+               * invited and never arrived, and one who is using the portal. "Invited"
+               * is the one that needs chasing, and it was invisible.
+               *
+               * REVOKED is a real fourth state (is_active = false) and is listed first,
+               * because someone whose access was deliberately taken away must never be
+               * read as merely "not invited" and re-granted by reflex.
+               */
+              -- COALESCE on the OUTSIDE: with no portal_users row the subquery returns
+              -- no row at all, so a CASE arm for it would never be reached. "No account"
+              -- is the absence of a row, not a value inside one.
+              COALESCE(
+                (SELECT CASE
+                          WHEN NOT pu.is_active         THEN 'revoked'
+                          WHEN pu.last_login_at IS NULL THEN 'invited'
+                          ELSE 'active'
+                        END
+                   FROM portal_users pu WHERE pu.contact_id = c.id LIMIT 1),
+                'not_invited'
+              ) AS portal_state,
+              (SELECT pu.last_login_at FROM portal_users pu WHERE pu.contact_id = c.id LIMIT 1)
+                AS portal_last_login_at,
+              /*
+               * WHEN the last sign-in link was sent, which is the number that makes
+               * "invited" meaningful. Links expire in minutes, so an invite from three
+               * days ago is functionally not-invited — staff need the date to tell the
+               * difference between "give them a moment" and "send another".
+               */
+              (SELECT max(t.created_at) FROM magic_link_tokens t
+                 JOIN portal_users pu ON pu.id = t.portal_user_id
+                WHERE pu.contact_id = c.id)
+                AS portal_link_sent_at
        FROM contacts c WHERE c.id = $1 AND NOT c.is_archived`,
       [id]
     );
@@ -229,6 +265,9 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       businesses: businesses.rows,
       entityGroups: groups.rows,
       enrichmentGaps: gaps.rows[0]?.missing_fields ?? [],
+      // How long a sign-in link lives, so the client record can say whether the one we
+      // sent is still usable rather than leaving staff to guess (#32).
+      magicLinkTtlMinutes: app.config.MAGIC_LINK_TTL_MINUTES,
     };
   });
 
