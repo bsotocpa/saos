@@ -73,6 +73,22 @@ const LABELS = {
   ],
   how_heard: ['How did you hear about us?', '¿Cómo supo de nosotros?'],
   referred_by: ['Who should we thank?', '¿A quién le agradecemos?'],
+  /*
+   * #28 (Brian, 2026-08-16): every "Other" gets a free-text companion — except
+   * demo_race, which stays a closed list.
+   *
+   * "Other" with nowhere to write was a dead end in both directions: the client could not
+   * say what they actually do, and `industry` drives NAICS AND the Form 5 module routing,
+   * so picking it also silently dropped them out of industry-specific onboarding.
+   *
+   * demo_race is the exception because that screen is funder-reporting demographics,
+   * aggregated only and deliberately never copied to the contact record. A free-text box
+   * there invites someone to type a sentence about themselves into a field the system is
+   * built never to read — and it would put free-text PII inside the grant export path.
+   */
+  industry_other: ['What does it do?', '¿A qué se dedica?'],
+  how_heard_other: ['How did you find us?', '¿Cómo nos encontró?'],
+  business_kind_other: ['What kind of business is it?', '¿Qué tipo de negocio es?'],
 
   // Hilo
   stage: ['Where are you with the business right now?', '¿En qué etapa está su negocio ahora?'],
@@ -148,7 +164,7 @@ const SMS_DISCLOSURE_ES =
 
 export const SOTO_INTAKE_DEFINITION = {
   slug: 'soto_intake',
-  version: 3, // #29: gross_revenue replaces revenue_range
+  version: 4, // #28: free-text companions for every 'Other'
   maxMinutes: 3,
   screens: [
     {
@@ -204,6 +220,17 @@ export const SOTO_INTAKE_DEFINITION = {
             opt('nonprofit', 'Nonprofit', 'Sin fines de lucro', { naics: '813319' }),
             opt('other', 'Other', 'Otro'),
           ],
+        },
+        /*
+         * #28: required only when they actually chose "Other". Picking the option that
+         * means "my answer is not on your list" and then leaving the box empty tells us
+         * nothing, which is the dead end this exists to close — and it can only ever be
+         * asked of someone who reached for it deliberately.
+         */
+        {
+          key: 'industry_other', type: 'text',
+          required: { field: 'industry', equals: 'other' },
+          showWhen: { field: 'industry', equals: 'other' },
         },
         {
           key: 'years_in_business', type: 'select', required: { field: 'owns_business', equals: 'yes' },
@@ -279,6 +306,11 @@ export const SOTO_INTAKE_DEFINITION = {
           ],
         },
         { key: 'referred_by', type: 'text', required: false, showWhen: { field: 'how_heard', equals: 'referral' } },
+        {
+          key: 'how_heard_other', type: 'text',
+          required: { field: 'how_heard', equals: 'other' },
+          showWhen: { field: 'how_heard', equals: 'other' },
+        },
         { key: 'communication_consent', type: 'checkbox', required: true },
         { key: 'esign_consent', type: 'checkbox', required: true },
       ],
@@ -288,7 +320,7 @@ export const SOTO_INTAKE_DEFINITION = {
 
 export const HILO_INTAKE_DEFINITION = {
   slug: 'hilo_intake',
-  version: 2, // unchanged by #29
+  version: 3, // #28: free-text companion for business_kind 'Other'
   maxMinutes: 1.5,
   screens: [
     {
@@ -321,6 +353,13 @@ export const HILO_INTAKE_DEFINITION = {
         {
           key: 'business_kind', type: 'select', required: true,
           options: [opt('food', 'Food & beverage', 'Comida y bebida'), opt('retail', 'Retail', 'Comercio'), opt('services', 'Services', 'Servicios'), opt('other', 'Other', 'Otro')],
+        },
+        // #28. Note what is NOT here: demo_race on screen 3 keeps its closed list, so no
+        // free-text about a person ever enters the funder-reporting path.
+        {
+          key: 'business_kind_other', type: 'text',
+          required: { field: 'business_kind', equals: 'other' },
+          showWhen: { field: 'business_kind', equals: 'other' },
         },
         {
           key: 'help_domains', type: 'multiselect', required: true,

@@ -152,23 +152,27 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
          soto_status = CASE WHEN soto_status = 'none' THEN 'lead'::soto_status ELSE soto_status END,
          sms_consent = $5, sms_consent_at = CASE WHEN $5 THEN now() ELSE sms_consent_at END,
          communication_consent_at = now(), esign_consent_at = now(),
-         how_heard = COALESCE(how_heard, $6), referred_by_text = COALESCE(referred_by_text, $7)
+         how_heard = COALESCE(how_heard, $6), referred_by_text = COALESCE(referred_by_text, $7),
+         how_heard_other = COALESCE(how_heard_other, $8)
        WHERE id = $1`,
-      [contactId, a.mobile_phone, language, a.preferred_contact_method, a.sms_ok === 'yes', a.how_heard, a.referred_by ?? null]
+      [contactId, a.mobile_phone, language, a.preferred_contact_method, a.sms_ok === 'yes', a.how_heard, a.referred_by ?? null,
+       a.how_heard === 'other' ? ((a.how_heard_other) ?? null) : null]
     );
   } else {
     const created = await app.db.query<{ id: string }>(
       `INSERT INTO contacts
          (first_name, last_name, email, phone, language, preferred_contact_method, soto_status,
           sms_consent, sms_consent_at, communication_consent_at, esign_consent_at,
-          how_heard, referred_by_text, cpa_network_source, ssn_status)
-       VALUES ($1,$2,$3,$4,$5,$6::contact_method,'lead',$7,CASE WHEN $7 THEN now() END,now(),now(),$8,$9,$10,$11::ssn_state)
+          how_heard, referred_by_text, cpa_network_source, ssn_status, how_heard_other)
+       VALUES ($1,$2,$3,$4,$5,$6::contact_method,'lead',$7,CASE WHEN $7 THEN now() END,now(),now(),$8,$9,$10,$11::ssn_state,$12)
        RETURNING id`,
       [
         a.first_name, a.last_name, email, a.mobile_phone, language, a.preferred_contact_method,
         a.sms_ok === 'yes', a.how_heard, a.referred_by ?? null,
         a.how_heard === 'cpa' ? 'intake' : null,
         a.ssn_preference === 'phone' ? 'provide_by_phone' : a.ssn_preference === 'on_file' ? 'on_file' : 'none',
+        // #28: kept only when they actually chose "Other".
+        a.how_heard === 'other' ? ((a.how_heard_other) ?? null) : null,
       ]
     );
     contactId = created.rows[0]!.id;
@@ -209,10 +213,13 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
        */
       const grossCents = dollarsToCents(a.gross_revenue);
       const biz = await app.db.query<{ id: string }>(
-        `INSERT INTO businesses (name, entity_type, industry, years_in_business, revenue_range,
+        `INSERT INTO businesses (name, entity_type, industry, industry_other, years_in_business, revenue_range,
                                  employees_range, zip, gross_revenue_cents, gross_revenue_year)
-         VALUES ($1, $2::business_entity_type, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+         VALUES ($1, $2::business_entity_type, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
         [a.business_name, (a.entity_type as string) ?? null, (a.industry as string) ?? null,
+         // #28: only meaningful when they chose "Other", and only stored then — a stale
+         // free-text description sitting beside a real industry would be worse than none.
+         a.industry === 'other' ? ((a.industry_other as string) ?? null) : null,
          a.years_in_business ?? null, a.revenue_range ?? null, a.employees_range ?? null, a.business_zip ?? null,
          grossCents, grossCents === null ? null : currentTaxYear()]
       );

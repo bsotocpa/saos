@@ -858,7 +858,8 @@ test('a blank revenue answer is not a failure, and the year is not invented for 
       },
     },
   });
-  assert.equal(submit.statusCode, 200, submit.body, 'not knowing the number does not block setup');
+  // Not knowing the number does not block setup.
+  assert.equal(submit.statusCode, 200, submit.body);
 
   const biz = await app.db.query<{ gross_revenue_cents: string | null; gross_revenue_year: number | null }>(
     `SELECT gross_revenue_cents, gross_revenue_year FROM businesses WHERE name = 'Synthetic Blank LLC'`
@@ -866,4 +867,99 @@ test('a blank revenue answer is not a failure, and the year is not invented for 
   assert.equal(biz.rows[0]!.gross_revenue_cents, null);
   // A year with no figure is noise, and the CHECK constraint refuses the pair anyway.
   assert.equal(biz.rows[0]!.gross_revenue_year, null, 'no figure, no year');
+});
+
+/*
+ * #28 — "OTHER" STOPS BEING A DEAD END (Brian, 2026-08-16).
+ *
+ * Ruled: free-text for every Other EXCEPT demo_race, which stays a closed list because
+ * that screen is funder-reporting demographics — aggregated only, never copied to the
+ * contact record — and a free-text box there would put text about a person into the
+ * grant export path.
+ */
+test('every "Other" can be explained — except the one that must not be', async () => {
+  for (const key of ['soto_intake', 'hilo_intake']) {
+    const res = await app.inject({ method: 'GET', url: `/public/forms/${key}` });
+    const fields = (res.json().definition.screens as Array<{ fields: Array<{ key: string; options?: Array<{ value: string }>; showWhen?: { field: string; equals?: string } }> }>)
+      .flatMap((s) => s.fields);
+
+    const otherBearing = fields.filter((f) => (f.options ?? []).some((o) => o.value === 'other')).map((f) => f.key);
+    assert.ok(otherBearing.length > 0, `${key}: expected some question to offer Other`);
+
+    for (const parent of otherBearing) {
+      const companion = fields.find((f) => f.showWhen?.field === parent && f.showWhen?.equals === 'other');
+      if (parent === 'demo_race') {
+        assert.equal(companion, undefined, 'demo_race keeps its closed list — no free-text PII in the funder path');
+      } else {
+        assert.ok(companion, `${key}/${parent}: "Other" with nowhere to write is a dead end`);
+      }
+    }
+  }
+});
+
+test('what the client typed for "Other" is kept, and only when they chose it', async () => {
+  const { submissionId, resumeToken } = await startForm('soto_intake');
+  const submit = await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Otherindustry',
+        email: 'otherind-forms@example.test', mobile_phone: '+13125550195', sms_ok: 'no',
+        preferred_contact_method: 'email', owns_business: 'yes',
+        business_name: 'Synthetic Falconry LLC', entity_type: 'llc',
+        industry: 'other', industry_other: 'Falconry and bird abatement',
+        years_in_business: '1-3', business_zip: '60616',
+        services: ['bookkeeping'], irs_letters: 'no',
+        how_heard: 'other', how_heard_other: 'Saw the van',
+        communication_consent: true, esign_consent: true,
+      },
+    },
+  });
+  assert.equal(submit.statusCode, 200, submit.body);
+
+  const biz = await app.db.query<{ industry: string; industry_other: string | null }>(
+    `SELECT industry, industry_other FROM businesses WHERE name = 'Synthetic Falconry LLC'`
+  );
+  assert.equal(biz.rows[0]!.industry, 'other');
+  assert.equal(biz.rows[0]!.industry_other, 'Falconry and bird abatement', 'the industry list did not fit, and now we know how');
+
+  const c = await app.db.query<{ how_heard: string; how_heard_other: string | null }>(
+    `SELECT how_heard, how_heard_other FROM contacts WHERE email = 'otherind-forms@example.test'`
+  );
+  assert.equal(c.rows[0]!.how_heard_other, 'Saw the van');
+});
+
+test('a stray "other" description is not stored beside a real answer', async () => {
+  const { submissionId, resumeToken } = await startForm('soto_intake');
+  const submit = await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Realindustry',
+        email: 'realind-forms@example.test', mobile_phone: '+13125550196', sms_ok: 'no',
+        preferred_contact_method: 'email', owns_business: 'yes',
+        business_name: 'Synthetic Real LLC', entity_type: 'llc',
+        industry: 'food_beverage', years_in_business: '1-3', business_zip: '60617',
+        // Left over from a client who changed their mind mid-form; the field was hidden
+        // again, so it describes nothing.
+        industry_other: 'stale text from an earlier answer',
+        services: ['bookkeeping'], irs_letters: 'no', how_heard: 'google',
+        how_heard_other: 'also stale',
+        communication_consent: true, esign_consent: true,
+      },
+    },
+  });
+  assert.equal(submit.statusCode, 200, submit.body);
+
+  const biz = await app.db.query<{ industry_other: string | null }>(
+    `SELECT industry_other FROM businesses WHERE name = 'Synthetic Real LLC'`
+  );
+  assert.equal(biz.rows[0]!.industry_other, null, 'a description next to a real industry would be worse than none');
+
+  const c = await app.db.query<{ how_heard_other: string | null }>(
+    `SELECT how_heard_other FROM contacts WHERE email = 'realind-forms@example.test'`
+  );
+  assert.equal(c.rows[0]!.how_heard_other, null);
 });
