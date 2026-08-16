@@ -228,9 +228,11 @@ Ruling needed on what "projects" means to a client: engagements as-is (the clien
 
 ---
 
-## Bugs found during the pass
+## Bugs found during the pass — ALL THREE FIXED AND DEPLOYED (2026-08-15)
 
-These are defects in what is already shipped, independent of how #27–#35 are ruled.
+Brian ruled: fix all three before the batch. Done and live. Each fix was sabotaged
+separately and failed exactly its own tests. Two extras came out of fixing #1: the
+double welcome email, and Hilo being welcomed under Soto's name.
 
 1. **New clients from intake get the phishing-shaped email — #21 is only half fixed.**
    `forms/service.ts:294` and `:379` call `issueMagicLink(app, portalUser.id)` with no
@@ -254,3 +256,53 @@ These are defects in what is already shipped, independent of how #27–#35 are r
    Directly relevant to **#29** if that lands as required. Mitigation is either "new required
    fields go on the last screen" or making the submit-time error scroll the client back to the
    offending screen.
+
+---
+
+## Rulings received (Brian, 2026-08-15)
+
+**#30/#31 — intake splits.** Pre-engagement short form stays where it is and keeps
+creating the contact: identity, contact info, language, service interest, nothing more.
+The post-engagement questionnaire is the onboarding-voice instrument, **built from Form 5's
+already-assembled A–I module set**, and it is the checklist step. Finish the half-built
+thing; do not start a new one.
+
+**The canonical client journey**, ruled — this is both the checklist and #34's target:
+
+1. Login setup, from the one email
+2. Review & sign packet
+3. §7216 consent — its own screen, immediately after signing
+4. Intake questionnaire
+5. Document upload
+6. Book kickoff — optional, completable at any time
+
+**Deposit is not a checklist step.** It is collected at quote acceptance, before the portal
+journey begins. #34's job is closing the seams so steps 1–5 can be completed in one sitting
+from one email. Home flips to the #35 state once the required steps are done.
+
+**#28** — approved as "every Other except `demo_race`".
+**#32** — proceed as scoped.
+**#33** — both conflicts ruled as framed: staff "take payment" means sending the client's
+pay link, never a staff-entered card, through the same `markInvoicePaid` path as #24 — one
+settlement path, no exceptions. The booking button runs the calendar cross-check or it does
+not ship.
+
+**Sequence:** three bugs → #30/#31 split → #34 seams → #35 → #33 → rest of batch.
+
+### What the journey ruling changes about what is already built
+
+Flagged here so it is not discovered mid-build:
+
+- **The dashboard checklist is a different list now.** It currently runs sign → deposit →
+  confirm info → upload → track services. The ruled journey drops the deposit step, adds
+  §7216 consent and the questionnaire as their own steps, and returns booking as optional.
+  `step_pay_deposit_at` and `step_confirm_info_at` hold real dates and stay as columns; what
+  changes is which steps the client is shown.
+- **`welcome_soto` is now unsent and its copy is stale** — it lists paying a deposit as a
+  checklist step, which the ruling removes. Left in the table for Brian to rewrite or retire;
+  not deleted by me.
+- **Step 3 is new work, not a move.** §7216 consent is collected in the intake form today
+  (`communication_consent` / `esign_consent` are intake checkboxes, and the envelopes are
+  created as drafts at intake). Giving consent its own screen immediately after signing means
+  it leaves the pre-engagement form — which is consistent with the ruling that the
+  pre-engagement form is minimal, but it is a build, not a relocation.
