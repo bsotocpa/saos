@@ -97,7 +97,7 @@ const dict = {
   quest_language: ['Language we should use with you', 'Idioma que debemos usar con usted'],
   quest_preferred: ['Best way to reach you', 'Mejor forma de contactarlo(a)'],
   quest_pref_text: ['Text', 'Texto'],
-  quest_pref_email: ['Email', 'Correo'],
+  quest_pref_email: ['Email', 'Correo electrónico'],
   quest_pref_phone: ['Phone', 'Teléfono'],
   quest_pref_portal: ['Portal', 'Portal'],
   quest_email_fixed: [
@@ -318,7 +318,7 @@ const dict = {
   prof_phone: ['Mobile phone', 'Teléfono móvil'],
   prof_method: ['Preferred contact method', 'Método de contacto preferido'],
   method_text: ['Text', 'Texto'],
-  method_email: ['Email', 'Correo'],
+  method_email: ['Email', 'Correo electrónico'],
   method_phone: ['Phone', 'Teléfono'],
   method_portal: ['Portal', 'Portal'],
   prof_address: ['Address', 'Dirección'],

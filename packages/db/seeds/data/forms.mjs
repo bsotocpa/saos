@@ -164,7 +164,7 @@ const SMS_DISCLOSURE_ES =
 
 export const SOTO_INTAKE_DEFINITION = {
   slug: 'soto_intake',
-  version: 4, // #28: free-text companions for every 'Other'
+  version: 5, // #38: Spanish that dropped what the English says
   maxMinutes: 3,
   screens: [
     {
@@ -180,7 +180,7 @@ export const SOTO_INTAKE_DEFINITION = {
         { key: 'sms_ok', type: 'yesno', required: true, helpEn: SMS_DISCLOSURE_EN, helpEs: SMS_DISCLOSURE_ES },
         {
           key: 'preferred_contact_method', type: 'select', required: true,
-          options: [opt('text', 'Text', 'Texto'), opt('email', 'Email', 'Correo'), opt('phone', 'Phone', 'Teléfono'), opt('portal', 'Portal', 'Portal')],
+          options: [opt('text', 'Text', 'Texto'), opt('email', 'Email', 'Correo electrónico'), opt('phone', 'Phone', 'Teléfono'), opt('portal', 'Portal', 'Portal')],
         },
       ],
     },
@@ -211,7 +211,7 @@ export const SOTO_INTAKE_DEFINITION = {
             opt('construction_trades', 'Construction & Trades', 'Construcción y oficios', { naics: '236118', fires: 'module_g' }),
             opt('retail_ecommerce', 'Retail & E-commerce', 'Comercio y ventas en línea', { naics: '455219', fires: 'module_h' }),
             opt('beauty_personal_care', 'Beauty & Personal Care — salon, barber, spa', 'Belleza y cuidado personal', { naics: '812112' }),
-            opt('professional_services', 'Professional Services — consulting, legal, design, marketing', 'Servicios profesionales', { naics: '541611' }),
+            opt('professional_services', 'Professional Services — consulting, legal, design, marketing', 'Servicios profesionales — consultoría, legal, diseño, marketing', { naics: '541611' }),
             opt('real_estate_property', 'Real Estate & Property Management', 'Bienes raíces y administración', { naics: '531210' }),
             opt('transportation_logistics', 'Transportation & Logistics', 'Transporte y logística', { naics: '484110' }),
             opt('fitness_wellness', 'Fitness & Wellness', 'Fitness y bienestar', { naics: '713940' }),
@@ -270,7 +270,7 @@ export const SOTO_INTAKE_DEFINITION = {
             opt('payroll', 'Payroll', 'Nómina'),
             opt('sales_tax', 'Sales tax', 'Impuesto sobre ventas'),
             opt('irs_notice', 'IRS notice or letter', 'Aviso o carta del IRS'),
-            opt('entity', 'Entity formation or conversion (LLC, PLLC, S-Corp election)', 'Formación o conversión de entidad'),
+            opt('entity', 'Entity formation or conversion (LLC, PLLC, S-Corp election)', 'Formación o conversión de entidad (LLC, PLLC, elección S-Corp)'),
             opt('cfo_advisory', 'CFO–advisory', 'CFO–asesoría'),
             opt('not_sure', 'Not sure yet', 'Aún no sé'),
           ],
