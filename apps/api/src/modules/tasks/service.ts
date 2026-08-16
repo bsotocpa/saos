@@ -350,6 +350,8 @@ export interface TaskFilters {
   businessId?: string | undefined;
   tag?: string | undefined;
   sourceType?: string | undefined;
+  /** Source types kept out of a list — see BACKLOG_SOURCE_TYPES. */
+  excludeSourceTypes?: string[] | undefined;
   clientVisible?: boolean | undefined;
   dueFrom?: string | undefined;
   dueTo?: string | undefined;
@@ -410,6 +412,15 @@ export async function searchTasks(app: FastifyInstance, f: TaskFilters) {
   if (f.businessId) add(`t.business_id = $$`, f.businessId);
   if (f.tag) add(`$$ = ANY(t.tags)`, f.tag);
   if (f.sourceType) add(`t.source_type = $$`, f.sourceType);
+  /*
+   * The IS NULL half is load-bearing. `NULL <> ALL(...)` evaluates to NULL, not true, so
+   * the bare comparison excluded every task with no source_type — which is most manually
+   * created ones. Excluding the migration backlog would have quietly hidden the work
+   * people typed in by hand, the exact opposite of the point.
+   */
+  if (f.excludeSourceTypes?.length) {
+    add(`(t.source_type IS NULL OR t.source_type <> ALL($$::text[]))`, f.excludeSourceTypes);
+  }
   if (f.clientVisible !== undefined) add(`t.client_visible = $$`, f.clientVisible);
   if (f.dueFrom) add(`t.due_date >= $$`, f.dueFrom);
   if (f.dueTo) add(`t.due_date <= $$`, f.dueTo);
@@ -438,8 +449,49 @@ export async function searchTasks(app: FastifyInstance, f: TaskFilters) {
 
 // ── views (the four staff views ride searchTasks; these are the shortcuts) ──
 
-export async function myTasks(app: FastifyInstance, staffId: string, includeDone: boolean) {
-  return searchTasks(app, { assignedStaffId: staffId, includeDone, sortField: 'priority', limit: 1000 });
+/*
+ * MIGRATION BACKLOG, kept out of My Tasks by default (Brian, 2026-08-14).
+ *
+ * The July import raised 611 `enrichment` tasks — "this contact is missing a phone
+ * number" and the like — against 9 tasks from everything the business actually does. My
+ * Tasks was 98.5% backlog, which is the same as having no task list: the nine that came
+ * from a client waiting on something were unfindable.
+ *
+ * His ruling was explicit about the shape: "don't bulk-close — build the cheap version:
+ * separate filtered view, excluded from My Tasks by default. That's migration backlog to
+ * triage deliberately later, not noise to delete."
+ *
+ * So EXCLUDED, never hidden. The count comes back with the list and the view is one tap
+ * away, because a backlog you cannot see is one nobody ever triages — which is how it got
+ * to 611.
+ */
+export const BACKLOG_SOURCE_TYPES = ['enrichment'] as const;
+
+export async function myTasks(
+  app: FastifyInstance,
+  staffId: string,
+  includeDone: boolean,
+  opts: { includeBacklog?: boolean } = {}
+) {
+  return searchTasks(app, {
+    assignedStaffId: staffId,
+    includeDone,
+    sortField: 'priority',
+    limit: 1000,
+    ...(opts.includeBacklog ? {} : { excludeSourceTypes: [...BACKLOG_SOURCE_TYPES] }),
+  });
+}
+
+/** How much backlog is being kept out of this person's list, so the list can say so. */
+export async function backlogCountFor(app: FastifyInstance, staffId: string): Promise<number> {
+  const { rows } = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tasks
+      WHERE assigned_staff_id = $1
+        AND source_type = ANY($2::text[])
+        AND status = ANY($3::task_status[])`,
+    [staffId, [...BACKLOG_SOURCE_TYPES], OPEN_STATUSES]
+  );
+  return rows[0]?.n ?? 0;
 }
 
 export async function clientTasks(app: FastifyInstance, contactId: string) {
@@ -447,7 +499,16 @@ export async function clientTasks(app: FastifyInstance, contactId: string) {
 }
 
 export async function ownerRollup(app: FastifyInstance, staffId: string) {
-  const mine = await searchTasks(app, { assignedStaffId: staffId, sortField: 'priority', limit: 100 });
+  // The rollup is the leadership view, so it excludes the migration backlog for the same
+  // reason My Tasks does: 611 "missing phone number" rows would bury the handful of items
+  // a client is actually waiting on. `backlog` reports the size rather than dropping it.
+  const mine = await searchTasks(app, {
+    assignedStaffId: staffId,
+    sortField: 'priority',
+    limit: 100,
+    excludeSourceTypes: [...BACKLOG_SOURCE_TYPES],
+  });
+  const backlog = await backlogCountFor(app, staffId);
   const approvals = await app.db.query(
     `${TASK_SELECT}
      WHERE t.source_type IN ('referral_approval', 'extension_batch_review') AND t.status = ANY($1::task_status[])
@@ -462,7 +523,7 @@ export async function ownerRollup(app: FastifyInstance, staffId: string) {
        (SELECT count(*)::int FROM tasks WHERE status = 'waiting_for_input') AS waiting`,
     [OPEN_STATUSES]
   );
-  return { mine, approvals: approvals.rows, ...counts.rows[0]! };
+  return { mine, approvals: approvals.rows, backlog, ...counts.rows[0]! };
 }
 
 export async function teamWorkload(app: FastifyInstance) {

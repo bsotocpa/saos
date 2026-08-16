@@ -9,7 +9,7 @@ import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import {
-  addTaskDependency, clientTasks, createTask, instantiateTemplate, myTasks, ownerRollup,
+  addTaskDependency, backlogCountFor, clientTasks, createTask, instantiateTemplate, myTasks, ownerRollup,
   removeTaskDependency, searchTasks, setTaskStatus, TASK_SELECT, teamWorkload,
 } from './service.ts';
 import type { TaskFilters, TaskStatus } from './service.ts';
@@ -53,6 +53,9 @@ const SearchQuery = z.object({
   businessId: z.uuid().optional(),
   tag: z.string().max(50).optional(),
   sourceType: z.string().max(50).optional(),
+  // Comma-separated source types to leave OUT. The migration-backlog exclusion is a
+  // visible filter rather than a hidden rule — search must never quietly omit rows.
+  excludeSourceType: z.string().max(200).optional(),
   clientVisible: boolParam,
   dueFrom: z.iso.date().optional(),
   dueTo: z.iso.date().optional(),
@@ -149,8 +152,22 @@ export function registerTaskRoutes(app: FastifyInstance): void {
 
   // ── views ──────────────────────────────────────────────────────────────────
   app.get('/tasks/mine', read, async (request) => {
-    const q = z.object({ includeDone: z.enum(['true', 'false']).optional() }).parse(request.query);
-    return { tasks: await myTasks(app, request.staff!.id, q.includeDone === 'true') };
+    const q = z
+      .object({
+        includeDone: z.enum(['true', 'false']).optional(),
+        // Opt IN to the migration backlog. Excluded by default (Brian, 2026-08-14) —
+        // 611 enrichment rows against 9 real ones made the list useless.
+        includeBacklog: z.enum(['true', 'false']).optional(),
+      })
+      .parse(request.query);
+    const includeBacklog = q.includeBacklog === 'true';
+    const tasks = await myTasks(app, request.staff!.id, q.includeDone === 'true', { includeBacklog });
+    // The count ships WITH the list so the page can name what it is holding back. A
+    // backlog nobody can see is one nobody triages, which is how it reached 611.
+    return {
+      tasks,
+      backlogHidden: includeBacklog ? 0 : await backlogCountFor(app, request.staff!.id),
+    };
   });
 
   app.get<{ Params: { contactId: string } }>('/contacts/:contactId/tasks', read, async (request) => {
@@ -169,6 +186,7 @@ export function registerTaskRoutes(app: FastifyInstance): void {
       q: q.q, status: q.status as TaskStatus[] | undefined, priority: q.priority,
       assignedStaffId: q.assignee, unassigned: q.unassigned,
       contactId: q.contactId, businessId: q.businessId, tag: q.tag, sourceType: q.sourceType,
+      excludeSourceTypes: q.excludeSourceType ? q.excludeSourceType.split(String.fromCharCode(44)).filter(Boolean) : undefined,
       clientVisible: q.clientVisible, dueFrom: q.dueFrom, dueTo: q.dueTo,
       overdue: q.overdue, dueToday: q.dueToday, dueThisWeek: q.dueThisWeek,
       createdBy: q.createdBy, delegatedBy: q.delegatedBy, untouchedDays: q.untouchedDays,

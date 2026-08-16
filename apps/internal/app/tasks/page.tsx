@@ -60,6 +60,9 @@ interface Workload {
   not_started: number; in_progress: number; waiting: number; deferred: number; overdue: number;
 }
 
+/** The source_type the July migration used for its "this contact is missing X" rows. */
+const BACKLOG_SOURCE = 'enrichment';
+
 export default function TasksPage() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
@@ -74,6 +77,8 @@ export default function TasksPage() {
   const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS);
 
   const [tasks, setTasks] = useState<Task[]>([]);
+  // How much migration backlog exists, so the chip can say so rather than hiding it.
+  const [backlogCount, setBacklogCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Task | null>(null);
@@ -116,6 +121,10 @@ export default function TasksPage() {
       const r = await api<{ tasks: Task[] }>(`/tasks/search?${buildSearchQuery(f, meId)}`);
       setTasks(r.tasks);
       setSelected(new Set());
+      // Cheap count query beside the list, so clearing backlog visibly shrinks the chip.
+      void api<{ tasks: Task[] }>(`/tasks/search?sourceType=${BACKLOG_SOURCE}&limit=2000`)
+        .then((b) => setBacklogCount(b.tasks.length))
+        .catch(() => setBacklogCount(0));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -246,11 +255,11 @@ export default function TasksPage() {
       {/* saved views bar */}
       <div className="chipbar">
         <button type="button" className={`chip ${activeViewId === '' && filters.assignee === 'me' ? 'active' : ''}`}
-          onClick={() => { setActiveViewId(''); setFilters({ ...EMPTY_FILTERS, assignee: 'me' }); }}>
+          onClick={() => { setActiveViewId(''); setFilters({ ...EMPTY_FILTERS, assignee: 'me', excludeSourceType: BACKLOG_SOURCE }); }}>
           My Open Tasks
         </button>
         <button type="button" className={`chip ${activeViewId === '' && filters.assignee === '' && !filters.includeDone ? 'active' : ''}`}
-          onClick={() => { setActiveViewId(''); setFilters({ ...EMPTY_FILTERS }); }}>
+          onClick={() => { setActiveViewId(''); setFilters({ ...EMPTY_FILTERS, excludeSourceType: BACKLOG_SOURCE }); }}>
           All Open Tasks
         </button>
         <button type="button" className={`chip ${activeViewId === '' && filters.status.length === 1 && filters.status[0] === 'waiting_for_input' ? 'active' : ''}`}
@@ -260,6 +269,19 @@ export default function TasksPage() {
         <button type="button" className={`chip ${activeViewId === '' && filters.due === 'overdue' ? 'active' : ''}`}
           onClick={() => { setActiveViewId(''); setFilters({ ...EMPTY_FILTERS, due: 'overdue' }); }}>
           Overdue
+        </button>
+        {/*
+          MIGRATION BACKLOG (Brian, 2026-08-14). The July import raised 611 enrichment
+          tasks against 9 from everything the business actually does, so the default views
+          exclude them — a list that is 98.5% backlog is the same as having no list.
+
+          It is a CHIP rather than a hidden rule: "migration backlog to triage deliberately
+          later, not noise to delete". A backlog nobody can see is one nobody triages,
+          which is how it reached 611.
+        */}
+        <button type="button" className={`chip ${activeViewId === '' && filters.sourceType === BACKLOG_SOURCE ? 'active' : ''}`}
+          onClick={() => { setActiveViewId(''); setFilters({ ...EMPTY_FILTERS, sourceType: BACKLOG_SOURCE }); }}>
+          Migration backlog{backlogCount > 0 ? ` (${backlogCount})` : ''}
         </button>
         {views.map((v) => (
           <span key={v.id} className={`chip ${activeViewId === v.id ? 'active' : ''}`} style={{ display: 'inline-flex', alignItems: 'center' }}>

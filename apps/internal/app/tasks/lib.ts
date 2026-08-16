@@ -88,6 +88,8 @@ export interface Filters {
   businessName: string;    // display only
   tag: string;
   sourceType: string;
+  /** Source types kept out of the list — the migration-backlog exclusion (#enrichment). */
+  excludeSourceType: string;
   clientVisible: '' | 'true' | 'false';
   due: '' | 'overdue' | 'today' | 'week' | 'range';
   dueFrom: string;
@@ -103,7 +105,7 @@ export interface Filters {
 export const EMPTY_FILTERS: Filters = {
   q: '', status: [], priority: [], assignee: '', unassigned: false,
   contactId: '', contactName: '', businessId: '', businessName: '',
-  tag: '', sourceType: '', clientVisible: '', due: '', dueFrom: '', dueTo: '',
+  tag: '', sourceType: '', excludeSourceType: '', clientVisible: '', due: '', dueFrom: '', dueTo: '',
   createdByMe: false, delegatedByMe: false, untouchedDays: '', includeDone: false,
   sortField: 'priority', sortDir: 'desc',
 };
@@ -119,6 +121,7 @@ export function buildSearchQuery(f: Filters, meId: string): string {
   if (f.businessId) p.set('businessId', f.businessId);
   if (f.tag.trim()) p.set('tag', f.tag.trim());
   if (f.sourceType) p.set('sourceType', f.sourceType);
+  if (f.excludeSourceType) p.set('excludeSourceType', f.excludeSourceType);
   if (f.clientVisible) p.set('clientVisible', f.clientVisible);
   if (f.due === 'overdue') p.set('overdue', 'true');
   if (f.due === 'today') p.set('dueToday', 'true');

@@ -1108,10 +1108,15 @@ confirmation, every dead end is a new finding."
       endpoint changes nothing. `StripeAdapter` is now decorated on the app
       (`overrides.stripe`) instead of each module building its own, which is what made
       the settle path testable — the stub deliberately never reports paid
-- [ ] Enrichment tasks: 611 open `source_type='enrichment'` tasks traced to the July
+- [x] Enrichment tasks: 611 open `source_type='enrichment'` tasks traced to the July
       migration backlog, not a runaway. Brian: don't bulk-close — build the cheap
       version, a separate filtered view, excluded from My Tasks by default. Migration
-      backlog to triage deliberately later, not noise to delete. **Not built yet**
+      backlog to triage deliberately later, not noise to delete. **Shipped**:
+      `BACKLOG_SOURCE_TYPES` in the task service; `myTasks` and `ownerRollup` exclude
+      it and *report the count* rather than hiding it; `/tasks/search` takes
+      `excludeSourceType` as a visible filter, never an implicit one; internal Tasks
+      page gets a "Migration backlog (N)" chip beside Overdue. One tap to the backlog,
+      zero rows of it in the daily list
 - [ ] Rehearsal's one open step: **intake in Spanish** was never walked. Brian offered
       "I'll walk it myself today" or "assign to Rene or Laura once staff accounts
       exist" — staff accounts do not exist, so him walking it is the only real option

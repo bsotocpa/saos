@@ -10,7 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
 import {
-  addTaskDependency, advanceDate, closeTasksForSource, createTask, runLadderJob,
+  addTaskDependency, advanceDate, backlogCountFor, closeTasksForSource, createTask, myTasks, runLadderJob,
   runTaskReminderSweep, setTaskStatus,
 } from '../src/modules/tasks/service.ts';
 import { refreshEnrichmentGaps } from '../src/modules/crm/service.ts';
@@ -534,4 +534,82 @@ test('dependencies: no self-blocks, no cycles, no terminal blockers; multi-block
   });
   assert.equal(res.json().blocked, 1);
   assert.equal(res.json().updated, 1);
+});
+
+/*
+ * MIGRATION BACKLOG (Brian, 2026-08-14). The July import raised 611 `enrichment` tasks —
+ * "this contact is missing a phone number" — against 9 from everything the business
+ * actually does. My Tasks was 98.5% backlog, which is the same as having no task list:
+ * the nine a client was waiting on were unfindable.
+ *
+ * His ruling was about the SHAPE, not the cleanup: "don't bulk-close — separate filtered
+ * view, excluded from My Tasks by default. That's migration backlog to triage
+ * deliberately later, not noise to delete." So these prove both halves — out of the way,
+ * and still there.
+ */
+test('backlog: enrichment is excluded from My Tasks, and the count says how much', async () => {
+  // Deltas, not absolutes: other tests in this file create enrichment rows too, so a
+  // fixed count would pass or fail on execution order rather than on the behaviour.
+  const beforeCount = (await myTasks(app, brian.id, false)).length;
+  const beforeBacklog = await backlogCountFor(app, brian.id);
+  const beforeAll = (await myTasks(app, brian.id, false, { includeBacklog: true })).length;
+
+  await createTask(app, {
+    title: 'Missing phone number', sourceType: 'enrichment', sourceId: `enr-${brian.id}-1`,
+    source: 'system', assignedStaffId: brian.id,
+  });
+  await createTask(app, {
+    title: 'Missing EIN', sourceType: 'enrichment', sourceId: `enr-${brian.id}-2`,
+    source: 'system', assignedStaffId: brian.id,
+  });
+  await createTask(app, {
+    title: 'Call the client back', sourceType: 'unit_test_real', sourceId: `real-${brian.id}`,
+    source: 'system', assignedStaffId: brian.id,
+  });
+
+  const after = await myTasks(app, brian.id, false);
+  assert.equal(after.length, beforeCount + 1, 'only the real task joined the list');
+  assert.ok(
+    after.every((t: { source_type: string | null }) => t.source_type !== 'enrichment'),
+    'no enrichment row is in My Tasks'
+  );
+
+  // NOT deleted, NOT closed — just out of the way, and counted.
+  assert.equal(await backlogCountFor(app, brian.id), beforeBacklog + 2, 'the backlog reports its own size');
+
+  const withBacklog = await myTasks(app, brian.id, false, { includeBacklog: true });
+  assert.equal(withBacklog.length, beforeAll + 3, 'and opting in shows them again');
+});
+
+test('backlog: the route ships the hidden count with the list, and the filtered view finds them', async () => {
+  const mine = await app.inject({
+    method: 'GET', url: '/tasks/mine', headers: { authorization: `Bearer ${brian.token}` },
+  });
+  assert.equal(mine.statusCode, 200, mine.body);
+  assert.ok(mine.json().backlogHidden >= 2, 'the list says what it is holding back');
+  assert.ok(
+    (mine.json().tasks as Array<{ source_type: string | null }>).every((t) => t.source_type !== 'enrichment'),
+    'while keeping them out of the list itself'
+  );
+
+  // The separate filtered view — one query away, which is the whole point of not deleting.
+  const view = await app.inject({
+    method: 'GET', url: '/tasks/search?sourceType=enrichment&limit=2000',
+    headers: { authorization: `Bearer ${brian.token}` },
+  });
+  assert.equal(view.statusCode, 200, view.body);
+  const rows = view.json().tasks as Array<{ source_type: string; status: string }>;
+  assert.ok(rows.length >= 2, 'the backlog is still there to triage');
+  assert.ok(rows.every((t) => t.source_type === 'enrichment'), 'and the view is exactly that source');
+  assert.ok(rows.every((t) => t.status !== 'cancelled'), 'nothing was bulk-closed to achieve this');
+
+  // The exclusion is a REAL filter on search, not a hidden rule.
+  const excluded = await app.inject({
+    method: 'GET', url: '/tasks/search?excludeSourceType=enrichment&limit=2000',
+    headers: { authorization: `Bearer ${brian.token}` },
+  });
+  assert.ok(
+    (excluded.json().tasks as Array<{ source_type: string | null }>).every((t) => t.source_type !== 'enrichment'),
+    'excludeSourceType removes exactly that source'
+  );
 });
