@@ -655,3 +655,15 @@ branch and never reaches that line. I nearly read the pass as "that test is weak
 **Rule**: when a sabotage leaves a test green, first ask whether the sabotage reached the
 code that test exercises. Put it at the function's entry, where every caller goes
 through it, rather than at the first line that looks load-bearing.
+
+## Amend a translated document in both languages or neither
+**What happened**: amending Master §2's English deposit clause, the script warned that a
+Spanish body existed. It was approved and live — Spanish-speaking clients read it, not an
+English fallback. Shipping the English alone would have left them reading a clause about
+a collection path the firm had retired, and because the governing-language clause makes
+English control, that is a comprehension failure rather than a legal one: the client is
+misinformed and the paperwork is technically fine, which is the worse combination.
+**Rule**: before amending any client-facing document, check whether a translation is live
+(`needs_es_review = false`). If it is, the change lands in both languages in the same
+edit, and the translated wording is named explicitly in the report as the part that was
+not signed off verbatim.

@@ -66,34 +66,38 @@ record: the note on `engagement_master` v2 now carries the confirmation, appende
 rather than replacing the pending text so both the conditional decision and its
 resolution survive. The version was NOT bumped — nothing moved in the agreement itself.
 
-### 2. §2 booking-deposit language — GREEN-LIT, carried by Master v-next
+### 2. §2 booking-deposit language — CLOSED, shipped as Master v3
 
-§2 still reads:
+Brian confirmed the wording 2026-08-15 (the sign-off was to the change; he is forwarding
+the final sentence to the attorney for the file). Shipped by
+`scripts/amend-master-v-next.mjs`.
 
-> Where a deposit is collected **at booking or onboarding**, all completed work is
-> reconciled against your deposit at invoicing: overpayments are credited to your
-> account and any remaining balance is billed.
+> Where a deposit is collected **when you accept a quote**, all completed work is
+> reconciled against your deposit at invoicing: overpayments are credited to your account
+> and any remaining balance is billed.
 
-That authorises a path retired on 2026-08-14: the Lane 1 booking deposit is gone, and
-deposits now exist only on accepted quotes. The clause is over-broad rather than false —
-exposure was nil while it rode, because we control whether we ever collect at booking,
-and we do not.
+One phrase, asserted before and after — the script refuses unless it finds the old wording
+exactly once, and refuses to report success unless the body differs by exactly that
+substitution. No other sentence in §2 moved.
 
-⏸ **Waiting on the exact amended wording before cutting Master v-next.** The change is a
-narrow scope reduction, but §2 is the operative deposit clause in the agreement every
-client signs, and the standing pattern for attorney-approved language is that Brian
-supplies the text verbatim — as he did for the governing-language clause ("EXACTLY this
-text and nothing more"). Drafting it here would substitute my wording for counsel's on
-the one sentence that governs client money.
+**The Spanish body was amended with it.** It is approved and live, so Spanish-speaking
+clients read it rather than falling back to English; amending only the English would have
+left them reading a clause about a collection path the firm retired, and the
+governing-language clause makes English control — so the divergence would have been a
+comprehension failure rather than a legal one, which is worse in the way that matters to a
+client. "al momento de reservar o de incorporarse" became "al aceptar una
+cotización", using vocabulary already in that paragraph.
 
-The minimal edit, if the attorney's sign-off was to the change rather than to specific
-text: replace "at booking or onboarding" with "when you accept a quote", leaving the rest
-of the sentence untouched. Brian confirms which.
+⚠ **That Spanish phrasing is the one piece of wording Brian has not signed off verbatim** —
+flagged for his confirmation.
 
-When the wording lands, Master v-next is a new effective-dated template version — the
-same mechanism the governing-language clause used — and every already-signed client keeps
-the version they signed.
+**Already-signed clients are unaffected.** The rendered HTML of a signed packet is stored
+in `saos-signed-docs` at signature time, so what a client signed is a preserved artifact
+rather than a re-render of whatever the template says today. Two signed packets, both
+intact.
 
+The reconciliation this clause promises is implemented as of finding #26 — the papers and
+the system now say the same thing, in both directions.
 
 ## GATE 2 — CLEARED 2026-08-13 (price book v2)
 
