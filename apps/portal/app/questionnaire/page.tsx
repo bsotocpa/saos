@@ -26,7 +26,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { api, ApiError } from '../../lib/api';
+import { useRouter } from 'next/navigation';
+import { api, ApiError, isAuthed } from '../../lib/api';
 import { useSession } from '../../lib/session';
 
 type QType = 'select' | 'multiselect' | 'text' | 'yesno' | 'number';
@@ -43,7 +44,7 @@ export default function QuestionnairePage() {
   const [modules, setModules] = useState<Module[]>([]);
   const [answers, setAnswers] = useState<Answers>({});
   const [screenIndex, setScreenIndex] = useState(0);
-  const [state, setState] = useState<'loading' | 'ready' | 'none' | 'done'>('loading');
+  const [state, setState] = useState<'loading' | 'ready' | 'none' | 'done' | 'error'>('loading');
   const [resumed, setResumed] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -52,7 +53,16 @@ export default function QuestionnairePage() {
   const optLabel = (o: Option) => (lang === 'es' ? o.labelEs : o.labelEn) || o.value;
   const moduleName = (m: Module) => (lang === 'es' ? m.nameEs : m.nameEn);
 
+  const router = useRouter();
+
   useEffect(() => {
+    // Same gate every other portal page uses. Without it an expired session renders
+    // the questionnaire shell and then fails against a 401, which reads as breakage
+    // rather than as "sign in again".
+    if (!isAuthed()) {
+      router.replace('/login');
+      return;
+    }
     void (async () => {
       try {
         const r = await api<{
@@ -75,13 +85,16 @@ export default function QuestionnairePage() {
         if (resumeAt > 0 || Object.keys(r.answers ?? {}).length > 0) setResumed(true);
         setState('ready');
       } catch {
+        // 'error', NOT 'ready'. Falling through to the form with no modules loaded
+        // renders module[0] of an empty list and crashes the page — a failed fetch
+        // must show a message, not a white screen.
         setError(t('error_generic'));
-        setState('ready');
+        setState('error');
       }
     })();
     // Loading the questionnaire is a one-time act per page load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router]);
 
   const current = modules[screenIndex];
   const total = modules.length;
@@ -133,6 +146,15 @@ export default function QuestionnairePage() {
 
   if (state === 'loading') return <p className="muted">{t('loading')}</p>;
 
+  if (state === 'error') {
+    return (
+      <section className="card">
+        <div className="alert error">{error}</div>
+        <Link className="btn ghost" href="/">{t('back_home')}</Link>
+      </section>
+    );
+  }
+
   if (state === 'none') {
     return (
       <section className="card">
@@ -153,11 +175,15 @@ export default function QuestionnairePage() {
     );
   }
 
+  // Belt and braces: screenIndex is clamped on load, but a module list that changed
+  // underneath a long-open tab must not render module[undefined].
+  if (!current) return <p className="muted">{t('loading')}</p>;
+
   return (
     <>
       <h1>{t('quest_title')}</h1>
       <p className="muted small">
-        {moduleName(current!)} · {screenIndex + 1} / {total}
+        {moduleName(current)} · {screenIndex + 1} / {total}
       </p>
       <div className="progress" aria-hidden="true">
         <div style={{ width: `${progress}%` }} />
@@ -167,7 +193,7 @@ export default function QuestionnairePage() {
       {error ? <div className="alert error">{error}</div> : null}
 
       <section className="card">
-        {current!.questions.map((q) => {
+        {current.questions.map((q) => {
           const v = answers[q.id];
           return (
             <div key={q.id} style={{ marginBottom: 14 }}>
