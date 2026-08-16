@@ -115,6 +115,30 @@ export function registerBookingRoutes(app: FastifyInstance): void {
       details: { slug, start: body.payload.startTime ?? null },
     });
 
+    /*
+     * CHECKLIST STEP 6 — "book your kickoff" completes HERE (finding #34).
+     *
+     * Brian's standing policy: every channel a client can claim they used must be one
+     * the system tracks. So the step is stamped by the booking actually arriving, never
+     * by the client ticking a box to say they booked something. A client who books
+     * outside Cal.com leaves the step open, which is the honest outcome — the system
+     * genuinely does not know about that meeting.
+     *
+     * `booking.kickoff_slugs` narrows it when Brian wants that; empty means any booking
+     * counts except a free question call, which is a different conversation. Defaulting
+     * to "any" rather than "none" matters: an unconfigured setting that made the step
+     * uncompletable would be worse than one that is slightly generous.
+     */
+    const kickoffSlugs = await settingJson<string[]>(app, 'booking.kickoff_slugs', []);
+    const isKickoff = kickoffSlugs.length > 0 ? kickoffSlugs.includes(slug) : !questionSlugs.includes(slug);
+    if (isKickoff) {
+      await app.db.query(
+        `UPDATE portal_onboarding SET step_book_consult_at = COALESCE(step_book_consult_at, now())
+          WHERE contact_id = $1 AND step_book_consult_at IS NULL`,
+        [contactId]
+      );
+    }
+
     // ── Lane 2: questions are ALWAYS free — task the team, bill nothing.
     if (questionSlugs.includes(slug)) {
       const rene = await firstActiveByRole(app.db, 'comms_billing');

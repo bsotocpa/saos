@@ -19,6 +19,7 @@ import {
 import { runSosRecheckJob } from '../entity/sos.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import { prefillBookingUrl } from './booking-link.ts';
+import { consentsToPresent } from '../compliance/consent-presentation.ts';
 
 const StartBody = z.object({
   language: z.enum(['en', 'es']).default('en'),
@@ -194,8 +195,9 @@ export function registerFormRoutes(app: FastifyInstance): void {
   app.get('/portal/onboarding', { preHandler: [app.authenticateClient] }, async (request) => {
     const client = request.client!;
     const { rows } = await app.db.query(
-      `SELECT variant, step_sign_docs_at, step_pay_deposit_at, step_confirm_info_at,
-              step_questionnaire_at, step_upload_documents_at, step_track_services_at, completed_at
+      `SELECT variant, step_sign_docs_at, step_pay_deposit_at, step_consent_at, step_confirm_info_at,
+              step_questionnaire_at, step_upload_documents_at, step_track_services_at,
+              step_book_consult_at, completed_at
        FROM portal_onboarding WHERE contact_id = $1`,
       [client.contactId]
     );
@@ -270,6 +272,39 @@ export function registerFormRoutes(app: FastifyInstance): void {
      */
     const questionnaireModules = await assembleModules(app, client.contactId);
 
+    /*
+     * §7216 CONSENT — step 3, self-completing (finding #34).
+     *
+     * `consentsToPresent` is the authority on both halves: it withholds everything
+     * until the Master is signed, so the step cannot appear too early, and it treats
+     * signed AND declined as answered, so it stops offering once the client responds.
+     *
+     * The step stamps on ANSWER, not on consent. A step that only completed when the
+     * client said yes would make finishing their setup depend on consenting, which is
+     * the conditioning §7216 forbids.
+     */
+    const consentState = await consentsToPresent(app, client.contactId);
+    const consentAnswered = await app.db.query<{ answered_at: Date | null }>(
+      `SELECT min(COALESCE(signed_at, revoked_at, created_at)) AS answered_at
+         FROM consents
+        WHERE contact_id = $1 AND type IN ('7216_use', '7216_disclose')
+          AND status IN ('signed', 'declined')`,
+      [client.contactId]
+    );
+    const answeredAt = consentAnswered.rows[0]?.answered_at ?? null;
+    if (answeredAt) {
+      await app.db.query(
+        `UPDATE portal_onboarding SET step_consent_at = COALESCE(step_consent_at, $2)
+          WHERE contact_id = $1 AND step_consent_at IS NULL`,
+        [client.contactId, answeredAt]
+      );
+      if (rows[0]) (rows[0] as Record<string, unknown>).step_consent_at = answeredAt;
+    }
+    // It applies once the Master is signed and there is either something to answer or
+    // something already answered. Before that it is withheld, and showing it would put
+    // a consent question beside the document they must sign to be served.
+    const consentApplies = consentState.masterSigned && (consentState.offers.length > 0 || answeredAt !== null);
+
     const settings = await app.db.query<{ key: string; value: string | null }>(
       `SELECT key, value #>> '{}' AS value FROM app_settings
         WHERE key IN ('booking.support_booking_url', 'payments.irs_url', 'payments.state_url')`
@@ -283,6 +318,10 @@ export function registerFormRoutes(app: FastifyInstance): void {
       bookingUrl: rawBookingUrl ? prefillBookingUrl(rawBookingUrl, identityRow) : null,
       depositApplies: depositOwed.rows[0]!.owed,
       questionnaireApplies: questionnaireModules.length > 0,
+      consentApplies,
+      // Step 6 is optional and only shown where booking is actually open — the URL is
+      // a setting, and null means scheduling is not available rather than broken.
+      bookingApplies: rawBookingUrl !== null,
       // "Schedule a Call/Meeting" (Quick actions) and the estimated-payment links.
       supportBookingUrl: byKey['booking.support_booking_url']
         ? prefillBookingUrl(byKey['booking.support_booking_url']!, identityRow)
@@ -311,6 +350,29 @@ export function registerFormRoutes(app: FastifyInstance): void {
    */
   async function refreshChecklistCompletion(contactId: string): Promise<void> {
     const questionnaireApplies = (await assembleModules(app, contactId)).length > 0;
+
+    /*
+     * THE DEPOSIT NO LONGER GATES COMPLETION (Brian, 2026-08-16). It is collected at
+     * quote acceptance, before the portal journey begins, so it is not a step the client
+     * sees here — and completion means "every step the client can see is done". The
+     * column still fills in, because when the deposit was paid is real history.
+     *
+     * §7216 consent DOES gate it, but only where it applies: before the Master is
+     * signed every offer is withheld, and a client with nothing to answer must not be
+     * held open by it. Answered means signed OR declined.
+     *
+     * Booking is absent on purpose — the ruling made it optional and completable at any
+     * time, so it must never hold the checklist open.
+     */
+    const consentState = await consentsToPresent(app, contactId);
+    const answered = await app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM consents
+        WHERE contact_id = $1 AND type IN ('7216_use', '7216_disclose')
+          AND status IN ('signed', 'declined')`,
+      [contactId]
+    );
+    const consentApplies = consentState.masterSigned && (consentState.offers.length > 0 || (answered.rows[0]?.n ?? 0) > 0);
+
     await app.db.query(
       `UPDATE portal_onboarding o SET completed_at = now()
         WHERE o.contact_id = $1 AND o.completed_at IS NULL
@@ -319,14 +381,8 @@ export function registerFormRoutes(app: FastifyInstance): void {
           AND o.step_upload_documents_at IS NOT NULL
           AND o.step_track_services_at IS NOT NULL
           AND ($2 = false OR o.step_questionnaire_at IS NOT NULL)
-          AND (
-            o.step_pay_deposit_at IS NOT NULL
-            OR NOT EXISTS (
-              SELECT 1 FROM quotes q
-               WHERE q.contact_id = $1 AND q.deposit_invoice_id IS NOT NULL
-            )
-          )`,
-      [contactId, questionnaireApplies]
+          AND ($3 = false OR o.step_consent_at IS NOT NULL)`,
+      [contactId, questionnaireApplies, consentApplies]
     );
   }
 

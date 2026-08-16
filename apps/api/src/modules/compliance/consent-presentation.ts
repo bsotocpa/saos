@@ -337,6 +337,21 @@ export async function recordConsentAnswer(
     );
   }
 
+  /*
+   * Checklist step 3 completes here, in the same call that records the answer, so the
+   * two can never disagree (finding #34).
+   *
+   * It stamps on ANSWER — `status` is 'signed' or 'declined' and both count. A step that
+   * only completed on consent would make finishing setup depend on consenting, and §7216
+   * is precisely a rule against conditioning service on consent. A client who declines
+   * has done what was asked of them.
+   */
+  await app.db.query(
+    `UPDATE portal_onboarding SET step_consent_at = COALESCE(step_consent_at, now())
+      WHERE contact_id = $1 AND step_consent_at IS NULL`,
+    [contactId]
+  );
+
   await writeAudit(app.db, {
     actorType: 'client', actorId: contactId, actorLabel: 'consent answer',
     action: granted ? 'consent.granted' : 'consent.declined',

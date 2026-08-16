@@ -42,6 +42,20 @@ const dict = {
   checklist_deposit_waiting: ['Waiting on payment', 'Pendiente de pago'],
   checklist_go: ['Go', 'Ir'],
   /*
+   * Steps 3 and 6 of the canonical journey (#34, 2026-08-16).
+   *
+   * The consent step names what it is — permission, which the client can refuse. It
+   * does NOT say "give us permission", because §7216 is a rule against making service
+   * depend on consent, and a checklist that reads like an instruction to consent is the
+   * same pressure in a different place. Answering it either way completes the step.
+   */
+  checklist_consent: ['Answer the privacy permissions', 'Responda los permisos de privacidad'],
+  checklist_consent_waiting: ['Waiting on your answer', 'Pendiente de su respuesta'],
+  checklist_questionnaire_waiting: ['Waiting on your answers', 'Pendiente de sus respuestas'],
+  checklist_book: ['Book your kickoff call', 'Reserve su llamada de inicio'],
+  checklist_book_waiting: ['Waiting on your booking', 'Pendiente de su reserva'],
+  checklist_optional: ['optional', 'opcional'],
+  /*
    * Step 4 of the canonical journey (#30/#31 split, 2026-08-15). The onboarding-voice
    * questionnaire, assembled from the client's own services and industry.
    *

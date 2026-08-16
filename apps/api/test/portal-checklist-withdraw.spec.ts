@@ -45,6 +45,15 @@ async function portalClient(name: string) {
   return { contactId: c.id, cookie: { cookie: `saos_portal_session=${token}` } };
 }
 
+/** A signed Master, which is what unlocks every §7216 offer. */
+async function signedPacket(contactId: string) {
+  await app.db.query(
+    `INSERT INTO engagement_packets (contact_id, master_template_key, master_version, schedule_codes, status, signed_at, signature_method)
+     VALUES ($1, 'engagement_master', 1, ARRAY[]::text[], 'signed', now(), 'portal_esign')`,
+    [contactId]
+  );
+}
+
 function upload(cookie: { cookie: string }, fields: Record<string, string>) {
   const mp = multipartBody(fields, {
     field: 'file',
@@ -65,25 +74,34 @@ after(async () => {
   await app.close();
 });
 
-test('the checklist no longer asks a client to book a consultation they already had', async () => {
+/*
+ * INVERTED 2026-08-16. This asserted that booking was retired and unrendered — true
+ * between 2026-08-13 and Brian's canonical-journey ruling, which brings it back as step
+ * 6, optional and completable at any time. The premise changed, so the assertion states
+ * the new premise rather than being deleted.
+ *
+ * What did NOT change: a client is never asked to book the discovery call they already
+ * had. Step 6 is the KICKOFF, which happens after the engagement exists.
+ */
+test('the checklist carries the canonical journey: booking is back as optional, the deposit is gone', async () => {
   const { cookie } = await portalClient('NoBooking');
   const res = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: cookie });
   assert.equal(res.statusCode, 200, res.body);
-  const body = res.json() as { onboarding: Record<string, unknown> };
+  const body = res.json() as { onboarding: Record<string, unknown>; bookingApplies: boolean };
 
-  // The retired step is not in the payload the portal renders from.
-  assert.ok(!('step_book_consult_at' in body.onboarding), 'book_consult is retired, not rendered');
-  // But its column still EXISTS — it holds real dates from real clients.
-  const col = await app.db.query<{ n: number }>(
-    `SELECT count(*)::int AS n FROM information_schema.columns
-      WHERE table_name = 'portal_onboarding' AND column_name = 'step_book_consult_at'`
-  );
-  assert.equal(col.rows[0]!.n, 1, 'retired means "stop reading it", not "delete the history"');
-
-  for (const k of ['step_sign_docs_at', 'step_pay_deposit_at', 'step_confirm_info_at',
-                   'step_upload_documents_at', 'step_track_services_at']) {
-    assert.ok(k in body.onboarding, `${k} is part of the new checklist`);
+  for (const k of ['step_sign_docs_at', 'step_consent_at', 'step_confirm_info_at',
+                   'step_questionnaire_at', 'step_upload_documents_at',
+                   'step_track_services_at', 'step_book_consult_at']) {
+    assert.ok(k in body.onboarding, `${k} is part of the canonical journey`);
   }
+
+  // The deposit column is still SERVED — it holds real history — but it is no longer a
+  // step the client is shown, because it is collected at quote acceptance, before this
+  // journey begins. Nothing here should hold a client open for it.
+  assert.ok('step_pay_deposit_at' in body.onboarding, 'deposit history stays readable');
+
+  // Booking is only offered where there is somewhere to book.
+  assert.equal(body.bookingApplies, false, 'no scheduler configured in a fresh database');
 });
 
 test('the completion route accepts the new steps and refuses the retired one', async () => {
@@ -226,4 +244,124 @@ test('a client cannot withdraw someone else’s document, and a double tap is no
     method: 'POST', url: `/portal/documents/${id}/withdraw`, headers: theirs.cookie,
   });
   assert.equal(second.statusCode, 200, 'a double tap on a phone is not a failure');
+});
+
+/*
+ * #34 — SEQUENCING /consent AND BOOKING INTO THE CHECKLIST (Brian, 2026-08-16).
+ *
+ * The consent screen has existed since #12 and RC2 was signed on it. Nothing in the
+ * portal ever linked to it: the dashboard knew an offer was outstanding — it used the
+ * count to suppress "you're all caught up" — and gave the client no route there. A
+ * client could finish every step and never be asked.
+ */
+test('§7216 consent is a step only AFTER the packet is signed, and never before', async () => {
+  const { contactId, cookie } = await portalClient('Consentstep');
+
+  // Before signing, consentsToPresent withholds every offer — "a consent presented
+  // alongside the document a client must sign to be served is the conditioning §7216
+  // prohibits" — so there must be no step to see.
+  const before = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: cookie });
+  assert.equal(before.statusCode, 200, before.body);
+  assert.equal(before.json().consentApplies, false, 'no consent step before the Master is signed');
+
+  await signedPacket(contactId);
+
+  const after = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: cookie });
+  assert.equal(after.json().consentApplies, true, 'the step appears once the packet is signed');
+  assert.equal(after.json().onboarding.step_consent_at, null, 'and it is not done yet');
+});
+
+test('DECLINING the consent completes the step — setup never depends on consenting', async () => {
+  const { contactId, cookie } = await portalClient('Declines');
+  await signedPacket(contactId);
+
+  const offered = await app.inject({ method: 'GET', url: '/portal/consents', headers: cookie });
+  assert.equal(offered.statusCode, 200, offered.body);
+  const kinds = offered.json().offers.map((o: { kind: string }) => o.kind);
+  assert.ok(kinds.includes('7216_use'), 'the USE consent is offered after signing');
+
+  const declined = await app.inject({
+    method: 'POST', url: '/portal/consents', headers: cookie,
+    payload: { kind: '7216_use', granted: false },
+  });
+  assert.equal(declined.statusCode, 200, declined.body);
+  assert.equal(declined.json().status, 'declined');
+
+  /*
+   * The whole point. §7216 is a rule against conditioning service on consent, so a
+   * checklist step that only completed on "yes" would apply exactly the pressure the
+   * regulation forbids — in a different place. Answering completes it.
+   */
+  const row = await app.db.query<{ step_consent_at: Date | null }>(
+    `SELECT step_consent_at FROM portal_onboarding WHERE contact_id = $1`,
+    [contactId]
+  );
+  assert.ok(row.rows[0]!.step_consent_at, 'a client who declines has answered, and the step is done');
+
+  const gate = await app.db.query<{ consent_7216_status: string }>(
+    `SELECT consent_7216_status FROM contacts WHERE id = $1`,
+    [contactId]
+  );
+  assert.equal(gate.rows[0]!.consent_7216_status, 'declined', 'and the gate still says no');
+});
+
+test('booking completes from the Cal.com webhook, never from a client saying so', async () => {
+  const { contactId, cookie } = await portalClient('Bookstep');
+  const email = 'bookstep@example.test';
+
+  // Not open unless a scheduler is configured — a step pointing nowhere is not a step.
+  const closed = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: cookie });
+  assert.equal(closed.json().bookingApplies, false, 'no booking step while scheduling is closed');
+
+  await app.db.query(
+    `INSERT INTO app_settings (key, value) VALUES ('booking.client_booking_url', $1::jsonb)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [JSON.stringify('https://cal.example.test/kickoff')]
+  );
+  const open = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: cookie });
+  assert.equal(open.json().bookingApplies, true, 'the step appears once there is somewhere to book');
+  assert.equal(open.json().onboarding.step_book_consult_at, null, 'nothing booked yet');
+
+  const hook = await app.inject({
+    method: 'POST', url: '/webhooks/calcom',
+    headers: { 'x-webhook-secret': config.WEBHOOK_SECRET },
+    payload: {
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        type: 'kickoff',
+        startTime: '2026-09-01T15:00:00Z',
+        attendees: [{ email, name: 'Synthetic Bookstep', language: 'en' }],
+      },
+    },
+  });
+  assert.equal(hook.statusCode, 200, hook.body);
+
+  const row = await app.db.query<{ step_book_consult_at: Date | null }>(
+    `SELECT step_book_consult_at FROM portal_onboarding WHERE contact_id = $1`,
+    [contactId]
+  );
+  assert.ok(row.rows[0]!.step_book_consult_at, 'the booking arriving is what completes the step');
+});
+
+test('booking is optional: it never holds the checklist open, and the deposit no longer does either', async () => {
+  const { contactId, cookie } = await portalClient('Optionalbook');
+  await app.db.query(
+    `UPDATE portal_onboarding SET
+       step_sign_docs_at = now(), step_confirm_info_at = now(),
+       step_upload_documents_at = now()
+     WHERE contact_id = $1`,
+    [contactId]
+  );
+
+  const done = await app.inject({
+    method: 'POST', url: '/portal/onboarding/steps/track_services/complete', headers: cookie,
+  });
+  assert.equal(done.statusCode, 200, done.body);
+
+  const row = await app.db.query<{ completed_at: Date | null; step_book_consult_at: Date | null }>(
+    `SELECT completed_at, step_book_consult_at FROM portal_onboarding WHERE contact_id = $1`,
+    [contactId]
+  );
+  assert.ok(row.rows[0]!.completed_at, 'finished without booking — the ruling made it optional');
+  assert.equal(row.rows[0]!.step_book_consult_at, null, 'and it really was not booked');
 });

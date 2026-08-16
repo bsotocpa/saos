@@ -16,10 +16,12 @@ interface Onboarding {
   variant: string;
   step_sign_docs_at: string | null;
   step_pay_deposit_at: string | null;
+  step_consent_at: string | null;
   step_confirm_info_at: string | null;
   step_questionnaire_at: string | null;
   step_upload_documents_at: string | null;
   step_track_services_at: string | null;
+  step_book_consult_at: string | null;
   completed_at: string | null;
 }
 interface Engagement { id: string; tax_year: number; return_type: string; stage: string; extension_filed: boolean; deadline: string | null }
@@ -28,33 +30,47 @@ interface Envelope { id: string; type: string; status: string }
 interface Invoice { id: string; invoice_number: string; status: string; total_cents: number }
 
 /*
- * The checklist, reordered by Brian after running the journey himself (2026-08-13).
+ * THE CANONICAL CLIENT JOURNEY, as Brian ruled it (2026-08-16, finding #34). Step 1 —
+ * login setup from the one email — is not on this list because it is how they arrive.
  *
- * Deposit second, because services do not start before it is paid. "Book your
- * consultation" is gone — a client only reaches this screen after the discovery
- * meeting, so asking them to book one asked for something already done; booking moved
- * to Quick actions as "Schedule a Call/Meeting".
+ *   2. Review & sign packet          → /sign
+ *   3. §7216 consent, own screen     → /consent
+ *   4. Onboarding questionnaire      → /questionnaire
+ *   5. Upload documents              → /documents
+ *   6. Book kickoff, OPTIONAL        → the booking link
  *
- * `selfCompleting` means the client cannot tick it and is not asked to: Pay deposit
- * completes when the invoice is paid, and the questionnaire completes when it is
- * submitted, because in both cases the system already knows.
+ * THE DEPOSIT IS GONE from this list. It is collected at quote acceptance, before the
+ * portal journey starts, so it is not something the client comes here to do. Its column
+ * still fills in, because when the deposit was paid is real history.
  *
- * THE QUESTIONNAIRE (Brian's #30/#31 ruling, 2026-08-15). Intake split: the
- * pre-engagement form stays minimal and creates the contact, and the onboarding-voice
- * questions live here, assembled per client from the Form 5 A–I modules. It could not
- * have been an "intake" step — submitting the intake is what CREATES the portal user,
- * so that step would have shown complete for everyone who ever saw this screen.
+ * CONSENT COULD NOT HAVE BEEN LINKED ANY EARLIER. Until now nothing in the portal
+ * pointed at /consent at all: the dashboard knew an offer was outstanding — it used the
+ * count to suppress "you're all caught up" — and gave the client no way to reach it. A
+ * client could finish every step and never be asked.
  *
- * Placed between Confirm and Upload deliberately: what the questionnaire says about
- * their software and their books shapes which documents we ask for.
+ * Its ordering is not enforced here. `consentsToPresent` withholds every offer until the
+ * Master is signed, because a consent presented beside the document you must sign to be
+ * served is the conditioning §7216 prohibits. So the step appears when step 2 completes,
+ * which is what "immediately after signing" means, and this file just renders it.
+ *
+ * A `waiting` label means the step completes ITSELF and the client is not asked to tick
+ * it, because the system already knows: consent completes when they ANSWER it (yes or
+ * no — a step that only completed on "yes" would pressure them into consenting), the
+ * questionnaire completes when it is submitted, and booking completes when Cal.com says
+ * a booking exists rather than when a client claims one does. Each says what it is
+ * waiting FOR: "Waiting on payment" under a consent step was the previous shape of this
+ * code and would have been nonsense.
+ *
+ * `optional` keeps a step out of the completion rule. Booking is the only one.
  */
 const STEPS = [
-  { key: 'step_sign_docs_at', label: 'checklist_sign', href: '/sign', step: 'sign_docs', selfCompleting: false },
-  { key: 'step_pay_deposit_at', label: 'checklist_deposit', href: '/invoices', step: null, selfCompleting: true },
-  { key: 'step_confirm_info_at', label: 'checklist_confirm', href: '/profile', step: 'confirm_info', selfCompleting: false },
-  { key: 'step_questionnaire_at', label: 'checklist_questionnaire', href: '/questionnaire', step: null, selfCompleting: true },
-  { key: 'step_upload_documents_at', label: 'checklist_upload', href: '/documents', step: 'upload_documents', selfCompleting: false },
-  { key: 'step_track_services_at', label: 'checklist_track', href: '#services', step: 'track_services', selfCompleting: false },
+  { key: 'step_sign_docs_at', label: 'checklist_sign', href: '/sign', step: 'sign_docs', waiting: null, optional: false },
+  { key: 'step_consent_at', label: 'checklist_consent', href: '/consent', step: null, waiting: 'checklist_consent_waiting', optional: false },
+  { key: 'step_confirm_info_at', label: 'checklist_confirm', href: '/profile', step: 'confirm_info', waiting: null, optional: false },
+  { key: 'step_questionnaire_at', label: 'checklist_questionnaire', href: '/questionnaire', step: null, waiting: 'checklist_questionnaire_waiting', optional: false },
+  { key: 'step_upload_documents_at', label: 'checklist_upload', href: '/documents', step: 'upload_documents', waiting: null, optional: false },
+  { key: 'step_track_services_at', label: 'checklist_track', href: '#services', step: 'track_services', waiting: null, optional: false },
+  { key: 'step_book_consult_at', label: 'checklist_book', href: '', step: null, waiting: 'checklist_book_waiting', optional: true },
 ] as const;
 
 export default function Dashboard() {
@@ -72,11 +88,14 @@ export default function Dashboard() {
   const [supportUrl, setSupportUrl] = useState<string | null>(null);
   const [irsUrl, setIrsUrl] = useState<string | null>(null);
   const [stateUrl, setStateUrl] = useState<string | null>(null);
-  const [depositApplies, setDepositApplies] = useState(false);
   // Whether this client has a questionnaire at all: the modules assemble from their
   // own services and industry, so some clients have none. Same reasoning as the
   // deposit — nobody should stare at a step they can never complete.
   const [questionnaireApplies, setQuestionnaireApplies] = useState(false);
+  // Consent is withheld until the packet is signed, so before that there is no step.
+  const [consentApplies, setConsentApplies] = useState(false);
+  // Booking is a setting; null means scheduling is not open, not that it is broken.
+  const [bookingApplies, setBookingApplies] = useState(false);
 
   useEffect(() => {
     if (!isAuthed()) {
@@ -90,16 +109,18 @@ export default function Dashboard() {
         supportBookingUrl: string | null;
         irsPaymentUrl: string | null;
         statePaymentUrl: string | null;
-        depositApplies: boolean;
         questionnaireApplies: boolean;
+        consentApplies: boolean;
+        bookingApplies: boolean;
       }>('/portal/onboarding').then((r) => {
         setOnboarding(r.onboarding);
         setBookingUrl(r.bookingUrl ?? null);
         setSupportUrl(r.supportBookingUrl ?? null);
         setIrsUrl(r.irsPaymentUrl ?? null);
         setStateUrl(r.statePaymentUrl ?? null);
-        setDepositApplies(Boolean(r.depositApplies));
         setQuestionnaireApplies(Boolean(r.questionnaireApplies));
+        setConsentApplies(Boolean(r.consentApplies));
+        setBookingApplies(Boolean(r.bookingApplies));
       }),
       api<{ engagements: Engagement[] }>('/portal/engagements').then((r) => setEngagements(r.engagements)),
       api<{ requests: DocRequest[] }>('/portal/document-requests').then((r) => setRequests(r.requests)),
@@ -134,14 +155,28 @@ export default function Dashboard() {
   if (!ready) return <p>{t('loading')}</p>;
 
   const showChecklist = onboarding && !onboarding.completed_at;
-  // A client with no deposit owed should not stare at a step they can never complete.
+  /*
+   * A step nobody can complete is worse than no step. Each of these is conditional on
+   * something real: the questionnaire assembles from the client's own services,
+   * consent is withheld until the packet is signed, and booking needs a scheduler to
+   * point at. The deposit is not in STEPS at all any more — it is collected at quote
+   * acceptance, before this journey begins.
+   */
   const visibleSteps = STEPS.filter(
     (s) =>
-      (s.key !== 'step_pay_deposit_at' || depositApplies) &&
-      (s.key !== 'step_questionnaire_at' || questionnaireApplies)
+      (s.key !== 'step_questionnaire_at' || questionnaireApplies) &&
+      (s.key !== 'step_consent_at' || consentApplies) &&
+      (s.key !== 'step_book_consult_at' || bookingApplies)
   );
+  /*
+   * Progress counts REQUIRED steps only. Booking is optional and completable at any
+   * time, so counting it would leave a client who finished everything asked of them
+   * looking at 6/7 — and the checklist itself disappears at that point, which would
+   * make the bar contradict the page.
+   */
+  const requiredSteps = visibleSteps.filter((s) => !s.optional);
   const doneCount = onboarding
-    ? visibleSteps.filter((s) => onboarding[s.key as keyof Onboarding]).length
+    ? requiredSteps.filter((s) => onboarding[s.key as keyof Onboarding]).length
     : 0;
   /**
    * "You're all caught up" must not appear ABOVE an unfinished setup checklist —
@@ -173,24 +208,33 @@ export default function Dashboard() {
         <section className="card" data-testid="checklist">
           <h2>{t('checklist_title')}</h2>
           <div className="progress">
-            <div style={{ width: `${(doneCount / visibleSteps.length) * 100}%` }} />
+            <div style={{ width: `${requiredSteps.length ? (doneCount / requiredSteps.length) * 100 : 0}%` }} />
           </div>
           {visibleSteps.map((s, i) => {
             const done = Boolean(onboarding?.[s.key as keyof Onboarding]);
+            // Booking lives on an external scheduler, so its destination is a setting
+            // rather than a route. Every other step is a portal page.
+            const href = s.key === 'step_book_consult_at' ? (bookingUrl ?? '') : s.href;
             return (
-              <div className="checklist-step" key={s.step}>
+              /* Keyed on the COLUMN, not on `step`: self-completing steps have no
+                 `step` name, and there are now four of them — React would see four
+                 children keyed `null`. */
+              <div className="checklist-step" key={s.key}>
                 <span className={`step-dot ${done ? 'done' : ''}`}>{done ? '✓' : i + 1}</span>
-                <span className="grow">{t(s.label)}</span>
+                <span className="grow">
+                  {t(s.label)}
+                  {s.optional ? <span className="muted small"> · {t('checklist_optional')}</span> : null}
+                </span>
                 {done ? (
                   <span className="badge ok">{t('checklist_done')}</span>
-                ) : s.selfCompleting ? (
-                  /* Pay deposit completes ITSELF when the invoice is paid. There is no
-                     "Mark done": a client cannot honestly tick this, and asking them to
-                     confirm something we can already see is how a checklist starts
-                     lying. Go takes them to the invoice; the tick follows the money. */
+                ) : s.waiting ? (
+                  /* Completes ITSELF. There is no "Mark done": a client cannot honestly
+                     tick these, and asking them to confirm something we can already see
+                     is how a checklist starts lying. Go takes them to the place where
+                     the real thing happens; the tick follows the event. */
                   <>
-                    <a className="btn ghost" href={s.href}>{t('checklist_go')}</a>
-                    <span className="muted small">{t('checklist_deposit_waiting')}</span>
+                    <a className="btn ghost" href={href}>{t('checklist_go')}</a>
+                    <span className="muted small">{t(s.waiting)}</span>
                   </>
                 ) : (
                   <>
