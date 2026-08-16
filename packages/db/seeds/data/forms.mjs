@@ -38,7 +38,16 @@ const LABELS = {
   entity_type: ['How is it set up?', '¿Cómo está constituido?'],
   industry: ['What does the business do?', '¿A qué se dedica el negocio?'],
   years_in_business: ['How long have you been running it?', '¿Cuánto tiempo lleva operando?'],
-  revenue_range: ['Roughly what did it bring in last year?', '¿Aproximadamente cuánto vendió el año pasado?'],
+  /*
+   * #29 (Brian, 2026-08-16): the exact figure replaces the bucket — we do not ask twice.
+   *
+   * {{tax_year}} is resolved when the definition is SERVED, from currentTaxYear(), never
+   * baked into the stored text. Brian's reason: "relative labels rot in January". A form
+   * that says "last year" means 2025 in December and 2026 in January while the client's
+   * situation has not changed at all, and a form with 2025 typed into it is simply wrong
+   * the following season with nobody to notice.
+   */
+  gross_revenue: ['{{tax_year}} gross revenue', 'Ingresos brutos de {{tax_year}}'],
   employees_range: ['How many people work there, including you?', '¿Cuántas personas trabajan ahí, incluyéndolo(a) a usted?'],
   business_zip: ['Business ZIP code', 'Código postal del negocio'],
   other_businesses: [
@@ -139,6 +148,7 @@ const SMS_DISCLOSURE_ES =
 
 export const SOTO_INTAKE_DEFINITION = {
   slug: 'soto_intake',
+  version: 3, // #29: gross_revenue replaces revenue_range
   maxMinutes: 3,
   screens: [
     {
@@ -200,9 +210,15 @@ export const SOTO_INTAKE_DEFINITION = {
           showWhen: { field: 'owns_business', in: ['yes', 'starting'] },
           options: [opt('<1', '<1', '<1'), opt('1-3', '1–3', '1–3'), opt('3-5', '3–5', '3–5'), opt('5+', '5+', '5+')],
         },
+        // OPTIONAL by ruling: "a client who doesn't know the number shouldn't be blocked
+        // from finishing setup; we'll get truth from their books." It also means an
+        // in-flight submission started on v2 still validates against v3, since nothing
+        // newly required appeared on a screen the client already passed.
         {
-          key: 'revenue_range', type: 'select', required: false, showWhen: { field: 'owns_business', in: ['yes', 'starting'] },
-          options: [opt('<50k', '<$50K', '<$50K'), opt('50-150k', '$50–150K', '$50–150K'), opt('150-500k', '$150–500K', '$150–500K'), opt('500k-1m', '$500K–1M', '$500K–1M'), opt('1m+', '$1M+', '$1M+'), opt('na', 'Prefer not to say', 'Prefiero no decir')],
+          key: 'gross_revenue', type: 'number', required: false,
+          showWhen: { field: 'owns_business', in: ['yes', 'starting'] },
+          helpEn: 'Roughly is fine — leave it blank if you are not sure.',
+          helpEs: 'Un aproximado está bien — déjelo en blanco si no está seguro(a).',
         },
         {
           key: 'employees_range', type: 'select', required: false, showWhen: { field: 'owns_business', in: ['yes', 'starting'] },
@@ -272,6 +288,7 @@ export const SOTO_INTAKE_DEFINITION = {
 
 export const HILO_INTAKE_DEFINITION = {
   slug: 'hilo_intake',
+  version: 2, // unchanged by #29
   maxMinutes: 1.5,
   screens: [
     {
@@ -704,19 +721,28 @@ const STARTER_RESOURCES = [
 export async function seedForms(client) {
   let inserted = 0;
   for (const def of [SOTO_INTAKE_DEFINITION, HILO_INTAKE_DEFINITION]) {
-    // VERSION 2 carries the bilingual question text the public renderer needs
-    // (M28). v1 shipped structure only, with no field labels, because nothing
-    // rendered it. loadDefinition() takes the highest active version, so this
-    // supersedes v1 without touching it — and any admin edit to v2 survives
-    // re-seeding, same as every other seed here.
+    /*
+     * VERSIONS, and why this is a new one rather than an edit.
+     *
+     * v1 shipped structure only, with no field labels, because nothing rendered it.
+     * v2 (M28) added the bilingual question text the public renderer needs.
+     * v3 (#29, 2026-08-16) replaces `revenue_range` with `gross_revenue` — a question
+     *    left the form and another arrived, which is a different form, not a correction
+     *    to this one. Submissions stamp the version they were filled under, so v2 stays
+     *    exactly as it was for everyone who already answered it.
+     *
+     * loadDefinition() takes the highest ACTIVE version, so a new row supersedes the old
+     * without touching it, and any admin edit to a published version survives re-seeding
+     * — the same insert-only promise every seed here makes.
+     */
     const labelled = withLabels(def);
     const res = await client.query(
       `INSERT INTO form_definitions (key, version, title_en, title_es, definition)
-       VALUES ($1, 2, $2, $3, $4::jsonb)
+       VALUES ($1, $5, $2, $3, $4::jsonb)
        ON CONFLICT (key, version) DO NOTHING`,
       [def.slug, def.slug === 'soto_intake' ? 'New Client Intake' : 'Hilo Entrepreneur Intake',
        def.slug === 'soto_intake' ? 'Registro de nuevo cliente' : 'Registro de emprendedor Hilo',
-       JSON.stringify(labelled)]
+       JSON.stringify(labelled), def.version]
     );
     inserted += res.rowCount;
   }

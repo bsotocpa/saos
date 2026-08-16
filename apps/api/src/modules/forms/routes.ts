@@ -18,6 +18,7 @@ import {
 } from './service.ts';
 import { runSosRecheckJob } from '../entity/sos.ts';
 import { todayChicago } from '../tax/deadlines.ts';
+import { currentTaxYear } from '../tax/resolution.ts';
 import { prefillBookingUrl } from './booking-link.ts';
 import { consentsToPresent } from '../compliance/consent-presentation.ts';
 
@@ -54,6 +55,32 @@ const PUBLIC_FORMS = new Set(['soto_intake', 'hilo_intake']);
  */
 const ONBOARDING_STEPS = ['sign_docs', 'confirm_info', 'upload_documents'] as const;
 
+/*
+ * Resolve {{tax_year}} in question text when the form is SERVED (#29).
+ *
+ * Brian's ruling was to name the year rather than say "last year", because relative
+ * labels rot in January — but a year typed into the stored definition rots the same way,
+ * just more quietly: it is simply wrong the following season and nothing complains. So
+ * the definition carries a token and the answer is derived per request from
+ * currentTaxYear(), which is the same function the filing lane and resolution engine use.
+ *
+ * Kept to the label fields, and applied to a copy: the stored definition is never
+ * rewritten, so the token survives for next year and Brian can still edit the sentence
+ * around it without a deploy.
+ */
+function withTaxYear<T>(definition: T): T {
+  const year = String(currentTaxYear());
+  const walk = (node: unknown): unknown => {
+    if (typeof node === 'string') return node.replaceAll('{{tax_year}}', year);
+    if (Array.isArray(node)) return node.map(walk);
+    if (node && typeof node === 'object') {
+      return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, walk(v)]));
+    }
+    return node;
+  };
+  return walk(definition) as T;
+}
+
 async function loadSubmission(app: FastifyInstance, id: string, resumeToken: string) {
   const { rows } = await app.db.query<{ id: string; form_key: string; status: string; answers: Record<string, unknown> }>(
     `SELECT id, form_key, status, answers FROM form_submissions WHERE id = $1 AND resume_token_hash = $2`,
@@ -88,7 +115,7 @@ export function registerFormRoutes(app: FastifyInstance): void {
     return {
       key,
       version: def.version,
-      definition: def.definition,
+      definition: withTaxYear(def.definition),
       consentTextPending,
       rehearsalBannerEn: consentTextPending
         ? 'REHEARSAL — the consent language on this form is placeholder text and is NOT legally effective. Do not use this form with a real client.'

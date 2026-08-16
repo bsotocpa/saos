@@ -13,6 +13,7 @@ import { refreshEnrichmentGaps } from '../crm/service.ts';
 import { createEnvelope, templateKeyFor } from '../signatures/service.ts';
 import { createPllcConversion } from '../entity/service.ts';
 import { runSosCheck } from '../entity/sos.ts';
+import { currentTaxYear } from '../tax/resolution.ts';
 
 type Answers = Record<string, unknown>;
 
@@ -119,6 +120,22 @@ async function recordSmsConsent(app: FastifyInstance, contactId: string, agreed:
   );
 }
 
+/**
+ * A client-typed revenue figure into cents (#29).
+ *
+ * People type a bare number, one with thousands separators, and one with a currency sign
+ * in front, all meaning the same thing — so the punctuation they reach for is stripped
+ * rather than treated as a mistake. Anything still not a number becomes null: a figure we
+ * cannot read is one we do not have, and the question is optional, so nothing fails.
+ */
+export function dollarsToCents(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const cleaned = String(raw).replace(/[$,\s]/g, '');
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
+
 export async function processSotoIntake(app: FastifyInstance, submissionId: string, answers: Answers): Promise<{ contactId: string }> {
   const a = answers as Record<string, string | string[] | boolean | Array<{ name?: string; role?: string }>>;
   const email = String(a.email);
@@ -181,11 +198,23 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
   let businessId: string | null = null;
   if (a.owns_business === 'yes' || a.owns_business === 'starting') {
     if (a.business_name) {
+      /*
+       * #29: the intake collects an exact figure now, not a bucket, and it is stored
+       * WITH the year it describes — a bare revenue number read two seasons later is
+       * unusable if nobody wrote down what year it was.
+       *
+       * `revenue_range` is still written when present, because the column did not go
+       * anywhere: staff set it from the client record and the migrated book carries it.
+       * A v2 submission still in flight when v3 shipped will have it; a v3 one will not.
+       */
+      const grossCents = dollarsToCents(a.gross_revenue);
       const biz = await app.db.query<{ id: string }>(
-        `INSERT INTO businesses (name, entity_type, industry, years_in_business, revenue_range, employees_range, zip)
-         VALUES ($1, $2::business_entity_type, $3, $4, $5, $6, $7) RETURNING id`,
+        `INSERT INTO businesses (name, entity_type, industry, years_in_business, revenue_range,
+                                 employees_range, zip, gross_revenue_cents, gross_revenue_year)
+         VALUES ($1, $2::business_entity_type, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
         [a.business_name, (a.entity_type as string) ?? null, (a.industry as string) ?? null,
-         a.years_in_business ?? null, a.revenue_range ?? null, a.employees_range ?? null, a.business_zip ?? null]
+         a.years_in_business ?? null, a.revenue_range ?? null, a.employees_range ?? null, a.business_zip ?? null,
+         grossCents, grossCents === null ? null : currentTaxYear()]
       );
       businessId = biz.rows[0]!.id;
       await app.db.query(
@@ -235,17 +264,23 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
 
   // Service-line opportunities: tax → tax engagement; others → draft engagements.
   const services = Array.isArray(a.services) ? (a.services as string[]) : [];
-  const currentTaxYear = new Date().getFullYear() - 1;
+  /*
+   * Was `new Date().getFullYear() - 1` — the SERVER's year, computed in UTC, next to a
+   * shared currentTaxYear() that computes it in Chicago. They disagree for six hours
+   * every New Year's Eve, so an intake submitted on 31 December after 6pm Chicago would
+   * have created a tax engagement stamped with the wrong year. One definition now.
+   */
+  const taxYear = currentTaxYear();
   if (services.includes('tax_personal') || services.includes('tax_business')) {
     const eng = await app.db.query<{ id: string }>(
       `INSERT INTO engagements (contact_id, business_id, service_line, status, title)
        VALUES ($1, $2, 'tax', 'active', $3) RETURNING id`,
-      [contactId, services.includes('tax_business') ? businessId : null, `${currentTaxYear} intake`]
+      [contactId, services.includes('tax_business') ? businessId : null, `${taxYear} intake`]
     );
     const te = await app.db.query<{ id: string }>(
       `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, client_type)
        VALUES ($1, $2, $3::return_type, $4::tax_client_type) RETURNING id`,
-      [eng.rows[0]!.id, currentTaxYear, services.includes('tax_business') && businessId ? '1120s' : '1040',
+      [eng.rows[0]!.id, taxYear, services.includes('tax_business') && businessId ? '1120s' : '1040',
        services.includes('tax_business') ? 'business' : 'individual']
     );
     await app.db.query(

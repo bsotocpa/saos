@@ -445,7 +445,13 @@ test('M28 renderer contract: every question has bilingual text, and the TCPA dis
         fields: Array<{ key: string; type: string; labelEn?: string; labelEs?: string; options?: Array<{ labelEn: string; labelEs: string }> }>;
       }>;
     };
-    assert.equal(res.json().version, 2, 'v2 is the labelled definition the renderer needs');
+    /*
+     * The contract is "the served definition is a LABELLED one", which has held from v2
+     * on. This pinned the number instead, so #29's v3 broke a test about bilingual text
+     * by changing something the test was not really about. Versions will keep advancing;
+     * the labelling requirement below is what must not.
+     */
+    assert.ok(res.json().version >= 2, 'the served definition carries question text');
     assert.ok(def.screens.length >= 4);
 
     for (const screen of def.screens) {
@@ -765,4 +771,99 @@ test('a client whose services fire no modules is never shown the questionnaire s
   const dash = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: hdr });
   assert.equal(dash.statusCode, 200, dash.body);
   assert.equal(dash.json().questionnaireApplies, false, 'no questions, no step');
+});
+
+/*
+ * #29 — GROSS REVENUE AS A FIGURE (Brian, 2026-08-16).
+ *
+ * Ruled: the exact figure REPLACES revenue_range — we do not ask twice; OPTIONAL,
+ * because a client who does not know the number should not be blocked from finishing
+ * setup and the books are the authority anyway; and labelled with the NAMED year, never
+ * "last year", because relative labels rot in January.
+ */
+test('the revenue question names its year, and the year is derived rather than typed', async () => {
+  const res = await app.inject({ method: 'GET', url: '/public/forms/soto_intake' });
+  assert.equal(res.statusCode, 200, res.body);
+  const def = res.json().definition as { screens: Array<{ fields: Array<{ key: string; labelEn: string; labelEs: string; required?: unknown }> }> };
+  const fields = def.screens.flatMap((s) => s.fields);
+
+  const bucket = fields.find((f) => f.key === 'revenue_range');
+  assert.equal(bucket, undefined, 'the bucket is gone — replaced, not sat alongside');
+
+  const gross = fields.find((f) => f.key === 'gross_revenue');
+  assert.ok(gross, 'the figure took its place');
+  assert.equal(gross!.required ?? false, false, 'optional: not knowing it must not block setup');
+
+  /*
+   * The point of the ruling. A stored "2025" would be wrong next season with nobody to
+   * notice, and "last year" means different things in December and January.
+   */
+  const expected = String(new Date().getFullYear() - 1);
+  assert.ok(gross!.labelEn.includes(expected), `EN label names the year: ${gross!.labelEn}`);
+  assert.ok(gross!.labelEs.includes(expected), `ES label names the year: ${gross!.labelEs}`);
+  assert.ok(!/\{\{/.test(gross!.labelEn + gross!.labelEs), 'the token is resolved, never shown to a client');
+  assert.ok(!/last year|año pasado/i.test(gross!.labelEn + gross!.labelEs), 'no relative label');
+
+  // The STORED definition keeps the token, so next January it is still right.
+  const stored = await app.db.query<{ definition: { screens: Array<{ fields: Array<{ key: string; labelEn: string }> }> } }>(
+    `SELECT definition FROM form_definitions WHERE key = 'soto_intake' ORDER BY version DESC LIMIT 1`
+  );
+  const storedField = stored.rows[0]!.definition.screens.flatMap((s) => s.fields).find((f) => f.key === 'gross_revenue');
+  assert.ok(storedField!.labelEn.includes('{{tax_year}}'), 'the definition holds a token, not a baked-in year');
+});
+
+test('a gross revenue figure is stored WITH the year it describes', async () => {
+  const { submissionId, resumeToken } = await startForm('soto_intake');
+  const submit = await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Revenue',
+        email: 'revenue-forms@example.test', mobile_phone: '+13125550193', sms_ok: 'no',
+        preferred_contact_method: 'email', owns_business: 'yes',
+        business_name: 'Synthetic Revenue LLC', entity_type: 'llc',
+        industry: 'professional_services', years_in_business: '3-5', business_zip: '60614',
+        // Typed the way people actually type money.
+        gross_revenue: '$250,000',
+        services: ['bookkeeping'], irs_letters: 'no', how_heard: 'google',
+        communication_consent: true, esign_consent: true,
+      },
+    },
+  });
+  assert.equal(submit.statusCode, 200, submit.body);
+
+  const biz = await app.db.query<{ gross_revenue_cents: string | null; gross_revenue_year: number | null; revenue_range: string | null }>(
+    `SELECT gross_revenue_cents, gross_revenue_year, revenue_range FROM businesses WHERE name = 'Synthetic Revenue LLC'`
+  );
+  assert.equal(Number(biz.rows[0]!.gross_revenue_cents), 25_000_000, 'dollars and commas parsed, stored in cents');
+  assert.equal(biz.rows[0]!.gross_revenue_year, new Date().getFullYear() - 1, 'and the year it describes');
+  assert.equal(biz.rows[0]!.revenue_range, null, 'the bucket is not asked for, so it is not set');
+});
+
+test('a blank revenue answer is not a failure, and the year is not invented for it', async () => {
+  const { submissionId, resumeToken } = await startForm('soto_intake');
+  const submit = await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Blankrevenue',
+        email: 'blankrev-forms@example.test', mobile_phone: '+13125550194', sms_ok: 'no',
+        preferred_contact_method: 'email', owns_business: 'yes',
+        business_name: 'Synthetic Blank LLC', entity_type: 'llc',
+        industry: 'professional_services', years_in_business: '<1', business_zip: '60615',
+        services: ['bookkeeping'], irs_letters: 'no', how_heard: 'google',
+        communication_consent: true, esign_consent: true,
+      },
+    },
+  });
+  assert.equal(submit.statusCode, 200, submit.body, 'not knowing the number does not block setup');
+
+  const biz = await app.db.query<{ gross_revenue_cents: string | null; gross_revenue_year: number | null }>(
+    `SELECT gross_revenue_cents, gross_revenue_year FROM businesses WHERE name = 'Synthetic Blank LLC'`
+  );
+  assert.equal(biz.rows[0]!.gross_revenue_cents, null);
+  // A year with no figure is noise, and the CHECK constraint refuses the pair anyway.
+  assert.equal(biz.rows[0]!.gross_revenue_year, null, 'no figure, no year');
 });
