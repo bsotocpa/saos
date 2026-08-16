@@ -251,9 +251,6 @@ export function registerFormRoutes(app: FastifyInstance): void {
         [client.contactId]
       );
       if (rows[0]) (rows[0] as Record<string, unknown>).step_pay_deposit_at = new Date().toISOString();
-      // Filling a step in here can be the one that finishes the list, and nothing else
-      // would re-evaluate it — the client has no remaining step to tick.
-      await refreshChecklistCompletion(client.contactId);
     }
 
     // Whether a deposit is even owed — a client with none should not stare at a step
@@ -311,6 +308,29 @@ export function registerFormRoutes(app: FastifyInstance): void {
         WHERE key IN ('booking.support_booking_url', 'payments.irs_url', 'payments.state_url')`
     );
     const byKey = Object.fromEntries(settings.rows.map((r) => [r.key, r.value]));
+
+    /*
+     * Re-evaluate completion on every load, not only when a step is ticked.
+     *
+     * Self-completing steps do not tick anything, so completion used to depend on the
+     * client having some OTHER step left to press — and when the last outstanding step
+     * was one of the automatic ones, nothing re-checked. Worse, a RULE change can make
+     * someone newly eligible: dropping track_services on 2026-08-16 left clients who had
+     * finished everything else with completed_at still null, and no action of theirs
+     * would ever have re-examined it. They would have stared at a checklist with every
+     * box ticked instead of seeing their home page.
+     *
+     * It is a cheap idempotent UPDATE guarded on completed_at IS NULL, so a client whose
+     * checklist is already finished pays one no-op write.
+     */
+    await refreshChecklistCompletion(client.contactId);
+    const completed = await app.db.query<{ completed_at: Date | null }>(
+      `SELECT completed_at FROM portal_onboarding WHERE contact_id = $1`,
+      [client.contactId]
+    );
+    if (rows[0] && completed.rows[0]?.completed_at) {
+      (rows[0] as Record<string, unknown>).completed_at = completed.rows[0].completed_at;
+    }
     const identityRow = identity.rows[0] ?? { name: null, email: null };
 
     return {

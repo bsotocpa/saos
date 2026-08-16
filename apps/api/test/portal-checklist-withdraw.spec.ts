@@ -492,3 +492,31 @@ test('track_services is gone: the checklist finishes without it', async () => {
   });
   assert.notEqual(gone.statusCode, 200, 'and it is no longer tickable');
 });
+
+test('a client made eligible by a RULE change is completed on their next visit', async () => {
+  const { contactId, cookie } = await portalClient('Rulechange');
+
+  /*
+   * The exact shape dropping track_services left behind: every remaining required step
+   * done, completed_at still null, and nothing for the client to press that would ever
+   * re-examine it. Completion used to be evaluated only when a step was ticked, so these
+   * clients would have stared at a checklist with every box ticked, forever.
+   */
+  await app.db.query(
+    `UPDATE portal_onboarding SET
+       step_sign_docs_at = now(), step_confirm_info_at = now(), step_upload_documents_at = now(),
+       completed_at = NULL
+     WHERE contact_id = $1`,
+    [contactId]
+  );
+
+  const res = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: cookie });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.ok(res.json().onboarding.completed_at, 'merely loading the page settles it');
+
+  const row = await app.db.query<{ completed_at: Date | null }>(
+    `SELECT completed_at FROM portal_onboarding WHERE contact_id = $1`,
+    [contactId]
+  );
+  assert.ok(row.rows[0]!.completed_at, 'and it persisted, rather than being computed per read');
+});
