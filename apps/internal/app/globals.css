@@ -33,11 +33,48 @@ body {
   color: var(--ink);
   font-size: 14px;
   line-height: 1.5;
-  /* Hard rule: the PAGE never scrolls horizontally. Wide content scrolls
-     inside its own container (cards get overflow-x below) — this clip is the
-     backstop, the per-cause fixes are the cure. */
-  overflow-x: clip;
 }
+
+/*
+ * WHY THERE IS NO `overflow-x: clip` ON body ANY MORE (#43, 2026-08-16).
+ *
+ * There was one, described as "the backstop, the per-cause fixes are the cure". It did
+ * something worse than nothing: `clip` removes the scrollbar WITHOUT removing the
+ * overflow, so content past the viewport is simply cut off — which is exactly what Brian
+ * saw on an iPhone, the right-hand side missing.
+ *
+ * And it made the failure untestable. Every automated 390px check asks the same
+ * question — is scrollWidth greater than clientWidth — and under `clip` the answer is
+ * permanently no. Measured on this page before removing it: scrollWidth 390, clientWidth
+ * 390, "no horizontal scroll", while the content underneath genuinely did not fit. The
+ * backstop was defeating the check that would have found what it was standing in for.
+ *
+ * Containment now belongs to the things that are actually wide: tables scroll inside
+ * .scroll-x, flex rows carry min-width: 0, and long unbreakable tokens wrap. If some
+ * page still overflows, the page will scroll and the check will FAIL, which is the point.
+ */
+
+/*
+ * ROWS (#43). `.list` and `.grow` were rendered here and defined only in the PORTAL, so
+ * ops rows were not flex, had no min-width: 0, and could not contain a long token — the
+ * client record's invoice rows carry a ~90-character pay link. Same class of defect as
+ * the portal's missing .chip, pointing the other way.
+ */
+.list { list-style: none; margin: 0; padding: 0; }
+.list li {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+.list li:last-child { border-bottom: none; }
+/* min-width: 0 is the whole point: without it a flex child refuses to shrink below its
+   content, and one long word widens the page instead of wrapping. */
+.list .grow { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+
+/* Filter chips on ops list pages (desk-sized, unlike the portal's touch chips). */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+
+/* A plain data table; `.dense` is the compact variant that already existed. */
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 .wordmark { font-weight: 800; font-size: 18px; color: #fff; text-decoration: none; }
 .wordmark .dot { color: var(--electric); }
@@ -190,8 +227,25 @@ table.dense .title-cell { max-width: 340px; overflow: hidden; text-overflow: ell
 @media (max-width: 767px) {
   main { padding: 12px 10px 80px; }
 
-  /* Any table wider than the phone scrolls within its card, not the page. */
-  section.card { overflow-x: auto; }
+  /*
+   * `section.card { overflow-x: auto }` used to live here, on EVERY card. That is what
+   * Brian felt as sideways scrolling on the client record: a card whose content did not
+   * fit became a little horizontally-scrolling box, whatever the content was, so text
+   * that should simply have wrapped scrolled instead.
+   *
+   * Only genuinely wide things — tables — get to scroll now, and they scroll in their
+   * own wrapper. A card's job is to hold content, not to hide that it does not fit.
+   */
+  section.card > table,
+  section.card > .scroll-x { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Grid and flex children default to min-width:auto and so refuse to shrink below
+     their content. This is the single most common cause of a page that will not fit. */
+  .cards > *, .card, .lead-card, .stat-row > * { min-width: 0; }
+
+  /* Data text — emails, URLs, invoice numbers, file names — wraps rather than widening
+     the page. `anywhere` because these have no useful break opportunities. */
+  .card, .list li, td, th { overflow-wrap: anywhere; }
 
   /* Task workspace: the rail NEVER renders inline at phone width — it lives
      in the bottom sheet (kills the interleaving/stacking defect wholesale). */

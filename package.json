@@ -15,7 +15,7 @@
     "migrate": "npm run migrate --workspace=@saos/db",
     "migrate:down": "npm run migrate:down --workspace=@saos/db",
     "seed": "npm run seed --workspace=@saos/db",
-    "test": "npm run check:prices && npm run check:sops && npm run check:env-merge && npm run check:role-tasks && npm run test --workspaces --if-present",
+    "test": "npm run check:prices && npm run check:sops && npm run check:env-merge && npm run check:role-tasks && npm run check:css-classes && npm run test --workspaces --if-present",
     "test:db": "npm run test:db --workspace=@saos/db",
     "check:prices": "node scripts/check-no-hardcoded-prices.mjs",
     "staging:up": "docker compose -p saos-staging -f docker-compose.yml -f docker-compose.staging.yml up -d",
@@ -23,7 +23,8 @@
     "import:legacy": "npm run import:legacy --workspace=@saos/api --",
     "check:sops": "node scripts/check-task-sop-hooks.mjs",
     "check:env-merge": "node scripts/check-env-merge.mjs",
-    "check:role-tasks": "node scripts/check-role-guarded-tasks.mjs"
+    "check:role-tasks": "node scripts/check-role-guarded-tasks.mjs",
+    "check:css-classes": "node scripts/check-css-classes.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

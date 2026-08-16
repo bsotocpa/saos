@@ -133,6 +133,49 @@ p.muted, span.muted { color: var(--muted); }
 .badge.danger { background: var(--danger-soft); color: var(--danger); }
 .badge.ok { background: var(--ok-soft); color: var(--ok); }
 
+/*
+ * MULTI-SELECT CHIPS (#36 / #37, Brian's real-device walkthrough 2026-08-16).
+ *
+ * These classes were rendered by the portal and defined ONLY in the internal app, so
+ * every multi-select question was a row of identical default buttons whose selected
+ * state looked exactly like its unselected state. The tap worked; nothing on screen
+ * moved. That reads as a dead control, and it was true of all eleven multi-select
+ * questions across the intake and the onboarding modules, in both languages.
+ *
+ * Sized for a thumb rather than a mouse: 44px is the iOS minimum touch target, and this
+ * is the surface clients answer on a phone. The internal app's chips are filter controls
+ * for someone at a desk and stay small.
+ *
+ * The selected state is deliberately loud — filled, not merely outlined — because on a
+ * small screen a subtle border change is the same as no feedback at all.
+ */
+.chipbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 2px; }
+.chip {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  /* A long option label wraps inside the chip instead of widening the row. */
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+  /* Kills the iOS tap-highlight flash so the real selected state is the only feedback. */
+  -webkit-tap-highlight-color: transparent;
+}
+.chip.active {
+  background: var(--forest);
+  border-color: var(--forest);
+  color: #fff;
+  font-weight: 600;
+}
+.chip:focus-visible { outline: 2px solid var(--electric); outline-offset: 2px; }
+
 .list { list-style: none; margin: 0; padding: 0; }
 .list li {
   display: flex;
