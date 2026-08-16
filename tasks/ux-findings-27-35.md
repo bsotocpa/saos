@@ -400,3 +400,66 @@ step to tick. Extracted; every path that can finish a step now re-evaluates comp
 
 Steps 3 and 6 are the remaining checklist work, and both are #34's job — sequencing what
 exists, not building.
+
+---
+
+## #34 — BUILT AND DEPLOYED (2026-08-16)
+
+Consent and booking are sequenced into the checklist. Both screens already existed; this
+was ordering and wiring, as ruled.
+
+**The seam that was actually open.** `/consent` was not linked from anywhere in the
+portal. The dashboard *knew* a §7216 offer was outstanding — it used the offer count to
+suppress "you're all caught up" — and gave the client no route to it. A client could walk
+the entire checklist to the end and never be asked for §7216 consent.
+
+**Ordering is not re-implemented.** `consentsToPresent` already withholds every offer
+until the Master is signed, on the grounds that a consent presented beside the document
+you must sign to be served is the conditioning §7216 prohibits. So step 3 appears exactly
+when step 2 completes — "immediately after signing" falls out of the compliance layer,
+and the checklist only renders what it allows.
+
+**Declining completes the step.** A step that ticked only on "yes" would make finishing
+setup depend on consenting: the same pressure §7216 exists to forbid, moved to a different
+screen. Answering is what is asked of the client; the answer is theirs. Sabotage-verified
+— restricting the stamp to granted consents fails exactly that test.
+
+**Booking completes from the webhook, not from a claim.** Per the standing policy that
+every channel a client can claim they used must be one the system tracks, step 6 is
+stamped by the Cal.com `BOOKING_CREATED` arriving. A client who books by phone leaves the
+step open, which is honest: the system does not know about that meeting.
+`booking.kickoff_slugs` narrows it when wanted; empty means any booking except a free
+question call, because an unconfigured setting that made the step uncompletable would be
+worse than one that is slightly generous.
+
+The deposit left the displayed checklist per the ruling and no longer gates completion —
+completion means every step the client can SEE is done. Its column still fills in.
+
+**Production after deploy:** both RC2 rehearsal clients backfilled with step 3 already
+complete (they answered §7216 at policy `v3-t2`), so nobody is asked to re-answer.
+
+Found while wiring: four self-completing steps were all keyed `null` in the same React
+list, and the waiting label was hardcoded to "Waiting on payment" — nonsense under a
+consent step.
+
+### One thing needing your ruling
+
+**Your numbered journey has six steps. The checklist now renders seven.** The two extras
+are `confirm_info` ("Confirm your information") and `track_services` ("Track your
+services") — both already there, neither in your list. I kept them rather than deleting
+two live steps on an inference.
+
+It is not academic. In production right now:
+
+| | signed | consent | questionnaire | tracked | complete |
+|---|---|---|---|---|---|
+| rehearsal | ✓ | ✓ | — | ✗ | ✗ |
+| rehearsal2 | ✓ | ✓ | — | ✗ | ✗ |
+
+**Both RC2 clients are held open by `track_services`, the step your journey does not
+include.** Dropping it would complete them both.
+
+My read, for what it is worth: `track_services` looks like #35's job to absorb — its
+whole content is "look at the services list below", and #35 turns home into exactly that.
+`confirm_info` is less clear; #27's prefill may make it redundant, or it may still earn
+its place. Both are your call, not mine.
