@@ -149,6 +149,10 @@ export default function ClientPacketPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [nextSession, setNextSession] = useState<NextSession | null>(null);
   const [scheduleEngagementId, setScheduleEngagementId] = useState('');
+  // Feedback for the actions further down the page — the packet card's message is far
+  // enough away to read as "nothing happened" (#40).
+  const [actionMsg, setActionMsg] = useState('');
+  const [actionErr, setActionErr] = useState('');
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -275,6 +279,8 @@ export default function ClientPacketPage() {
               {editing ? 'Cancel' : 'Edit'}
             </button>
           </h2>
+          {actionMsg ? <p className="alert ok">{actionMsg}</p> : null}
+          {actionErr ? <p className="alert warn">{actionErr}</p> : null}
           {editing ? (
             <div>
               {(
@@ -322,7 +328,7 @@ export default function ClientPacketPage() {
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
-                  setPacketErr('');
+                  setActionErr('');
                   try {
                     // Only what actually changed — a PATCH that resends every field
                     // would overwrite anything edited elsewhere since this page loaded.
@@ -331,12 +337,12 @@ export default function ClientPacketPage() {
                     );
                     if (Object.keys(body).length === 0) { setEditing(false); return; }
                     await api(`/contacts/${params.id}`, { method: 'PATCH', body });
-                    setPacketMsg('Saved.');
+                    setActionMsg('Saved.');
                     setEdits({});
                     setEditing(false);
                     await load();
                   } catch (e) {
-                    setPacketErr(e instanceof Error ? e.message : 'Could not save.');
+                    setActionErr(e instanceof Error ? e.message : 'Could not save.');
                   } finally {
                     setBusy(false);
                   }
@@ -413,13 +419,13 @@ export default function ClientPacketPage() {
                     : 'Send another sign-in link? The previous one stops working.'
                 )) return;
                 setBusy(true);
-                setPacketErr('');
+                setActionErr('');
                 try {
                   await api('/portal-users', { method: 'POST', body: { contactId: params.id } });
-                  setPacketMsg(first ? 'Invited — the client was emailed a sign-in link.' : 'A fresh sign-in link is on its way.');
+                  setActionMsg(first ? 'Invited — the client was emailed a sign-in link.' : 'A fresh sign-in link is on its way.');
                   await load();
                 } catch (e) {
-                  setPacketErr(e instanceof Error ? e.message : 'Could not send the link.');
+                  setActionErr(e instanceof Error ? e.message : 'Could not send the link.');
                 } finally {
                   setBusy(false);
                 }
@@ -827,6 +833,8 @@ export default function ClientPacketPage() {
       */}
       <section className="card" style={{ marginTop: 12 }}>
         <h2>Invoices ({invoices.length})</h2>
+        {actionMsg ? <p className="alert ok">{actionMsg}</p> : null}
+        {actionErr ? <p className="alert warn">{actionErr}</p> : null}
         {invoices.length === 0 ? (
           <p className="muted small">Nothing invoiced yet.</p>
         ) : (
@@ -853,13 +861,13 @@ export default function ClientPacketPage() {
                       onClick={async () => {
                         if (!window.confirm(`Email ${c.first_name} a reminder for ${inv.invoice_number}?`)) return;
                         setBusy(true);
-                        setPacketErr('');
+                        setActionErr('');
                         try {
                           const r = await api<{ to: string }>(`/invoices/${inv.id}/remind`, { method: 'POST' });
-                          setPacketMsg(`Reminder sent to ${r.to}.`);
+                          setActionMsg(`Reminder sent to ${r.to}.`);
                           await load();
                         } catch (e) {
-                          setPacketErr(e instanceof Error ? e.message : 'Could not send the reminder.');
+                          setActionErr(e instanceof Error ? e.message : 'Could not send the reminder.');
                         } finally {
                           setBusy(false);
                         }
@@ -887,6 +895,8 @@ export default function ClientPacketPage() {
       */}
       <section className="card" style={{ marginTop: 12 }}>
         <h2>Meetings</h2>
+        {actionMsg ? <p className="alert ok">{actionMsg}</p> : null}
+        {actionErr ? <p className="alert warn">{actionErr}</p> : null}
         {nextSession ? (
           <p className="small">
             <span className="badge ok">scheduled</span>{' '}
@@ -915,16 +925,16 @@ export default function ClientPacketPage() {
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
-                setPacketErr('');
+                setActionErr('');
                 try {
                   await api(`/contacts/${params.id}/schedule-session`, {
                     method: 'POST',
                     body: scheduleEngagementId ? { engagementId: scheduleEngagementId } : {},
                   });
-                  setPacketMsg('Scheduling task created — it is in the owner’s queue with the booking link.');
+                  setActionMsg('Scheduling task created — it is in the owner’s queue with the booking link.');
                   await load();
                 } catch (e) {
-                  setPacketErr(e instanceof Error ? e.message : 'Could not request scheduling.');
+                  setActionErr(e instanceof Error ? e.message : 'Could not request scheduling.');
                   await load();
                 } finally {
                   setBusy(false);
