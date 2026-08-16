@@ -55,6 +55,10 @@ interface Invoice { id: string; invoice_number: string; status: string; total_ce
  *   5. Upload documents              → /documents
  *   6. Book kickoff, OPTIONAL        → the booking link
  *
+ * "Confirm your information" left this list on 2026-08-16 (#27): the questionnaire opens
+ * with those fields prefilled from what we hold, so a step whose whole job was already
+ * being done one screen later is duplicate work. Its column stays.
+ *
  * THE DEPOSIT IS GONE from this list. It is collected at quote acceptance, before the
  * portal journey starts, so it is not something the client comes here to do. Its column
  * still fills in, because when the deposit was paid is real history.
@@ -82,7 +86,6 @@ interface Invoice { id: string; invoice_number: string; status: string; total_ce
 const STEPS = [
   { key: 'step_sign_docs_at', label: 'checklist_sign', href: '/sign', step: 'sign_docs', waiting: null, optional: false },
   { key: 'step_consent_at', label: 'checklist_consent', href: '/consent', step: null, waiting: 'checklist_consent_waiting', optional: false },
-  { key: 'step_confirm_info_at', label: 'checklist_confirm', href: '/profile', step: 'confirm_info', waiting: null, optional: false },
   { key: 'step_questionnaire_at', label: 'checklist_questionnaire', href: '/questionnaire', step: null, waiting: 'checklist_questionnaire_waiting', optional: false },
   { key: 'step_upload_documents_at', label: 'checklist_upload', href: '/documents', step: 'upload_documents', waiting: null, optional: false },
   { key: 'step_book_consult_at', label: 'checklist_book', href: '', step: null, waiting: 'checklist_book_waiting', optional: true },
@@ -131,9 +134,9 @@ export default function Dashboard() {
   const [supportUrl, setSupportUrl] = useState<string | null>(null);
   const [irsUrl, setIrsUrl] = useState<string | null>(null);
   const [stateUrl, setStateUrl] = useState<string | null>(null);
-  // Whether this client has a questionnaire at all: the modules assemble from their
-  // own services and industry, so some clients have none. Same reasoning as the
-  // deposit — nobody should stare at a step they can never complete.
+  // Always true since #27 — the questionnaire's first screen is the client's own
+  // details, and every client has those. Still read from the API rather than assumed,
+  // so the server stays the one place that decides which steps a client is shown.
   const [questionnaireApplies, setQuestionnaireApplies] = useState(false);
   // Consent is withheld until the packet is signed, so before that there is no step.
   const [consentApplies, setConsentApplies] = useState(false);

@@ -743,7 +743,16 @@ test('the questionnaire is answerable: labelled options, autosave, and it comple
   assert.ok(after.json().submittedAt, 'answered — the portal shows the thank-you, not the form');
 });
 
-test('a client whose services fire no modules is never shown the questionnaire step', async () => {
+/*
+ * INVERTED 2026-08-16 by #27. This asserted that a client whose services fire no modules
+ * is never shown the questionnaire step — true while the questionnaire was ONLY the A–I
+ * modules. Its first screen is now the client's own details, which every client has, and
+ * that is exactly what let the separate "Confirm your information" step go.
+ *
+ * What has not changed, and is what this still guards: no module is invented for a
+ * client whose services do not call for one.
+ */
+test('a notice-only client gets no modules — but still confirms their own details', async () => {
   const { submissionId, resumeToken } = await startForm('soto_intake');
   await app.inject({
     method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
@@ -765,12 +774,12 @@ test('a client whose services fire no modules is never shown the questionnaire s
 
   const q = await app.inject({ method: 'GET', url: '/portal/service-onboarding', headers: hdr });
   assert.deepEqual(q.json().modules, [], 'nothing assembles for a notice-only client');
+  assert.ok(q.json().contact, 'but their own details are there to check');
 
-  // The dashboard must therefore not show the step. Same rule as the deposit: a step a
-  // client can never complete holds them at 4/5 forever.
+  // The step therefore DOES apply — it is not empty, it is one screen long.
   const dash = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: hdr });
   assert.equal(dash.statusCode, 200, dash.body);
-  assert.equal(dash.json().questionnaireApplies, false, 'no questions, no step');
+  assert.equal(dash.json().questionnaireApplies, true, 'everyone has details to confirm');
 });
 
 /*
@@ -962,4 +971,92 @@ test('a stray "other" description is not stored beside a real answer', async () 
     `SELECT how_heard_other FROM contacts WHERE email = 'realind-forms@example.test'`
   );
   assert.equal(c.rows[0]!.how_heard_other, null);
+});
+
+/*
+ * #27 — PREFILL, AND ONLY BEHIND A SESSION (Brian, 2026-08-16).
+ *
+ * Ruled: prefill only for an authenticated portal session; the unauthenticated
+ * pre-engagement form prefills nothing, EVER. The reason is the resume token — a public
+ * form is resumable by whoever holds its link, so prefilling it would turn that link into
+ * a disclosure of data the client never typed there.
+ */
+test('the public intake carries no client data, whoever asks and however often', async () => {
+  // A contact who exists and whose details we hold.
+  const { submissionId, resumeToken } = await startForm('soto_intake');
+  await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Known',
+        email: 'known-forms@example.test', mobile_phone: '+13125550197', sms_ok: 'no',
+        preferred_contact_method: 'email', owns_business: 'no',
+        services: ['tax_personal'], filed_last_year: 'yes', irs_letters: 'no',
+        how_heard: 'google', communication_consent: true, esign_consent: true,
+      },
+    },
+  });
+
+  const def = await app.inject({ method: 'GET', url: '/public/forms/soto_intake' });
+  assert.equal(def.statusCode, 200, def.body);
+  const body = def.body;
+  assert.ok(!body.includes('known-forms@example.test'), 'no email');
+  assert.ok(!body.includes('+13125550197'), 'no phone');
+  assert.ok(!('contact' in def.json()), 'the public form has no contact block at all');
+
+  // Nor does starting one — the submission begins empty, always.
+  const started = await app.inject({
+    method: 'POST', url: '/public/forms/soto_intake/start', payload: { language: 'en' },
+  });
+  const fresh = await app.db.query<{ answers: Record<string, unknown> }>(
+    `SELECT answers FROM form_submissions WHERE id = $1`,
+    [started.json().submissionId]
+  );
+  assert.deepEqual(fresh.rows[0]!.answers, {}, 'a stranger starts from nothing');
+});
+
+test('the questionnaire opens with what we hold, and confirm-your-info is gone', async () => {
+  const c = await app.db.query<{ id: string }>(
+    `SELECT id FROM contacts WHERE email = 'known-forms@example.test'`
+  );
+  const contactId = c.rows[0]!.id;
+  const session = await clientSessionFor(contactId, 'known-forms@example.test');
+  const hdr = { authorization: `Bearer ${session}` };
+
+  const q = await app.inject({ method: 'GET', url: '/portal/service-onboarding', headers: hdr });
+  assert.equal(q.statusCode, 200, q.body);
+  const held = q.json().contact as Record<string, unknown>;
+  assert.equal(held.first_name, 'Synthetic', 'prefilled behind a session');
+  assert.equal(held.email, 'known-forms@example.test');
+
+  /*
+   * This client is tax-only with no industry, so no A–I module fires — and they STILL
+   * have a questionnaire, because its first screen is their own details. That is what
+   * let the separate "Confirm your information" step go.
+   */
+  const dash = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: hdr });
+  assert.equal(dash.json().questionnaireApplies, true, 'every client has details to confirm');
+
+  const gone = await app.inject({
+    method: 'POST', url: '/portal/onboarding/steps/confirm_info/complete', headers: hdr,
+  });
+  assert.notEqual(gone.statusCode, 200, 'confirm_info is no longer a step a client ticks');
+
+  // And it no longer holds the checklist open.
+  await app.db.query(
+    `UPDATE portal_onboarding SET step_sign_docs_at = now(), step_questionnaire_at = now(),
+                                  step_confirm_info_at = NULL, completed_at = NULL
+      WHERE contact_id = $1`,
+    [contactId]
+  );
+  await app.inject({
+    method: 'POST', url: '/portal/onboarding/steps/upload_documents/complete', headers: hdr,
+  });
+  const row = await app.db.query<{ completed_at: Date | null; step_confirm_info_at: Date | null }>(
+    `SELECT completed_at, step_confirm_info_at FROM portal_onboarding WHERE contact_id = $1`,
+    [contactId]
+  );
+  assert.ok(row.rows[0]!.completed_at, 'finished without it');
+  assert.equal(row.rows[0]!.step_confirm_info_at, null, 'and it really was never ticked');
 });

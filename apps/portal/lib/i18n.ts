@@ -77,6 +77,33 @@ const dict = {
     'Your answers are with your team. They shape how we set up your books, your filings and your calendar, so nothing here gets asked twice.',
     'Sus respuestas ya están con su equipo. Con ellas configuramos sus libros, sus presentaciones y su calendario, para no volver a preguntarle lo mismo.',
   ],
+  /*
+   * #27 — the questionnaire opens with what we already hold, prefilled and correctable.
+   * This is what replaced the separate "Confirm your information" step: the copy says we
+   * already have these, so the client is checking rather than filling a form again.
+   */
+  quest_details_title: ['Your details', 'Sus datos'],
+  quest_details_intro: [
+    'These are what we have on file. Change anything that is out of date.',
+    'Esto es lo que tenemos registrado. Corrija lo que ya no esté al día.',
+  ],
+  quest_first_name: ['First name', 'Nombre'],
+  quest_last_name: ['Last name', 'Apellido'],
+  quest_phone: ['Mobile number', 'Número de celular'],
+  quest_address: ['Street address', 'Dirección'],
+  quest_city: ['City', 'Ciudad'],
+  quest_state: ['State', 'Estado'],
+  quest_zip: ['ZIP code', 'Código postal'],
+  quest_language: ['Language we should use with you', 'Idioma que debemos usar con usted'],
+  quest_preferred: ['Best way to reach you', 'Mejor forma de contactarlo(a)'],
+  quest_pref_text: ['Text', 'Texto'],
+  quest_pref_email: ['Email', 'Correo'],
+  quest_pref_phone: ['Phone', 'Teléfono'],
+  quest_pref_portal: ['Portal', 'Portal'],
+  quest_email_fixed: [
+    'Your sign-in email — write to us to change it:',
+    'Su correo de acceso — escríbanos para cambiarlo:',
+  ],
   quest_none_title: ['Nothing to answer right now', 'Nada que responder por ahora'],
   quest_none_body: [
     'These questions are built from the services you have with us. When a new service starts, the questions that go with it will appear here.',

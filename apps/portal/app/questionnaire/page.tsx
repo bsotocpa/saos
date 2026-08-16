@@ -38,6 +38,32 @@ interface Module { key: string; nameEn: string; nameEs: string; questions: Quest
 
 type Answers = Record<string, unknown>;
 
+/*
+ * WHAT WE ALREADY HOLD (#27). Prefilled and correctable, and only ever behind a portal
+ * session — Brian's ruling is that the unauthenticated pre-engagement form prefills
+ * nothing, ever, because a public form is resumable by whoever holds its link.
+ *
+ * Email is shown but NOT editable: it is the login identity, and the profile endpoint has
+ * never accepted a change to it. Someone who needs it changed should reach a person.
+ */
+interface Held {
+  first_name: string; last_name: string; email: string | null;
+  phone: string | null; secondary_phone: string | null;
+  preferred_contact_method: string | null; language: string;
+  address_line1: string | null; address_line2: string | null;
+  city: string | null; state: string | null; zip: string | null;
+}
+
+const DETAIL_FIELDS = [
+  ['firstName', 'first_name', 'quest_first_name'],
+  ['lastName', 'last_name', 'quest_last_name'],
+  ['phone', 'phone', 'quest_phone'],
+  ['addressLine1', 'address_line1', 'quest_address'],
+  ['city', 'city', 'quest_city'],
+  ['state', 'state', 'quest_state'],
+  ['zip', 'zip', 'quest_zip'],
+] as const;
+
 export default function QuestionnairePage() {
   const { t, lang } = useSession();
 
@@ -46,6 +72,8 @@ export default function QuestionnairePage() {
   const [screenIndex, setScreenIndex] = useState(0);
   const [state, setState] = useState<'loading' | 'ready' | 'none' | 'done' | 'error'>('loading');
   const [resumed, setResumed] = useState(false);
+  const [held, setHeld] = useState<Held | null>(null);
+  const [details, setDetails] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -67,6 +95,7 @@ export default function QuestionnairePage() {
       try {
         const r = await api<{
           modules: Module[];
+          contact: Held | null;
           answers: Answers;
           screenReached: number;
           submittedAt: string | null;
@@ -76,11 +105,11 @@ export default function QuestionnairePage() {
         // Both are ordinary states, not errors: a tax-only client with no industry
         // module fires nothing, and telling them something went wrong would be a lie.
         if (r.submittedAt) { setState('done'); return; }
-        if (r.modules.length === 0) { setState('none'); return; }
 
+        setHeld(r.contact);
         setModules(r.modules);
         setAnswers(r.answers ?? {});
-        const resumeAt = Math.min(r.screenReached ?? 0, Math.max(r.modules.length - 1, 0));
+        const resumeAt = Math.min(r.screenReached ?? 0, r.modules.length);
         setScreenIndex(resumeAt);
         if (resumeAt > 0 || Object.keys(r.answers ?? {}).length > 0) setResumed(true);
         setState('ready');
@@ -96,8 +125,14 @@ export default function QuestionnairePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  const current = modules[screenIndex];
-  const total = modules.length;
+  /*
+   * Screen 0 is ALWAYS the client's own details (#27) — that is what let the separate
+   * "Confirm your information" checklist step go, and it is why a client whose services
+   * fire no modules still has a questionnaire worth opening.
+   */
+  const onDetails = screenIndex === 0;
+  const current = onDetails ? undefined : modules[screenIndex - 1];
+  const total = modules.length + 1;
   const last = screenIndex === total - 1;
 
   const set = (key: string, value: unknown) => setAnswers((a) => ({ ...a, [key]: value }));
@@ -116,6 +151,7 @@ export default function QuestionnairePage() {
     setBusy(true);
     setError('');
     try {
+      if (onDetails) await saveDetails();
       await save(screenIndex + 1);
       setScreenIndex((i) => i + 1);
       setResumed(false);
@@ -126,10 +162,26 @@ export default function QuestionnairePage() {
     }
   };
 
+  /** Only what they actually changed — an unchanged field is not an edit. */
+  const saveDetails = async () => {
+    const body: Record<string, string> = {};
+    for (const [apiKey, heldKey] of DETAIL_FIELDS.map(([a, h]) => [a, h] as const)) {
+      const typed = details[apiKey];
+      if (typed !== undefined && typed !== (held?.[heldKey] ?? '')) body[apiKey] = typed;
+    }
+    const lang = details.language;
+    if (lang !== undefined && lang !== held?.language) body.language = lang;
+    const pref = details.preferredContactMethod;
+    if (pref !== undefined && pref !== (held?.preferred_contact_method ?? '')) body.preferredContactMethod = pref;
+    if (Object.keys(body).length === 0) return;
+    await api('/portal/me', { method: 'PATCH', body });
+  };
+
   const submit = async () => {
     setBusy(true);
     setError('');
     try {
+      if (onDetails) await saveDetails();
       await api('/portal/service-onboarding/submit', { method: 'POST', body: { answers } });
       setState('done');
     } catch (err) {
@@ -155,16 +207,6 @@ export default function QuestionnairePage() {
     );
   }
 
-  if (state === 'none') {
-    return (
-      <section className="card">
-        <h1>{t('quest_none_title')}</h1>
-        <p>{t('quest_none_body')}</p>
-        <Link className="btn ghost" href="/">{t('back_home')}</Link>
-      </section>
-    );
-  }
-
   if (state === 'done') {
     return (
       <section className="card">
@@ -176,14 +218,15 @@ export default function QuestionnairePage() {
   }
 
   // Belt and braces: screenIndex is clamped on load, but a module list that changed
-  // underneath a long-open tab must not render module[undefined].
-  if (!current) return <p className="muted">{t('loading')}</p>;
+  // underneath a long-open tab must not render module[undefined]. Screen 0 has no
+  // module by design, so it is exempt.
+  if (!onDetails && !current) return <p className="muted">{t('loading')}</p>;
 
   return (
     <>
       <h1>{t('quest_title')}</h1>
       <p className="muted small">
-        {moduleName(current)} · {screenIndex + 1} / {total}
+        {onDetails ? t('quest_details_title') : moduleName(current!)} · {screenIndex + 1} / {total}
       </p>
       <div className="progress" aria-hidden="true">
         <div style={{ width: `${progress}%` }} />
@@ -193,7 +236,49 @@ export default function QuestionnairePage() {
       {error ? <div className="alert error">{error}</div> : null}
 
       <section className="card">
-        {current.questions.map((q) => {
+        {onDetails ? (
+          <>
+            <p className="muted small">{t('quest_details_intro')}</p>
+            {DETAIL_FIELDS.map(([apiKey, heldKey, labelKey]) => (
+              <label className="field" key={apiKey}>
+                {t(labelKey)}
+                <input
+                  value={details[apiKey] ?? (held?.[heldKey] ?? '')}
+                  onChange={(e) => setDetails((v) => ({ ...v, [apiKey]: e.target.value }))}
+                />
+              </label>
+            ))}
+            <label className="field">
+              {t('quest_language')}
+              <select
+                value={details.language ?? held?.language ?? 'en'}
+                onChange={(e) => setDetails((v) => ({ ...v, language: e.target.value }))}
+              >
+                <option value="en">English</option>
+                <option value="es">Español</option>
+              </select>
+            </label>
+            <label className="field">
+              {t('quest_preferred')}
+              <select
+                value={details.preferredContactMethod ?? held?.preferred_contact_method ?? ''}
+                onChange={(e) => setDetails((v) => ({ ...v, preferredContactMethod: e.target.value }))}
+              >
+                <option value="">{t('intake_choose')}</option>
+                <option value="text">{t('quest_pref_text')}</option>
+                <option value="email">{t('quest_pref_email')}</option>
+                <option value="phone">{t('quest_pref_phone')}</option>
+                <option value="portal">{t('quest_pref_portal')}</option>
+              </select>
+            </label>
+            {/* Shown, never editable: it is the login identity, and changing it is a
+                conversation with a person rather than a field on a form. */}
+            <p className="muted small">
+              {t('quest_email_fixed')} {held?.email ?? ''}
+            </p>
+          </>
+        ) : null}
+        {(current?.questions ?? []).map((q) => {
           const v = answers[q.id];
           return (
             <div key={q.id} style={{ marginBottom: 14 }}>

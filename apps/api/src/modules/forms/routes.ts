@@ -53,7 +53,7 @@ const PUBLIC_FORMS = new Set(['soto_intake', 'hilo_intake']);
  * instruction is "read the rest of this screen" is not a step. Its column stays, holding
  * the dates of clients who really did tick it.
  */
-const ONBOARDING_STEPS = ['sign_docs', 'confirm_info', 'upload_documents'] as const;
+const ONBOARDING_STEPS = ['sign_docs', 'upload_documents'] as const;
 
 /*
  * Resolve {{tax_year}} in question text when the form is SERVED (#29).
@@ -290,12 +290,18 @@ export function registerFormRoutes(app: FastifyInstance): void {
     );
 
     /*
-     * Whether this client HAS a questionnaire, for the same reason depositApplies
-     * exists: the modules are assembled from their engagements and industry, so a
-     * client whose service lines fire nothing has no questions to answer. Showing
-     * them a step they can never complete is how a checklist starts lying.
+     * The questionnaire now applies to EVERY client (#27, 2026-08-16).
+     *
+     * It used to depend on a module firing, because the modules were all it contained.
+     * Its first screen is now the client's own details, prefilled from what we hold and
+     * theirs to correct — and every client has details. That is what let "Confirm your
+     * information" go: a step whose whole job was already being done one screen later.
+     *
+     * Kept as a named constant rather than dropping the field, because the portal reads
+     * it and a silently-missing flag reads as false — which would hide the step from
+     * everyone.
      */
-    const questionnaireModules = await assembleModules(app, client.contactId);
+    const questionnaireApplies = true;
 
     /*
      * §7216 CONSENT — step 3, self-completing (finding #34).
@@ -365,7 +371,7 @@ export function registerFormRoutes(app: FastifyInstance): void {
       pendingSignatures: pendingEnvelopes.rows[0]!.n,
       bookingUrl: rawBookingUrl ? prefillBookingUrl(rawBookingUrl, identityRow) : null,
       depositApplies: depositOwed.rows[0]!.owed,
-      questionnaireApplies: questionnaireModules.length > 0,
+      questionnaireApplies,
       consentApplies,
       // Step 6 is optional and only shown where booking is actually open — the URL is
       // a setting, and null means scheduling is not available rather than broken.
@@ -425,7 +431,6 @@ export function registerFormRoutes(app: FastifyInstance): void {
       `UPDATE portal_onboarding o SET completed_at = now()
         WHERE o.contact_id = $1 AND o.completed_at IS NULL
           AND o.step_sign_docs_at IS NOT NULL
-          AND o.step_confirm_info_at IS NOT NULL
           AND o.step_upload_documents_at IS NOT NULL
           AND ($2 = false OR o.step_questionnaire_at IS NOT NULL)
           AND ($3 = false OR o.step_consent_at IS NOT NULL)`,
@@ -460,6 +465,31 @@ export function registerFormRoutes(app: FastifyInstance): void {
   // instrument. They can only exist here, because assembleModules triggers on the
   // client's engagements and industry, neither of which exists before the engagement.
 
+  /*
+   * WHAT WE ALREADY HOLD, for the questionnaire's first screen (#27).
+   *
+   * Brian's ruling: prefill ONLY for an authenticated portal session — the
+   * unauthenticated pre-engagement form prefills nothing, ever. That is the whole
+   * privacy argument for this shape. A public form is resumable by anyone holding its
+   * link, so prefilling it would turn that link into a disclosure of data the client
+   * never typed there. Behind a portal session there is no new exposure: this is the
+   * same data the client can already read on /profile.
+   *
+   * EMAIL IS DELIBERATELY ABSENT from what can be changed. It is the login identity, and
+   * the profile endpoint has never accepted it — a client who needs it changed should be
+   * talking to a person, not editing a field mid-questionnaire.
+   */
+  async function heldIdentity(contactId: string) {
+    const { rows } = await app.db.query(
+      `SELECT first_name, last_name, email, phone, secondary_phone,
+              preferred_contact_method::text AS preferred_contact_method, language,
+              address_line1, address_line2, city, state, zip
+         FROM contacts WHERE id = $1`,
+      [contactId]
+    );
+    return rows[0] ?? null;
+  }
+
   /** The one place that decides what this client's questionnaire is. */
   async function questionnaireFor(contactId: string) {
     const modules = await assembleModules(app, contactId);
@@ -483,6 +513,15 @@ export function registerFormRoutes(app: FastifyInstance): void {
     const { modules, draft, submittedAt } = await questionnaireFor(client.contactId);
     return {
       modules: modules.map((m) => ({ key: m.key, nameEn: m.name_en, nameEs: m.name_es, questions: m.questions })),
+      /*
+       * The details we hold, for the first screen (#27). This is why the questionnaire
+       * now applies to EVERY client rather than only those whose services fire a module:
+       * confirming your own details is the one thing every client has to do, and it used
+       * to be its own checklist step ("Confirm your information") pointing at a separate
+       * page. Brian's ruling: with prefilled identity fields the client can correct, that
+       * step is duplicate work — so it lives here and the step is gone.
+       */
+      contact: await heldIdentity(client.contactId),
       // Answers survive a lost signal, the same as the intake — a client working
       // through nine modules on a phone must not lose the lot to a backgrounded tab.
       answers: draft?.answers ?? {},
