@@ -42,19 +42,35 @@ const LEGACY: Record<ContactLifecycle, string> = {
  */
 export async function deriveLifecycle(app: FastifyInstance, contactId: string): Promise<ContactLifecycle> {
   const { rows } = await app.db.query<{
-    master_signed: boolean; open_engagements: number; ever_engaged: boolean; accepted_quote: boolean;
+    master_signed: boolean; open_engagements: number; ever_engaged: boolean;
+    accepted_quote: boolean; from_client_book: boolean;
   }>(
     `SELECT
        EXISTS (SELECT 1 FROM engagement_packets p WHERE p.contact_id = $1 AND p.status = 'signed') AS master_signed,
        (SELECT count(*)::int FROM engagements e WHERE e.contact_id = $1 AND e.status = 'active')   AS open_engagements,
        EXISTS (SELECT 1 FROM engagements e WHERE e.contact_id = $1)                                AS ever_engaged,
-       EXISTS (SELECT 1 FROM quotes q WHERE q.contact_id = $1 AND q.status = 'accepted')           AS accepted_quote`,
+       EXISTS (SELECT 1 FROM quotes q WHERE q.contact_id = $1 AND q.status = 'accepted')           AS accepted_quote,
+       (SELECT c.source::text = 'dubsado' FROM contacts c WHERE c.id = $1)                         AS from_client_book`,
     [contactId]
   );
   const f = rows[0]!;
   if (f.master_signed && f.open_engagements > 0) return 'active';
   if (f.ever_engaged && f.open_engagements === 0) return 'dormant';
   if (f.accepted_quote) return 'onboarding';
+
+  /*
+   * MIGRATION PROVENANCE IS EVIDENCE — the lesson from the 426-client backfill, in code
+   * rather than only in a doc.
+   *
+   * A contact imported from the Dubsado client book has a real relationship whose history
+   * lives in the old system. SAOS sees no engagement because the work predates SAOS, not
+   * because it never happened, so deriving purely from what SAOS generated calls 426
+   * established clients "leads". Worse, without this the health sweep would recompute them
+   * back to lead on its next run and silently undo migration 0063.
+   *
+   * Zoho was the CRM and held prospects, so those contacts really are leads.
+   */
+  if (f.from_client_book) return 'dormant';
   return 'lead';
 }
 
@@ -79,7 +95,25 @@ export async function refreshContactStatus(
   if (current.rows[0].contact_status === 'archived') return 'archived';
 
   const next = await deriveLifecycle(app, contactId);
-  if (next === current.rows[0].contact_status) return next;
+  if (next === current.rows[0].contact_status) {
+    /*
+     * The lifecycle has not moved — but the MIRROR still might be stale, and this is the
+     * only place allowed to repair it. Contacts get created outside this ladder (the
+     * importer, the Hilo transition, test fixtures) and land on the column default, so
+     * soto_status can say 'none' while contact_status says 'lead'. Returning early left
+     * that untouched and quietly broke Hilo → Soto conversion, which relies on the
+     * intake making someone a Soto lead.
+     *
+     * Self-healing rather than hand-written: any path that creates a contact can call
+     * this and be sure both columns agree afterwards.
+     */
+    await app.db.query(
+      `UPDATE contacts SET soto_status = $2::soto_status
+        WHERE id = $1 AND soto_status <> $2::soto_status`,
+      [contactId, LEGACY[next]]
+    );
+    return next;
+  }
 
   await app.db.query(
     `UPDATE contacts

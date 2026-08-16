@@ -13,6 +13,21 @@ import type { Config } from '../src/config.ts';
 import { has7216Consent, require7216Consent, record7216Consent } from '../src/modules/compliance/consent.ts';
 import { runHealthRefresh } from '../src/modules/crm/health.ts';
 
+/**
+ * A contact who is genuinely ACTIVE by the #42 ladder: signed Master plus an open
+ * engagement. Fixtures used to pass sotoStatus:'active' in the create payload, which the
+ * ruling removed — a status is derived from what happened, never asserted.
+ */
+async function makeActive(contactId: string) {
+  await app.db.query(
+    `INSERT INTO engagement_packets (contact_id, master_template_key, master_version, schedule_codes, status, signed_at, signature_method)
+     VALUES ($1, 'engagement_master', 1, ARRAY[]::text[], 'signed', now(), 'portal_esign')`,
+    [contactId]
+  );
+  const { refreshContactStatus } = await import('../src/modules/crm/lifecycle.ts');
+  await refreshContactStatus(app, contactId, 'test_fixture');
+}
+
 let app: FastifyInstance;
 let config: Config;
 let brian: TestStaff & { token: string };
@@ -64,7 +79,7 @@ test('CRM walkthrough: contact → business → gaps shrink as data lands → en
   // Create a contact with no email/phone → gaps say so.
   const created = await app.inject({
     method: 'POST', url: '/contacts', headers: auth(brian),
-    payload: { firstName: 'Synthetic', lastName: 'Walkthrough', language: 'es', sotoStatus: 'lead' },
+    payload: { firstName: 'Synthetic', lastName: 'Walkthrough', language: 'es' },
   });
   assert.equal(created.statusCode, 201, created.body);
   const contactId = created.json().id as string;
@@ -258,10 +273,11 @@ test('health job: red transition alerts the assigned manager; green+tenure upsel
     method: 'POST', url: '/contacts', headers: auth(brian),
     payload: {
       firstName: 'Synthetic', lastName: 'Redclient', email: 'red@example.test',
-      sotoStatus: 'active', assignedManagerId: jackson.id, clientSince: '2026-01-01',
+      assignedManagerId: jackson.id, clientSince: '2026-01-01',
     },
   });
   const redId = red.json().id as string;
+  await makeActive(redId);
   const redEng = await app.db.query<{ id: string }>(
     `INSERT INTO engagements (contact_id, service_line, status) VALUES ($1, 'tax', 'active') RETURNING id`,
     [redId]
@@ -278,7 +294,7 @@ test('health job: red transition alerts the assigned manager; green+tenure upsel
       method: 'POST', url: '/contacts', headers: auth(brian),
       payload: {
         firstName: 'Synthetic', lastName: last, email,
-        sotoStatus: 'active', assignedManagerId: jackson.id, clientSince: '2020-01-01',
+        assignedManagerId: jackson.id, clientSince: '2020-01-01',
       },
     });
     const id = res.json().id as string;
@@ -297,6 +313,9 @@ test('health job: red transition alerts the assigned manager; green+tenure upsel
         [id]
       );
     }
+    // A tenured, paying, logging-in client is an ACTIVE one, and under #42 that means a
+    // signed Master — not a status typed into the create payload.
+    await makeActive(id);
     return id;
   };
   const greenConsented = await mkGreen('Greenyes', 'green-yes@example.test');
@@ -343,7 +362,7 @@ test('health job: red transition alerts the assigned manager; green+tenure upsel
 test('attest independence: blocked with active bookkeeping; Brian-only documented override', async () => {
   const res = await app.inject({
     method: 'POST', url: '/contacts', headers: auth(brian),
-    payload: { firstName: 'Synthetic', lastName: 'Attest', email: 'attest@example.test', sotoStatus: 'active' },
+    payload: { firstName: 'Synthetic', lastName: 'Attest', email: 'attest@example.test' },
   });
   const contactId = res.json().id as string;
   await app.db.query(
@@ -407,10 +426,16 @@ test('attest independence: blocked with active bookkeeping; Brian-only documente
 test('health baseline (2026-08-09): never-engaged = gray; yellow only on signals; active+clean = green', async () => {
   // Migrated, never engaged: no logins, engagements, doc requests, messages.
   const dormant = await app.db.query<{ id: string }>(
-    `INSERT INTO contacts (first_name, last_name, email, soto_status, source)
-     VALUES ('Synthetic', 'Dormant', 'dormant-hb@example.test', 'active', 'zoho') RETURNING id`
+    `INSERT INTO contacts (first_name, last_name, email, source)
+     VALUES ('Synthetic', 'Dormant', 'dormant-hb@example.test', 'dubsado') RETURNING id`
   );
   const dormantId = dormant.rows[0]!.id;
+  // From the client book, so the ladder puts them at dormant — a real relationship whose
+  // history predates SAOS. 'zoho' would make them a prospect, which is a different thing.
+  {
+    const { refreshContactStatus } = await import('../src/modules/crm/lifecycle.ts');
+    await refreshContactStatus(app, dormantId, 'test_fixture');
+  }
 
   // Engaged + one ACTUAL signal (overdue document request).
   const signal = await app.db.query<{ id: string }>(
@@ -418,6 +443,11 @@ test('health baseline (2026-08-09): never-engaged = gray; yellow only on signals
      VALUES ('Synthetic', 'Signal', 'signal-hb@example.test', 'active') RETURNING id`
   );
   const signalId = signal.rows[0]!.id;
+  await app.db.query(
+    `INSERT INTO engagements (contact_id, service_line, status) VALUES ($1, 'tax', 'active')`,
+    [signalId]
+  );
+  await makeActive(signalId);
   await app.db.query(
     `INSERT INTO document_requests (contact_id, title_en, status, due_date)
      VALUES ($1, 'Overdue docs', 'open', CURRENT_DATE - 5)`,
@@ -430,6 +460,13 @@ test('health baseline (2026-08-09): never-engaged = gray; yellow only on signals
      VALUES ('Synthetic', 'Clean', 'clean-hb@example.test', 'active') RETURNING id`
   );
   const cleanId = clean.rows[0]!.id;
+  // 'active' is not a label you can type on (#42) — give this client what an active
+  // client has, or the health cohort correctly excludes them.
+  await app.db.query(
+    `INSERT INTO engagements (contact_id, service_line, status) VALUES ($1, 'tax', 'active')`,
+    [cleanId]
+  );
+  await makeActive(cleanId);
   await app.db.query(
     `INSERT INTO audit_log (actor_type, action, contact_id) VALUES ('client', 'portal.login', $1)`,
     [cleanId]

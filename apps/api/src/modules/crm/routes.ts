@@ -21,7 +21,17 @@ const ContactCreateBody = z.object({
   secondaryPhone: z.string().optional(),
   language: z.enum(['en', 'es']).default('en'),
   preferredContactMethod: z.enum(['phone', 'email', 'portal', 'text']).optional(),
-  sotoStatus: z.enum(['none', 'lead', 'active', 'inactive', 'former']).default('lead'),
+  /*
+   * NO STATUS IN THE BODY (#42). The lifecycle is derived from what happened —
+   * acceptance, signature, engagements closing — so there is nothing to type here. A new
+   * contact starts at the column default ('lead') and climbs the ladder on its own.
+   *
+   * This was a real hole: the field was accepted at creation AND on every PATCH, so a
+   * staffer could type "active" onto a contact with no Master and no engagement, and the
+   * legacy mirror's one-writer guarantee would be broken by the application itself.
+   *
+   * hilo_status stays settable — it answers a different question and is not this ladder.
+   */
   hiloStatus: z.enum(['none', 'awareness', 'exploring', 'active', 'referral', 'alumni', 'partner', 'inactive']).default('none'),
   assignedManagerId: z.uuid().optional(),
   clientSince: z.iso.date().optional(),
@@ -155,13 +165,13 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     const actor = request.staff!;
     const { rows } = await app.db.query<{ id: string }>(
       `INSERT INTO contacts (first_name, last_name, email, phone, secondary_phone, language,
-                             preferred_contact_method, soto_status, hilo_status, assigned_manager_id,
+                             preferred_contact_method, hilo_status, assigned_manager_id,
                              client_since, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::soto_status,$9::hilo_status,$10,$11,$12)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::hilo_status,$9,$10,$11)
        RETURNING id`,
       [
         b.firstName, b.lastName, b.email ?? null, b.phone ?? null, b.secondaryPhone ?? null, b.language,
-        b.preferredContactMethod ?? null, b.sotoStatus, b.hiloStatus, b.assignedManagerId ?? null,
+        b.preferredContactMethod ?? null, b.hiloStatus, b.assignedManagerId ?? null,
         b.clientSince ?? null, b.notes ?? null,
       ]
     );
@@ -285,7 +295,9 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     const map: Record<string, unknown> = {
       first_name: b.firstName, last_name: b.lastName, email: b.email, phone: b.phone,
       secondary_phone: b.secondaryPhone, language: b.language, preferred_contact_method: b.preferredContactMethod,
-      soto_status: b.sotoStatus, hilo_status: b.hiloStatus, assigned_manager_id: b.assignedManagerId,
+      // soto_status is deliberately absent (#42): a lifecycle that can be PATCHed is a
+      // lifecycle that will be wrong. It moves when something happens, or not at all.
+      hilo_status: b.hiloStatus, assigned_manager_id: b.assignedManagerId,
       client_since: b.clientSince, notes: b.notes,
     };
     for (const [col, val] of Object.entries(map)) {

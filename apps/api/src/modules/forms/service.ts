@@ -147,9 +147,16 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
   if (existing.rows[0]) {
     contactId = existing.rows[0].id;
     await app.db.query(
+      /*
+       * soto_status is NOT touched here any more (#42). This used to nudge 'none' → 'lead'
+       * on its own, which made the intake a second writer of a field that must have
+       * exactly one — a contact could come out of intake with soto_status saying 'lead'
+       * and contact_status saying something else, which is the drift the mirror exists to
+       * prevent. Submitting an intake does not change anyone's standing anyway: it is the
+       * accepted quote that does, and the ladder handles that.
+       */
       `UPDATE contacts SET
          phone = COALESCE(phone, $2), language = $3, preferred_contact_method = $4::contact_method,
-         soto_status = CASE WHEN soto_status = 'none' THEN 'lead'::soto_status ELSE soto_status END,
          sms_consent = $5, sms_consent_at = CASE WHEN $5 THEN now() ELSE sms_consent_at END,
          communication_consent_at = now(), esign_consent_at = now(),
          how_heard = COALESCE(how_heard, $6), referred_by_text = COALESCE(referred_by_text, $7),
@@ -268,6 +275,16 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
     }
   }
   await refreshEnrichmentGaps(app.db, contactId);
+
+  /*
+   * Submitting a Soto intake makes someone a Soto contact — which matters most for a Hilo
+   * person converting across, who was not one before. This used to be a hand-written
+   * `soto_status = CASE WHEN 'none' THEN 'lead'` right here, i.e. a second writer of a
+   * field that must have exactly one. Now it goes through the ladder, which settles both
+   * columns and cannot disagree with itself.
+   */
+  const { refreshContactStatus } = await import('../crm/lifecycle.ts');
+  await refreshContactStatus(app, contactId, 'intake_submitted');
 
   // Service-line opportunities: tax → tax engagement; others → draft engagements.
   const services = Array.isArray(a.services) ? (a.services as string[]) : [];

@@ -14,6 +14,21 @@ import { record7216Consent } from '../src/modules/compliance/consent.ts';
 import { createTestConfig, makeStaff, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 
+/**
+ * A contact who is genuinely ACTIVE by the #42 ladder: signed Master plus an open
+ * engagement. Fixtures used to pass sotoStatus:'active' in the create payload, which the
+ * ruling removed — a status is derived from what happened, never asserted.
+ */
+async function makeActive(contactId: string) {
+  await app.db.query(
+    `INSERT INTO engagement_packets (contact_id, master_template_key, master_version, schedule_codes, status, signed_at, signature_method)
+     VALUES ($1, 'engagement_master', 1, ARRAY[]::text[], 'signed', now(), 'portal_esign')`,
+    [contactId]
+  );
+  const { refreshContactStatus } = await import('../src/modules/crm/lifecycle.ts');
+  await refreshContactStatus(app, contactId, 'test_fixture');
+}
+
 let app: FastifyInstance;
 let config: Config;
 let jackson: TestStaff & { token: string }; // ed_coo — suggests + approves

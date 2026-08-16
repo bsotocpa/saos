@@ -667,3 +667,34 @@ misinformed and the paperwork is technically fine, which is the worse combinatio
 (`needs_es_review = false`). If it is, the change lands in both languages in the same
 edit, and the translated wording is named explicitly in the report as the part that was
 not signed off verbatim.
+
+## "Backfill from existing events" includes events SAOS never saw
+**What happened**: backfilling the #42 contact lifecycle, I derived every contact's state
+from evidence this system can see — a signed Master, an open engagement, an accepted
+quote. For the 426 clients imported from Dubsado all three are absent, because their
+Masters and their history are in the old system. So they landed on `lead`. That is the
+letter of the rule and the inverse of its purpose: #42 exists BECAUSE a paying client
+displaying as a lead misleads triage, and I then did exactly that to 426 clients at once.
+The information was already in the row — before my migration those 426 were the only
+contacts with `soto_status = 'active'` while the 436 from Zoho were `lead`, because the
+import had encoded the distinction correctly. My recompute discarded it.
+**Rule**: when a backfill derives state from events, ask what happened BEFORE this system
+existed. Migration provenance is evidence — `source`, the legacy status, a `client_since`
+date are all facts about the relationship, and a recompute that only counts events SAOS
+generated will confidently overwrite them with a wrong answer. If the pre-existing value
+and the derived value disagree at scale, the derivation is missing an input, not the data.
+
+## A backstop that hides a symptom disables the check for it
+**What happened**: I added `body { overflow-x: clip }` to the ops app, commented as "the
+backstop", to stop horizontal scrolling. `clip` removes the scrollbar without removing the
+overflow — content past the viewport is cut off instead. Every 390px verification I ran
+asked whether `scrollWidth > clientWidth`, which under `clip` is permanently false. So I
+added the rule that defeated the check, then reported the check as evidence. Brian found
+the overflow on a real iPhone. Two further gaps surfaced while proving it: I took a
+measurement from a page that was 500ing with one CSS rule loaded and read "no offenders"
+as a pass, and I had been treating a 390px Chromium viewport as a device.
+**Rule**: never add a rule whose effect is to make a failure undetectable. Prefer the
+symptom visible and the cause fixed. Before trusting any browser measurement, assert its
+preconditions — the page rendered, the stylesheet loaded, the rule under test is present —
+because "no problems found" from a broken page is indistinguishable from a pass. And a
+viewport resize is not a device: say which engine was checked, and say what was not.
