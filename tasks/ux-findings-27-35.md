@@ -463,3 +463,72 @@ My read, for what it is worth: `track_services` looks like #35's job to absorb �
 whole content is "look at the services list below", and #35 turns home into exactly that.
 `confirm_info` is less clear; #27's prefill may make it redundant, or it may still earn
 its place. Both are your call, not mine.
+
+---
+
+## #35 — BUILT AND DEPLOYED (2026-08-16)
+
+`track_services` dropped, per the ruling — a step whose whole instruction was "look at
+the services below" stops being a step once the services below are the home page. Its
+column stays, holding the dates of clients who really did tick it.
+
+Two defects were underneath this, both of which made the portal quietly untrue about a
+client's own business.
+
+**The services section was tax-only.** It selected `FROM tax_engagements`, so a
+bookkeeping or payroll client saw nothing at all. Worse, in production **four of six
+active tax engagements had no tax row either** — so those clients were invisible to
+themselves too. Verified after deploy: both RC2 clients went from **0 projects visible to
+2**. They were signed in, walking the journey, and their portal showed them nothing about
+work that was genuinely underway.
+
+**The client-facing name is composed, not stored.** `engagements.title` is internal and
+four production rows read "Accepted quote", which is not a thing to tell someone about
+their own business. Names now come from service line + tax year.
+
+**Progress is drawn only where there is a finish line.** Tax is a pipeline, so a position
+in the stage ladder means something. Bookkeeping and payroll are ongoing — a bar creeping
+toward completion would promise an ending the service does not have, so they show whether
+they are running instead.
+
+**Scheduling shows real bookings**, which needed somewhere to keep them. The Cal.com
+webhook fired, tasked the team and wrote an audit row, and kept nothing a client-facing
+screen could read — so the portal could offer a booking link and then show the client
+nothing about the booking they just made. Per the policy attached to this finding, an
+audit row is tracked forensically and untracked in the sense that matters to the person
+who booked. `client_bookings` is written by the webhook only, never by a client asserting
+a meeting exists, and is idempotent because Cal.com retries.
+
+**Found while verifying:** completion was only ever evaluated when a client ticked a step,
+so it depended on them having some OTHER step left to press — and the automatic steps tick
+nothing. Dropping `track_services` turned that into a live problem: the clients who had
+finished everything else were left with `completed_at` null, and no action of theirs would
+have re-examined it. They would have stared at a checklist with every box ticked instead
+of seeing their home. Every dashboard load now settles it.
+
+### Still open
+
+- **Not walked in a browser.** Same as #30/#31 — API tested and sabotage-verified, builds
+  clean, but the authenticated home has not been clicked through at phone width.
+- **`engagements.title` holds legacy junk internally.** The client no longer sees it, but
+  four active engagements still read "Accepted quote" on the ops side. Worth a pass, not
+  urgent, and not something I would rewrite without a ruling on what they should say.
+
+---
+
+## Batch status
+
+| # | State |
+|---|---|
+| 27 · prefill held fields | **awaiting ruling** — recommend (a), authenticated sessions only |
+| 28 · free-text for every "Other" | ruled, **not yet built** — every Other except `demo_race` |
+| 29 · last-year gross revenue | **awaiting ruling** — replace or add, required or optional, which year |
+| 30 · onboarding voice | **built** (via the split) |
+| 31 · questionnaire as a step | **built** |
+| 32 · portal-access status + inline grant | ruled, **not yet built** |
+| 33 · client record as operating surface | ruled, **not yet built** |
+| 34 · one flow, seams closed | **built** |
+| 35 · post-onboarding home | **built** |
+
+Remaining build work in the batch: **#28, #32, #33**, plus #27 and #29 once ruled.
+`confirm_info` is re-evaluated when #27 ships, per the ruling.
