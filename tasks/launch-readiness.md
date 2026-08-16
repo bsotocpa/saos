@@ -46,19 +46,53 @@ is versioning working as intended — v1 is history — but it means a **from-sc
 reaches the corrected state by running `scripts/reclassify-price-lines.mjs`. A restore
 from backup is unaffected: it restores every version as it stood.
 
-## ATTORNEY FOLLOW-UP — Master v-next carries two amendments
+## ATTORNEY FOLLOW-UP — both items GREEN-LIT 2026-08-15
 
-Brian, 2026-08-15: one email, both items. Neither ships before attorney sign-off, and
-neither is urgent — exposure on the first is nil while we control the behaviour.
+Brian sent one email covering both; the attorney signed off on both. Sign-off on file
+with Brian.
 
-1. **§2 booking-deposit language.** "Where a deposit is collected **at booking or
-   onboarding** …" still authorises a path that no longer exists: the Lane 1 booking
-   deposit was retired 2026-08-14 and deposits now exist only on accepted quotes. The
-   clause is over-broad rather than false. Narrow it to acceptance.
-2. **Governing-language third sentence.** The attorney's draft required all
-   communications in English; it was deliberately omitted when the clause shipped
-   (2026-08-13) because it contradicts bilingual operations. Deletion still pending his
-   written confirmation.
+### 1. Governing-language third sentence — CLOSED
+
+The attorney's draft carried a third sentence requiring all communications to be
+conducted in English. It was deliberately omitted when the clause shipped on 2026-08-13
+because it contradicts bilingual operations — all Soto client copy ships in English AND
+Spanish — and the template version note recorded the deletion as pending his written
+confirmation.
+
+**That confirmation is in hand. The sentence stays out permanently.**
+
+No document text changed, because the sentence was never included. What changed is the
+record: the note on `engagement_master` v2 now carries the confirmation, appended
+rather than replacing the pending text so both the conditional decision and its
+resolution survive. The version was NOT bumped — nothing moved in the agreement itself.
+
+### 2. §2 booking-deposit language — GREEN-LIT, carried by Master v-next
+
+§2 still reads:
+
+> Where a deposit is collected **at booking or onboarding**, all completed work is
+> reconciled against your deposit at invoicing: overpayments are credited to your
+> account and any remaining balance is billed.
+
+That authorises a path retired on 2026-08-14: the Lane 1 booking deposit is gone, and
+deposits now exist only on accepted quotes. The clause is over-broad rather than false —
+exposure was nil while it rode, because we control whether we ever collect at booking,
+and we do not.
+
+⏸ **Waiting on the exact amended wording before cutting Master v-next.** The change is a
+narrow scope reduction, but §2 is the operative deposit clause in the agreement every
+client signs, and the standing pattern for attorney-approved language is that Brian
+supplies the text verbatim — as he did for the governing-language clause ("EXACTLY this
+text and nothing more"). Drafting it here would substitute my wording for counsel's on
+the one sentence that governs client money.
+
+The minimal edit, if the attorney's sign-off was to the change rather than to specific
+text: replace "at booking or onboarding" with "when you accept a quote", leaving the rest
+of the sentence untouched. Brian confirms which.
+
+When the wording lands, Master v-next is a new effective-dated template version — the
+same mechanism the governing-language clause used — and every already-signed client keeps
+the version they signed.
 
 
 ## GATE 2 — CLEARED 2026-08-13 (price book v2)
