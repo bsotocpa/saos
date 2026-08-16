@@ -532,3 +532,83 @@ of seeing their home. Every dashboard load now settles it.
 
 Remaining build work in the batch: **#28, #32, #33**, plus #27 and #29 once ruled.
 `confirm_info` is re-evaluated when #27 ships, per the ruling.
+
+---
+
+## #29, #28, #32, #33 — BUILT AND DEPLOYED (2026-08-16)
+
+**#29 — gross revenue as a figure.** Replaces `revenue_range` on the intake; optional;
+labelled with the named year. The label carries a `{{tax_year}}` token resolved when the
+form is SERVED, from the same `currentTaxYear()` the filing lane uses — a year typed into
+the stored definition rots exactly the way "last year" does, only more quietly. The figure
+is stored WITH the year it describes, held by a CHECK constraint. Production serves
+"2025 gross revenue" / "Ingresos brutos de 2025". `revenue_range` the column stays: staff
+set it, the migrated book carries it.
+
+*Fixed alongside:* the intake computed its tax year as `new Date().getFullYear() - 1` —
+the server's year in UTC — beside a shared `currentTaxYear()` computed in Chicago. They
+disagree for six hours every New Year's Eve, so a late-December intake would have created
+a tax engagement stamped with the wrong year.
+
+**#28 — "Other" stops being a dead end.** Free-text companions on `industry`, `how_heard`
+and Hilo's `business_kind`; **`demo_race` deliberately without one**, and a test asserts
+the exception as firmly as the rule. `industry` mattered most: it drives NAICS *and* Form 5
+module routing, so choosing Other silently dropped the client out of industry-specific
+onboarding. Required only when they chose Other; stored only when they chose it, so a
+client who changes their mind does not leave a stale description beside a real industry.
+
+Both shipped as new definition versions (Soto v3→v4, Hilo v2→v3). v3 had been served for
+minutes with zero submissions, so amending it would have been harmless — and still wrong.
+A version that was in force is frozen.
+
+**#32 — portal access is four states.** not invited / invited / active / revoked, derived
+rather than stored, replacing a boolean that conflated "invited and never arrived" with
+"using the portal". Invited carries WHEN, because links expire in minutes and an invite
+from three days ago is functionally not-invited. The button never disappears once an
+account exists — hiding *Resend* hides the one action that helps. Revoked gets no
+one-click restore. Production: **861 not invited, 2 active, 0 invited**.
+
+*Caught before shipping:* my first state query had a CASE arm for the missing row, which
+never fires — with no `portal_users` row the subquery returns no row at all, so every
+client without an account would have read NULL rather than "not invited". On 861 contacts
+that is the whole book.
+
+**#33 — the client record as an operating surface.** Invoices, editable basic info, and
+scheduling, with both rulings enforced server-side rather than in buttons:
+
+- **Staff never take a card.** "Take payment" is *Send reminder* plus the client's own pay
+  link shown for reading out on a call. No staff-side checkout exists; the Stripe session
+  is created under the client's portal session. A test asserts the reminder leaves
+  `status` and `amount_paid_cents` untouched.
+- **The calendar cross-check is in the endpoint.** A client with something booked gets a
+  409 and the screen shows that session. In the button it would be a habit; in the route
+  it is a rule. Meetings scope to an open engagement belonging to *this* client.
+
+The reminder is **not** behind `isAutomationEnabled` — that gate exists so no client gets
+an AUTOMATED message before Brian arms it, and `ar_dunning` still suppresses the automatic
+chase. A person clicking a button about a named client is the decision the gate stands in
+for, which is already how sending an engagement packet works. **Flagged for Brian to
+overrule if he disagrees.**
+
+Editable info is limited to fields that go stale — name, contact details, language,
+preference. Status, consent and the gates stay read-only: those change because something
+happened, and a text box beside them invites asserting a fact rather than recording one.
+
+### Batch complete
+
+| # | State |
+|---|---|
+| 27 | **awaiting ruling** — recommend (a), authenticated sessions only |
+| 28 · 29 · 30 · 31 · 32 · 33 · 34 · 35 | **built and deployed** |
+
+**#27 is the only item left**, and it is blocked on a ruling, not on work.
+
+### Still open across the batch
+
+- **Spanish is mine and unreviewed** on the questionnaire's 161 option labels, the #28
+  companions, and the #29 label. Brian is walking `/questionnaire` in Spanish as RC2.
+- **The authenticated flows have not been walked at phone width** — the questionnaire,
+  the new portal home, and now the client record. All are API-tested and sabotage-verified;
+  none has been clicked through.
+- **`engagements.title` holds legacy junk** ("Accepted quote" on four active rows). Clients
+  no longer see it; the ops side still does.
