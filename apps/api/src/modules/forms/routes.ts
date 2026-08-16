@@ -41,17 +41,18 @@ const ResumeBody = z.object({ resumeToken: z.string().min(1) });
 
 const PUBLIC_FORMS = new Set(['soto_intake', 'hilo_intake']);
 /*
- * The client checklist, in the order Brian ruled after the rehearsal (2026-08-13).
+ * The steps a client can tick BY HAND. Everything else on the canonical journey
+ * completes itself from something the system already knows — the deposit from the
+ * invoice, consent from the answer, the questionnaire from the submission, booking from
+ * the scheduler — because asking a client to confirm what we can already see is how a
+ * checklist starts lying.
  *
- * Deposit-first: services do not start before it is paid. "book_consult" is GONE —
- * a client only reaches a quote after the discovery meeting, so asking them to book
- * one asks for something already done. Its column survives (it holds real dates);
- * booking moved to Quick actions as "Schedule a Call/Meeting".
- *
- * pay_deposit is NOT in this list on purpose: it completes itself when the deposit
- * invoice is paid. A client cannot tick it and should not have to.
+ * `track_services` left this list on 2026-08-16 (Brian, #35): its whole content was
+ * "look at the services below", and #35 makes that the home page. A step whose
+ * instruction is "read the rest of this screen" is not a step. Its column stays, holding
+ * the dates of clients who really did tick it.
  */
-const ONBOARDING_STEPS = ['sign_docs', 'confirm_info', 'upload_documents', 'track_services'] as const;
+const ONBOARDING_STEPS = ['sign_docs', 'confirm_info', 'upload_documents'] as const;
 
 async function loadSubmission(app: FastifyInstance, id: string, resumeToken: string) {
   const { rows } = await app.db.query<{ id: string; form_key: string; status: string; answers: Record<string, unknown> }>(
@@ -379,7 +380,6 @@ export function registerFormRoutes(app: FastifyInstance): void {
           AND o.step_sign_docs_at IS NOT NULL
           AND o.step_confirm_info_at IS NOT NULL
           AND o.step_upload_documents_at IS NOT NULL
-          AND o.step_track_services_at IS NOT NULL
           AND ($2 = false OR o.step_questionnaire_at IS NOT NULL)
           AND ($3 = false OR o.step_consent_at IS NOT NULL)`,
       [contactId, questionnaireApplies, consentApplies]

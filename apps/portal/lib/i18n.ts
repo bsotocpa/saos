@@ -108,6 +108,43 @@ const dict = {
   status_title: ['Your returns', 'Sus declaraciones'],
   status_deadline: ['Deadline', 'Fecha límite'],
   status_extended: ['Extended', 'Con extensión'],
+  /*
+   * #35 — home becomes projects + progress + scheduling.
+   *
+   * "Your returns" was the old heading and it was tax-only, in a section that was itself
+   * tax-only. A bookkeeping client has work with us too, and it belongs on their home.
+   *
+   * The service-line names are the CLIENT's words for what they buy, not the internal
+   * enum: "Bookkeeping", not "bookkeeping"; "Reviews and audits", not "attest".
+   */
+  projects_title: ['Your work with us', 'Su trabajo con nosotros'],
+  svcline_tax: ['Taxes', 'Impuestos'],
+  svcline_bookkeeping: ['Bookkeeping', 'Contabilidad'],
+  svcline_payroll: ['Payroll', 'Nómina'],
+  svcline_sales_tax: ['Sales tax', 'Impuesto sobre ventas'],
+  svcline_advisory: ['Advisory', 'Asesoría'],
+  svcline_coo: ['Operations support', 'Apoyo operativo'],
+  svcline_entity: ['Entity setup and changes', 'Constitución y cambios de entidad'],
+  svcline_attest: ['Reviews and audits', 'Revisiones y auditorías'],
+  svcline_specialized_cpa: ['Specialized CPA work', 'Trabajo especializado de CPA'],
+  svcline_nonprofit_cfo: ['Nonprofit CFO', 'CFO para organizaciones sin fines de lucro'],
+  /*
+   * Status for ONGOING services. No progress bar and no stage: bookkeeping does not
+   * finish, so the honest thing to show is whether it is running.
+   */
+  estatus_active: ['Running', 'En marcha'],
+  estatus_on_hold: ['Paused', 'En pausa'],
+  estatus_completed: ['Finished', 'Terminado'],
+  estatus_draft: ['Being set up', 'En preparación'],
+  estatus_withdrawn: ['Closed', 'Cerrado'],
+  // Scheduling — real bookings, because the system only shows what it actually has.
+  sched_title: ['Meetings', 'Reuniones'],
+  sched_none: [
+    'Nothing on the calendar with us right now.',
+    'No hay nada en el calendario con nosotros por ahora.',
+  ],
+  sched_book: ['Book a meeting', 'Reservar una reunión'],
+  sched_time_tbd: ['Time to be confirmed', 'Hora por confirmar'],
   requests_title: ['Documents we need', 'Documentos que necesitamos'],
   unsigned_title: ['Waiting for your signature', 'Esperando su firma'],
   invoices_open_title: ['Open invoices', 'Facturas pendientes'],

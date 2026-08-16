@@ -327,18 +327,65 @@ export function registerPortalRoutes(app: FastifyInstance): void {
   });
 
   // Plain-English engagement status for the dashboard.
+  /*
+   * EVERY service the client has with us, not just the tax ones (#35).
+   *
+   * This selected FROM tax_engagements, so it could only ever return work that had a tax
+   * row. A bookkeeping or payroll client saw an empty "your services" section — and in
+   * production four of six active tax engagements had no tax_engagements row either, so
+   * they were invisible to their own clients too.
+   *
+   * The client-facing name is composed from the service line and the tax year, NOT from
+   * `engagements.title`: that column is internal and carries legacy values like "Accepted
+   * quote", which is not a thing to show someone about their own business.
+   *
+   * `kind` separates the two honest shapes of progress. Tax work is a PIPELINE with a
+   * finish line, so a stage means something. Bookkeeping and payroll are ONGOING — they
+   * have no end state, and drawing a progress bar across a recurring service would invent
+   * a completion that does not exist.
+   */
   app.get('/portal/engagements', scoped, async (request) => {
     const client = request.client!;
     const { rows } = await app.db.query(
-      `SELECT te.id, te.tax_year, te.return_type, te.stage, te.extension_filed,
-              COALESCE(te.extended_deadline, te.original_deadline)::text AS deadline
-       FROM tax_engagements te
-       JOIN engagements e ON e.id = te.engagement_id
-       WHERE e.contact_id = $1 AND te.stage NOT IN ('withdrawn')
-       ORDER BY te.tax_year DESC`,
+      `SELECT e.id,
+              e.service_line::text AS service_line,
+              e.status::text       AS status,
+              te.tax_year,
+              te.return_type,
+              te.stage::text       AS stage,
+              te.extension_filed,
+              COALESCE(te.extended_deadline, te.original_deadline)::text AS deadline,
+              CASE WHEN te.id IS NOT NULL THEN 'pipeline' ELSE 'ongoing' END AS kind
+         FROM engagements e
+         LEFT JOIN tax_engagements te ON te.engagement_id = e.id
+        WHERE e.contact_id = $1
+          AND e.status NOT IN ('withdrawn', 'draft')
+          AND (te.id IS NULL OR te.stage <> 'withdrawn')
+        ORDER BY te.tax_year DESC NULLS LAST, e.service_line, e.created_at`,
       [client.contactId]
     );
     return { engagements: rows };
+  });
+
+  /*
+   * What the client has booked (#35). Upcoming first; a recently-past meeting still
+   * shows briefly, because "did I actually book that?" is asked most right after it
+   * happens. Cancelled bookings are excluded rather than struck through — a cancelled
+   * meeting is not something the client needs to keep looking at.
+   */
+  app.get('/portal/bookings', scoped, async (request) => {
+    const client = request.client!;
+    const { rows } = await app.db.query(
+      `SELECT id, event_slug, title, starts_at, location
+         FROM client_bookings
+        WHERE contact_id = $1
+          AND cancelled_at IS NULL
+          AND (starts_at IS NULL OR starts_at > now() - interval '1 day')
+        ORDER BY starts_at NULLS LAST
+        LIMIT 10`,
+      [client.contactId]
+    );
+    return { bookings: rows };
   });
 
   // Resource Library (published entries, both languages carried).

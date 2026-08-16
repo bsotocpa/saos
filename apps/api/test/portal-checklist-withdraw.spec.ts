@@ -345,16 +345,15 @@ test('booking completes from the Cal.com webhook, never from a client saying so'
 
 test('booking is optional: it never holds the checklist open, and the deposit no longer does either', async () => {
   const { contactId, cookie } = await portalClient('Optionalbook');
+  // Drove completion through track_services until 2026-08-16, when #35 absorbed it.
   await app.db.query(
-    `UPDATE portal_onboarding SET
-       step_sign_docs_at = now(), step_confirm_info_at = now(),
-       step_upload_documents_at = now()
+    `UPDATE portal_onboarding SET step_sign_docs_at = now(), step_confirm_info_at = now()
      WHERE contact_id = $1`,
     [contactId]
   );
 
   const done = await app.inject({
-    method: 'POST', url: '/portal/onboarding/steps/track_services/complete', headers: cookie,
+    method: 'POST', url: '/portal/onboarding/steps/upload_documents/complete', headers: cookie,
   });
   assert.equal(done.statusCode, 200, done.body);
 
@@ -364,4 +363,132 @@ test('booking is optional: it never holds the checklist open, and the deposit no
   );
   assert.ok(row.rows[0]!.completed_at, 'finished without booking — the ruling made it optional');
   assert.equal(row.rows[0]!.step_book_consult_at, null, 'and it really was not booked');
+});
+
+/*
+ * #35 — HOME BECOMES PROJECTS + PROGRESS + SCHEDULING (Brian, 2026-08-16).
+ *
+ * Two defects were behind this, both of which made the portal quietly untrue about a
+ * client's own business.
+ */
+test('a bookkeeping client can finally see their own work — the portal was tax-only', async () => {
+  const { contactId, cookie } = await portalClient('Booksonly');
+
+  const version = await app.db.query<{ id: string }>(
+    `SELECT id FROM price_book_versions ORDER BY version_number DESC LIMIT 1`
+  );
+  await app.db.query(
+    `INSERT INTO engagements (contact_id, service_line, status, title, price_book_version_id)
+     VALUES ($1, 'bookkeeping', 'active', 'Accepted quote', $2)`,
+    [contactId, version.rows[0]!.id]
+  );
+
+  const res = await app.inject({ method: 'GET', url: '/portal/engagements', headers: cookie });
+  assert.equal(res.statusCode, 200, res.body);
+  const list = res.json().engagements as Array<Record<string, unknown>>;
+  assert.equal(list.length, 1, 'the engagement exists, so the client can see it');
+  assert.equal(list[0]!.service_line, 'bookkeeping');
+
+  /*
+   * ONGOING, not pipeline. Bookkeeping has no finish line, so it carries no stage and
+   * the portal draws no progress bar — a bar creeping toward a completion that never
+   * arrives would be a promise the service does not make.
+   */
+  assert.equal(list[0]!.kind, 'ongoing');
+  assert.equal(list[0]!.stage, null, 'no stage on a service that does not end');
+
+  /*
+   * And the name shown to the client is NOT engagements.title. That column is internal
+   * and full of legacy values — this row's title is literally "Accepted quote", which is
+   * not a thing to tell someone about their own business.
+   */
+  assert.ok(!('title' in list[0]!), 'the internal title is never served to a client');
+});
+
+test('a tax engagement with no tax row is still the client’s work, and still shows', async () => {
+  const { contactId, cookie } = await portalClient('Notaxrow');
+  const version = await app.db.query<{ id: string }>(
+    `SELECT id FROM price_book_versions ORDER BY version_number DESC LIMIT 1`
+  );
+  await app.db.query(
+    `INSERT INTO engagements (contact_id, service_line, status, price_book_version_id)
+     VALUES ($1, 'tax', 'active', $2)`,
+    [contactId, version.rows[0]!.id]
+  );
+
+  // In production four of six active tax engagements had no tax_engagements row, and the
+  // old query selected FROM tax_engagements — so those clients saw an empty page about
+  // work that was genuinely underway.
+  const res = await app.inject({ method: 'GET', url: '/portal/engagements', headers: cookie });
+  assert.equal(res.json().engagements.length, 1, 'no tax row is not the same as no work');
+});
+
+test('a booking the client made is a record they can see, not just an audit line', async () => {
+  const { contactId, cookie } = await portalClient('Seesbooking');
+  const email = 'seesbooking@example.test';
+
+  const empty = await app.inject({ method: 'GET', url: '/portal/bookings', headers: cookie });
+  assert.deepEqual(empty.json().bookings, [], 'nothing booked yet');
+
+  const payload = {
+    triggerEvent: 'BOOKING_CREATED',
+    payload: {
+      type: 'kickoff', uid: 'cal-abc-123', title: 'Kickoff call',
+      startTime: '2026-12-01T16:00:00Z',
+      attendees: [{ email, name: 'Synthetic Seesbooking', language: 'en' }],
+    },
+  };
+  const hook = await app.inject({
+    method: 'POST', url: '/webhooks/calcom',
+    headers: { 'x-webhook-secret': config.WEBHOOK_SECRET },
+    payload,
+  });
+  assert.equal(hook.statusCode, 200, hook.body);
+
+  const seen = await app.inject({ method: 'GET', url: '/portal/bookings', headers: cookie });
+  const bookings = seen.json().bookings as Array<Record<string, unknown>>;
+  assert.equal(bookings.length, 1, 'the client can see the meeting they booked');
+  assert.equal(bookings[0]!.title, 'Kickoff call');
+
+  // Cal.com retries. A retry is the same meeting, not a second one on their home screen.
+  const retry = await app.inject({
+    method: 'POST', url: '/webhooks/calcom',
+    headers: { 'x-webhook-secret': config.WEBHOOK_SECRET },
+    payload,
+  });
+  assert.equal(retry.statusCode, 200, retry.body);
+  const after = await app.inject({ method: 'GET', url: '/portal/bookings', headers: cookie });
+  assert.equal(after.json().bookings.length, 1, 'a retried webhook does not double the meeting');
+
+  const stored = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM client_bookings WHERE contact_id = $1`,
+    [contactId]
+  );
+  assert.equal(stored.rows[0]!.n, 1);
+});
+
+test('track_services is gone: the checklist finishes without it', async () => {
+  const { contactId, cookie } = await portalClient('Notracking');
+  await app.db.query(
+    `UPDATE portal_onboarding SET step_sign_docs_at = now(), step_confirm_info_at = now()
+      WHERE contact_id = $1`,
+    [contactId]
+  );
+
+  const done = await app.inject({
+    method: 'POST', url: '/portal/onboarding/steps/upload_documents/complete', headers: cookie,
+  });
+  assert.equal(done.statusCode, 200, done.body);
+
+  const row = await app.db.query<{ completed_at: Date | null; step_track_services_at: Date | null }>(
+    `SELECT completed_at, step_track_services_at FROM portal_onboarding WHERE contact_id = $1`,
+    [contactId]
+  );
+  assert.ok(row.rows[0]!.completed_at, 'finished — #35 absorbed the step that said "look below"');
+  assert.equal(row.rows[0]!.step_track_services_at, null, 'and it really was not ticked');
+
+  const gone = await app.inject({
+    method: 'POST', url: '/portal/onboarding/steps/track_services/complete', headers: cookie,
+  });
+  assert.notEqual(gone.statusCode, 200, 'and it is no longer tickable');
 });

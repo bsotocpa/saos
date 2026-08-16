@@ -34,6 +34,7 @@ const BookingPayload = z.object({
   triggerEvent: z.string(),
   payload: z.looseObject({
     type: z.string().optional(),              // event-type slug
+    uid: z.string().optional(),               // Cal.com's own booking id, when it sends one
     title: z.string().optional(),
     startTime: z.string().optional(),
     attendees: z
@@ -129,6 +130,28 @@ export function registerBookingRoutes(app: FastifyInstance): void {
      * to "any" rather than "none" matters: an unconfigured setting that made the step
      * uncompletable would be worse than one that is slightly generous.
      */
+    /*
+     * Keep the booking itself (#35). The portal shows a client the meeting they booked,
+     * and it can only do that if something stored it — the audit row is a forensic
+     * record, not something a client-facing screen can read. ON CONFLICT because Cal.com
+     * retries, and a retry must not become a second meeting on their home screen.
+     */
+    await app.db.query(
+      `INSERT INTO client_bookings (contact_id, external_id, event_slug, title, starts_at, location)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (contact_id, external_id) WHERE external_id IS NOT NULL
+       DO UPDATE SET starts_at = EXCLUDED.starts_at, title = EXCLUDED.title,
+                     location = EXCLUDED.location, cancelled_at = NULL`,
+      [
+        contactId,
+        body.payload.uid ?? null,
+        slug,
+        body.payload.title ?? null,
+        body.payload.startTime ?? null,
+        body.payload.location ?? body.payload.videoCallData?.type ?? null,
+      ]
+    );
+
     const kickoffSlugs = await settingJson<string[]>(app, 'booking.kickoff_slugs', []);
     const isKickoff = kickoffSlugs.length > 0 ? kickoffSlugs.includes(slug) : !questionSlugs.includes(slug);
     if (isKickoff) {
