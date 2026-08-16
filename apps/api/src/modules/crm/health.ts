@@ -169,6 +169,26 @@ async function assignBand(
  * TRANSITIONS (into red / into green+tenure), not on every run.
  */
 export async function runHealthRefresh(app: FastifyInstance): Promise<{ scored: number; redAlerts: number; upsellFlags: number }> {
+  /*
+   * #42: settle every contact's lifecycle before scoring.
+   *
+   * Three of the four transitions fire on an event — acceptance, Master signature — but
+   * active → dormant has no event to fire on, because nothing in the system CLOSES an
+   * engagement yet. Without this sweep a client whose last engagement ended would read
+   * "active" indefinitely, which is the same class of lie that made RC2 read "lead".
+   *
+   * It also picks up anything the event hooks missed, which matters while readers are
+   * still being migrated off soto_status. Archived contacts are skipped inside
+   * refreshContactStatus — closing someone out is deliberate and a sweep must not undo it.
+   */
+  const { refreshContactStatus } = await import('./lifecycle.ts');
+  const everyone = await app.db.query<{ id: string }>(
+    `SELECT id FROM contacts WHERE NOT is_archived AND contact_status <> 'archived'`
+  );
+  for (const row of everyone.rows) {
+    await refreshContactStatus(app, row.id, 'health_refresh_sweep');
+  }
+
   const contacts = await app.db.query<{
     id: string;
     first_name: string;

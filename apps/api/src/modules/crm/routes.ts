@@ -180,7 +180,8 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     const contact = await app.db.query(
       `SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.secondary_phone, c.language,
               c.preferred_contact_method, c.address_line1, c.address_line2, c.city, c.state, c.zip,
-              c.soto_status, c.hilo_status, c.client_since, c.hilo_first_contact, c.assigned_manager_id,
+              c.soto_status, c.contact_status::text AS contact_status, c.contact_status_at, c.archived_reason,
+              c.hilo_status, c.client_since, c.hilo_first_contact, c.assigned_manager_id,
               c.consent_7216_status, c.engagement_letter_status,
               c.health_score, c.health_components, c.health_computed_at,
               c.sms_consent, c.source, c.ssn_status, c.ssn_last4, c.notes,

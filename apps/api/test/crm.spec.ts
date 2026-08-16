@@ -655,3 +655,109 @@ test('a meeting can only be scoped to an OPEN engagement belonging to this clien
   });
   assert.equal(finished.statusCode, 404, 'nor for work that finished');
 });
+
+/*
+ * #42 — CONTACT LIFECYCLE (Brian, 2026-08-16).
+ *
+ * RC2 read "lead · from native" while holding a signed Master, an answered §7216, a paid
+ * invoice and a live portal session. The old field was hand-set at creation and nothing
+ * ever moved it, so it was wrong in the direction of whatever it was first set to.
+ *
+ * The ladder is EVENT-DRIVEN: nothing here passes a status, it tells the module what
+ * happened and the state is recomputed from the record.
+ */
+test('lifecycle climbs from what happened, and never from a hand-set value', async () => {
+  const { deriveLifecycle, refreshContactStatus } = await import('../src/modules/crm/lifecycle.ts');
+  const created = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Lifecycle', email: 'lifecycle@example.test' },
+  });
+  const contactId = created.json().id as string;
+
+  assert.equal(await deriveLifecycle(app, contactId), 'lead', 'no accepted quote yet');
+
+  const version = await app.db.query<{ id: string }>(
+    `SELECT id FROM price_book_versions ORDER BY version_number DESC LIMIT 1`
+  );
+  await app.db.query(
+    `INSERT INTO quotes (contact_id, status, total_cents, price_book_version_id)
+     VALUES ($1, 'accepted', 50000, $2)`,
+    [contactId, version.rows[0]!.id]
+  );
+  await refreshContactStatus(app, contactId, 'test');
+  assert.equal((await app.db.query(`SELECT contact_status FROM contacts WHERE id = $1`, [contactId])).rows[0].contact_status,
+    'onboarding', 'acceptance advances lead → onboarding');
+
+  /*
+   * A signed Master ALONE is not active — the ruling is signature AND an open engagement.
+   * This is the case RC2 exposed, so it is asserted in both halves.
+   */
+  await app.db.query(
+    `INSERT INTO engagement_packets (contact_id, master_template_key, master_version, schedule_codes, status, signed_at, signature_method)
+     VALUES ($1, 'engagement_master', 1, ARRAY[]::text[], 'signed', now(), 'portal_esign')`,
+    [contactId]
+  );
+  await refreshContactStatus(app, contactId, 'test');
+  assert.equal(await deriveLifecycle(app, contactId), 'onboarding', 'signature without an engagement is not active');
+
+  const eng = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, status, price_book_version_id)
+     VALUES ($1, 'tax', 'active', $2) RETURNING id`,
+    [contactId, version.rows[0]!.id]
+  );
+  await refreshContactStatus(app, contactId, 'test');
+  const nowRow = await app.db.query<{ contact_status: string; soto_status: string }>(
+    `SELECT contact_status, soto_status FROM contacts WHERE id = $1`, [contactId]
+  );
+  assert.equal(nowRow.rows[0]!.contact_status, 'active', 'signature + open engagement = active');
+  // The legacy mirror moves with it — one writer, so the two cannot disagree while the
+  // hundred-odd readers of soto_status are migrated.
+  assert.equal(nowRow.rows[0]!.soto_status, 'active');
+
+  // Work concludes: no open engagements, relationship intact.
+  await app.db.query(`UPDATE engagements SET status = 'completed' WHERE id = $1`, [eng.rows[0]!.id]);
+  await refreshContactStatus(app, contactId, 'test');
+  assert.equal((await app.db.query(`SELECT contact_status FROM contacts WHERE id = $1`, [contactId])).rows[0].contact_status,
+    'dormant', 'the last engagement closing moves active → dormant');
+
+  // And a new accepted quote takes them back up the same ladder.
+  await app.db.query(
+    `INSERT INTO engagements (contact_id, service_line, status, price_book_version_id)
+     VALUES ($1, 'bookkeeping', 'active', $2)`,
+    [contactId, version.rows[0]!.id]
+  );
+  await refreshContactStatus(app, contactId, 'test');
+  assert.equal((await app.db.query(`SELECT contact_status FROM contacts WHERE id = $1`, [contactId])).rows[0].contact_status,
+    'active', 'a returning client walks the same ladder');
+});
+
+test('archived is the only hand-set state, it needs a reason, and no sweep undoes it', async () => {
+  const { archiveContact, refreshContactStatus } = await import('../src/modules/crm/lifecycle.ts');
+  const created = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Archived', email: 'archived-lc@example.test' },
+  });
+  const contactId = created.json().id as string;
+
+  await archiveContact(app, contactId, 'Closed the business — confirmed by phone.', { id: brian.id, email: brian.email });
+  const row = await app.db.query<{ contact_status: string; archived_reason: string }>(
+    `SELECT contact_status, archived_reason FROM contacts WHERE id = $1`, [contactId]
+  );
+  assert.equal(row.rows[0]!.contact_status, 'archived');
+  assert.match(row.rows[0]!.archived_reason, /Closed the business/);
+
+  /*
+   * Closing someone out is deliberate. A recompute must not quietly reopen them just
+   * because the record no longer shows a reason to be archived — that reason lives with
+   * the person who made the call.
+   */
+  await refreshContactStatus(app, contactId, 'sweep');
+  assert.equal((await app.db.query(`SELECT contact_status FROM contacts WHERE id = $1`, [contactId])).rows[0].contact_status,
+    'archived', 'a sweep never undoes a deliberate archive');
+
+  // And the database refuses an archived contact with no reason, not just this function.
+  await assert.rejects(
+    app.db.query(`UPDATE contacts SET archived_reason = NULL WHERE id = $1`, [contactId]),
+    /contacts_archived_has_reason/
+  );
+});

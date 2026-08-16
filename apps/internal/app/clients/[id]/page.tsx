@@ -19,7 +19,7 @@ interface Contact {
   id: string; first_name: string; last_name: string; email: string | null;
   phone: string | null; language: string; preferred_contact_method: string | null;
   city: string | null; state: string | null;
-  soto_status: string; hilo_status: string; client_since: string | null;
+  soto_status: string; contact_status: string; hilo_status: string; client_since: string | null;
   consent_7216_status: string; engagement_letter_status: string;
   has_portal_access: boolean;
   portal_state: string;
@@ -116,6 +116,38 @@ const okBadge = (s: string) => (isOnFile(s) ? 'ok' : 'warn');
  * naming: it means we asked and they have not arrived, which is a person to follow up
  * with rather than a system to fix.
  */
+/*
+ * Lifecycle, in the words a staffer triaging a list would use (#42). "Onboarding" is the
+ * one worth naming precisely: it means they have accepted and are partway through, which
+ * is a different call from a lead who has not decided.
+ */
+const LIFECYCLE_LABEL: Record<string, string> = {
+  lead: 'lead',
+  onboarding: 'onboarding',
+  active: 'active client',
+  dormant: 'dormant',
+  archived: 'archived',
+};
+const LIFECYCLE_BADGE: Record<string, string> = {
+  active: 'ok',
+  onboarding: '',
+  lead: '',
+  dormant: 'warn',
+  archived: 'warn',
+};
+
+/*
+ * Provenance. "native" was the stored value and it meant nothing to a reader — "Direct"
+ * says what it is, and leaves room for the values that are coming.
+ */
+const SOURCE_LABEL: Record<string, string> = {
+  native: 'Direct',
+  migration: 'Migrated from the old book',
+  booking: 'Booked a call',
+  hilo: 'Hilo referral',
+  referral: 'Referral',
+};
+
 const PORTAL_LABEL: Record<string, string> = {
   not_invited: 'not invited',
   invited: 'invited',
@@ -226,12 +258,23 @@ export default function ClientPacketPage() {
       <h1>
         {c.first_name} {c.last_name}
       </h1>
-      <p className="muted small">
-        {c.soto_status}
-        {c.hilo_status !== 'none' ? ` · Hilo: ${c.hilo_status}` : ''}
-        {c.client_since ? ` · client since ${c.client_since}` : ''}
-        {' · from '}{c.source}
+      {/*
+        #42. This read "lead · from native" for a client with a signed Master, an answered
+        §7216, a paid invoice and a live portal session — two unrelated facts wearing one
+        badge, and the first of them wrong.
+
+        Status is LIFECYCLE and it moves. Provenance is where they came from and it never
+        moves. They are shown as separate things now and are not composed into one string
+        again.
+      */}
+      <p className="small">
+        <span className={`badge ${LIFECYCLE_BADGE[c.contact_status] ?? ''}`}>
+          {LIFECYCLE_LABEL[c.contact_status] ?? c.contact_status}
+        </span>
+        {c.client_since ? <span className="muted"> · client since {c.client_since}</span> : null}
+        {c.hilo_status !== 'none' ? <span className="muted"> · Hilo: {c.hilo_status}</span> : null}
       </p>
+      <p className="muted small">Came to us via {SOURCE_LABEL[c.source] ?? c.source}</p>
 
       {/* A test client announces itself before anything else on the page, so
           nobody works a rehearsal thinking it is a real engagement. */}

@@ -753,6 +753,11 @@ export async function acceptQuote(
      WHERE id = $1`,
     [quote.id, totalCents, engagement.id, depositInvoiceId]
   );
+
+  // #42: acceptance is what turns a lead into someone being onboarded. Recomputed rather
+  // than assigned, so a returning dormant client walks the same ladder.
+  const { refreshContactStatus } = await import('../crm/lifecycle.ts');
+  await refreshContactStatus(app, quote.contact_id, 'quote_accepted');
   await setLeadStage(app, row.contact_id, depositInvoiceId ? 'deposit_paid' : 'onboarding', null, 'quote accepted');
 
   /*

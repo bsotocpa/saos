@@ -576,6 +576,10 @@ export async function recordMasterSignature(
     contactId: p.contact_id,
     details: { schedules: p.schedule_codes, master_version: p.master_version, ...meta },
   });
+  // #42: signing the Master is one half of "active" — the lifecycle asks the record
+  // for the other half (an open engagement) rather than assuming it.
+  const { refreshContactStatus } = await import('../crm/lifecycle.ts');
+  await refreshContactStatus(app, p.contact_id, 'master_signed');
   return { contactId: p.contact_id, accepted: p.schedule_codes };
 }
 
