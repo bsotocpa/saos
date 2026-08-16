@@ -980,6 +980,16 @@ const RETIRED = [
     reason:
       'Retired 2026-08-14 (Brian): the booking-time deposit charge is gone — deposits exist only on accepted quotes. Superseded by booking_confirmation, which says there is nothing to pay for the call.',
   },
+  {
+    key: 'welcome_soto',
+    reason:
+      'Retired 2026-08-15 (Brian): step 1 of the ruled client journey is ONE email carrying the welcome and the sign-in link, which portal_invite already does. This said "a sign-in link is on its way in a separate email" — racing that link\'s own expiry — and described a checklist step (pay your deposit) the journey ruling removed. Superseded by portal_invite.',
+  },
+  {
+    key: 'welcome_hilo',
+    reason:
+      'Retired 2026-08-15 (Brian): same one-email ruling as welcome_soto. Superseded by portal_invite_hilo, which carries this template\'s voice and the sign-in link together.',
+  },
 ];
 
 export async function seedTemplates(client) {

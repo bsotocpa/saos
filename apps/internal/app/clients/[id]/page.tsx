@@ -83,7 +83,22 @@ interface Session {
   stalled: boolean;
 }
 
-const okBadge = (s: string) => (s === 'signed' || s === 'granted' || s === 'on_file' ? 'ok' : 'warn');
+/*
+ * ONE predicate for both gates, because two of them disagreed (found 2026-08-15).
+ *
+ * `consent_7216_state` is (not_on_file | requested | signed | declined | revoked) and
+ * `engagement_letter_state` uses 'signed' the same way. 'granted' and 'on_file' were
+ * never values of either — so the card's own `consentOk` check, which tested for exactly
+ * those two, could never be true. A client who really signed got a green "signed" badge
+ * inside a warning-bordered card telling staff the gate was unmet.
+ *
+ * It failed in the safe direction — it never claimed consent that was absent — but a gate
+ * that is permanently red is one people learn to scroll past, which is how a real red gets
+ * missed. Only 'signed' counts: 'requested' has not happened yet, and 'declined'/'revoked'
+ * are the opposite of consent.
+ */
+const isOnFile = (s: string) => s === 'signed';
+const okBadge = (s: string) => (isOnFile(s) ? 'ok' : 'warn');
 
 export default function ClientPacketPage() {
   const router = useRouter();
@@ -159,8 +174,8 @@ export default function ClientPacketPage() {
   if (!packet) return <p className="muted">Loading…</p>;
 
   const c = packet.contact;
-  const consentOk = c.consent_7216_status === 'granted' || c.consent_7216_status === 'on_file';
-  const letterOk = c.engagement_letter_status === 'signed';
+  const consentOk = isOnFile(c.consent_7216_status);
+  const letterOk = isOnFile(c.engagement_letter_status);
 
   return (
     <>

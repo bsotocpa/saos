@@ -301,8 +301,36 @@ Flagged here so it is not discovered mid-build:
 - **`welcome_soto` is now unsent and its copy is stale** — it lists paying a deposit as a
   checklist step, which the ruling removes. Left in the table for Brian to rewrite or retire;
   not deleted by me.
-- **Step 3 is new work, not a move.** §7216 consent is collected in the intake form today
-  (`communication_consent` / `esign_consent` are intake checkboxes, and the envelopes are
-  created as drafts at intake). Giving consent its own screen immediately after signing means
-  it leaves the pre-engagement form — which is consistent with the ruling that the
-  pre-engagement form is minimal, but it is a build, not a relocation.
+- **Step 3 is sequencing, not building. My earlier note was wrong — corrected 2026-08-15.**
+  The isolated `/consent` screen already exists (built as #12, RC2 signed on it). Step 3
+  places that existing screen into the checklist immediately after signing; there is nothing
+  to build but the ordering.
+
+  I had written that §7216 was "collected in the intake form today". It is not. The intake's
+  `communication_consent` and `esign_consent` are CAN-SPAM/e-sign checkboxes and are not
+  §7216 instruments. The audit below confirms nothing treats them as such.
+
+### §7216 conflation audit (Brian asked; result: CLEAN)
+
+Every path that could conflate the two, checked:
+
+| Check | Result |
+|---|---|
+| Consent types | `consent_type` is (`7216_use`, `7216_disclose`, `esign`, `communication`, `sms`) — separate values, not aliases |
+| What intake writes to `consents` | `type='sms'` only, via `recordSmsConsent` |
+| What intake writes for the other two | `contacts.communication_consent_at` / `esign_consent_at` timestamps — **written and never read as a gate anywhere** |
+| Writers of `contacts.consent_7216_status` | exactly two, both §7216-only: `compliance/consent.ts` (`recordSignedConsent`) and `consent-presentation.ts` (the `/consent` screen). Column default is `not_on_file` |
+| The gate itself | `has7216Consent` / `require7216Consent` read `consent_7216_status = 'signed'` and nothing else. Callers: referrals (2 hard gates), referral visibility, CRM health |
+| Draft envelopes | intake creates `signature_envelopes` of type `consent_7216` as **drafts**; a draft grants nothing, because the gate reads `consent_7216_status`, which drafts never touch |
+| Production reality | 862 contacts `not_on_file`, 2 `signed` — and both signed rows are `7216_use`, `portal_checkbox`, policy `v3-t2`, i.e. RC2 through `/consent`. The consent screen is the only path that has ever produced a signed §7216 |
+
+**Conclusion: (a) confirmed — nothing treats the intake checkboxes as §7216 consent. (b)
+confirmed — step 3 sequences the existing `/consent` screen.**
+
+**One defect found while auditing** (fixed 2026-08-15, not a conflation):
+`apps/internal/app/clients/[id]/page.tsx` tested `consent_7216_status === 'granted' || === 'on_file'`
+for its "Before you work this" gate. Neither string is a value of the enum, so `consentOk`
+could never be true: the two clients who genuinely signed saw a green `signed` badge inside a
+warning-bordered card saying the gate was unmet. It failed in the safe direction — never
+claiming consent that was absent — but a permanently-red gate is one people learn to scroll
+past. Both gates now share one predicate.
