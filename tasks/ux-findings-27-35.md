@@ -334,3 +334,69 @@ could never be true: the two clients who genuinely signed saw a green `signed` b
 warning-bordered card saying the gate was unmet. It failed in the safe direction — never
 claiming consent that was absent — but a permanently-red gate is one people learn to scroll
 past. Both gates now share one predicate.
+
+---
+
+## #30/#31 — BUILT AND DEPLOYED (2026-08-15)
+
+The split, as ruled. Pre-engagement intake untouched and still minimal; the
+onboarding-voice questions are now a post-engagement questionnaire assembled from the
+Form 5 A–I modules, and it is checklist step 4.
+
+**What already existed** (and is why this was "finish the half-built thing"):
+`assembleModules` fires modules from the client's service lines and industry;
+`processServiceOnboarding` evaluates the flags, raises the PLLC conversion from module I,
+and feeds tax complexity from module F; two routes served both. All of it tested since M14.
+
+**What was missing was not plumbing — it was labels.** Every one of the 161 answer
+options was a bare value: `qbo`, `fba`, `group_1099`. That is exactly the state the
+intake definitions were in before M28 ("v1 shipped structure only, with no field labels,
+because nothing rendered it"), and it is why the questionnaire could not be shown to
+anyone: you cannot put "qb_desktop" in front of a client, and half this firm's clients
+read Spanish.
+
+Built:
+
+- **161 options, EN + ES.** Values frozen — the flag rules match on them (`H3 === 'fba'`
+  → multistate nexus; C4 / G4 / I6 → worker classification), so a value is a behaviour
+  identifier and only the labels are new. A test asserts every option in every assembled
+  module carries both languages.
+- **Seed upgrade that can only run once per row.** It rewrites a module only while that
+  module still holds a bare string option, so a module Brian has since edited in Admin is
+  skipped and a second deploy reports zero. Verified: first run upgraded 9, second run 0.
+- **`/questionnaire`** — one module per screen (49 questions on one page is unusable on a
+  phone, and the modules are already honest groupings), server-side autosave, resume, and
+  nothing required. These questions scope work; they are not a gate on being served.
+- **`step_questionnaire_at`**, self-completing like the deposit. Submitting *is* the
+  completion — a client cannot honestly tick "answered the questions" without answering.
+- **The step hides for clients who have no questions.** A notice-only client assembles no
+  modules; showing them a step they can never complete would hold them at 4/5 forever.
+
+**Fixed while building:** the checklist-completion rule lived only inside the manual
+step-tick route, so no self-completing step could ever finish the list. The deposit
+already had that latently — a client whose last outstanding step was the deposit got the
+date filled in by the dashboard GET while `completed_at` stayed null, with no remaining
+step to tick. Extracted; every path that can finish a step now re-evaluates completion.
+
+### Still open on this item
+
+- **Spanish needs Brian's review.** 161 option labels and the questionnaire's own copy
+  are my Spanish, not reviewed. Precedent is `legal_v3_es`, which waited for approval.
+  Nothing blocks a client — the wording is admin-editable without a deploy.
+- **Not walked in a browser.** The API is covered by tests and sabotage-verified, and the
+  page builds and typechecks, but the authenticated flow has not been clicked through on a
+  phone-width viewport. Worth doing before a real client sees it.
+
+### Journey status after this
+
+| Step | State |
+|---|---|
+| 1 · Login setup from one email | **built** — one welcome carrying the link, Soto and Hilo |
+| 2 · Review & sign packet | existing `/sign` |
+| 3 · §7216 consent, own screen | existing `/consent` — needs SEQUENCING into the checklist |
+| 4 · Intake questionnaire | **built** |
+| 5 · Document upload | existing `/documents` |
+| 6 · Book kickoff, optional | in Quick actions; not yet a checklist step |
+
+Steps 3 and 6 are the remaining checklist work, and both are #34's job — sequencing what
+exists, not building.
