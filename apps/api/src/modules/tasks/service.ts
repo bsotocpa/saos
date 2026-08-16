@@ -453,9 +453,15 @@ export async function searchTasks(app: FastifyInstance, f: TaskFilters) {
  * MIGRATION BACKLOG, kept out of My Tasks by default (Brian, 2026-08-14).
  *
  * The July import raised 611 `enrichment` tasks — "this contact is missing a phone
- * number" and the like — against 9 tasks from everything the business actually does. My
- * Tasks was 98.5% backlog, which is the same as having no task list: the nine that came
- * from a client waiting on something were unfindable.
+ * number" and the like — against 10 tasks from everything the business actually does.
+ * All Open Tasks was 98.5% backlog, which is the same as having no task list: the ten
+ * that came from a client waiting on something were unfindable.
+ *
+ * Where it bites TODAY is that all-tasks view, because the 611 are unassigned and so
+ * never reached anyone's My Tasks. The exclusion here is still the right place for it:
+ * triage means assigning these rows to a person, and the first person to take a batch
+ * would otherwise bury their own list. Excluding at the view keeps that from happening
+ * later instead of discovering it again then.
  *
  * His ruling was explicit about the shape: "don't bulk-close — build the cheap version:
  * separate filtered view, excluded from My Tasks by default. That's migration backlog to

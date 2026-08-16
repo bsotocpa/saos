@@ -272,7 +272,7 @@ export default function TasksPage() {
         </button>
         {/*
           MIGRATION BACKLOG (Brian, 2026-08-14). The July import raised 611 enrichment
-          tasks against 9 from everything the business actually does, so the default views
+          tasks against 10 from everything the business actually does, so the default views
           exclude them — a list that is 98.5% backlog is the same as having no list.
 
           It is a CHIP rather than a hidden rule: "migration backlog to triage deliberately
