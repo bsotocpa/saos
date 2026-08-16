@@ -645,3 +645,124 @@ test('an interrupted intake resumes: answers and place come back, stale handles 
   });
   assert.equal(after.statusCode, 409, 'a submitted form does not reopen — the client starts fresh');
 });
+
+/*
+ * #30/#31 SPLIT (Brian, 2026-08-15). Intake stays minimal and pre-engagement; the
+ * onboarding-voice questions become a post-engagement questionnaire assembled from the
+ * Form 5 A–I modules, and that questionnaire is step 4 of the canonical journey.
+ *
+ * It could not have been an "intake" checklist step: submitting the intake is the call
+ * that CREATES the portal user, so such a step would show complete for every client who
+ * could ever see the checklist.
+ */
+test('the questionnaire is answerable: labelled options, autosave, and it completes its own step', async () => {
+  const { submissionId, resumeToken } = await startForm('soto_intake');
+  await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Bookkeeper',
+        email: 'books-forms@example.test', mobile_phone: '+13125550191', sms_ok: 'no',
+        preferred_contact_method: 'email', owns_business: 'yes',
+        business_name: 'Synthetic Books LLC', entity_type: 'llc', industry: 'professional_services',
+        years_in_business: '1-3', business_zip: '60601',
+        services: ['bookkeeping'], irs_letters: 'no', how_heard: 'google',
+        communication_consent: true, esign_consent: true,
+      },
+    },
+  });
+  const c = await app.db.query<{ id: string }>(`SELECT id FROM contacts WHERE email = 'books-forms@example.test'`);
+  const contactId = c.rows[0]!.id;
+  const session = await clientSessionFor(contactId, 'books-forms@example.test');
+  const hdr = { authorization: `Bearer ${session}` };
+
+  const first = await app.inject({ method: 'GET', url: '/portal/service-onboarding', headers: hdr });
+  assert.equal(first.statusCode, 200, first.body);
+  const mods = first.json().modules as Array<{ key: string; questions: Array<{ id: string; type: string; options?: unknown[] }> }>;
+  assert.ok(mods.some((m) => m.key === 'module_c'), 'bookkeeping fires the scoping module');
+  assert.equal(first.json().submittedAt, null, 'not answered yet');
+
+  /*
+   * EVERY option carries both languages. These modules shipped with bare values —
+   * 'qbo', 'fba' — because nothing rendered them, exactly the state the intake
+   * definitions were in before M28, and a client cannot be shown "qb_desktop".
+   */
+  for (const m of mods) {
+    for (const q of m.questions) {
+      for (const o of q.options ?? []) {
+        const opt = o as { value?: string; labelEn?: string; labelEs?: string };
+        assert.equal(typeof opt.value, 'string', `${m.key}/${q.id}: option lost its value`);
+        assert.ok((opt.labelEn ?? '').length > 0, `${m.key}/${q.id}/${opt.value}: no English label`);
+        assert.ok((opt.labelEs ?? '').length > 0, `${m.key}/${q.id}/${opt.value}: no Spanish label`);
+      }
+    }
+  }
+
+  // Autosave, then come back to it — the intake's write-only-autosave bug, not repeated.
+  const saved = await app.inject({
+    method: 'PATCH', url: '/portal/service-onboarding', headers: hdr,
+    payload: { answers: { C1: 'over_year', C2: 'cash' }, screenReached: 1 },
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const resumed = await app.inject({ method: 'GET', url: '/portal/service-onboarding', headers: hdr });
+  assert.equal(resumed.json().answers.C1, 'over_year', 'the draft reads back');
+  assert.equal(resumed.json().screenReached, 1, 'and so does the place');
+
+  // Submitting merges the draft rather than replacing it: a client who answered module
+  // C in one sitting and module A in another must not submit only what is in the tab.
+  const submit = await app.inject({
+    method: 'POST', url: '/portal/service-onboarding/submit', headers: hdr,
+    payload: { answers: { A1: 'qbo', A8: 'sometimes' } },
+  });
+  assert.equal(submit.statusCode, 200, submit.body);
+  const stored = await app.db.query<{ answers: Record<string, unknown> }>(
+    `SELECT answers FROM form_submissions WHERE form_key = 'service_onboarding' AND contact_id = $1 AND status = 'submitted'`,
+    [contactId]
+  );
+  assert.equal(stored.rows.length, 1, 'the draft became the submission — no orphan second row');
+  assert.equal(stored.rows[0]!.answers.C1, 'over_year', 'earlier sitting survived the submit');
+  assert.equal(stored.rows[0]!.answers.A1, 'qbo', 'and this sitting is in there too');
+
+  // Self-completing: submitting IS the completion, because a client cannot honestly
+  // tick "answered the questions" without answering them.
+  const step = await app.db.query<{ step_questionnaire_at: Date | null }>(
+    `SELECT step_questionnaire_at FROM portal_onboarding WHERE contact_id = $1`,
+    [contactId]
+  );
+  assert.ok(step.rows[0]!.step_questionnaire_at, 'the checklist step completed itself');
+
+  // And it is gone from the portal afterwards rather than inviting a second pass.
+  const after = await app.inject({ method: 'GET', url: '/portal/service-onboarding', headers: hdr });
+  assert.ok(after.json().submittedAt, 'answered — the portal shows the thank-you, not the form');
+});
+
+test('a client whose services fire no modules is never shown the questionnaire step', async () => {
+  const { submissionId, resumeToken } = await startForm('soto_intake');
+  await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Nomodules',
+        email: 'nomodules-forms@example.test', mobile_phone: '+13125550192', sms_ok: 'no',
+        preferred_contact_method: 'email', owns_business: 'no',
+        services: ['irs_notice'], irs_letters: 'yes', how_heard: 'google',
+        communication_consent: true, esign_consent: true,
+      },
+    },
+  });
+  const c = await app.db.query<{ id: string }>(`SELECT id FROM contacts WHERE email = 'nomodules-forms@example.test'`);
+  const contactId = c.rows[0]!.id;
+  const session = await clientSessionFor(contactId, 'nomodules-forms@example.test');
+  const hdr = { authorization: `Bearer ${session}` };
+
+  const q = await app.inject({ method: 'GET', url: '/portal/service-onboarding', headers: hdr });
+  assert.deepEqual(q.json().modules, [], 'nothing assembles for a notice-only client');
+
+  // The dashboard must therefore not show the step. Same rule as the deposit: a step a
+  // client can never complete holds them at 4/5 forever.
+  const dash = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: hdr });
+  assert.equal(dash.statusCode, 200, dash.body);
+  assert.equal(dash.json().questionnaireApplies, false, 'no questions, no step');
+});

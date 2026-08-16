@@ -195,7 +195,7 @@ export function registerFormRoutes(app: FastifyInstance): void {
     const client = request.client!;
     const { rows } = await app.db.query(
       `SELECT variant, step_sign_docs_at, step_pay_deposit_at, step_confirm_info_at,
-              step_upload_documents_at, step_track_services_at, completed_at
+              step_questionnaire_at, step_upload_documents_at, step_track_services_at, completed_at
        FROM portal_onboarding WHERE contact_id = $1`,
       [client.contactId]
     );
@@ -248,6 +248,9 @@ export function registerFormRoutes(app: FastifyInstance): void {
         [client.contactId]
       );
       if (rows[0]) (rows[0] as Record<string, unknown>).step_pay_deposit_at = new Date().toISOString();
+      // Filling a step in here can be the one that finishes the list, and nothing else
+      // would re-evaluate it — the client has no remaining step to tick.
+      await refreshChecklistCompletion(client.contactId);
     }
 
     // Whether a deposit is even owed — a client with none should not stare at a step
@@ -258,6 +261,14 @@ export function registerFormRoutes(app: FastifyInstance): void {
        ) AS owed`,
       [client.contactId]
     );
+
+    /*
+     * Whether this client HAS a questionnaire, for the same reason depositApplies
+     * exists: the modules are assembled from their engagements and industry, so a
+     * client whose service lines fire nothing has no questions to answer. Showing
+     * them a step they can never complete is how a checklist starts lying.
+     */
+    const questionnaireModules = await assembleModules(app, client.contactId);
 
     const settings = await app.db.query<{ key: string; value: string | null }>(
       `SELECT key, value #>> '{}' AS value FROM app_settings
@@ -271,6 +282,7 @@ export function registerFormRoutes(app: FastifyInstance): void {
       pendingSignatures: pendingEnvelopes.rows[0]!.n,
       bookingUrl: rawBookingUrl ? prefillBookingUrl(rawBookingUrl, identityRow) : null,
       depositApplies: depositOwed.rows[0]!.owed,
+      questionnaireApplies: questionnaireModules.length > 0,
       // "Schedule a Call/Meeting" (Quick actions) and the estimated-payment links.
       supportBookingUrl: byKey['booking.support_booking_url']
         ? prefillBookingUrl(byKey['booking.support_booking_url']!, identityRow)
@@ -279,6 +291,44 @@ export function registerFormRoutes(app: FastifyInstance): void {
       statePaymentUrl: byKey['payments.state_url'] ?? null,
     };
   });
+
+  /*
+   * The checklist is finished when every step the CLIENT can see is done.
+   *
+   * Conditional steps are the whole difficulty. A client never asked for a deposit must
+   * not be held at 4/5 forever by a step that cannot apply to them, and the same is now
+   * true of the questionnaire: it assembles from their engagements and industry, so a
+   * client whose service lines fire no modules has nothing to answer. `book_consult` is
+   * deliberately absent — it is retired, and leaving it in this condition would have
+   * meant no client could ever finish onboarding again.
+   *
+   * EXTRACTED (2026-08-15) because it used to live only in the manual step-tick route,
+   * and self-completing steps do not tick anything. The deposit already had this
+   * problem latently — a client whose last remaining step was the deposit would have
+   * had it filled in by the dashboard GET while `completed_at` stayed null, because
+   * nothing re-evaluated completion afterwards. The questionnaire would have made that
+   * reachable in the ordinary case, so every path that can finish a step calls this.
+   */
+  async function refreshChecklistCompletion(contactId: string): Promise<void> {
+    const questionnaireApplies = (await assembleModules(app, contactId)).length > 0;
+    await app.db.query(
+      `UPDATE portal_onboarding o SET completed_at = now()
+        WHERE o.contact_id = $1 AND o.completed_at IS NULL
+          AND o.step_sign_docs_at IS NOT NULL
+          AND o.step_confirm_info_at IS NOT NULL
+          AND o.step_upload_documents_at IS NOT NULL
+          AND o.step_track_services_at IS NOT NULL
+          AND ($2 = false OR o.step_questionnaire_at IS NOT NULL)
+          AND (
+            o.step_pay_deposit_at IS NOT NULL
+            OR NOT EXISTS (
+              SELECT 1 FROM quotes q
+               WHERE q.contact_id = $1 AND q.deposit_invoice_id IS NOT NULL
+            )
+          )`,
+      [contactId, questionnaireApplies]
+    );
+  }
 
   app.post<{ Params: { step: string } }>(
     '/portal/onboarding/steps/:step/complete',
@@ -294,54 +344,132 @@ export function registerFormRoutes(app: FastifyInstance): void {
         `UPDATE portal_onboarding SET step_${step}_at = COALESCE(step_${step}_at, now()) WHERE contact_id = $1`,
         [client.contactId]
       );
-      /*
-       * The checklist is finished when every step the CLIENT can see is done.
-       *
-       * The deposit is conditional: a client who was never asked for one must not be
-       * held permanently at 4/5 by a step that cannot apply to them. And book_consult
-       * is deliberately absent — it is retired, and leaving it in this condition would
-       * have meant no client could ever finish onboarding again.
-       */
-      await app.db.query(
-        `UPDATE portal_onboarding o SET completed_at = now()
-          WHERE o.contact_id = $1 AND o.completed_at IS NULL
-            AND o.step_sign_docs_at IS NOT NULL
-            AND o.step_confirm_info_at IS NOT NULL
-            AND o.step_upload_documents_at IS NOT NULL
-            AND o.step_track_services_at IS NOT NULL
-            AND (
-              o.step_pay_deposit_at IS NOT NULL
-              OR NOT EXISTS (
-                SELECT 1 FROM quotes q
-                 WHERE q.contact_id = $1 AND q.deposit_invoice_id IS NOT NULL
-              )
-            )`,
-        [client.contactId]
-      );
+      await refreshChecklistCompletion(client.contactId);
       return { status: 'ok' };
     }
   );
 
   // ── Form 5: assembled service onboarding (client-facing) ─────────────────
+  //
+  // Step 4 of the canonical journey (Brian, 2026-08-15). The #30/#31 ruling split
+  // intake: the pre-engagement form stays minimal and creates the contact, and THESE
+  // questions — assembled per client from the A–I modules — are the onboarding-voice
+  // instrument. They can only exist here, because assembleModules triggers on the
+  // client's engagements and industry, neither of which exists before the engagement.
+
+  /** The one place that decides what this client's questionnaire is. */
+  async function questionnaireFor(contactId: string) {
+    const modules = await assembleModules(app, contactId);
+    const draft = await app.db.query<{ id: string; answers: Record<string, unknown>; screen_reached: number }>(
+      `SELECT id, answers, screen_reached FROM form_submissions
+        WHERE form_key = 'service_onboarding' AND contact_id = $1 AND status <> 'submitted'
+        ORDER BY created_at DESC LIMIT 1`,
+      [contactId]
+    );
+    const done = await app.db.query<{ submitted_at: Date | null }>(
+      `SELECT submitted_at FROM form_submissions
+        WHERE form_key = 'service_onboarding' AND contact_id = $1 AND status = 'submitted'
+        ORDER BY submitted_at LIMIT 1`,
+      [contactId]
+    );
+    return { modules, draft: draft.rows[0] ?? null, submittedAt: done.rows[0]?.submitted_at ?? null };
+  }
+
   app.get('/portal/service-onboarding', { preHandler: [app.authenticateClient] }, async (request) => {
     const client = request.client!;
-    const modules = await assembleModules(app, client.contactId);
+    const { modules, draft, submittedAt } = await questionnaireFor(client.contactId);
     return {
       modules: modules.map((m) => ({ key: m.key, nameEn: m.name_en, nameEs: m.name_es, questions: m.questions })),
+      // Answers survive a lost signal, the same as the intake — a client working
+      // through nine modules on a phone must not lose the lot to a backgrounded tab.
+      answers: draft?.answers ?? {},
+      screenReached: draft?.screen_reached ?? 0,
+      submittedAt,
     };
+  });
+
+  /** Autosave. Idempotent per client: one open draft, updated in place. */
+  app.patch('/portal/service-onboarding', { preHandler: [app.authenticateClient] }, async (request) => {
+    const client = request.client!;
+    const b = z
+      .object({
+        answers: z.record(z.string(), z.unknown()),
+        screenReached: z.number().int().min(0).max(50).optional(),
+      })
+      .parse(request.body);
+    const answers = sanitizeAnswers(b.answers);
+
+    const existing = await app.db.query<{ id: string; answers: Record<string, unknown> }>(
+      `SELECT id, answers FROM form_submissions
+        WHERE form_key = 'service_onboarding' AND contact_id = $1 AND status <> 'submitted'
+        ORDER BY created_at DESC LIMIT 1`,
+      [client.contactId]
+    );
+    if (existing.rows[0]) {
+      const merged = { ...existing.rows[0].answers, ...answers };
+      await app.db.query(
+        `UPDATE form_submissions
+            SET answers = $2::jsonb, screen_reached = GREATEST(screen_reached, $3)
+          WHERE id = $1`,
+        [existing.rows[0].id, JSON.stringify(merged), b.screenReached ?? 0]
+      );
+    } else {
+      await app.db.query(
+        `INSERT INTO form_submissions (form_key, form_version, contact_id, status, language, answers, screen_reached)
+         VALUES ('service_onboarding', 1, $1, 'in_progress', $2, $3::jsonb, $4)`,
+        [client.contactId, client.language, JSON.stringify(answers), b.screenReached ?? 0]
+      );
+    }
+    return { status: 'ok' };
   });
 
   app.post('/portal/service-onboarding/submit', { preHandler: [app.authenticateClient] }, async (request) => {
     const client = request.client!;
     const b = z.object({ answers: z.record(z.string(), z.unknown()) }).parse(request.body);
-    const answers = sanitizeAnswers(b.answers);
-    const { rows } = await app.db.query<{ id: string }>(
-      `INSERT INTO form_submissions (form_key, form_version, contact_id, status, language, answers, submitted_at)
-       VALUES ('service_onboarding', 1, $1, 'submitted', $2, $3::jsonb, now()) RETURNING id`,
-      [client.contactId, client.language, JSON.stringify(answers)]
+
+    // The draft is part of the answer. A client who filled modules A–C over two
+    // sittings and only has D–F in the browser must not submit D–F alone.
+    const open = await app.db.query<{ id: string; answers: Record<string, unknown> }>(
+      `SELECT id, answers FROM form_submissions
+        WHERE form_key = 'service_onboarding' AND contact_id = $1 AND status <> 'submitted'
+        ORDER BY created_at DESC LIMIT 1`,
+      [client.contactId]
     );
+    const answers = { ...(open.rows[0]?.answers ?? {}), ...sanitizeAnswers(b.answers) };
+
+    let submissionId: string;
+    if (open.rows[0]) {
+      await app.db.query(
+        `UPDATE form_submissions SET answers = $2::jsonb, status = 'submitted', submitted_at = now() WHERE id = $1`,
+        [open.rows[0].id, JSON.stringify(answers)]
+      );
+      submissionId = open.rows[0].id;
+    } else {
+      const { rows } = await app.db.query<{ id: string }>(
+        `INSERT INTO form_submissions (form_key, form_version, contact_id, status, language, answers, submitted_at)
+         VALUES ('service_onboarding', 1, $1, 'submitted', $2, $3::jsonb, now()) RETURNING id`,
+        [client.contactId, client.language, JSON.stringify(answers)]
+      );
+      submissionId = rows[0]!.id;
+    }
+
     const result = await processServiceOnboarding(app, client.contactId, answers);
-    return { status: 'submitted', submissionId: rows[0]!.id, flags: result.flags };
+
+    // Self-completing, like the deposit: a client cannot mark a questionnaire done
+    // without answering it, so submitting IS the completion. COALESCE keeps the first
+    // date if they ever submit twice.
+    await app.db.query(
+      `INSERT INTO portal_onboarding (contact_id) VALUES ($1) ON CONFLICT (contact_id) DO NOTHING`,
+      [client.contactId]
+    );
+    await app.db.query(
+      `UPDATE portal_onboarding SET step_questionnaire_at = COALESCE(step_questionnaire_at, now())
+        WHERE contact_id = $1`,
+      [client.contactId]
+    );
+    await refreshChecklistCompletion(client.contactId);
+
+    return { status: 'submitted', submissionId, flags: result.flags };
   });
 
   // ── Analytics (OF Build Notes: started / completed / drop-off per form) ──

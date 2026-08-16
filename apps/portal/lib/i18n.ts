@@ -41,6 +41,34 @@ const dict = {
   ],
   checklist_deposit_waiting: ['Waiting on payment', 'Pendiente de pago'],
   checklist_go: ['Go', 'Ir'],
+  /*
+   * Step 4 of the canonical journey (#30/#31 split, 2026-08-15). The onboarding-voice
+   * questionnaire, assembled from the client's own services and industry.
+   *
+   * The copy says WHY it is being asked — these questions scope the work, they are not
+   * a form for its own sake — and it never treats the reader as someone being rescued.
+   */
+  checklist_questionnaire: ['Answer a few questions about your business', 'Responda unas preguntas sobre su negocio'],
+  quest_title: ['A few questions about how you work', 'Unas preguntas sobre cómo trabaja'],
+  quest_resumed: [
+    'Welcome back — we picked up where you left off.',
+    'Bienvenido(a) de nuevo — continuamos donde lo dejó.',
+  ],
+  quest_saved_note: [
+    'Your answers save as you go, so you can close this and come back. Skip anything you are unsure about — we can fill it in together.',
+    'Sus respuestas se guardan solas, así que puede cerrar y volver después. Salte lo que no tenga claro — lo completamos juntos.',
+  ],
+  quest_done_title: ['Thank you — that is everything we needed', 'Gracias — eso es todo lo que necesitábamos'],
+  quest_done_body: [
+    'Your answers are with your team. They shape how we set up your books, your filings and your calendar, so nothing here gets asked twice.',
+    'Sus respuestas ya están con su equipo. Con ellas configuramos sus libros, sus presentaciones y su calendario, para no volver a preguntarle lo mismo.',
+  ],
+  quest_none_title: ['Nothing to answer right now', 'Nada que responder por ahora'],
+  quest_none_body: [
+    'These questions are built from the services you have with us. When a new service starts, the questions that go with it will appear here.',
+    'Estas preguntas se arman según los servicios que tiene con nosotros. Cuando comience un servicio nuevo, aquí aparecerán las preguntas que le corresponden.',
+  ],
+  back_home: ['Back to your portal', 'Volver a su portal'],
   // Estimated payment due — its own container (Brian, 2026-08-13): the amount, where
   // to pay it, and a way to ask whether it is still the right number.
   estdue_title: ['Estimated payment due', 'Pago estimado'],

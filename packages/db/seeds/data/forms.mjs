@@ -347,20 +347,83 @@ const q = (id, labelEn, labelEs, type, options = null, extra = {}) => ({
   id, labelEn, labelEs, type, ...(options ? { options } : {}), ...extra,
 });
 
+/*
+ * An answer option, WITH the bilingual labels the renderer needs.
+ *
+ * These modules shipped as structure only — options were bare value strings like
+ * 'qbo' and 'fba' — because nothing rendered them, exactly the state the intake
+ * definitions were in before M28. A client cannot be shown "qb_desktop", and half
+ * the firm's clients read Spanish, so the questionnaire could not be built until
+ * every option carried both labels.
+ *
+ * VALUES ARE FROZEN. The flag rules match on them (module_h H3 === 'fba' raises
+ * multistate nexus; C4/G4/I6 drive worker-classification), so a value is a
+ * behaviour identifier and only the labels are new.
+ */
+const mopt = (value, labelEn, labelEs) => ({ value, labelEn, labelEs });
+
+const YES_NO_UNSURE = [
+  mopt('yes', 'Yes', 'Sí'),
+  mopt('no', 'No', 'No'),
+  mopt('not_sure', 'Not sure', 'No estoy seguro(a)'),
+];
+
 export const ONBOARDING_MODULES = [
   {
     key: 'module_a', nameEn: 'Tech stack', nameEs: 'Herramientas',
     trigger: { services_any: ['bookkeeping', 'payroll', 'sales_tax', 'cfo_advisory'] },
     sort: 10,
     questions: [
-      q('A1', 'Bookkeeping software', 'Software contable', 'select', ['qbo', 'qb_desktop', 'xero', 'wave', 'spreadsheets', 'none', 'other']),
-      q('A2', 'Payroll system', 'Sistema de nómina', 'select', ['gusto', 'qb_payroll', 'adp', 'paychex', 'manual', 'no_employees', 'other']),
-      q('A3', 'POS system(s)', 'Sistema(s) de punto de venta', 'multiselect', ['square', 'toast', 'clover', 'shopify_pos', 'lightspeed', 'none', 'other']),
-      q('A4', 'Payment processors', 'Procesadores de pago', 'multiselect', ['stripe', 'square', 'paypal', 'venmo', 'zelle', 'cash_only', 'other']),
-      q('A5', 'Online sales channels', 'Canales de venta en línea', 'multiselect', ['own_site', 'etsy', 'amazon', 'none', 'other']),
-      q('A6', 'Business bank accounts (count + banks)', 'Cuentas bancarias del negocio', 'text'),
-      q('A7', 'Business credit cards (count + issuers)', 'Tarjetas de crédito del negocio', 'text'),
-      q('A8', 'Ever pay business expenses from personal accounts (or vice versa)?', '¿Paga gastos del negocio desde cuentas personales (o al revés)?', 'select', ['often', 'sometimes', 'never']),
+      q('A1', 'Bookkeeping software', 'Software contable', 'select', [
+        mopt('qbo', 'QuickBooks Online', 'QuickBooks Online'),
+        mopt('qb_desktop', 'QuickBooks Desktop', 'QuickBooks Desktop'),
+        mopt('xero', 'Xero', 'Xero'),
+        mopt('wave', 'Wave', 'Wave'),
+        mopt('spreadsheets', 'Spreadsheets', 'Hojas de cálculo'),
+        mopt('none', 'Nothing yet', 'Nada todavía'),
+        mopt('other', 'Something else', 'Otro'),
+      ]),
+      q('A2', 'Payroll system', 'Sistema de nómina', 'select', [
+        mopt('gusto', 'Gusto', 'Gusto'),
+        mopt('qb_payroll', 'QuickBooks Payroll', 'QuickBooks Payroll'),
+        mopt('adp', 'ADP', 'ADP'),
+        mopt('paychex', 'Paychex', 'Paychex'),
+        mopt('manual', 'We run it by hand', 'La hacemos a mano'),
+        mopt('no_employees', 'No employees', 'Sin empleados'),
+        mopt('other', 'Something else', 'Otro'),
+      ]),
+      q('A3', 'POS system(s)', 'Sistema(s) de punto de venta', 'multiselect', [
+        mopt('square', 'Square', 'Square'),
+        mopt('toast', 'Toast', 'Toast'),
+        mopt('clover', 'Clover', 'Clover'),
+        mopt('shopify_pos', 'Shopify POS', 'Shopify POS'),
+        mopt('lightspeed', 'Lightspeed', 'Lightspeed'),
+        mopt('none', 'No POS', 'Sin punto de venta'),
+        mopt('other', 'Something else', 'Otro'),
+      ]),
+      q('A4', 'Payment processors', 'Procesadores de pago', 'multiselect', [
+        mopt('stripe', 'Stripe', 'Stripe'),
+        mopt('square', 'Square', 'Square'),
+        mopt('paypal', 'PayPal', 'PayPal'),
+        mopt('venmo', 'Venmo', 'Venmo'),
+        mopt('zelle', 'Zelle', 'Zelle'),
+        mopt('cash_only', 'Cash only', 'Solo efectivo'),
+        mopt('other', 'Something else', 'Otro'),
+      ]),
+      q('A5', 'Online sales channels', 'Canales de venta en línea', 'multiselect', [
+        mopt('own_site', 'Our own website', 'Nuestro propio sitio web'),
+        mopt('etsy', 'Etsy', 'Etsy'),
+        mopt('amazon', 'Amazon', 'Amazon'),
+        mopt('none', 'We do not sell online', 'No vendemos en línea'),
+        mopt('other', 'Something else', 'Otro'),
+      ]),
+      q('A6', 'Business bank accounts (count + banks)', 'Cuentas bancarias del negocio (cuántas y en qué bancos)', 'text'),
+      q('A7', 'Business credit cards (count + issuers)', 'Tarjetas de crédito del negocio (cuántas y de qué banco)', 'text'),
+      q('A8', 'Ever pay business expenses from personal accounts (or vice versa)?', '¿Paga gastos del negocio desde cuentas personales (o al revés)?', 'select', [
+        mopt('often', 'Often', 'Con frecuencia'),
+        mopt('sometimes', 'Sometimes', 'A veces'),
+        mopt('never', 'Never', 'Nunca'),
+      ]),
     ],
     flags: [],
   },
@@ -371,9 +434,27 @@ export const ONBOARDING_MODULES = [
     trigger: { industry: 'food_beverage' },
     sort: 20,
     questions: [
-      q('B1', 'Third-party delivery apps', 'Apps de entrega', 'multiselect', ['doordash', 'ubereats', 'grubhub', 'chownow', 'direct', 'none', 'other']),
-      q('B2', 'Roughly what % of sales are cash?', '¿Qué % de ventas es en efectivo?', 'select', ['<10', '10-25', '25-50', '50+']),
-      q('B3', 'How are tips handled?', '¿Cómo se manejan las propinas?', 'select', ['pos_payroll', 'cash', 'both', 'none']),
+      q('B1', 'Third-party delivery apps', 'Apps de entrega', 'multiselect', [
+        mopt('doordash', 'DoorDash', 'DoorDash'),
+        mopt('ubereats', 'Uber Eats', 'Uber Eats'),
+        mopt('grubhub', 'Grubhub', 'Grubhub'),
+        mopt('chownow', 'ChowNow', 'ChowNow'),
+        mopt('direct', 'We deliver ourselves', 'Entregamos nosotros mismos'),
+        mopt('none', 'We do not deliver', 'No hacemos entregas'),
+        mopt('other', 'Something else', 'Otra'),
+      ]),
+      q('B2', 'Roughly what % of sales are cash?', '¿Qué porcentaje de las ventas es en efectivo?', 'select', [
+        mopt('<10', 'Under 10%', 'Menos del 10 %'),
+        mopt('10-25', '10–25%', '10–25 %'),
+        mopt('25-50', '25–50%', '25–50 %'),
+        mopt('50+', 'Over 50%', 'Más del 50 %'),
+      ]),
+      q('B3', 'How are tips handled?', '¿Cómo se manejan las propinas?', 'select', [
+        mopt('pos_payroll', 'Through the POS and payroll', 'Por el punto de venta y la nómina'),
+        mopt('cash', 'Cash, kept by staff', 'En efectivo, se las queda el personal'),
+        mopt('both', 'Both', 'Ambas'),
+        mopt('none', 'We do not take tips', 'No aceptamos propinas'),
+      ]),
       q('B4', 'Sell at markets, pop-ups, or events?', '¿Vende en mercados, pop-ups o eventos?', 'yesno'),
     ],
     flags: [],
@@ -383,11 +464,29 @@ export const ONBOARDING_MODULES = [
     trigger: { services_any: ['bookkeeping'] },
     sort: 30,
     questions: [
-      q('C1', 'When were your books last reconciled?', '¿Cuándo se conciliaron sus libros por última vez?', 'select', ['last_month', '2-6mo', '6-12mo', 'over_year', 'never']),
-      q('C2', 'Accounting method', 'Método contable', 'select', ['cash', 'accrual', 'not_sure']),
-      q('C3', 'Fiscal year end', 'Cierre del año fiscal', 'select', ['december', 'other']),
-      q('C4', 'Do you pay 1099 contractors? (rough count)', '¿Paga contratistas 1099? (cuántos)', 'text'),
-      q('C5', 'Rough monthly transaction volume', 'Volumen mensual de transacciones', 'select', ['<50', '50-200', '200-500', '500+']),
+      q('C1', 'When were your books last reconciled?', '¿Cuándo se conciliaron sus libros por última vez?', 'select', [
+        mopt('last_month', 'Within the last month', 'En el último mes'),
+        mopt('2-6mo', 'Two to six months ago', 'Hace dos a seis meses'),
+        mopt('6-12mo', 'Six to twelve months ago', 'Hace seis a doce meses'),
+        mopt('over_year', 'More than a year ago', 'Hace más de un año'),
+        mopt('never', 'Never', 'Nunca'),
+      ]),
+      q('C2', 'Accounting method', 'Método contable', 'select', [
+        mopt('cash', 'Cash basis', 'Base de efectivo'),
+        mopt('accrual', 'Accrual basis', 'Base devengada'),
+        mopt('not_sure', 'Not sure', 'No estoy seguro(a)'),
+      ]),
+      q('C3', 'Fiscal year end', 'Cierre del año fiscal', 'select', [
+        mopt('december', 'December 31', '31 de diciembre'),
+        mopt('other', 'Another month', 'Otro mes'),
+      ]),
+      q('C4', 'Do you pay 1099 contractors? (rough count)', '¿Paga contratistas 1099? (aproximadamente cuántos)', 'text'),
+      q('C5', 'Rough monthly transaction volume', 'Volumen mensual aproximado de transacciones', 'select', [
+        mopt('<50', 'Under 50', 'Menos de 50'),
+        mopt('50-200', '50–200', '50–200'),
+        mopt('200-500', '200–500', '200–500'),
+        mopt('500+', 'Over 500', 'Más de 500'),
+      ]),
     ],
     flags: [{ flagKey: 'worker_classification_risk', when: { question: 'C4', numberGte: 3 }, routeToRole: 'ceo' }],
   },
@@ -396,10 +495,15 @@ export const ONBOARDING_MODULES = [
     trigger: { services_any: ['sales_tax'] },
     sort: 40,
     questions: [
-      q('D1', 'States/jurisdictions where you sell', 'Estados donde vende', 'text'),
-      q('D2', 'Currently registered to collect?', '¿Registrado para cobrar?', 'select', ['yes', 'no', 'not_sure']),
-      q('D3', 'Current filing frequency', 'Frecuencia de presentación', 'select', ['monthly', 'quarterly', 'annual', 'not_sure']),
-      q('D4', 'Any past-due sales tax filings?', '¿Presentaciones vencidas?', 'select', ['yes', 'no', 'not_sure']),
+      q('D1', 'States/jurisdictions where you sell', 'Estados o jurisdicciones donde vende', 'text'),
+      q('D2', 'Currently registered to collect?', '¿Está registrado para cobrarlo?', 'select', YES_NO_UNSURE),
+      q('D3', 'Current filing frequency', 'Frecuencia de presentación actual', 'select', [
+        mopt('monthly', 'Monthly', 'Mensual'),
+        mopt('quarterly', 'Quarterly', 'Trimestral'),
+        mopt('annual', 'Annually', 'Anual'),
+        mopt('not_sure', 'Not sure', 'No estoy seguro(a)'),
+      ]),
+      q('D4', 'Any past-due sales tax filings?', '¿Tiene presentaciones vencidas?', 'select', YES_NO_UNSURE),
     ],
     flags: [],
   },
@@ -410,9 +514,14 @@ export const ONBOARDING_MODULES = [
     questions: [
       q('E1', 'W-2 employees (count)', 'Empleados W-2 (cuántos)', 'number'),
       q('E2', '1099 contractors (count)', 'Contratistas 1099 (cuántos)', 'number'),
-      q('E3', 'Pay frequency', 'Frecuencia de pago', 'select', ['weekly', 'biweekly', 'semimonthly', 'monthly']),
-      q('E4', 'States where employees work', 'Estados donde trabajan', 'text'),
-      q('E5', 'Current provider — switching or keeping?', 'Proveedor actual — ¿cambia o se queda?', 'text'),
+      q('E3', 'Pay frequency', 'Frecuencia de pago', 'select', [
+        mopt('weekly', 'Weekly', 'Semanal'),
+        mopt('biweekly', 'Every two weeks', 'Cada dos semanas'),
+        mopt('semimonthly', 'Twice a month', 'Dos veces al mes'),
+        mopt('monthly', 'Monthly', 'Mensual'),
+      ]),
+      q('E4', 'States where employees work', 'Estados donde trabajan sus empleados', 'text'),
+      q('E5', 'Current provider — switching or keeping?', 'Proveedor actual — ¿lo cambia o lo mantiene?', 'text'),
     ],
     flags: [],
   },
@@ -421,12 +530,35 @@ export const ONBOARDING_MODULES = [
     trigger: { services_any: ['tax_personal', 'tax_business'] },
     sort: 60,
     questions: [
-      q('F1', 'Who prepared last year’s return?', '¿Quién preparó su declaración pasada?', 'select', ['self', 'other_preparer', 'soto', 'didnt_file']),
-      q('F2', 'Filing status', 'Estado civil tributario', 'select', ['single', 'mfj', 'mfs', 'hoh']),
+      q('F1', 'Who prepared last year’s return?', '¿Quién preparó su declaración del año pasado?', 'select', [
+        mopt('self', 'I did', 'Yo mismo(a)'),
+        mopt('other_preparer', 'Another preparer', 'Otro preparador'),
+        mopt('soto', 'Soto Accounting', 'Soto Accounting'),
+        mopt('didnt_file', 'I did not file', 'No presenté'),
+      ]),
+      q('F2', 'Filing status', 'Estado civil tributario', 'select', [
+        mopt('single', 'Single', 'Soltero(a)'),
+        mopt('mfj', 'Married filing jointly', 'Casado(a) declarando en conjunto'),
+        mopt('mfs', 'Married filing separately', 'Casado(a) declarando por separado'),
+        mopt('hoh', 'Head of household', 'Jefe(a) de familia'),
+      ]),
       q('F3', 'Dependents (count)', 'Dependientes (cuántos)', 'number'),
-      q('F4', 'States you lived/earned in during the tax year', 'Estados donde vivió/ganó en el año', 'multiselect', ['il', 'in', 'wi', 'other']),
-      q('F5', 'Estimated payments this year?', '¿Pagos estimados este año?', 'select', ['yes', 'no', 'not_sure']),
-      q('F6', 'Major life/business changes this year?', '¿Cambios importantes este año?', 'multiselect', ['property_bought_sold', 'new_business', 'closed_business', 'marriage_divorce', 'new_dependent', 'crypto', 'none']),
+      q('F4', 'States you lived/earned in during the tax year', 'Estados donde vivió o generó ingresos durante el año', 'multiselect', [
+        mopt('il', 'Illinois', 'Illinois'),
+        mopt('in', 'Indiana', 'Indiana'),
+        mopt('wi', 'Wisconsin', 'Wisconsin'),
+        mopt('other', 'Another state', 'Otro estado'),
+      ]),
+      q('F5', 'Estimated payments this year?', '¿Hizo pagos estimados este año?', 'select', YES_NO_UNSURE),
+      q('F6', 'Major life/business changes this year?', '¿Cambios importantes este año, personales o del negocio?', 'multiselect', [
+        mopt('property_bought_sold', 'Bought or sold property', 'Compré o vendí una propiedad'),
+        mopt('new_business', 'Started a business', 'Empecé un negocio'),
+        mopt('closed_business', 'Closed a business', 'Cerré un negocio'),
+        mopt('marriage_divorce', 'Marriage or divorce', 'Matrimonio o divorcio'),
+        mopt('new_dependent', 'A new dependent', 'Un nuevo dependiente'),
+        mopt('crypto', 'Bought or sold crypto', 'Compré o vendí criptomonedas'),
+        mopt('none', 'None of these', 'Ninguno de estos'),
+      ]),
     ],
     flags: [],
   },
@@ -435,12 +567,30 @@ export const ONBOARDING_MODULES = [
     trigger: { industry: 'construction_trades', any_service_module: true },
     sort: 70,
     questions: [
-      q('G1', 'Trade', 'Oficio', 'select', ['general', 'electrical', 'plumbing', 'hvac', 'landscaping', 'painting', 'remodeling', 'other']),
-      q('G2', 'Track costs by job/project?', '¿Controla costos por proyecto?', 'select', ['software', 'paper', 'no']),
-      q('G3', 'How do you bill?', '¿Cómo factura?', 'multiselect', ['fixed_bid', 'time_materials', 'progress', 'deposits']),
+      q('G1', 'Trade', 'Oficio', 'select', [
+        mopt('general', 'General contracting', 'Contratista general'),
+        mopt('electrical', 'Electrical', 'Electricidad'),
+        mopt('plumbing', 'Plumbing', 'Plomería'),
+        mopt('hvac', 'HVAC', 'Climatización (HVAC)'),
+        mopt('landscaping', 'Landscaping', 'Jardinería'),
+        mopt('painting', 'Painting', 'Pintura'),
+        mopt('remodeling', 'Remodeling', 'Remodelación'),
+        mopt('other', 'Another trade', 'Otro oficio'),
+      ]),
+      q('G2', 'Track costs by job/project?', '¿Controla los costos por trabajo o proyecto?', 'select', [
+        mopt('software', 'Yes, in software', 'Sí, con software'),
+        mopt('paper', 'Yes, on paper', 'Sí, en papel'),
+        mopt('no', 'Not currently', 'Por ahora no'),
+      ]),
+      q('G3', 'How do you bill?', '¿Cómo factura?', 'multiselect', [
+        mopt('fixed_bid', 'Fixed bid', 'Precio fijo'),
+        mopt('time_materials', 'Time and materials', 'Tiempo y materiales'),
+        mopt('progress', 'Progress billing', 'Facturación por avance'),
+        mopt('deposits', 'Deposit up front', 'Depósito por adelantado'),
+      ]),
       q('G4', 'Subcontractors (1099)? (count)', '¿Subcontratistas 1099? (cuántos)', 'text'),
-      q('G5', 'Vehicles/equipment owned? (count)', '¿Vehículos/equipo propios? (cuántos)', 'text'),
-      q('G6', 'Licensed/bonded jurisdictions', 'Jurisdicciones con licencia/fianza', 'text'),
+      q('G5', 'Vehicles/equipment owned? (count)', '¿Vehículos o equipo propios? (cuántos)', 'text'),
+      q('G6', 'Licensed/bonded jurisdictions', 'Jurisdicciones donde tiene licencia o fianza', 'text'),
     ],
     flags: [{ flagKey: 'worker_classification_risk', when: { question: 'G4', numberGte: 3 }, routeToRole: 'ceo' }],
   },
@@ -449,11 +599,29 @@ export const ONBOARDING_MODULES = [
     trigger: { industry: 'retail_ecommerce' },
     sort: 80,
     questions: [
-      q('H1', 'Selling platforms', 'Plataformas de venta', 'multiselect', ['shopify', 'amazon', 'etsy', 'ebay', 'tiktok', 'walmart', 'own_site', 'other']),
+      q('H1', 'Selling platforms', 'Plataformas de venta', 'multiselect', [
+        mopt('shopify', 'Shopify', 'Shopify'),
+        mopt('amazon', 'Amazon', 'Amazon'),
+        mopt('etsy', 'Etsy', 'Etsy'),
+        mopt('ebay', 'eBay', 'eBay'),
+        mopt('tiktok', 'TikTok Shop', 'TikTok Shop'),
+        mopt('walmart', 'Walmart Marketplace', 'Walmart Marketplace'),
+        mopt('own_site', 'Our own website', 'Nuestro propio sitio web'),
+        mopt('other', 'Somewhere else', 'Otra'),
+      ]),
       q('H2', 'Hold physical inventory?', '¿Maneja inventario físico?', 'yesno'),
-      q('H3', 'Fulfillment', 'Envíos', 'select', ['self', '3pl', 'fba', 'mix']),
+      q('H3', 'Fulfillment', 'Envíos', 'select', [
+        mopt('self', 'We ship it ourselves', 'Enviamos nosotros mismos'),
+        mopt('3pl', 'A third-party warehouse', 'Un almacén externo (3PL)'),
+        mopt('fba', 'Fulfilled by Amazon (FBA)', 'Logística de Amazon (FBA)'),
+        mopt('mix', 'A mix', 'Una combinación'),
+      ]),
       q('H4', 'States with inventory or significant sales', 'Estados con inventario o ventas significativas', 'text'),
-      q('H5', 'Returns/refunds volume', 'Volumen de devoluciones', 'select', ['low', 'moderate', 'high']),
+      q('H5', 'Returns/refunds volume', 'Volumen de devoluciones y reembolsos', 'select', [
+        mopt('low', 'Low', 'Bajo'),
+        mopt('moderate', 'Moderate', 'Moderado'),
+        mopt('high', 'High', 'Alto'),
+      ]),
     ],
     flags: [{ flagKey: 'multistate_nexus', when: { question: 'H3', equals: 'fba' }, routeToRole: 'comms_billing' }],
   },
@@ -462,12 +630,47 @@ export const ONBOARDING_MODULES = [
     trigger: { industry: 'healthcare_therapy' },
     sort: 90,
     questions: [
-      q('I1', 'License type', 'Tipo de licencia', 'select', ['lcpc', 'lcsw', 'lmft', 'psychologist', 'psychiatrist_md', 'chiropractor', 'pt_ot', 'other_licensed', 'not_licensed']),
-      q('I2', 'Current entity structure', 'Estructura actual', 'select', ['sole_prop', 'llc', 'pllc', 's_corp', 'not_formed', 'not_sure']),
-      q('I3', 'Payment mix', 'Mezcla de pagos', 'select', ['mostly_insurance', 'mostly_private', 'even_mix']),
-      q('I4', 'Practice management / EHR', 'Sistema de gestión / EHR', 'select', ['simplepractice', 'therapynotes', 'jane', 'headway', 'alma', 'grow', 'other', 'none']),
-      q('I5', 'Telehealth clients in other states?', '¿Clientes de telesalud en otros estados?', 'yesno'),
-      q('I6', 'Solo or group practice?', '¿Práctica individual o grupal?', 'select', ['solo', 'group_w2', 'group_1099', 'mix']),
+      q('I1', 'License type', 'Tipo de licencia', 'select', [
+        mopt('lcpc', 'LCPC — licensed clinical professional counselor', 'LCPC — consejero(a) clínico(a) profesional licenciado(a)'),
+        mopt('lcsw', 'LCSW — licensed clinical social worker', 'LCSW — trabajador(a) social clínico(a) licenciado(a)'),
+        mopt('lmft', 'LMFT — marriage and family therapist', 'LMFT — terapeuta matrimonial y familiar'),
+        mopt('psychologist', 'Psychologist', 'Psicólogo(a)'),
+        mopt('psychiatrist_md', 'Psychiatrist (MD)', 'Psiquiatra (MD)'),
+        mopt('chiropractor', 'Chiropractor', 'Quiropráctico(a)'),
+        mopt('pt_ot', 'Physical or occupational therapist', 'Fisioterapeuta o terapeuta ocupacional'),
+        mopt('other_licensed', 'Another licensed profession', 'Otra profesión con licencia'),
+        mopt('not_licensed', 'Not a licensed profession', 'No es una profesión con licencia'),
+      ]),
+      q('I2', 'Current entity structure', 'Estructura actual de la entidad', 'select', [
+        mopt('sole_prop', 'Sole proprietor', 'Propietario(a) único(a)'),
+        mopt('llc', 'LLC', 'LLC'),
+        mopt('pllc', 'PLLC', 'PLLC'),
+        mopt('s_corp', 'S-Corp', 'Corporación S'),
+        mopt('not_formed', 'Not formed yet', 'Aún no está constituida'),
+        mopt('not_sure', 'Not sure', 'No estoy seguro(a)'),
+      ]),
+      q('I3', 'Payment mix', 'Mezcla de pagos', 'select', [
+        mopt('mostly_insurance', 'Mostly insurance', 'Mayormente seguros'),
+        mopt('mostly_private', 'Mostly private pay', 'Mayormente pago privado'),
+        mopt('even_mix', 'About even', 'Más o menos parejo'),
+      ]),
+      q('I4', 'Practice management / EHR', 'Sistema de gestión de la práctica / EHR', 'select', [
+        mopt('simplepractice', 'SimplePractice', 'SimplePractice'),
+        mopt('therapynotes', 'TherapyNotes', 'TherapyNotes'),
+        mopt('jane', 'Jane', 'Jane'),
+        mopt('headway', 'Headway', 'Headway'),
+        mopt('alma', 'Alma', 'Alma'),
+        mopt('grow', 'Grow Therapy', 'Grow Therapy'),
+        mopt('other', 'Something else', 'Otro'),
+        mopt('none', 'None', 'Ninguno'),
+      ]),
+      q('I5', 'Telehealth clients in other states?', '¿Atiende clientes de telesalud en otros estados?', 'yesno'),
+      q('I6', 'Solo or group practice?', '¿Práctica individual o grupal?', 'select', [
+        mopt('solo', 'Solo practice', 'Práctica individual'),
+        mopt('group_w2', 'Group, W-2 clinicians', 'Grupal, con clínicos W-2'),
+        mopt('group_1099', 'Group, 1099 clinicians', 'Grupal, con clínicos 1099'),
+        mopt('mix', 'A mix', 'Una combinación'),
+      ]),
     ],
     // ⚑ The PLLC auto-flag rule (I1 licensed + I2 llc/sole_prop + IL) is
     // enforced in the processor — it creates the pllc_conversions record.
@@ -518,6 +721,7 @@ export async function seedForms(client) {
     inserted += res.rowCount;
   }
   let modules = 0;
+  let labelled = 0;
   for (const m of ONBOARDING_MODULES) {
     const res = await client.query(
       `INSERT INTO onboarding_modules (key, name_en, name_es, trigger, questions, flags, sort_order)
@@ -526,6 +730,36 @@ export async function seedForms(client) {
       [m.key, m.nameEn, m.nameEs, JSON.stringify(m.trigger), JSON.stringify(m.questions), JSON.stringify(m.flags), m.sort]
     );
     modules += res.rowCount;
+
+    /*
+     * ONE-TIME OPTION LABELLING (2026-08-15), and it can only ever run once per row.
+     *
+     * These modules shipped with bare option values — 'qbo', 'fba' — because nothing
+     * rendered them, the same state the intake definitions were in before M28. The
+     * questionnaire cannot be shown to a client until every option carries EN and ES
+     * labels, so existing rows need upgrading, not just fresh databases.
+     *
+     * The guard is the point. It rewrites a row ONLY while that row still has a bare
+     * string option, which means:
+     *   · a row Brian has since edited in Admin is already labelled, so it is skipped
+     *   · a second deploy finds nothing bare and reports 0
+     * That keeps the seed's insert-only promise where it matters — it never overwrites
+     * content someone chose — while still repairing rows that were never finished.
+     *
+     * Values are unchanged, so the flag rules that match on them still match.
+     */
+    if (res.rowCount === 0) {
+      const cur = await client.query(`SELECT questions FROM onboarding_modules WHERE key = $1`, [m.key]);
+      const stored = cur.rows[0]?.questions ?? [];
+      const hasBareOption = stored.some((sq) => (sq.options ?? []).some((o) => typeof o === 'string'));
+      if (hasBareOption) {
+        await client.query(`UPDATE onboarding_modules SET questions = $2::jsonb WHERE key = $1`, [
+          m.key,
+          JSON.stringify(m.questions),
+        ]);
+        labelled += 1;
+      }
+    }
   }
   let resources = 0;
   for (const [i, r] of STARTER_RESOURCES.entries()) {
@@ -537,5 +771,9 @@ export async function seedForms(client) {
     );
     resources += res.rowCount;
   }
-  return `${inserted} of 2 form definitions, ${modules} of ${ONBOARDING_MODULES.length} onboarding modules, ${resources} starter resources inserted`;
+  return (
+    `${inserted} of 2 form definitions, ${modules} of ${ONBOARDING_MODULES.length} onboarding modules, ` +
+    `${resources} starter resources inserted` +
+    (labelled > 0 ? `; ${labelled} module(s) upgraded to bilingual option labels` : '')
+  );
 }

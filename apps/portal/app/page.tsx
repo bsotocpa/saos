@@ -17,6 +17,7 @@ interface Onboarding {
   step_sign_docs_at: string | null;
   step_pay_deposit_at: string | null;
   step_confirm_info_at: string | null;
+  step_questionnaire_at: string | null;
   step_upload_documents_at: string | null;
   step_track_services_at: string | null;
   completed_at: string | null;
@@ -35,12 +36,23 @@ interface Invoice { id: string; invoice_number: string; status: string; total_ce
  * to Quick actions as "Schedule a Call/Meeting".
  *
  * `selfCompleting` means the client cannot tick it and is not asked to: Pay deposit
- * completes when the invoice is paid, because the system already knows.
+ * completes when the invoice is paid, and the questionnaire completes when it is
+ * submitted, because in both cases the system already knows.
+ *
+ * THE QUESTIONNAIRE (Brian's #30/#31 ruling, 2026-08-15). Intake split: the
+ * pre-engagement form stays minimal and creates the contact, and the onboarding-voice
+ * questions live here, assembled per client from the Form 5 A–I modules. It could not
+ * have been an "intake" step — submitting the intake is what CREATES the portal user,
+ * so that step would have shown complete for everyone who ever saw this screen.
+ *
+ * Placed between Confirm and Upload deliberately: what the questionnaire says about
+ * their software and their books shapes which documents we ask for.
  */
 const STEPS = [
   { key: 'step_sign_docs_at', label: 'checklist_sign', href: '/sign', step: 'sign_docs', selfCompleting: false },
   { key: 'step_pay_deposit_at', label: 'checklist_deposit', href: '/invoices', step: null, selfCompleting: true },
   { key: 'step_confirm_info_at', label: 'checklist_confirm', href: '/profile', step: 'confirm_info', selfCompleting: false },
+  { key: 'step_questionnaire_at', label: 'checklist_questionnaire', href: '/questionnaire', step: null, selfCompleting: true },
   { key: 'step_upload_documents_at', label: 'checklist_upload', href: '/documents', step: 'upload_documents', selfCompleting: false },
   { key: 'step_track_services_at', label: 'checklist_track', href: '#services', step: 'track_services', selfCompleting: false },
 ] as const;
@@ -61,6 +73,10 @@ export default function Dashboard() {
   const [irsUrl, setIrsUrl] = useState<string | null>(null);
   const [stateUrl, setStateUrl] = useState<string | null>(null);
   const [depositApplies, setDepositApplies] = useState(false);
+  // Whether this client has a questionnaire at all: the modules assemble from their
+  // own services and industry, so some clients have none. Same reasoning as the
+  // deposit — nobody should stare at a step they can never complete.
+  const [questionnaireApplies, setQuestionnaireApplies] = useState(false);
 
   useEffect(() => {
     if (!isAuthed()) {
@@ -75,6 +91,7 @@ export default function Dashboard() {
         irsPaymentUrl: string | null;
         statePaymentUrl: string | null;
         depositApplies: boolean;
+        questionnaireApplies: boolean;
       }>('/portal/onboarding').then((r) => {
         setOnboarding(r.onboarding);
         setBookingUrl(r.bookingUrl ?? null);
@@ -82,6 +99,7 @@ export default function Dashboard() {
         setIrsUrl(r.irsPaymentUrl ?? null);
         setStateUrl(r.statePaymentUrl ?? null);
         setDepositApplies(Boolean(r.depositApplies));
+        setQuestionnaireApplies(Boolean(r.questionnaireApplies));
       }),
       api<{ engagements: Engagement[] }>('/portal/engagements').then((r) => setEngagements(r.engagements)),
       api<{ requests: DocRequest[] }>('/portal/document-requests').then((r) => setRequests(r.requests)),
@@ -117,7 +135,11 @@ export default function Dashboard() {
 
   const showChecklist = onboarding && !onboarding.completed_at;
   // A client with no deposit owed should not stare at a step they can never complete.
-  const visibleSteps = STEPS.filter((s) => s.key !== 'step_pay_deposit_at' || depositApplies);
+  const visibleSteps = STEPS.filter(
+    (s) =>
+      (s.key !== 'step_pay_deposit_at' || depositApplies) &&
+      (s.key !== 'step_questionnaire_at' || questionnaireApplies)
+  );
   const doneCount = onboarding
     ? visibleSteps.filter((s) => onboarding[s.key as keyof Onboarding]).length
     : 0;
