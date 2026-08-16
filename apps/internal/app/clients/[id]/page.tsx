@@ -142,6 +142,8 @@ const LIFECYCLE_BADGE: Record<string, string> = {
  */
 const SOURCE_LABEL: Record<string, string> = {
   native: 'Direct',
+  dubsado: 'Migrated — Dubsado client book',
+  zoho: 'Migrated — Zoho CRM',
   migration: 'Migrated from the old book',
   booking: 'Booked a call',
   hilo: 'Hilo referral',
