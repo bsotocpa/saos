@@ -667,3 +667,113 @@ neither is placeholder text.
    walking `/questionnaire` in Spanish as RC2; findings come back numbered.
 2. **No authenticated flow has been walked at phone width** — questionnaire, portal home,
    client record. All API-tested and sabotage-verified; none clicked through.
+
+---
+
+# Real-device walkthrough, #36–#43 (Brian, iPhone Safari @390px, 2026-08-16)
+
+## #43 — the root cause, and why my checks could not have caught it
+
+**The structural cause was that the two apps' stylesheets had diverged**, and a body-level
+backstop was hiding the consequences.
+
+`.list` / `.grow` were rendered by the INTERNAL app and defined only in the PORTAL. So ops
+rows were not flex, had no `min-width: 0`, and could not contain a long unbreakable token —
+and the client record's invoice rows carry a ~90-character pay link I added the day before
+in #33. `.chip` / `.chipbar` were the same defect pointing the other way (see #36/#37).
+Copy a pattern between the two apps and it renders **unstyled and silently**.
+
+Two rules made it worse rather than better:
+
+- `body { overflow-x: clip }` — commented in the source as "the backstop". `clip` removes
+  the scrollbar **without removing the overflow**, so content past the viewport is simply
+  cut off. That is the missing right-hand side.
+- `section.card { overflow-x: auto }` on EVERY card at ≤767px — that is the sideways
+  scrolling. Text that should have wrapped scrolled instead, because every card was a
+  horizontally-scrolling box.
+
+Both are gone. Containment now belongs to the things that are actually wide: tables scroll
+in their own wrapper, flex children carry `min-width: 0`, and data text wraps.
+
+### (b) Why the 390px checks passed — the honest answer
+
+**The check I was running could not fail.** Every automated 390px check asks one question:
+is `scrollWidth` greater than `clientWidth`. Under `overflow-x: clip` the answer is
+permanently no. Measured on the real page before removing it:
+
+```
+bodyOverflowX: "clip", docScrollWidth: 390, docClientWidth: 390,
+pageScrollsHorizontally: false
+```
+
+A clean pass, over content that did not fit. **I added the rule that defeated the check,
+then reported the check.** That is the whole of it.
+
+Two further gaps found while proving this out, both of which produced confident readings
+from nothing:
+
+1. **I measured a broken page.** A production build run while the dev server was up
+   clobbered `.next`; the page 500'd and served **1 CSS rule**. My measurement reported
+   "no offenders" — because there was no layout. Nothing in the method noticed.
+2. **Chromium at 390px is not iPhone Safari.** The 90-character pay link that overflows on
+   Safari is absorbed by Chromium, which breaks long URLs at `/`. A viewport resize is not
+   a device.
+
+### What changes
+
+- **`check:css-classes`** (new, in `npm test`). Every class the markup uses must be defined
+  in that app's stylesheet. Deliberately **not** a browser check — a browser check only
+  finds what the browser it runs in gets wrong, which is exactly the failure above. A
+  missing rule is missing in every engine. It found both #36/#37 and #43's cause, plus four
+  more unstyled classes, in milliseconds and with no device.
+- **No backstop that hides overflow.** If a page overflows, it scrolls, and the check fails.
+- **Preconditions before any measurement.** The harness now asserts the stylesheet loaded
+  and the expected rule is present before it will report — "no offenders" from an unstyled
+  page is not a pass.
+- **What I still cannot do:** reproduce iOS Safari. Anything engine-specific needs your
+  device. I will state that rather than implying a viewport resize covered it.
+
+## #36 / #37 — dead multi-selects
+
+`.chip` / `.chipbar` were undefined in the portal, so every multi-select was a row of
+identical default buttons where the selected state looked exactly like the unselected one.
+The tap worked; nothing moved. Eleven questions across the intake and the modules, both
+languages. Now: 44px touch targets, Forest Teal fill when selected, long Spanish labels
+wrap. **Still open on #37:** the "Other" + free-text companion — module questions have no
+`showWhen` support yet, so that is a renderer change, not a data edit.
+
+## #38 — Spanish that said less than the English · DONE
+
+"Correo" alone can mean postal mail; as a way to *reach* someone that is the ambiguity to
+avoid. Three places said it. The sweep of what production actually serves found two more
+where the Spanish dropped what the English carries (the professional-services examples, the
+entity-formation parenthetical). Everything else flagged was a false positive. Soto v5.
+
+## #40 — "Request a meeting" goes nowhere · DONE
+
+It worked. The confirmation rendered inside the Engagement packet card ~380 lines up the
+page, so from the chair nothing happened. Same for the invoice reminder and the contact
+edit — all three now report next to the control that caused them.
+
+## Still open
+
+| # | State |
+|---|---|
+| 37 (second half) | "Other" + free-text on module questions — needs `showWhen` in the module renderer |
+| 39 | booking URL by context — kickoff vs support vs review |
+| 41 | see below — needs a ruling |
+| 42 | contact status advancement — needs a ruling |
+
+### #41 — the two engagements are genuinely identical
+
+Not only a display bug. In production both rows are `service_line=tax`, `status=active`, no
+business, no tax year, no start date, created the same day, and now both titled "Taxes".
+There is nothing to tell them apart **because they are the same thing twice** — and there
+is no stored link from an engagement back to the quote lines it covers, so no composition
+can recover a distinguishing scope.
+
+`brian3712+rehearsal` has one from 08-11 and one from 08-13, and a third already marked
+"Withdrawn — duplicate accept (rehearsal)". **This looks like duplicate quote acceptance.**
+Ruling needed: should the extras be withdrawn, or is two-per-client intended? Applying the
+composition to the portal list is the easy half and I will do it either way; it will not
+make these two rows different, because they are not.
