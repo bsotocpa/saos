@@ -577,7 +577,37 @@ export function registerFormRoutes(app: FastifyInstance): void {
         ORDER BY created_at DESC LIMIT 1`,
       [client.contactId]
     );
-    const answers = { ...(open.rows[0]?.answers ?? {}), ...sanitizeAnswers(b.answers) };
+    let answers = { ...(open.rows[0]?.answers ?? {}), ...sanitizeAnswers(b.answers) };
+
+    /*
+     * DROP ANSWERS TO QUESTIONS THAT ARE NOT BEING ASKED (#37).
+     *
+     * A client picks "Other", types what it is, then changes their mind — the companion
+     * disappears from the screen but its answer is still in the draft. Storing it would
+     * leave "Falconry" sitting next to a POS system of "Square", which is worse than no
+     * answer because it looks like one.
+     *
+     * Enforced here rather than in the renderer: the client sends whatever they send, and
+     * what we keep is our decision. Same reasoning as the intake's validator skipping
+     * hidden fields.
+     */
+    const modules = await assembleModules(app, client.contactId);
+    const conditional = modules
+      .flatMap((m) => m.questions as Array<{ id: string; showWhen?: { question: string; equals?: unknown; includesAny?: string[] } }>)
+      .filter((q) => q.showWhen);
+    for (const q of conditional) {
+      const c = q.showWhen!;
+      const parent = answers[c.question];
+      const shown = c.includesAny
+        ? Array.isArray(parent) && c.includesAny.some((x) => (parent as string[]).includes(x))
+        : c.equals !== undefined
+          ? parent === c.equals
+          : true;
+      if (!shown && q.id in answers) {
+        const { [q.id]: _dropped, ...rest } = answers;
+        answers = rest;
+      }
+    }
 
     let submissionId: string;
     if (open.rows[0]) {

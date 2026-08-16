@@ -33,7 +33,34 @@ import { useSession } from '../../lib/session';
 type QType = 'select' | 'multiselect' | 'text' | 'yesno' | 'number';
 
 interface Option { value: string; labelEn: string; labelEs: string }
-interface Question { id: string; labelEn: string; labelEs: string; type: QType; options?: Option[] }
+/*
+ * `showWhen` (#37) — a question that only appears once its parent calls for it.
+ *
+ * It speaks the modules' own vocabulary (`question`, not `field`) because that is what
+ * the flag rules already use: `{ question: 'C4', numberGte: 3 }`. Two dialects for the
+ * same idea inside one file would be the kind of thing that reads fine and gets one of
+ * them wrong later.
+ */
+interface ShowWhen { question: string; equals?: unknown; includesAny?: string[] }
+interface Question {
+  id: string; labelEn: string; labelEs: string; type: QType;
+  options?: Option[]; showWhen?: ShowWhen;
+}
+
+/**
+ * Whether a conditional question should be on screen right now.
+ *
+ * A question with no condition always shows. `includesAny` is the multiselect case —
+ * "did they pick Other among whatever else they picked".
+ */
+function visible(q: Question, answers: Answers): boolean {
+  const c = q.showWhen;
+  if (!c) return true;
+  const v = answers[c.question];
+  if (c.includesAny) return Array.isArray(v) && c.includesAny.some((x) => (v as string[]).includes(x));
+  if (c.equals !== undefined) return v === c.equals;
+  return true;
+}
 interface Module { key: string; nameEn: string; nameEs: string; questions: Question[] }
 
 type Answers = Record<string, unknown>;
@@ -278,7 +305,7 @@ export default function QuestionnairePage() {
             </p>
           </>
         ) : null}
-        {(current?.questions ?? []).map((q) => {
+        {(current?.questions ?? []).filter((q) => visible(q, answers)).map((q) => {
           const v = answers[q.id];
           return (
             <div key={q.id} style={{ marginBottom: 14 }}>

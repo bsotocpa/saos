@@ -1060,3 +1060,94 @@ test('the questionnaire opens with what we hold, and confirm-your-info is gone',
   assert.ok(row.rows[0]!.completed_at, 'finished without it');
   assert.equal(row.rows[0]!.step_confirm_info_at, null, 'and it really was never ticked');
 });
+
+/*
+ * #37 second half — "Other" gets somewhere to write, in the MODULES this time.
+ *
+ * The dead-tap half was a missing stylesheet (fixed separately). This is the other half
+ * Brian asked for: the module questions had no conditional support at all, so a free-text
+ * companion could not exist. Ten questions offered "Other" with nowhere to answer it, and
+ * "Cambios importantes" had no "Other" at all.
+ */
+test('every module "Other" has somewhere to write, and it only appears when chosen', async () => {
+  const { submissionId, resumeToken } = await startForm('soto_intake');
+  await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Modother',
+        email: 'modother@example.test', mobile_phone: '+13125550198', sms_ok: 'no',
+        preferred_contact_method: 'email', owns_business: 'yes',
+        business_name: 'Synthetic Modother LLC', entity_type: 'llc',
+        industry: 'food_beverage', years_in_business: '1-3', business_zip: '60618',
+        services: ['bookkeeping'], irs_letters: 'no', how_heard: 'google',
+        communication_consent: true, esign_consent: true,
+      },
+    },
+  });
+  const c = await app.db.query<{ id: string }>(`SELECT id FROM contacts WHERE email = 'modother@example.test'`);
+  const contactId = c.rows[0]!.id;
+  const session = await clientSessionFor(contactId, 'modother@example.test');
+  const hdr = { authorization: `Bearer ${session}` };
+
+  const q = await app.inject({ method: 'GET', url: '/portal/service-onboarding', headers: hdr });
+  const modules = q.json().modules as Array<{ key: string; questions: Array<{ id: string; type: string; options?: Array<{ value: string }>; showWhen?: { question: string } }> }>;
+  assert.ok(modules.length > 0, 'bookkeeping + food & beverage assemble modules');
+
+  for (const m of modules) {
+    const ids = new Set(m.questions.map((x) => x.id));
+    for (const question of m.questions) {
+      if (!(question.options ?? []).some((o) => o.value === 'other')) continue;
+      const companion = m.questions.find((x) => x.showWhen?.question === question.id);
+      assert.ok(companion, `${m.key}/${question.id}: "Other" with nowhere to write is a dead end`);
+      assert.ok(ids.has(`${question.id}_other`), 'the companion is named after its parent');
+    }
+  }
+});
+
+test('a companion answer is dropped when the client changes their mind', async () => {
+  const c = await app.db.query<{ id: string }>(`SELECT id FROM contacts WHERE email = 'modother@example.test'`);
+  const contactId = c.rows[0]!.id;
+  const session = await clientSessionFor(contactId, 'modother@example.test');
+  const hdr = { authorization: `Bearer ${session}` };
+
+  // Pick Other, describe it — then change the answer to a real option and submit.
+  await app.inject({
+    method: 'PATCH', url: '/portal/service-onboarding', headers: hdr,
+    payload: { answers: { A1: 'other', A1_other: 'A bespoke ledger my cousin wrote' }, screenReached: 1 },
+  });
+  const submit = await app.inject({
+    method: 'POST', url: '/portal/service-onboarding/submit', headers: hdr,
+    payload: { answers: { A1: 'qbo' } },
+  });
+  assert.equal(submit.statusCode, 200, submit.body);
+
+  const stored = await app.db.query<{ answers: Record<string, unknown> }>(
+    `SELECT answers FROM form_submissions
+      WHERE form_key = 'service_onboarding' AND contact_id = $1 AND status = 'submitted'`,
+    [contactId]
+  );
+  assert.equal(stored.rows[0]!.answers.A1, 'qbo');
+  /*
+   * The description belonged to an answer they no longer give. Keeping it would leave
+   * "a bespoke ledger" sitting beside "QuickBooks Online", which is worse than nothing
+   * because it reads like a fact.
+   */
+  assert.ok(!('A1_other' in stored.rows[0]!.answers), 'the stale description is not kept');
+});
+
+test('the fiscal-year-end companion asks for a MONTH, because a deadline is computed from it', async () => {
+  /*
+   * C3's "Another month" captured nothing, and `businesses.fiscal_year_end_month` is what
+   * every extended deadline derives from (CLAUDE.md). Free text — "end of June", "6/30" —
+   * cannot drive that calculation, and a month is a closed set of twelve.
+   */
+  const mods = await app.db.query<{ questions: Array<{ id: string; type: string; options?: Array<{ value: string }> }> }>(
+    `SELECT questions FROM onboarding_modules WHERE key = 'module_c'`
+  );
+  const c3other = mods.rows[0]!.questions.find((q) => q.id === 'C3_other');
+  assert.ok(c3other, 'the fiscal year end has a companion');
+  assert.equal(c3other!.type, 'select', 'a month is chosen, not typed');
+  assert.equal((c3other!.options ?? []).length, 12);
+});

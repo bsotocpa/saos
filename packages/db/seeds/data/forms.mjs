@@ -418,6 +418,43 @@ const q = (id, labelEn, labelEs, type, options = null, extra = {}) => ({
  */
 const mopt = (value, labelEn, labelEs) => ({ value, labelEn, labelEs });
 
+/*
+ * #37 — a companion for every module "Other", and the questionnaire renderer honours
+ * `showWhen` so it only appears when they reach for it.
+ *
+ * Same rule as #28 on the intake: an option meaning "my answer is not on your list", with
+ * nowhere to write the answer, is a dead end in both directions. In the modules it is
+ * worse than cosmetic — A1/A2 name the software we have to work with, F4 feeds multistate
+ * nexus, and C3 feeds the fiscal year end that every extended deadline derives from.
+ *
+ * `showWhen` speaks the modules' own vocabulary (`question`, not `field`) because that is
+ * what the flag rules already use — `{ question: 'C4', numberGte: 3 }`.
+ */
+const otherText = (parentId, type, labelEn, labelEs) => ({
+  id: `${parentId}_other`,
+  labelEn, labelEs,
+  type: 'text',
+  showWhen: type === 'multiselect'
+    ? { question: parentId, includesAny: ['other'] }
+    : { question: parentId, equals: 'other' },
+});
+
+/*
+ * C3 is the exception, and deliberately NOT free text.
+ *
+ * "Another month" is the answer to a question whose output drives deadline computation —
+ * CLAUDE.md: extended deadlines derive from return type + fiscal year end. Free text
+ * ("end of June", "6/30", "June-ish") cannot drive a calculation, and a month is a closed
+ * set of twelve. Asking for the month itself is both easier for the client and usable by
+ * the system, where a text box would only look like an answer.
+ */
+const MONTHS = [
+  ['january', 'January', 'enero'], ['february', 'February', 'febrero'], ['march', 'March', 'marzo'],
+  ['april', 'April', 'abril'], ['may', 'May', 'mayo'], ['june', 'June', 'junio'],
+  ['july', 'July', 'julio'], ['august', 'August', 'agosto'], ['september', 'September', 'septiembre'],
+  ['october', 'October', 'octubre'], ['november', 'November', 'noviembre'], ['december', 'December', 'diciembre'],
+];
+
 const YES_NO_UNSURE = [
   mopt('yes', 'Yes', 'Sí'),
   mopt('no', 'No', 'No'),
@@ -439,6 +476,7 @@ export const ONBOARDING_MODULES = [
         mopt('none', 'Nothing yet', 'Nada todavía'),
         mopt('other', 'Something else', 'Otro'),
       ]),
+      otherText('A1', 'select', 'Which one?', '¿Cuál?'),
       q('A2', 'Payroll system', 'Sistema de nómina', 'select', [
         mopt('gusto', 'Gusto', 'Gusto'),
         mopt('qb_payroll', 'QuickBooks Payroll', 'QuickBooks Payroll'),
@@ -448,6 +486,7 @@ export const ONBOARDING_MODULES = [
         mopt('no_employees', 'No employees', 'Sin empleados'),
         mopt('other', 'Something else', 'Otro'),
       ]),
+      otherText('A2', 'select', 'Which one?', '¿Cuál?'),
       q('A3', 'POS system(s)', 'Sistema(s) de punto de venta', 'multiselect', [
         mopt('square', 'Square', 'Square'),
         mopt('toast', 'Toast', 'Toast'),
@@ -457,6 +496,7 @@ export const ONBOARDING_MODULES = [
         mopt('none', 'No POS', 'Sin punto de venta'),
         mopt('other', 'Something else', 'Otro'),
       ]),
+      otherText('A3', 'multiselect', 'Which one?', '¿Cuál?'),
       q('A4', 'Payment processors', 'Procesadores de pago', 'multiselect', [
         mopt('stripe', 'Stripe', 'Stripe'),
         mopt('square', 'Square', 'Square'),
@@ -466,6 +506,7 @@ export const ONBOARDING_MODULES = [
         mopt('cash_only', 'Cash only', 'Solo efectivo'),
         mopt('other', 'Something else', 'Otro'),
       ]),
+      otherText('A4', 'multiselect', 'Which one?', '¿Cuál?'),
       q('A5', 'Online sales channels', 'Canales de venta en línea', 'multiselect', [
         mopt('own_site', 'Our own website', 'Nuestro propio sitio web'),
         mopt('etsy', 'Etsy', 'Etsy'),
@@ -473,6 +514,7 @@ export const ONBOARDING_MODULES = [
         mopt('none', 'We do not sell online', 'No vendemos en línea'),
         mopt('other', 'Something else', 'Otro'),
       ]),
+      otherText('A5', 'multiselect', 'Where else do you sell?', '¿Dónde más vende?'),
       q('A6', 'Business bank accounts (count + banks)', 'Cuentas bancarias del negocio (cuántas y en qué bancos)', 'text'),
       q('A7', 'Business credit cards (count + issuers)', 'Tarjetas de crédito del negocio (cuántas y de qué banco)', 'text'),
       q('A8', 'Ever pay business expenses from personal accounts (or vice versa)?', '¿Paga gastos del negocio desde cuentas personales (o al revés)?', 'select', [
@@ -499,6 +541,7 @@ export const ONBOARDING_MODULES = [
         mopt('none', 'We do not deliver', 'No hacemos entregas'),
         mopt('other', 'Something else', 'Otra'),
       ]),
+      otherText('B1', 'multiselect', 'Which app?', '¿Cuál app?'),
       q('B2', 'Roughly what % of sales are cash?', '¿Qué porcentaje de las ventas es en efectivo?', 'select', [
         mopt('<10', 'Under 10%', 'Menos del 10 %'),
         mopt('10-25', '10–25%', '10–25 %'),
@@ -536,6 +579,14 @@ export const ONBOARDING_MODULES = [
         mopt('december', 'December 31', '31 de diciembre'),
         mopt('other', 'Another month', 'Otro mes'),
       ]),
+      {
+        id: 'C3_other',
+        labelEn: 'Which month does your fiscal year end?',
+        labelEs: '¿En qué mes termina su año fiscal?',
+        type: 'select',
+        options: MONTHS.map(([v, en, es]) => mopt(v, en, es)),
+        showWhen: { question: 'C3', equals: 'other' },
+      },
       q('C4', 'Do you pay 1099 contractors? (rough count)', '¿Paga contratistas 1099? (aproximadamente cuántos)', 'text'),
       q('C5', 'Rough monthly transaction volume', 'Volumen mensual aproximado de transacciones', 'select', [
         mopt('<50', 'Under 50', 'Menos de 50'),
@@ -605,6 +656,7 @@ export const ONBOARDING_MODULES = [
         mopt('wi', 'Wisconsin', 'Wisconsin'),
         mopt('other', 'Another state', 'Otro estado'),
       ]),
+      otherText('F4', 'multiselect', 'Which other states?', '¿Qué otros estados?'),
       q('F5', 'Estimated payments this year?', '¿Hizo pagos estimados este año?', 'select', YES_NO_UNSURE),
       q('F6', 'Major life/business changes this year?', '¿Cambios importantes este año, personales o del negocio?', 'multiselect', [
         mopt('property_bought_sold', 'Bought or sold property', 'Compré o vendí una propiedad'),
@@ -613,8 +665,10 @@ export const ONBOARDING_MODULES = [
         mopt('marriage_divorce', 'Marriage or divorce', 'Matrimonio o divorcio'),
         mopt('new_dependent', 'A new dependent', 'Un nuevo dependiente'),
         mopt('crypto', 'Bought or sold crypto', 'Compré o vendí criptomonedas'),
+        mopt('other', 'Something else', 'Otro'),
         mopt('none', 'None of these', 'Ninguno de estos'),
       ]),
+      otherText('F6', 'multiselect', 'What changed?', '¿Qué cambió?'),
     ],
     flags: [],
   },
@@ -633,6 +687,7 @@ export const ONBOARDING_MODULES = [
         mopt('remodeling', 'Remodeling', 'Remodelación'),
         mopt('other', 'Another trade', 'Otro oficio'),
       ]),
+      otherText('G1', 'select', 'Which trade?', '¿Qué oficio?'),
       q('G2', 'Track costs by job/project?', '¿Controla los costos por trabajo o proyecto?', 'select', [
         mopt('software', 'Yes, in software', 'Sí, con software'),
         mopt('paper', 'Yes, on paper', 'Sí, en papel'),
@@ -665,6 +720,7 @@ export const ONBOARDING_MODULES = [
         mopt('own_site', 'Our own website', 'Nuestro propio sitio web'),
         mopt('other', 'Somewhere else', 'Otra'),
       ]),
+      otherText('H1', 'multiselect', 'Where else do you sell?', '¿Dónde más vende?'),
       q('H2', 'Hold physical inventory?', '¿Maneja inventario físico?', 'yesno'),
       q('H3', 'Fulfillment', 'Envíos', 'select', [
         mopt('self', 'We ship it ourselves', 'Enviamos nosotros mismos'),
@@ -720,6 +776,7 @@ export const ONBOARDING_MODULES = [
         mopt('other', 'Something else', 'Otro'),
         mopt('none', 'None', 'Ninguno'),
       ]),
+      otherText('I4', 'select', 'Which system?', '¿Qué sistema?'),
       q('I5', 'Telehealth clients in other states?', '¿Atiende clientes de telesalud en otros estados?', 'yesno'),
       q('I6', 'Solo or group practice?', '¿Práctica individual o grupal?', 'select', [
         mopt('solo', 'Solo practice', 'Práctica individual'),
@@ -787,6 +844,7 @@ export async function seedForms(client) {
   }
   let modules = 0;
   let labelled = 0;
+  let added = 0;
   for (const m of ONBOARDING_MODULES) {
     const res = await client.query(
       `INSERT INTO onboarding_modules (key, name_en, name_es, trigger, questions, flags, sort_order)
@@ -823,6 +881,34 @@ export async function seedForms(client) {
           JSON.stringify(m.questions),
         ]);
         labelled += 1;
+      } else {
+        /*
+         * ADDITIVE UPGRADE (#37): questions present in code and absent from the row get
+         * appended, matched on id. Nothing is rewritten and nothing is removed, so a
+         * module Brian has reworded in Admin keeps his wording and still gains the
+         * companion. This is how the "Other" free-text boxes reach the modules that were
+         * seeded before they existed.
+         *
+         * Position matters — a companion belongs beside its parent, not at the end — so
+         * each new question is inserted after the question it depends on when it has a
+         * showWhen, and appended otherwise.
+         */
+        const have = new Set(stored.map((q) => q.id));
+        const missing = m.questions.filter((q) => !have.has(q.id));
+        if (missing.length > 0) {
+          const next = [...stored];
+          for (const q of missing) {
+            const parentId = q.showWhen?.question;
+            const at = parentId ? next.findIndex((x) => x.id === parentId) : -1;
+            if (at >= 0) next.splice(at + 1, 0, q);
+            else next.push(q);
+          }
+          await client.query(`UPDATE onboarding_modules SET questions = $2::jsonb WHERE key = $1`, [
+            m.key,
+            JSON.stringify(next),
+          ]);
+          added += missing.length;
+        }
       }
     }
   }
@@ -839,6 +925,7 @@ export async function seedForms(client) {
   return (
     `${inserted} of 2 form definitions, ${modules} of ${ONBOARDING_MODULES.length} onboarding modules, ` +
     `${resources} starter resources inserted` +
-    (labelled > 0 ? `; ${labelled} module(s) upgraded to bilingual option labels` : '')
+    (labelled > 0 ? `; ${labelled} module(s) upgraded to bilingual option labels` : '') +
+    (added > 0 ? `; ${added} module question(s) added` : '')
   );
 }
