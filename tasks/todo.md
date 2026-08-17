@@ -2005,3 +2005,28 @@ until staff exist. An unassigned task with no alert is work that doesn’t exist
       meant an unproven-backup outage produced no work item at all.
 - [x] **Production drill**: every task-routing role (`tax_preparer`, `comms_billing`,
       `va_entity`, `bookkeeper`, `ed_coo`) is unfilled and every one now resolves to Brian.
+
+### Alerts too — CLOSED 2026-08-17 (rule 3), plus two holes the guard could not see
+
+- [x] **Rule 3: alert recipients.** Three sites resolving with no fallback, all firing into
+      nothing today: a quarantined client attachment, an entity losing SOS good standing, and
+      entity-conversion detection. Fails harder than the task rule —
+      `notifications.staff_id` is NOT NULL, so there was no alert AND no record that anyone
+      should have been told.
+- [x] **Rule 4: raw `INSERT INTO tasks`.** Eight statements bypass `createTask()`, so rules 1
+      and 2 could not see them; four had no-fallback resolvers.
+
+### OPEN — found while doing the above, Brian to sequence
+
+- [ ] **Raw task inserts skip the SOP hook.** `createTask()` calls `sopLinkForTaskType`; the
+      eight raw `INSERT INTO tasks` statements do not, so those task types have no
+      "how to do this" link however the registry is filled in. `check-task-sop-hooks.mjs`
+      does not catch it either — it reads which task TYPES are emitted, not how the row is
+      written. Routing them through `createTask()` fixes this and rule 4 permanently.
+      Sites: `booking/routes.ts`, `crm/service.ts`, `entity/service.ts`, `entity/sos.ts`,
+      `forms/service.ts`, `meetings/pipeline.ts`, `portal/routes.ts`,
+      `portal-auth/service.ts`. (`migration/trello.ts` is a bulk import — legitimately raw.)
+- [ ] **Three module tables carry their own `assigned_staff_id`**: `close_cycles`,
+      `entity_compliance`, and the entity-conversion table. Their resolvers are fixed now, but
+      an owner living on a module row is outside the unified task system CLAUDE.md requires
+      every work item to live in. Worth a ruling on whether those rows should spawn tasks.

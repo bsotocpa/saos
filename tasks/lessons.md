@@ -815,3 +815,21 @@ nobody re-reads the 10.
 Corollary, and this is the tell: **I caught both only by reading the diff.** The typecheck
 passed on the second one and the guard went green on both. Run the sweep, then read every
 line of it.
+
+## $' in a replacement string means "everything after the match" (2026-08-17)
+
+A generator script rewriting the role guard produced a file that ended mid-statement, with the
+rest of a function simply gone. The cause: `s.replace(old, next)` where `next` contained
+`\\s*$'` — and in a **replacement string** `$'` is a special pattern meaning "the portion of
+the input after the match". So are `$&`, `$\``, and `$1`, had they appeared.
+
+The regex was correct. The string containing it was destroyed by the substitution mechanism.
+
+**Rule:** when replacing with text not authored character-by-character for that call — anything
+containing regex source, currency, or a `$` at all — pass a **replacer function**:
+`s.replace(old, () => next)`. A function's return value is used literally, with no pattern
+expansion. Cheap, total, and it removes a whole class of silent corruption.
+
+Caught only because `node` refused to parse the result. It would have been far worse in a data
+file, where nothing checks syntax. Related: [[a-codemod-must-refuse-what-it-cannot-verify]] —
+same session, same shape: the tooling was confidently wrong and an external check noticed.
