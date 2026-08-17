@@ -2034,11 +2034,28 @@ structure — the SOP explains each step the task already names, nothing to drif
       `/sops/laura-pllc-conversion`, and the SOP has a matching section for every step label
       read back off the task.
 
-      **Still a skeleton in the sense the seed header means**: the steps and the failure modes
-      come from what the system enforces and from Illinois' filing rules, not from Brian
-      dictating the procedure. The judgement calls worth his review are the ones about when to
-      stop — a lapsed licence, a profession not on the IDFPR list, an entity already correctly
-      formed, and whether a converted entity ever needs a new EIN.
+- [x] **The four stop-points RULED 2026-08-17** and written into the SOP text (migration 0070,
+      because the seeder is `ON CONFLICT DO NOTHING` so an edited seed reaches only fresh
+      databases):
+
+      · **Lapsed licence** — stands as drafted.
+      · **Not on the IDFPR list** — stops and goes to Brian, and the SOP now says WHY: the client
+        most likely belongs at the SOS as an ordinary LLC and needs no conversion, which changes
+        what we are engaged to do. A scope conversation, his to have; Laura says nothing to the
+        client first.
+      · **Already correctly formed** — tell the client ("we checked your filing against the
+        licence, it is correctly formed, nothing needed"), then dismiss. Closing with "nothing
+        needed" is named a COMPLETED OUTCOME, not a failure.
+      · **No new EIN** — no longer hedged. An Illinois statutory conversion CONTINUES THE SAME
+        LEGAL ENTITY, so the EIN follows it; a new one would split one continuous business's tax
+        history. The reason also carries the limit: a dissolve-and-reform is a different filing
+        and reopens the question, and that is the one case to ask Ana-Maria about.
+
+      Migration 0070 is scoped to `version = 1` — the un-edited seed — because editing a
+      published SOP bumps the version. A hand-edited page is left alone and says so in a warning
+      rather than being skipped silently. Its `down` is deliberately empty: restoring a hedged
+      EIN rule and dropping "tell the client" would put a worse procedure in front of the person
+      doing the work, to undo a change that is only words.
 
 ### One door for work creation — CLOSED 2026-08-17
 

@@ -903,3 +903,31 @@ The guard now prints how many steps it compared (`1 pairing(s), 6 steps`) so an 
 up as a suspiciously small number rather than a clean pass. Related:
 [[an-absence-assertion-needs-a-matching-presence-assertion]] — the same failure mode, one level
 up: absence is only evidence if you know the thing could have been found.
+
+## A seeder that never overwrites means a text fix needs a migration (2026-08-17)
+
+Brian ruled that a rule's REASON must live in the SOP text — "so the rule survives the person
+who knew why". I edited the seed. That would have been the whole job, except the SOP seeder is
+`ON CONFLICT (slug) DO NOTHING`, deliberately, so that Brian's edits always beat a re-seed.
+
+Which means an edited seed reaches only databases that do not exist yet. Production would have
+kept the text that shipped an hour earlier, and a reason that reaches only fresh databases
+survives nothing.
+
+**Rule:** when changing seed content for a table whose seeder is insert-only, ask what happens
+to the rows that already exist. If the answer is "nothing", the change needs a migration to
+land, and that migration needs a predicate that respects whatever the DO NOTHING was protecting.
+Here that predicate is `version = 1`: editing a published SOP bumps the version, so version 1
+means nobody has touched it and updating cannot overwrite anyone's work.
+
+Two details worth copying:
+
+· **The migration reports which branch it took.** A migration whose only job is to change text
+  can no-op perfectly silently. It now warns whether it applied, was left alone because the page
+  was hand-edited, or found nothing to update.
+· **Its `down` is empty on purpose.** The old text hedged a tax rule and omitted telling a
+  client. Restoring that on rollback would put a worse procedure in front of the person doing the
+  work. Rolling back a schema should not roll back the firm's rules.
+
+Related: [[retire-dont-edit]] — the same family of question. What already exists is the part a
+content change forgets.
