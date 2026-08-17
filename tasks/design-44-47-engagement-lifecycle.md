@@ -260,3 +260,105 @@ question answerable for non-tax work, which the rest of #44 then uses.
 4. **Permission** — add `engagements.write`, or something else?
 5. **#47 backfill** — confirm: leave existing engagements without scope rather than guess.
 6. **Order** — propagation bug first, or the full close action first?
+
+---
+
+# Amendments (Brian's rulings, 2026-08-16)
+
+All six decisions confirmed as recommended. Two additions, one of which changes #47's
+design and one of which I cannot confirm as stated.
+
+## A. #47 is a SNAPSHOT — design amended
+
+**You are right that the design did not say this.** `engagement_scope_items(engagement_id,
+quote_line_item_id)` is a foreign key to a live row: editing a quote line afterwards would
+silently rewrite what the engagement claims to cover, and nothing would look wrong. That is
+the same shape as the price-book bug the price-lock fields exist to prevent — an agreement
+whose terms move after it was agreed.
+
+**Amended design — the scope row carries the content, not a pointer to it:**
+
+```
+engagement_scope_items
+  id
+  engagement_id          → engagements(id) ON DELETE CASCADE
+  -- provenance, for tracing only. NEVER joined to for display or totals.
+  source_quote_line_id   uuid NULL          (the line this was taken from)
+  source_quote_id        uuid NULL
+  -- THE SNAPSHOT: what was agreed, as it read at acceptance
+  price_book_version_id  → price_book_versions(id)   NOT NULL
+  item_code              text NOT NULL
+  description_en         text NOT NULL
+  description_es         text
+  quantity               numeric NOT NULL
+  unit_cents             integer
+  line_cents             integer
+  is_pass_through        boolean NOT NULL DEFAULT false
+  captured_at            timestamptz NOT NULL DEFAULT now()
+```
+
+Written once, in the same transaction that creates the engagement, and **never updated**.
+The price-book version is pinned alongside the text, so an engagement can always answer
+"what did we agree, at what prices, under which version" from its own rows.
+
+`source_quote_line_id` is deliberately nullable and deliberately never read for display —
+it exists so a human can trace where a line came from, and it must survive the quote line
+being edited or deleted afterwards. **No FK constraint on it**, for that reason: a
+constraint would either block a legitimate quote edit or cascade a delete into the
+engagement's own record of what was agreed.
+
+This also removes a dependency I had quietly accepted: the amended table needs nothing
+from `quote_line_items` at read time, so the portal and the client record compose names
+and totals without touching quotes at all.
+
+## B. `on_hold` freezing the ladder — I cannot confirm this, and here is why
+
+You asked me to confirm the pause "also freezes the escalation ladder and any
+engagement-level clocks." Three findings, none of which is a confirmation:
+
+### B.1 The ladder is engagement-blind today
+
+`runLadderJob` reads `tasks.waiting_since` and joins to `contacts`. **It never looks at
+`engagements` at all**, so it has no idea whether work is paused. Dunning already pauses
+work (`work_paused_at`) for non-payment, and the ladder keeps escalating those clients
+today, unchanged. So "the pause also freezes the ladder" is not something to confirm — it
+is new behaviour that does not exist for the pause we already have.
+
+### B.2 The kill-switch pattern does NOT do what you may be picturing
+
+When `escalation_ladder` is disarmed, rungs do not advance — but `waiting_since` keeps
+running. On re-arm, a task waiting 40 days evaluates to rung 4 and fires **D30
+immediately**. The protection is that it fires the highest newly-reached rung ONLY, so the
+client gets one message rather than four — not that the clock was held.
+
+So "resuming from the client's real clock per the kill-switch pattern" contains a
+contradiction I would rather surface than resolve by guessing: the kill-switch pattern
+resumes on WALL-CLOCK time, which is the opposite of freezing.
+
+### B.3 The ruling I need
+
+Two readings, different client experiences:
+
+- **(i) Pause holds the clock.** On resume, `waiting_since` advances by the paused
+  duration, so the paused interval never counts as client delay. A client paused for six
+  weeks resumes at the rung they were on. *Argument for:* we imposed the pause; escalating
+  someone for not answering during our own hold is chasing them for our decision.
+- **(ii) Pause suppresses sends only** — exactly the kill-switch. On resume the real
+  elapsed time applies, so a long pause lands them at D30 with one message. *Argument for:*
+  the dunning pause exists **because the client has not paid**, and a client who owes money
+  and has gone quiet for six weeks arguably should be at D30.
+
+The two diverge most in the case that matters: **dunning**. I lean (i) for a
+staff-initiated `on_hold` and (ii) for the dunning pause — the difference being who caused
+the pause — but that is a policy call about how hard to chase a non-paying client, and it
+is yours.
+
+### B.4 Engagement-level clocks: there is exactly one, and it is a pricing question
+
+The only engagement column that ticks is **`price_lock_expires_on`**. Whether a pause
+should extend it is a pricing ruling, not an implementation detail: a client paused for
+two months either keeps the price they were quoted or does not. `maintenance_mode_at`,
+`configured_at` and `ended_on` are stamps, not clocks — nothing expires from them.
+
+**I have not built any of B.** Recommend: settle B.3 and B.4 before `on_hold` ships. It
+does not block #44 §4 or #47, which is what I am building now.
