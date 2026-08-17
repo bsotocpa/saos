@@ -743,3 +743,23 @@ the suite, because a nested transaction blocks in Postgres on a row the outer ho
 the outer blocks in JavaScript awaiting the inner, and Postgres cannot see that cycle. I had
 described re-entrancy as convenience. The comment now says what the sabotage proved.
 Related: [[verify-a-sabotage-restore-by-diff]]
+
+## A rollback assertion passes trivially when nothing was ever written (2026-08-17)
+
+The production drill for #48's newly-wrapped paths asserted "the contact did not survive the
+rollback", "nor the quote header", "nor its line item", "nor the packet" — **four PASSes on a
+transaction that had died at its first statement.** The insert violated
+`contacts_test_has_note`, so those rows never existed, and "they are gone" was true for the
+wrong reason.
+
+The only thing that caught it was a fifth check that happened to fail: the error message was
+not the one the drill threw on purpose.
+
+**Rule for any rollback/absence test:** assert the rows EXISTED first, inside the
+transaction, then assert they are gone. An absence check with no matching presence check
+proves nothing — it passes hardest when the setup is broken. And when a test throws
+deliberately, assert on the message: a different error means a different code path ran.
+
+Same family as the earlier miss where a post-commit test guarded on
+`if (!depositInvoiceId) return` and passed by asserting nothing, and as the 390px overflow
+measurement taken from a page that was 500ing. Related: [[reject-a-mechanism-whose-incomplete-application-recreates-the-bug]]
