@@ -53,15 +53,19 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   /** Filing an annual report; Laura's procedure already existed and was simply unwired. */
   annual_report: { sop: 'laura-annual-report' },
   /*
-   * The conversion the module row used to hold on its own. `sop: null`: the six checklist
-   * items ARE the procedure and they now ride on the task itself, in order, where the person
-   * doing the work ticks them off. An SOP page would be the same six lines one click away.
+   * WAS `sop: null`, and that was wrong (Brian, 2026-08-17).
+   *
+   * My reasoning had been "the six checklist items ARE the procedure". They are not — they are
+   * the NAMES of the six steps. "Verify professional license (IDFPR)" tells you what to do only
+   * if you already know which register to search, what a lapsed licence means for the
+   * conversion, and who to stop and ask. The task names each step; the SOP explains it.
+   *
+   * The two share structure literally: `laura-pllc-conversion` has one `### N. <step>` section
+   * per checklist item, headings verbatim, and `scripts/check-sop-task-alignment.mjs` fails the
+   * build if they drift. That is what makes a page-per-step safe to have rather than a second
+   * description of the same work waiting to disagree.
    */
-  pllc_conversion: {
-    sop: null,
-    reason:
-      'The procedure is the six-item checklist carried on the task itself — verify the license, confirm the entity is improperly formed, hold the advisory session, prepare the amendment, file with IL SOS, update EIN/bank/insurance. It is ordered and it is on the task; an SOP page would restate it a click further away.',
-  },
+  pllc_conversion: { sop: 'laura-pllc-conversion' },
   enrichment: {
     sop: null,
     reason:

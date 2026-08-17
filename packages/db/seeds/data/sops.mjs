@@ -147,6 +147,92 @@ reason, and the reply is what the deadline is about — not the answer.
 4. Not something Soto does → say that plainly and refer out. "No" delivered quickly is a
    good answer.
 `),
+  sop('laura-pllc-conversion', 'PLLC conversion, step by step', 'va_entity', 'Entity', `
+## Why this exists
+Illinois requires a licensed professional to organise as a **PLLC**, not a plain LLC. A
+licensed client operating through an LLC is improperly formed — often for years, usually
+because whoever set it up did not ask about the licence.
+
+This is a real service line, not a cleanup favour. Quote it from the price book.
+
+**This page has one section per checklist item on the task, in the same order.** The task
+names the step; this explains it. Work down the task, read the matching section here.
+
+## What to say before anything else
+The client is about to learn their entity has been wrong for years. Lead with the fix, not the
+error: "Illinois wants licensed professionals in a PLLC rather than an LLC — we can convert
+you, here is what it takes." Do not speculate about consequences of the years already elapsed;
+that is Brian's call if the client asks.
+
+---
+
+### 1. Verify professional license (IDFPR)
+Look the client up on the **IDFPR** licence-lookup site yourself. Do not take the licence
+number from the intake form as proof — a lapsed or differently-named licence changes the
+answer completely.
+
+Record what you found: licence type, number, status, expiry. If the licence is **lapsed or
+inactive**, stop here and tell Brian. A conversion for someone not currently licensed is a
+different conversation, and possibly the wrong one.
+
+If the profession is not on the IDFPR list at all, this may not need a PLLC. Stop and check
+with Brian before telling the client anything.
+
+### 2. Confirm current entity is improperly formed for a licensed professional
+Pull the entity's actual filing from the **IL Secretary of State**, not the client's
+description of it. You are confirming two things:
+
+- the entity type on file really is an LLC (not already a PLLC someone mislabelled)
+- the entity is in **good standing** — if it is not, that is a separate problem and it blocks
+  the conversion. Run the SOS restoration first (see \`laura-sos-restore\`).
+
+If it turns out to be correctly formed already, close the conversion as **dismissed** with a
+note saying so. A false positive is a normal outcome here, not a failure.
+
+### 3. Advisory session scheduled with client
+Brian takes this session — it is advisory work, not admin. Your job is to get it on the
+calendar with the findings from steps 1 and 2 attached, so he is not discovering the licence
+type on the call.
+
+**Check for an existing recurring session with this client before creating anything.** If they
+already have a standing session, attach this to it rather than booking a second meeting.
+
+The session is where scope and price are agreed. Nothing gets filed before it.
+
+### 4. Articles of amendment / conversion prepared
+Prepare the amendment for the client's signature. Two things that are easy to get wrong:
+
+- the **name** must carry the PLLC designator exactly as Illinois requires; a name that reads
+  fine but is not compliant comes back rejected
+- the **purpose clause** has to state the professional service. A generic clause is the most
+  common rejection reason
+
+The client signs — never sign on their behalf. Send it through the portal, not as an email
+attachment.
+
+### 5. Filed with IL Secretary of State
+File it, pay the fee, and **record the confirmation on the conversion record**. Keep the
+stamped copy in their documents.
+
+Filing is not the end of the step: re-check the entity on the SOS site afterwards and confirm
+it now reads PLLC. A submitted filing that was quietly rejected looks identical to a successful
+one from our side until someone looks.
+
+### 6. EIN, bank, and insurance records updated
+The part that gets forgotten, and the part that actually bites the client. The entity is
+converted; everything pointing at it still says LLC.
+
+- **IRS/EIN** — the EIN usually survives a conversion, but the name on file must be updated.
+  If you are unsure whether a new EIN is required, ask Ana-Maria; guessing here creates a tax
+  filing problem
+- **Bank** — the account name must match the new entity name or deposits start bouncing
+- **Insurance** — the malpractice or professional-liability policy must name the PLLC. A policy
+  naming a dissolved LLC is the worst outcome on this list
+- Anything else in their own records: contracts, licences, letterhead, invoicing
+
+When all six are ticked, set the conversion to **completed**. If a step turns out not to apply,
+tick it with a note saying why — a skipped step and a done step must not look the same.
+`),
   sop('laura-sos-restore', 'Restoring IL SOS good standing', 'va_entity', 'Entity', `
 ## Why you have this task
 The Secretary of State search came back adverse for this entity — dissolved, revoked, or not
