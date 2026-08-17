@@ -490,3 +490,66 @@ a test covers both halves.
 - `on_hold` with the ruled pause semantics: a staff pause holds the clock (`waiting_since`
   pushed forward by the pause duration on resume) and extends `price_lock_expires_on` by
   the same; dunning/client-caused quiet stays suppress-only and extends nothing.
+
+---
+
+# #44 — COMPLETE 2026-08-16 (close route, engagements.write, on_hold)
+
+| File | What |
+|---|---|
+| `packages/db/migrations/0066_engagement_pause.js` | `work_pause_source`, `work_paused_by_staff_id`, three CHECKs, dunning backfill |
+| `apps/api/src/modules/engagements/pause.ts` | `pauseEngagement` / `resumeEngagement` with the ruled clock semantics |
+| `apps/api/src/modules/engagements/routes.ts` | `POST /engagements/:id/{close,pause,resume}` behind `engagements.write` |
+| `apps/api/src/modules/tasks/service.ts` | the ladder skips paused work and counts what it held |
+| `apps/api/src/modules/billing/dunning.ts` | stamps `source='dunning'`; lifts only its own pause |
+| `apps/api/src/modules/engagements/service.ts` | **independence check counts `on_hold`** |
+| `apps/api/src/modules/engagements/packet.ts` | schedule assembly counts `on_hold` |
+| `apps/api/src/modules/crm/lifecycle.ts`, `crm/routes.ts` | `on_hold` is an OPEN engagement |
+| `apps/internal/app/clients/[id]/page.tsx` + `globals.css` | Hold / Resume / Close / Withdraw on the engagement row |
+
+## The pause ruling, as implemented
+
+| | Staff hold | Dunning pause |
+|---|---|---|
+| Status | `on_hold` | stays `active` |
+| Ladder chases the client | no | no |
+| `waiting_since` on resume | pushed forward by the pause | untouched |
+| `price_lock_expires_on` | extended by the pause | untouched |
+| Lifted by | a staff member clicking Resume | paying the invoice |
+| Client lifecycle | stays `active` | stays `active` |
+
+## Two things making `on_hold` real would have broken
+
+**The attest independence check** read `status = 'active'`. Pausing a bookkeeping engagement
+would have made the conflict vanish, so anyone could have walked around a CLAUDE.md
+non-negotiable by holding an engagement for a day. Independence is about the relationship,
+not about whether we happen to be working this week. There is a test for it now.
+
+**Packet assembly** read `IN ('draft','active')`. A paused engagement's schedule would have
+dropped out of the packet, so pausing one service silently rewrites the legal document
+covering all of them.
+
+## Verification
+
+- 474 pass / 0 fail; six guards green; both frontends typecheck.
+- **Four separate sabotages** — reverting the ladder clause, the independence widening, the
+  dunning source filter, and the resume-time clock adjustment. Each failed exactly its own
+  test and nothing else.
+- **Production drill** (inserted, tested, rolled back — zero paused engagements exist, so a
+  passive check would have proven nothing):
+  ```
+  1 PASSED — on_hold without a pause refused
+  2 PASSED — a pause without a source refused
+  3 PASSED — an unknown pause source refused
+  4 PASSED — a real staff hold is accepted
+  paused_after_rollback = 0
+  ```
+
+## One process failure worth recording
+
+Backing up four files for the sabotage by BASENAME collided: `tasks/service.ts` and
+`engagements/service.ts` both wrote to `service.ts.bak`, and the restore put the wrong
+file's contents into the other. Caught immediately because the ladder clause vanished from a
+grep; recovered with `git checkout` plus a re-apply of two edits, and the diff was verified
+line-count-exact afterwards. Logged in `lessons.md` — the fix is that a sabotage restore is
+verified by diff, never assumed from the copy succeeding.
