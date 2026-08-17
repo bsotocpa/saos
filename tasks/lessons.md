@@ -880,3 +880,26 @@ Re-run with only the write refusal broken, it failed on
 Related: [[an-absence-assertion-needs-a-matching-presence-assertion]] and
 [[a-codemod-must-refuse-what-it-cannot-verify]] — the same family. A check that reports what
 you expected to see is not the same as a check that verified it.
+
+## A truncating parser reports missing content, which looks exactly like the thing it hunts (2026-08-17)
+
+`check-sop-task-alignment.mjs` compares an SOP's `### N. <step>` sections against the task
+checklist they explain. Its first run reported four of six sections missing — which is precisely
+the drift it was written to catch, so the output was completely believable.
+
+The sections were there. The parser took the next backtick as the end of the SOP body, and the
+SOP cross-references another SOP slug in code ticks, so it had read a third of the file.
+
+Two things worth keeping:
+
+1. **A parser bug in a guard is indistinguishable from a real finding**, because both say "the
+   thing you are looking for is not there". Before believing a new guard's first failure, check
+   that it can SEE what it is checking — print the count it parsed, not just the mismatches.
+2. **Fix the parser, not the input.** The obvious escape was to drop the code ticks from the SOP
+   so the parse succeeded. That would have left a guard that silently under-reads any body
+   containing an escape, and a cross-reference removed for the tool's convenience.
+
+The guard now prints how many steps it compared (`1 pairing(s), 6 steps`) so an under-read shows
+up as a suspiciously small number rather than a clean pass. Related:
+[[an-absence-assertion-needs-a-matching-presence-assertion]] — the same failure mode, one level
+up: absence is only evidence if you know the thing could have been found.

@@ -2016,6 +2016,30 @@ until staff exist. An unassigned task with no alert is work that doesn’t exist
 - [x] **Rule 4: raw `INSERT INTO tasks`.** Eight statements bypass `createTask()`, so rules 1
       and 2 could not see them; four had no-fallback resolvers.
 
+### The PLLC conversion SOP — WRITTEN 2026-08-17, before Laura's first real one
+
+Brian: "draft it against the six-step task checklist so the SOP and the task literally share
+structure — the SOP explains each step the task already names, nothing to drift."
+
+- [x] **`laura-pllc-conversion`**, one `### N. <step>` section per checklist item, headings
+      verbatim and in order. My earlier `sop: null` was wrong: the checklist items are the
+      NAMES of the steps, not the procedure. "Verify professional license (IDFPR)" only tells
+      you what to do if you already know which register to search and what a lapsed licence
+      means for the conversion.
+- [x] **`scripts/check-sop-task-alignment.mjs`** (wired into `npm test` as `check:sop-steps`)
+      fails the build in either direction: a step with no section, a heading that is not the
+      item verbatim, sections out of order, or an SOP step the task never shows.
+- [x] **Production drill** of the path Laura actually walks — a real conversion created and
+      rolled back: the task spawns, carries all six steps, is assigned, links to
+      `/sops/laura-pllc-conversion`, and the SOP has a matching section for every step label
+      read back off the task.
+
+      **Still a skeleton in the sense the seed header means**: the steps and the failure modes
+      come from what the system enforces and from Illinois' filing rules, not from Brian
+      dictating the procedure. The judgement calls worth his review are the ones about when to
+      stop — a lapsed licence, a profession not on the IDFPR list, an entity already correctly
+      formed, and whether a converted entity ever needs a new EIN.
+
 ### One door for work creation — CLOSED 2026-08-17
 
 Brian's ruling: "any future direct INSERT INTO tasks should fail the guard on principle: one
