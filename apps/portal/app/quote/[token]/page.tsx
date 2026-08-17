@@ -103,6 +103,19 @@ export default function QuotePage() {
       setHasDeposit(Boolean(r.depositInvoiceId));
       setState('accepted');
     } catch (err) {
+      /*
+       * #48 — "already accepted" is not a failure from this chair.
+       *
+       * Acceptance now claims the quote in one statement before doing any work, so a
+       * double-tap has a loser and the loser gets a 409. The acceptance still HAPPENED —
+       * showing the client an error for something that succeeded would be the system
+       * reporting its own race back to them as their mistake.
+       */
+      if (err instanceof ApiError && err.code === 'already_accepted') {
+        setState('accepted');
+        setBusy(false);
+        return;
+      }
       if (err instanceof ApiError && err.code === 'expired') {
         setQuote((q) => (q ? { ...q, expired: true } : q));
       }

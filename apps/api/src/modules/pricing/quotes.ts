@@ -608,6 +608,40 @@ export async function acceptQuote(
     throw new AppError(409, 'expired', 'This quote has expired. We will send you a fresh one.');
   }
 
+  /*
+   * #48 — CLAIM THE QUOTE BEFORE DOING ANY WORK.
+   *
+   * The checks above are a READ followed by a decision, and until this statement existed
+   * the write that made the decision true sat TEN STEPS LOWER — after every engagement,
+   * every scope row and the deposit invoice. Two acceptances overlapping in that window
+   * both passed the guard and both built a full set: two engagement sets, two deposit
+   * invoices, two emails, nothing anywhere detecting it. A double-tap on a phone, a
+   * retried request, or a refresh on a slow page was enough.
+   *
+   * That is not hypothetical. It is the mechanism behind #41 — Brian's client carrying two
+   * indistinguishable tax engagements plus a third already marked "duplicate accept".
+   *
+   * One conditional UPDATE fixes it, because a single statement is atomic: exactly one
+   * caller can move the row out of 'sent'. Everything below this line now runs knowing it
+   * is the only one running it.
+   *
+   * The guards above are kept even though this makes them redundant — they produce a
+   * better message for the ordinary sequential case ("already accepted" vs "expired" vs
+   * "declined"), and this claim is the correctness, not the explanation.
+   */
+  const claimed = await app.db.query(
+    `UPDATE quotes SET status = 'accepted', accepted_at = now()
+      WHERE id = $1 AND status = 'sent'`,
+    [quote.id]
+  );
+  if ((claimed.rowCount ?? 0) === 0) {
+    throw new AppError(
+      409,
+      'already_accepted',
+      'This quote was already accepted. Nothing further is needed — the acceptance that went through is the one that counts.'
+    );
+  }
+
   // Optional add-ons the client ticked at accept time.
   if (opts.chooseOptional && opts.chooseOptional.length > 0) {
     await app.db.query(
@@ -745,6 +779,15 @@ export async function acceptQuote(
         // THIS is the deposit (finding #26) — it must not try to credit itself, and the
         // invoice that follows it is the one that carries the credit.
         isDepositInvoice: true,
+        /*
+         * #48 — CREATED AS A DRAFT, SENT AFTER THE DURABLE WRITES FINISH.
+         *
+         * The invoice ROW has to exist here: the quote points at it two statements down.
+         * The EMAIL does not, and sending it here meant every failure below this line
+         * left a client holding an invoice for an acceptance that never completed — a
+         * message no rollback can recall.
+         */
+        send: false,
       }
     );
     depositInvoiceId = invoice.id;
@@ -766,10 +809,13 @@ export async function acceptQuote(
     );
   }
 
+  /*
+   * The status and timestamp moved UP to the claim (#48); what is left here is the result
+   * of the work, which could not be known before it was done.
+   */
   await app.db.query(
     `UPDATE quotes
-     SET status = 'accepted', accepted_at = now(), total_cents = $2,
-         converted_engagement_id = $3, deposit_invoice_id = $4
+     SET total_cents = $2, converted_engagement_id = $3, deposit_invoice_id = $4
      WHERE id = $1`,
     [quote.id, totalCents, engagement.id, depositInvoiceId]
   );
@@ -839,6 +885,83 @@ export async function acceptQuote(
       deposit_invoice_id: depositInvoiceId,
     },
   });
+  /*
+   * ── #48: POST-COMMIT EFFECTS ──────────────────────────────────────────────
+   *
+   * Everything above is durable state. This is the one thing that leaves the building, and
+   * it happens last so that no failure in it can undo an acceptance that legitimately
+   * happened — and so no failure above it can send a client an invoice for an acceptance
+   * that did not.
+   *
+   * A FAILURE HERE IS LOUD, per Brian's ruling: "silent post-commit failure is how a client
+   * gets an engagement and never learns it exists." The invoice stays `draft` (its status is
+   * a claim about whether we told them, and we did not), a P1 task lands on the billing
+   * owner naming the invoice, and it logs at error level. The client's own acceptance
+   * SUCCEEDS regardless — they did their part, and the send is our problem to fix.
+   *
+   * When a SECOND post-commit effect path appears anywhere in the system, this becomes the
+   * transactional outbox — Brian's named trigger, logged in tasks/todo.md. One caller does
+   * not justify the general mechanism; two does.
+   */
+  if (depositInvoiceId) {
+    /*
+     * TWO WAYS TO FAIL, one of them quiet, and both have to be loud.
+     *
+     * A throwing mailer is the obvious one. The other is `sent: false` — no address on the
+     * contact — which returns normally and would slide past a bare try/catch. That case is
+     * Brian's sentence exactly: the client has an engagement and no way to learn it exists.
+     * `already_sent` is the one non-event, because it means they WERE told.
+     */
+    let failure: string | null = null;
+    try {
+      const { sendInvoiceNow } = await import('../billing/service.ts');
+      const result = await sendInvoiceNow(app, depositInvoiceId, {
+        type: 'system', label: 'quote acceptance',
+      });
+      if (!result.sent && result.reason !== 'already_sent') {
+        failure = result.reason ?? 'not_sent';
+      }
+    } catch (err) {
+      failure = err instanceof Error ? err.message : 'send threw';
+      app.log.error(
+        { err, quoteId: quote.id, invoiceId: depositInvoiceId, contactId: row.contact_id },
+        '#48 POST-COMMIT SEND FAILED: the acceptance is committed and the deposit invoice was NOT emailed'
+      );
+    }
+
+    if (failure) {
+      app.log.error(
+        { reason: failure, quoteId: quote.id, invoiceId: depositInvoiceId, contactId: row.contact_id },
+        '#48 CLIENT NOT TOLD: quote accepted, deposit invoice not delivered'
+      );
+      const billingOwner = await ownerForRole(app.db, 'comms_billing');
+      await createTask(app, {
+        title: `SEND FAILED: deposit invoice for ${quote.first_name} ${quote.last_name} — they accepted but were not emailed`,
+        description:
+          `The quote was accepted and every record was written, but the deposit invoice did not reach the client (${failure}). ` +
+          'The invoice is sitting as a draft on their record. Send it — they are waiting on a payment link ' +
+          'they never received, and nothing else in the system will chase this.',
+        assignedStaffId: billingOwner,
+        contactId: row.contact_id,
+        priority: 1,
+        source: 'automation',
+        sourceType: 'invoice_send_failed',
+        sourceId: depositInvoiceId,
+      });
+      if (billingOwner) {
+        await notifyOnce(app.db, {
+          staffId: billingOwner,
+          type: 'invoice_send_failed',
+          severity: 'critical',
+          title: `Deposit invoice NOT sent: ${quote.first_name} ${quote.last_name}`,
+          contactId: row.contact_id,
+          relatedObjectType: 'invoice',
+          relatedObjectId: depositInvoiceId,
+        });
+      }
+    }
+  }
+
   // engagementId stays the primary, so existing callers and the portal are unchanged;
   // engagements carries the full set for anything that needs to show them all.
   return {

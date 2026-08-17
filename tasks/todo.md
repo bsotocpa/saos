@@ -1972,3 +1972,36 @@ Chicago disagree on the date. Three assertions in document-chase, one in billing
       **Constraint for future work, no build now** (Brian's call). Anything that adds a
       test/rehearsal mode must decide where the flag lives, and per-contact is already
       known to be the wrong altitude. Related: [#15 ruling]
+
+## The outbox — build it when a SECOND post-commit effect appears (Brian's named trigger, 2026-08-16)
+
+- [ ] **Transactional outbox for outward effects.** Not "someday": the trigger is named.
+      **Build it the moment a second post-commit effect path exists anywhere in the
+      system.** One caller does not justify the general mechanism; two does, because at two
+      the loud-failure handling starts being copy-pasted and the copies drift.
+
+      Today there is exactly one: #48's deposit-invoice email in `acceptQuote`, sent after
+      the durable writes with a P1 task + critical alert on failure
+      (`sourceType: 'invoice_send_failed'`).
+
+      **What counts as the trigger:** any code path that commits durable state and THEN
+      sends something outward that cannot be rolled back — a client email, an SMS, a Stripe
+      call, a Docuseal envelope. Candidates already visible: engagement-packet send,
+      `recordEfileResult`'s client notifications, and the acceptance-transaction work below,
+      which will likely surface more.
+
+      **What it replaces:** the try/catch-and-raise-a-task block at the end of `acceptQuote`.
+      An outbox row written inside the same transaction as the state, drained by the
+      existing daily/tick job runner, with retries and a dead-letter that raises the same P1
+      task after N attempts. The loud failure does not go away — it moves.
+
+- [ ] **#48 part two: acceptance as one transaction.** Ruled by Brian as its own piece of
+      work, deliberately not folded into the latch. Threading a transaction client through
+      `createEngagement` / `createInvoice` / `createTask` / `writeAudit` changes signatures
+      used across billing, tasks and audit. The latch (shipped 2026-08-16) closes the
+      duplicate-acceptance hole on its own; this closes the partial-write one.
+
+- [ ] **Same shape, other paths.** `recordEfileResult`, packet assembly and quote CREATION
+      are all non-transactional in the same way. Acceptance went first because it takes
+      money and creates commitments. Whatever pattern part two settles is the one these
+      should follow.

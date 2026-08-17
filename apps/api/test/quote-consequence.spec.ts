@@ -67,6 +67,29 @@ async function taxItemCode(): Promise<string> {
   return rows[0]!.item_code;
 }
 
+/**
+ * A quotable item that actually CARRIES a deposit — derived from the book, never named.
+ *
+ * #48's post-commit tests are about the deposit invoice, and the tax items have
+ * `deposit_cents` NULL, so a quote built from `taxItemCode()` produces no invoice at all.
+ * My first version of those tests guarded on `if (!depositInvoiceId) return`, which meant
+ * they passed by asserting nothing — the same "check that cannot fail" this codebase keeps
+ * turning up. This makes the fixture carry what the test is about.
+ */
+async function depositItemCode(): Promise<string> {
+  const { rows } = await app.db.query<{ item_code: string }>(
+    `SELECT pbi.item_code
+       FROM price_book_items pbi
+       JOIN price_book_versions v ON v.id = pbi.version_id
+      WHERE pbi.deposit_cents > 0 AND pbi.is_active AND pbi.display_on_quote
+        AND pbi.amount_cents IS NOT NULL
+        AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
+      ORDER BY pbi.item_code LIMIT 1`
+  );
+  assert.ok(rows[0], 'the book in force has a quotable item that carries a deposit');
+  return rows[0]!.item_code;
+}
+
 before(async () => {
   config = await createTestConfig('quoteconseq');
   app = buildServer(config, { mailer: silentMailer });
@@ -602,4 +625,161 @@ test('#47: an engagement with no scope names itself null rather than guessing', 
   assert.equal(scopeName([], 'en'), null, 'no scope → no name, and the caller falls back');
   assert.equal(scopeName([], 'es'), null);
   assert.deepEqual(scopeSummary([]), { count: 0, totalCents: 0 });
+});
+
+/*
+ * #48 — ACCEPTANCE CLAIMS THE QUOTE BEFORE DOING ANY WORK.
+ *
+ * The guard sat at step 1 and the write that made it true sat at step 12, with every
+ * engagement, every scope row and the deposit invoice in between. Two acceptances
+ * overlapping in that window both passed the guard and both built a full set — the
+ * mechanism behind #41, where Brian's client carried two indistinguishable tax engagements
+ * plus a third already marked "duplicate accept".
+ */
+test('#48: two simultaneous acceptances produce ONE set of engagements, not two', async () => {
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Doubletap', email: 'doubletap@example.test',
+  });
+  const quote = await createQuote(
+    app, { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
+  );
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  const token = sent.url.split('/').pop()!;
+
+  // The double-tap, as it actually arrives: two requests in flight at once.
+  const results = await Promise.allSettled([
+    acceptQuote(app, token, {}),
+    acceptQuote(app, token, {}),
+  ]);
+  const won = results.filter((r) => r.status === 'fulfilled');
+  const lost = results.filter((r) => r.status === 'rejected');
+  assert.equal(won.length, 1, 'exactly one acceptance goes through');
+  assert.equal(lost.length, 1, 'and exactly one is turned away');
+  assert.match(
+    (lost[0] as PromiseRejectedResult).reason.message,
+    /already accepted/i,
+    'the loser is told the truth — it WAS accepted, just not by them'
+  );
+
+  const eng = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM engagements WHERE contact_id = $1`, [c.id]
+  );
+  assert.equal(eng.rows[0]!.n, 1, 'ONE engagement — this is the #41 duplicate, prevented');
+
+  const inv = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM invoices WHERE contact_id = $1`, [c.id]
+  );
+  assert.ok(inv.rows[0]!.n <= 1, 'and at most one deposit invoice — never two charges');
+});
+
+test('#48: the claim is what stops it — the quote leaves "sent" before any work happens', async () => {
+  /*
+   * The ordering IS the fix, so it is asserted directly rather than inferred from the
+   * outcome: by the time an engagement exists, the quote must already be spoken for.
+   */
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Claimed', email: 'claimed@example.test',
+  });
+  const quote = await createQuote(
+    app, { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
+  );
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  await acceptQuote(app, sent.url.split('/').pop()!, {});
+
+  const q = await app.db.query<{ status: string; accepted_at: Date; created_at: Date }>(
+    `SELECT q.status::text AS status, q.accepted_at,
+            (SELECT min(e.created_at) FROM engagements e WHERE e.contact_id = $2) AS created_at
+       FROM quotes q WHERE q.id = $1`,
+    [quote.id, c.id]
+  );
+  assert.equal(q.rows[0]!.status, 'accepted');
+  assert.ok(
+    q.rows[0]!.accepted_at.getTime() <= q.rows[0]!.created_at.getTime(),
+    'the quote was claimed no later than the first engagement was created'
+  );
+});
+
+test('#48: the deposit invoice is emailed AFTER acceptance commits, not during it', async () => {
+  /*
+   * An email cannot be rolled back. Sending it mid-sequence meant every failure below that
+   * point left a client holding an invoice for an acceptance that never finished. The row
+   * is durable state and stays where it was; only the send moved.
+   */
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Postcommit', email: 'postcommit@example.test',
+  });
+  const quote = await createQuote(
+    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+  );
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
+
+  assert.ok(accepted.depositInvoiceId, 'the fixture carries a deposit — otherwise this test proves nothing');
+
+  const inv = await app.db.query<{ status: string; sent_at: Date | null }>(
+    `SELECT status::text AS status, sent_at FROM invoices WHERE id = $1`,
+    [accepted.depositInvoiceId]
+  );
+  assert.equal(inv.rows[0]!.status, 'sent', 'the send still happens — it just happens last');
+  assert.ok(inv.rows[0]!.sent_at, 'and stamps sent_at only because a message actually went');
+
+  const order = await app.db.query<{ accepted_at: Date; sent_at: Date }>(
+    `SELECT q.accepted_at, i.sent_at
+       FROM quotes q JOIN invoices i ON i.id = $2 WHERE q.id = $1`,
+    [quote.id, accepted.depositInvoiceId]
+  );
+  assert.ok(
+    order.rows[0]!.sent_at.getTime() >= order.rows[0]!.accepted_at.getTime(),
+    'the client is emailed after the acceptance is durable, never before'
+  );
+});
+
+test('#48: a post-commit send failure is LOUD — the acceptance stands and a person is paged', async () => {
+  /*
+   * Brian's ruling: "silent post-commit failure is how a client gets an engagement and
+   * never learns it exists." So the client's acceptance succeeds — they did their part —
+   * and the failure becomes a P1 task naming the invoice, plus a critical alert.
+   *
+   * The failure is induced the way it would really happen: the contact has no email
+   * address, so there is nobody to send to.
+   */
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Noemail', email: 'noemail-48@example.test',
+  });
+  const quote = await createQuote(
+    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+  );
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+
+  // Strip the address AFTER the quote was sent — the send has nowhere to go.
+  await app.db.query(`UPDATE contacts SET email = NULL WHERE id = $1`, [c.id]);
+
+  const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
+  assert.ok(accepted.engagementId, 'the acceptance itself succeeded — the client did their part');
+
+  const q = await app.db.query<{ status: string }>(
+    `SELECT status::text AS status FROM quotes WHERE id = $1`, [quote.id]
+  );
+  assert.equal(q.rows[0]!.status, 'accepted', 'and it is committed, not rolled back over a send');
+
+  assert.ok(accepted.depositInvoiceId, 'the fixture carries a deposit — the send is what this test is about');
+  {
+    const inv = await app.db.query<{ status: string; sent_at: Date | null }>(
+      `SELECT status::text AS status, sent_at FROM invoices WHERE id = $1`,
+      [accepted.depositInvoiceId]
+    );
+    assert.equal(inv.rows[0]!.status, 'draft', 'the invoice does NOT claim to have been sent');
+    assert.equal(inv.rows[0]!.sent_at, null, 'and carries no sent_at, because nothing was sent');
+  }
+
+  // THE LOUD PART. A person is told, by name, that a client is waiting on something we
+  // did not send. Without this the failure is invisible until the client asks.
+  const task = await app.db.query<{ n: number; title: string; priority: number }>(
+    `SELECT count(*)::int AS n, max(title) AS title, min(priority) AS priority
+       FROM tasks WHERE contact_id = $1 AND source_type = 'invoice_send_failed'`,
+    [c.id]
+  );
+  assert.equal(task.rows[0]!.n, 1, 'a task was raised for the undelivered invoice');
+  assert.equal(task.rows[0]!.priority, 1, 'at P1 — the client is waiting');
+  assert.match(task.rows[0]!.title, /SEND FAILED/);
 });

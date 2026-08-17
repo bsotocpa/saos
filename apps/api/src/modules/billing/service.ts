@@ -242,6 +242,63 @@ export async function createInvoice(
 }
 
 /**
+ * #48 — send an invoice that was created as a draft, AFTER its caller's durable writes.
+ *
+ * The split exists because an email cannot be rolled back. Quote acceptance creates the
+ * deposit invoice mid-sequence — the ROW is durable state and has to exist before the quote
+ * can point at it — but the SEND is an outward effect, and sending it there meant a later
+ * failure left a client holding an invoice for an acceptance that may not have finished.
+ *
+ * `sent_at` and `status` move only when the message actually goes. An invoice marked sent
+ * with nothing sent is a lie that A/R reads as "the client has been told", and the dunning
+ * clock starts from it.
+ */
+export async function sendInvoiceNow(
+  app: FastifyInstance,
+  invoiceId: string,
+  actor: { type: 'staff' | 'system'; id?: string | null; label?: string | null }
+): Promise<{ sent: boolean; reason?: string }> {
+  const { rows } = await app.db.query<{
+    invoice_number: string; total_cents: number; status: string;
+    contact_id: string; first_name: string; email: string | null; language: 'en' | 'es';
+  }>(
+    `SELECT i.invoice_number, i.total_cents, i.status::text AS status, i.contact_id,
+            c.first_name, c.email, c.language
+       FROM invoices i JOIN contacts c ON c.id = i.contact_id
+      WHERE i.id = $1`,
+    [invoiceId]
+  );
+  const inv = rows[0];
+  if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
+  if (inv.status !== 'draft') return { sent: false, reason: 'already_sent' };
+  if (!inv.email) return { sent: false, reason: 'no_email' };
+
+  await sendTemplatedEmail(app, {
+    to: inv.email,
+    templateKey: 'invoice_sent',
+    language: inv.language,
+    contactId: inv.contact_id,
+    vars: {
+      first_name: inv.first_name,
+      invoice_number: inv.invoice_number,
+      amount: formatUsd(inv.total_cents),
+      portal_link: `${app.config.PORTAL_BASE_URL}/invoices?invoice=${invoiceId}`,
+    },
+  });
+
+  await app.db.query(
+    `UPDATE invoices SET status = 'sent', sent_at = now() WHERE id = $1 AND status = 'draft'`,
+    [invoiceId]
+  );
+  await writeAudit(app.db, {
+    actorType: actor.type, actorId: actor.id ?? null, actorLabel: actor.label ?? null,
+    action: 'invoice.sent', objectType: 'invoice', objectId: invoiceId, contactId: inv.contact_id,
+    details: { invoice_number: inv.invoice_number, post_commit: true },
+  });
+  return { sent: true };
+}
+
+/**
  * Automation 12 — called by the pipeline when a return reaches 'filed':
  * final fee present → invoice generated + portal notice + Rene's queue.
  * No final fee → exception to Rene instead (nothing silently skipped).

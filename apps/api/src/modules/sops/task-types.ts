@@ -32,6 +32,17 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   invoice_overdue: { sop: 'rene-dunning-call' },
   invoice_needed: { sop: 'rene-invoice-on-filed' },
   quote_accepted: { sop: 'rene-quote-accepted-onboarding' },
+  /*
+   * #48. `sop: null` deliberately: the task's own description IS the procedure — the
+   * invoice is a draft on the client record and the one action is to send it. An SOP page
+   * would say the same sentence a click further away, and this task is P1 precisely
+   * because the client is sitting there waiting for a payment link that never arrived.
+   */
+  invoice_send_failed: {
+    sop: null,
+    reason:
+      'The procedure is one action and the task already names it: the deposit invoice is sitting as a draft on the client record, and it needs sending. An SOP page would repeat that sentence a click further away, which is the wrong trade for a P1 task that exists because a client is waiting on a payment link they never received.',
+  },
   client_non_response: { sop: 'rene-escalation-call' },
 
   // ── Tax (Ana-Maria) ───────────────────────────────────────────────────────
