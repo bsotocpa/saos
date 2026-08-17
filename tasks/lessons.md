@@ -788,3 +788,30 @@ test wearing a guard's clothes.
 
 Related: [[an-absence-assertion-needs-a-matching-presence-assertion]] — same family, a check
 that cannot fail.
+
+## A codemod must refuse what it cannot see (2026-08-17)
+
+Sweeping 23 call sites for the owner-resolution rule, I wrote a script to hoist
+`createTask` out of `if (owner)` blocks. It introduced two bugs, and the shapes are worth
+keeping apart because only one of them is about code:
+
+1. **Scope.** It moved a statement that referenced a `const` declared INSIDE the block it was
+   moved out of. Brace matching cannot see scope, so the hoisted call referenced a variable
+   that no longer existed at that point. Fixed by making the script collect every declaration
+   inside the block, check whether the statement mentions any of them, and **throw with the
+   offending name** rather than proceed. One site then had to be done by hand.
+
+2. **Intent.** In `events/service.ts` the condition was `if (jackson && unlinked > 0)` — an
+   owner gate AND a business condition, indistinguishable to a regex. The script dropped both,
+   so an event nobody attended would have produced a follow-up task reading "0 attendees".
+   No amount of parsing fixes this one: the script cannot know which conjunct is the rule and
+   which is the reason.
+
+**Rule:** a codemod may only perform transformations whose preconditions it can verify. Where
+it cannot, it must fail loudly on that site and leave it for a human — a script that edits 12
+files and is right about 10 is worse than one that edits 10 and names the other 2, because
+nobody re-reads the 10.
+
+Corollary, and this is the tell: **I caught both only by reading the diff.** The typecheck
+passed on the second one and the guard went green on both. Run the sweep, then read every
+line of it.

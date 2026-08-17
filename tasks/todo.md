@@ -1989,24 +1989,19 @@ Chicago disagree on the date. Three assertions in document-chase, one in billing
       P1 instead of P2, and migration 0068’s deferred constraint trigger making an unowned
       live clock unstorable.
 
-## OPEN, AND WIDER THAN #48 — the no-fallback resolver is used in ~20 more places
+## Owner resolution — CLOSED 2026-08-17 (23 sites + the guard)
 
-Found while fixing the perfection clock. `firstActiveByRole` has NO CEO fallback;
-`ownerForRole` exists precisely because of finding #17 and does. Production holds exactly
-ONE staff account (ceo) — `tax_preparer`, `comms_billing`, `va_entity`, `bookkeeper` are all
-unfilled — so every automation routing to one of those creates an UNASSIGNED task and, where
-the alert is gated on `if (owner)`, fires no alert at all.
+Brian’s rule: every automation that can create work must resolve to an owner, CEO fallback
+until staff exist. An unassigned task with no alert is work that doesn’t exist — proven twice
+(#17, and the perfection clock that started with nobody watching it).
 
-- [ ] **Audit and convert the ~20 remaining `firstActiveByRole` task-owner call sites.**
-      Confirmed instances include `billing/dunning.ts`, `billing/service.ts`,
-      `booking/routes.ts`, `bookkeeping/close.ts`, `bookkeeping/routes.ts`,
-      `comms/attachments.ts`, `documents/routes.ts`, `documents/service.ts`,
-      `entity/service.ts`, `entity/sos.ts`, `events/service.ts`, `forms/service.ts`.
-      Uses resolving the CEO directly are fine (that IS the fallback).
-- [ ] **Extend `check-role-guarded-tasks.mjs`** so it fails on `firstActiveByRole` feeding a
-      task assignee at all, not only inside an `if (owner)`. The guard passed through this
-      entire class because it checks the shape of the branch rather than the resolver.
-      **That is the real lesson: the guard tested the symptom #17 presented as, not the rule.**
-
-      Not done here — it touches twelve files across every module and Brian sequences
-      deliberately. The tax one was fixed because he named it and it is statutory.
+- [x] **The guard encodes the rule, not the incident.** Two checks: an owner must come from a
+      resolver with a fallback, and createTask must never be skipped because the owner is
+      missing. Proof it was worth rewriting — with the perfection-clock defect restored
+      exactly as it was, the OLD guard passes clean and the NEW one fails and names the line.
+- [x] **11 sites converted to ownerForRole** (rule 1).
+- [x] **12 sites had the task itself inside `if (owner)`** (rule 2) — hoisted out, alert still
+      gated. Includes the restore drill and the stale-backup check, where an unfilled role
+      meant an unproven-backup outage produced no work item at all.
+- [x] **Production drill**: every task-routing role (`tax_preparer`, `comms_billing`,
+      `va_entity`, `bookkeeper`, `ed_coo`) is unfilled and every one now resolves to Brian.
