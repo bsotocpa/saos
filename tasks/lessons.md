@@ -716,3 +716,30 @@ When backing up more than one file, use paths as names, not basenames — or use
 
 Related: the sabotage itself was clean (four edits, four failing tests, no crashes). The
 failure was in the scaffolding around it, which is exactly where it is easiest not to look.
+
+## When a fix's own failure mode is the bug it fixes, pick a different fix (2026-08-16)
+
+#48's design note said part two was "thread a transaction client through
+`createEngagement` / `createInvoice` / `createTask` / `writeAudit`." Counting the call sites
+first changed the answer: **792** `app.db.query` calls, most of them in helpers several
+levels below acceptance.
+
+The failure mode of a missed thread-through is that one statement runs outside the
+transaction, commits alone, and survives the rollback — **a silent partial write, which is
+exactly the bug #48 exists to remove.** A fix that fails the way the bug fails is not a fix;
+it is the same defect wearing a plan.
+
+AsyncLocalStorage inverts it: the transaction is ambient, so participation is the default
+and the mechanism has no per-call-site step to forget. Zero of the 792 sites changed.
+
+**Rule:** before choosing a mechanism, ask what happens when someone applies it
+incompletely. If incomplete application reproduces the original bug silently, the mechanism
+is wrong regardless of how obvious it looks. Prefer the design where the correct behaviour
+is what you get by doing nothing.
+
+Corollary, from the same piece of work: **a sabotage that HANGS is a finding, not a botched
+sabotage.** Removing the re-entrancy check did not produce a wrong answer — it deadlocked
+the suite, because a nested transaction blocks in Postgres on a row the outer holds while
+the outer blocks in JavaScript awaiting the inner, and Postgres cannot see that cycle. I had
+described re-entrancy as convenience. The comment now says what the sabotage proved.
+Related: [[verify-a-sabotage-restore-by-diff]]
