@@ -153,23 +153,29 @@ export async function createPllcConversion(
   }
 ): Promise<{ id: string }> {
   const laura = await ownerForRole(app.db, 'va_entity');
-  const defaultChecklist = [
+  // The conversion steps, in order. They go on the TASK; nothing stores them on the row.
+  const conversionSteps = [
     'Verify professional license (IDFPR)',
     'Confirm current entity is improperly formed for a licensed professional',
     'Advisory session scheduled with client',
     'Articles of amendment / conversion prepared',
     'Filed with IL Secretary of State',
     'EIN, bank, and insurance records updated',
-  ].map((item) => ({ item, done: false }));
+  ];
 
+  /*
+   * No `checklist` column any more (2026-08-17). The six steps go onto the TASK below, which is
+   * the one source: assigned, visible in My Tasks, tickable through the endpoints that already
+   * exist. Writing both would be two lists that can disagree about the same work.
+   */
   const { rows } = await app.db.query<{ id: string }>(
     `INSERT INTO pllc_conversions
-       (contact_id, business_id, detected_via, license_type, current_entity_type, assigned_staff_id, checklist)
-     VALUES ($1, $2, $3, $4, $5::business_entity_type, $6, $7::jsonb)
+       (contact_id, business_id, detected_via, license_type, current_entity_type, assigned_staff_id)
+     VALUES ($1, $2, $3, $4, $5::business_entity_type, $6)
      RETURNING id`,
     [
       input.contactId, input.businessId ?? null, input.detectedVia ?? 'manual',
-      input.licenseType, input.currentEntityType ?? null, laura, JSON.stringify(defaultChecklist),
+      input.licenseType, input.currentEntityType ?? null, laura,
     ]
   );
   const id = rows[0]!.id;
@@ -199,7 +205,7 @@ export async function createPllcConversion(
     source: 'automation',
     sourceType: 'pllc_conversion',
     sourceId: id,
-    checklist: defaultChecklist.map((c) => c.item),
+    checklist: conversionSteps,
   });
   if (laura) {
     await notifyOnce(app.db, {

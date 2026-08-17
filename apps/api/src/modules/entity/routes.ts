@@ -114,14 +114,36 @@ export function registerEntityRoutes(app: FastifyInstance): void {
     return reply.code(201).send(result);
   });
 
+  /*
+   * THE CHECKLIST COMES FROM THE TASK (Brian's ruling 2026-08-17).
+   *
+   * `pllc_conversions.checklist` was a module-local to-do list — the thing CLAUDE.md forbids —
+   * and once the conversion started spawning a real task, the same six steps existed in two
+   * places that could disagree. The task is the one source: it is where the work is assigned,
+   * where it shows in My Tasks, and where the existing `/tasks/:id/checklist` endpoints already
+   * tick items off.
+   *
+   * `taskId` is returned so a UI has somewhere to POST a tick to. Nullable on purpose:
+   * conversions created before the task existed have none, and inventing one on read would be
+   * a write hiding in a GET.
+   */
   app.get('/pllc-conversions', manage, async () => {
     const { rows } = await app.db.query(
       `SELECT p.id, p.status, p.license_type, p.current_entity_type, p.license_verified,
-              p.detected_via, p.checklist, p.assigned_staff_id,
-              c.id AS contact_id, c.first_name, c.last_name, b.name AS business_name
+              p.detected_via, p.assigned_staff_id,
+              c.id AS contact_id, c.first_name, c.last_name, b.name AS business_name,
+              t.id AS task_id,
+              COALESCE(
+                (SELECT json_agg(json_build_object('id', i.id, 'item', i.label, 'done', i.done)
+                                 ORDER BY i.position)
+                   FROM task_checklist_items i WHERE i.task_id = t.id),
+                '[]'::json
+              ) AS checklist
        FROM pllc_conversions p
        JOIN contacts c ON c.id = p.contact_id
        LEFT JOIN businesses b ON b.id = p.business_id
+       LEFT JOIN tasks t
+         ON t.source_type = 'pllc_conversion' AND t.source_id = p.id::text
        ORDER BY p.created_at DESC`
     );
     return { conversions: rows };
@@ -134,7 +156,19 @@ export function registerEntityRoutes(app: FastifyInstance): void {
     const params: unknown[] = [id];
     if (b.status !== undefined) { params.push(b.status); sets.push(`status = $${params.length}::pllc_status`); }
     if (b.licenseVerified !== undefined) { params.push(b.licenseVerified); sets.push(`license_verified = $${params.length}`); }
-    if (b.checklist !== undefined) { params.push(JSON.stringify(b.checklist)); sets.push(`checklist = $${params.length}::jsonb`); }
+    /*
+     * REFUSED, not silently dropped. Removing `checklist` from the schema would have zod strip
+     * it and return 200, so a caller ticking an item would be told it worked and see nothing
+     * change — the worst of the three options. The message names where to go instead.
+     */
+    if (b.checklist !== undefined) {
+      throw new AppError(
+        400,
+        'checklist_moved',
+        'The conversion checklist lives on the task now, not on this record — tick items through ' +
+          'PATCH /tasks/:taskId/checklist/:itemId. GET /pllc-conversions returns the taskId.'
+      );
+    }
     if (b.notes !== undefined) { params.push(b.notes); sets.push(`notes = $${params.length}`); }
     if (sets.length === 0) throw new AppError(400, 'empty_update', 'No fields to update.');
     const res = await app.db.query(`UPDATE pllc_conversions SET ${sets.join(', ')} WHERE id = $1`, params);

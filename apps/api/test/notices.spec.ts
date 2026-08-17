@@ -250,8 +250,35 @@ test('PLLC pipeline: flag routes to Laura + advisory flag to Brian; license veri
   const list = await app.inject({ method: 'GET', url: '/pllc-conversions', headers: auth(laura) });
   const record = list.json().conversions.find((r: { id: string }) => r.id === id);
   assert.equal(record.status, 'flagged');
-  assert.equal(record.checklist.length, 6, 'standard conversion checklist seeded');
+
+  /*
+   * INVERTED: the same six steps, from the TASK rather than a `checklist` column on the row.
+   *
+   * The column was a module-local to-do list — six ordered steps with `done` flags and nobody
+   * assigned to work them — which CLAUDE.md forbids outright. The conversion now spawns a real
+   * task carrying the steps, and migration 0069 dropped the column. The counts below are
+   * unchanged on purpose: the assertion is the same, the source is different and now provable.
+   */
+  assert.equal(record.checklist.length, 6, 'the six conversion steps, composed from the task');
   assert.equal(record.checklist[0].done, false);
+  assert.ok(record.task_id, 'the conversion points at its task, so a UI can tick items there');
+
+  const owned = await app.db.query<{ assigned: string | null; n: number }>(
+    `SELECT t.assigned_staff_id AS assigned,
+            (SELECT count(*)::int FROM task_checklist_items i WHERE i.task_id = t.id) AS n
+       FROM tasks t WHERE t.source_type = 'pllc_conversion' AND t.source_id = $1`,
+    [id]
+  );
+  assert.equal(owned.rows[0]!.n, 6, 'the steps live on the task, in the unified task system');
+  assert.equal(owned.rows[0]!.assigned, laura.id, 'and the work is ASSIGNED, which the column never was');
+
+  // The old write path is refused rather than silently accepted.
+  const oldWay = await app.inject({
+    method: 'PATCH', url: `/pllc-conversions/${id}`, headers: auth(laura),
+    payload: { checklist: [{ item: 'x', done: true }] },
+  });
+  assert.equal(oldWay.statusCode, 400, 'ticking on the row is refused, not quietly dropped');
+  assert.match(oldWay.json().message, /lives on the task now/);
 
   const verified = await app.inject({
     method: 'PATCH', url: `/pllc-conversions/${id}`, headers: auth(laura),
