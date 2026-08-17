@@ -698,3 +698,21 @@ symptom visible and the cause fixed. Before trusting any browser measurement, as
 preconditions — the page rendered, the stylesheet loaded, the rule under test is present —
 because "no problems found" from a broken page is indistinguishable from a pass. And a
 viewport resize is not a device: say which engine was checked, and say what was not.
+
+## A sabotage restore is verified by diff, never assumed from the copy succeeding (2026-08-16)
+
+Backing up four files before a #44 sabotage used `$(basename $f)` for the backup name.
+`apps/api/src/modules/tasks/service.ts` and `apps/api/src/modules/engagements/service.ts`
+share a basename, so the second backup silently overwrote the first — and the restore
+copied the ENGAGEMENTS service into the TASKS service file.
+
+Caught only because a grep for the ladder clause came back empty. Nothing about the `cp`
+failed; every command exited 0.
+
+**Rule:** after restoring from a sabotage, prove it with `diff` or `git diff --stat` before
+running anything. A restore that reports success is not evidence the right bytes landed.
+When backing up more than one file, use paths as names, not basenames — or use
+`git stash`/`git checkout`, which cannot collide.
+
+Related: the sabotage itself was clean (four edits, four failing tests, no crashes). The
+failure was in the scaffolding around it, which is exactly where it is easiest not to look.
