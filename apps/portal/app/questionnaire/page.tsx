@@ -100,6 +100,9 @@ export default function QuestionnairePage() {
   const [state, setState] = useState<'loading' | 'ready' | 'none' | 'done' | 'error'>('loading');
   const [resumed, setResumed] = useState(false);
   const [held, setHeld] = useState<Held | null>(null);
+  // Reviewing a completed questionnaire, not filling one (#45).
+  const [reviewing, setReviewing] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [details, setDetails] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -131,7 +134,12 @@ export default function QuestionnairePage() {
         // Already answered, or nothing to answer — either way there is no form here.
         // Both are ordinary states, not errors: a tax-only client with no industry
         // module fires nothing, and telling them something went wrong would be a lie.
-        if (r.submittedAt) { setState('done'); return; }
+        /*
+         * A submitted questionnaire opens for REVIEW, prefilled with what they said —
+         * not a thank-you with no way back. The answers come from the same field either
+         * way, so the whole form works unchanged; only the ending differs.
+         */
+        if (r.submittedAt) setReviewing(true);
 
         setHeld(r.contact);
         setModules(r.modules);
@@ -209,6 +217,14 @@ export default function QuestionnairePage() {
     setError('');
     try {
       if (onDetails) await saveDetails();
+      if (reviewing) {
+        // A correction is a revision, not a resubmission — the checklist step stays
+        // complete, because they already did the thing the step is about.
+        await api('/portal/service-onboarding/revise', { method: 'POST', body: { answers } });
+        setSaved(true);
+        setBusy(false);
+        return;
+      }
       await api('/portal/service-onboarding/submit', { method: 'POST', body: { answers } });
       setState('done');
     } catch (err) {
@@ -239,6 +255,8 @@ export default function QuestionnairePage() {
       <section className="card">
         <h1>{t('quest_done_title')}</h1>
         <p>{t('quest_done_body')}</p>
+        {/* Not a dead end (#45): the answers stay reachable and correctable. */}
+        <p className="muted small">{t('quest_can_revisit')}</p>
         <Link className="btn accent" href="/">{t('back_home')}</Link>
       </section>
     );
@@ -251,7 +269,7 @@ export default function QuestionnairePage() {
 
   return (
     <>
-      <h1>{t('quest_title')}</h1>
+      <h1>{reviewing ? t('quest_review_title') : t('quest_title')}</h1>
       <p className="muted small">
         {onDetails ? t('quest_details_title') : moduleName(current!)} · {screenIndex + 1} / {total}
       </p>
@@ -259,7 +277,9 @@ export default function QuestionnairePage() {
         <div style={{ width: `${progress}%` }} />
       </div>
 
-      {resumed ? <div className="alert">{t('quest_resumed')}</div> : null}
+      {reviewing ? <div className="alert">{t('quest_review_intro')}</div> : null}
+      {saved ? <div className="alert ok">{t('quest_saved')}</div> : null}
+      {resumed && !reviewing ? <div className="alert">{t('quest_resumed')}</div> : null}
       {error ? <div className="alert error">{error}</div> : null}
 
       <section className="card">
@@ -382,10 +402,13 @@ export default function QuestionnairePage() {
             disabled={busy}
             onClick={() => void (last ? submit() : next())}
           >
-            {last ? t('intake_submit') : t('intake_next')}
+            {last ? (reviewing ? t('quest_save_changes') : t('intake_submit')) : t('intake_next')}
           </button>
         </div>
-        <p className="muted small">{t('quest_saved_note')}</p>
+        <p className="muted small">{reviewing ? t('quest_review_note') : t('quest_saved_note')}</p>
+        {reviewing ? (
+          <Link className="btn ghost block" href="/">{t('back_home')}</Link>
+        ) : null}
       </section>
     </>
   );

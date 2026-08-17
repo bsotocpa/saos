@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { generateToken, hashToken } from '../../crypto.ts';
 import { AppError } from '../../types.ts';
+import { writeAudit } from '../../audit.ts';
 import {
   assembleModules,
   loadDefinition,
@@ -79,6 +80,41 @@ function withTaxYear<T>(definition: T): T {
     return node;
   };
   return walk(definition) as T;
+}
+
+/*
+ * DROP ANSWERS TO QUESTIONS THAT ARE NOT BEING ASKED (#37, shared by submit and revise).
+ *
+ * A client picks "Other", types what it is, then changes their mind — the companion
+ * disappears from the screen but its answer is still in the payload. Keeping it would
+ * leave "a bespoke ledger my cousin wrote" sitting beside "QuickBooks Online", which is
+ * worse than no answer because it reads like one.
+ *
+ * Shared rather than duplicated, because a revision that kept stale answers while a
+ * submission stripped them would be the two paths disagreeing about the same record.
+ */
+function dropUnaskedAnswers(
+  answers: Record<string, unknown>,
+  modules: Array<{ questions: unknown }>
+): Record<string, unknown> {
+  const conditional = modules
+    .flatMap((m) => m.questions as Array<{ id: string; showWhen?: { question: string; equals?: unknown; includesAny?: string[] } }>)
+    .filter((q) => q.showWhen);
+  let out = { ...answers };
+  for (const q of conditional) {
+    const c = q.showWhen!;
+    const parent = out[c.question];
+    const shown = c.includesAny
+      ? Array.isArray(parent) && c.includesAny.some((x) => (parent as string[]).includes(x))
+      : c.equals !== undefined
+        ? parent === c.equals
+        : true;
+    if (!shown && q.id in out) {
+      const { [q.id]: _dropped, ...rest } = out;
+      out = rest;
+    }
+  }
+  return out;
 }
 
 async function loadSubmission(app: FastifyInstance, id: string, resumeToken: string) {
@@ -499,18 +535,31 @@ export function registerFormRoutes(app: FastifyInstance): void {
         ORDER BY created_at DESC LIMIT 1`,
       [contactId]
     );
-    const done = await app.db.query<{ submitted_at: Date | null }>(
-      `SELECT submitted_at FROM form_submissions
+    /*
+     * A SUBMITTED questionnaire returns its ANSWERS too (#45).
+     *
+     * It used to return only the date, so the portal could say "thank you" and nothing
+     * else — no way back in, no way to see what you had said. A client who mistyped their
+     * revenue or forgot a state had to contact us, which is the failure #35 exists to
+     * remove: a thing the client reached out about that the portal should have handled.
+     */
+    const done = await app.db.query<{ id: string; submitted_at: Date | null; answers: Record<string, unknown> }>(
+      `SELECT id, submitted_at, answers FROM form_submissions
         WHERE form_key = 'service_onboarding' AND contact_id = $1 AND status = 'submitted'
         ORDER BY submitted_at LIMIT 1`,
       [contactId]
     );
-    return { modules, draft: draft.rows[0] ?? null, submittedAt: done.rows[0]?.submitted_at ?? null };
+    return {
+      modules,
+      draft: draft.rows[0] ?? null,
+      submittedAt: done.rows[0]?.submitted_at ?? null,
+      submitted: done.rows[0] ?? null,
+    };
   }
 
   app.get('/portal/service-onboarding', { preHandler: [app.authenticateClient] }, async (request) => {
     const client = request.client!;
-    const { modules, draft, submittedAt } = await questionnaireFor(client.contactId);
+    const { modules, draft, submittedAt, submitted } = await questionnaireFor(client.contactId);
     return {
       modules: modules.map((m) => ({ key: m.key, nameEn: m.name_en, nameEs: m.name_es, questions: m.questions })),
       /*
@@ -522,12 +571,57 @@ export function registerFormRoutes(app: FastifyInstance): void {
        * step is duplicate work — so it lives here and the step is gone.
        */
       contact: await heldIdentity(client.contactId),
-      // Answers survive a lost signal, the same as the intake — a client working
-      // through nine modules on a phone must not lose the lot to a backgrounded tab.
-      answers: draft?.answers ?? {},
+      /*
+       * Answers survive a lost signal, the same as the intake — a client working through
+       * nine modules on a phone must not lose the lot to a backgrounded tab. And once
+       * submitted, the ANSWERS come back too, so the questionnaire can be reviewed and
+       * corrected rather than being a one-way door (#45).
+       */
+      answers: submitted?.answers ?? draft?.answers ?? {},
       screenReached: draft?.screen_reached ?? 0,
       submittedAt,
     };
+  });
+
+  /*
+   * REVISE A COMPLETED QUESTIONNAIRE (#45).
+   *
+   * Deliberately not a second submission. Brian's ruling: edits after completion re-run
+   * whatever derives from the answers and audit as a REVISION, and the checklist step
+   * stays complete — the client already did the thing the step is about, and un-ticking it
+   * because they fixed a typo would be punishing them for correcting the record.
+   *
+   * `submitted_at` is left alone for the same reason: it records when they answered, not
+   * when they last touched it. The audit row carries the revision history.
+   */
+  app.post('/portal/service-onboarding/revise', { preHandler: [app.authenticateClient] }, async (request) => {
+    const client = request.client!;
+    const b = z.object({ answers: z.record(z.string(), z.unknown()) }).parse(request.body);
+
+    const { submitted, modules } = await questionnaireFor(client.contactId);
+    if (!submitted) {
+      throw new AppError(409, 'not_submitted', 'There is nothing to revise yet — this questionnaire has not been submitted.');
+    }
+
+    const merged = { ...submitted.answers, ...sanitizeAnswers(b.answers) };
+    const answers = dropUnaskedAnswers(merged, modules);
+
+    await app.db.query(`UPDATE form_submissions SET answers = $2::jsonb WHERE id = $1`, [
+      submitted.id,
+      JSON.stringify(answers),
+    ]);
+
+    // Re-run what derives from the answers: module flags, the PLLC rule, complexity.
+    const result = await processServiceOnboarding(app, client.contactId, answers);
+
+    await writeAudit(app.db, {
+      actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
+      action: 'service_onboarding.revised', objectType: 'form_submission', objectId: submitted.id,
+      contactId: client.contactId, ip: request.ip,
+      details: { changed: Object.keys(sanitizeAnswers(b.answers)), flags: result.flags },
+    });
+
+    return { status: 'revised', flags: result.flags };
   });
 
   /** Autosave. Idempotent per client: one open draft, updated in place. */
@@ -579,35 +673,8 @@ export function registerFormRoutes(app: FastifyInstance): void {
     );
     let answers = { ...(open.rows[0]?.answers ?? {}), ...sanitizeAnswers(b.answers) };
 
-    /*
-     * DROP ANSWERS TO QUESTIONS THAT ARE NOT BEING ASKED (#37).
-     *
-     * A client picks "Other", types what it is, then changes their mind — the companion
-     * disappears from the screen but its answer is still in the draft. Storing it would
-     * leave "Falconry" sitting next to a POS system of "Square", which is worse than no
-     * answer because it looks like one.
-     *
-     * Enforced here rather than in the renderer: the client sends whatever they send, and
-     * what we keep is our decision. Same reasoning as the intake's validator skipping
-     * hidden fields.
-     */
     const modules = await assembleModules(app, client.contactId);
-    const conditional = modules
-      .flatMap((m) => m.questions as Array<{ id: string; showWhen?: { question: string; equals?: unknown; includesAny?: string[] } }>)
-      .filter((q) => q.showWhen);
-    for (const q of conditional) {
-      const c = q.showWhen!;
-      const parent = answers[c.question];
-      const shown = c.includesAny
-        ? Array.isArray(parent) && c.includesAny.some((x) => (parent as string[]).includes(x))
-        : c.equals !== undefined
-          ? parent === c.equals
-          : true;
-      if (!shown && q.id in answers) {
-        const { [q.id]: _dropped, ...rest } = answers;
-        answers = rest;
-      }
-    }
+    answers = dropUnaskedAnswers(answers, modules);
 
     let submissionId: string;
     if (open.rows[0]) {

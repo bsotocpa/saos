@@ -104,6 +104,30 @@ const dict = {
     'Your sign-in email — write to us to change it:',
     'Su correo de acceso — escríbanos para cambiarlo:',
   ],
+  /*
+   * #45 — a completed questionnaire is not a one-way door.
+   *
+   * The copy treats a correction as ordinary rather than exceptional: people mistype
+   * revenue and forget a state, and a client who has to write to us about that is a
+   * client the portal failed. It never implies they got it wrong the first time.
+   */
+  action_review_answers: ['Review your answers', 'Revisar sus respuestas'],
+  action_answer_questions: ['Answer your questions', 'Responder sus preguntas'],
+  quest_review_title: ['Your answers', 'Sus respuestas'],
+  quest_review_intro: [
+    'Here is what you told us. Change anything that has moved on — it takes effect straight away.',
+    'Esto es lo que nos dijo. Cambie lo que ya no aplique — surte efecto de inmediato.',
+  ],
+  quest_review_note: [
+    'Changes save when you reach the end. Nothing here needs to be re-done.',
+    'Los cambios se guardan al llegar al final. No hay que volver a hacer nada.',
+  ],
+  quest_save_changes: ['Save changes', 'Guardar cambios'],
+  quest_saved: ['Saved — your team sees the update.', 'Guardado — su equipo ve la actualización.'],
+  quest_can_revisit: [
+    'You can come back and change any of this whenever something moves on.',
+    'Puede volver y cambiar cualquiera de esto cuando algo cambie.',
+  ],
   quest_none_title: ['Nothing to answer right now', 'Nada que responder por ahora'],
   quest_none_body: [
     'These questions are built from the services you have with us. When a new service starts, the questions that go with it will appear here.',

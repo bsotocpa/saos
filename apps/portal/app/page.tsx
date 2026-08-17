@@ -435,6 +435,23 @@ export default function Dashboard() {
 
         <section className="card">
           <h2>{t('quick_actions')}</h2>
+          {/*
+            #45 — the questionnaire needs a PERSISTENT home, not just a checklist step
+            that disappears once it is ticked. Before this there was no nav entry and no
+            link anywhere, so a client who mistyped their revenue or forgot a state had to
+            contact us: the exact "reached out about something the portal should handle"
+            failure #35 exists to remove.
+
+            It sits in Quick actions rather than the checklist because that is where
+            things you can do ANY time live — the checklist is for the run-once journey.
+          */}
+          {questionnaireApplies ? (
+            <p>
+              <Link className="btn ghost block" href="/questionnaire">
+                {onboarding?.step_questionnaire_at ? t('action_review_answers') : t('action_answer_questions')}
+              </Link>
+            </p>
+          ) : null}
           <p>
             <Link className="btn ghost block" href="/documents">{t('action_upload')}</Link>
           </p>

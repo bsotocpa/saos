@@ -1151,3 +1151,96 @@ test('the fiscal-year-end companion asks for a MONTH, because a deadline is comp
   assert.equal(c3other!.type, 'select', 'a month is chosen, not typed');
   assert.equal((c3other!.options ?? []).length, 12);
 });
+
+/*
+ * #45 — a completed questionnaire is not a one-way door.
+ *
+ * Once submitted there was no nav entry, no home link and no path back, so a client who
+ * mistyped their revenue or forgot a state had to contact us — the exact "reached out
+ * about something the portal should handle" failure #35 exists to remove.
+ */
+test('a submitted questionnaire comes back with its answers, and revising is not resubmitting', async () => {
+  const { submissionId, resumeToken } = await startForm('soto_intake');
+  await app.inject({
+    method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
+    payload: {
+      resumeToken,
+      answers: {
+        language: 'en', first_name: 'Synthetic', last_name: 'Revisit',
+        email: 'revisit@example.test', mobile_phone: '+13125550199', sms_ok: 'no',
+        preferred_contact_method: 'email', owns_business: 'yes',
+        business_name: 'Synthetic Revisit LLC', entity_type: 'llc',
+        industry: 'professional_services', years_in_business: '1-3', business_zip: '60619',
+        services: ['bookkeeping'], irs_letters: 'no', how_heard: 'google',
+        communication_consent: true, esign_consent: true,
+      },
+    },
+  });
+  const c = await app.db.query<{ id: string }>(`SELECT id FROM contacts WHERE email = 'revisit@example.test'`);
+  const contactId = c.rows[0]!.id;
+  const session = await clientSessionFor(contactId, 'revisit@example.test');
+  const hdr = { authorization: `Bearer ${session}` };
+
+  await app.inject({
+    method: 'POST', url: '/portal/service-onboarding/submit', headers: hdr,
+    payload: { answers: { C1: 'over_year', C2: 'cash', C5: '50-200' } },
+  });
+  const stepAt = await app.db.query<{ step_questionnaire_at: Date | null }>(
+    `SELECT step_questionnaire_at FROM portal_onboarding WHERE contact_id = $1`, [contactId]
+  );
+  assert.ok(stepAt.rows[0]!.step_questionnaire_at, 'the step completed on submit');
+
+  // Coming back now returns the ANSWERS, not just a date — that is what review mode
+  // renders, and without it the page can only say thank-you.
+  const back = await app.inject({ method: 'GET', url: '/portal/service-onboarding', headers: hdr });
+  assert.ok(back.json().submittedAt, 'it knows the questionnaire is done');
+  assert.equal(back.json().answers.C1, 'over_year', 'and gives back what they said');
+
+  // Correct a typo.
+  const revised = await app.inject({
+    method: 'POST', url: '/portal/service-onboarding/revise', headers: hdr,
+    payload: { answers: { C1: 'last_month' } },
+  });
+  assert.equal(revised.statusCode, 200, revised.body);
+  assert.equal(revised.json().status, 'revised');
+
+  const after = await app.inject({ method: 'GET', url: '/portal/service-onboarding', headers: hdr });
+  assert.equal(after.json().answers.C1, 'last_month', 'the correction stuck');
+  assert.equal(after.json().answers.C2, 'cash', 'and everything else survived');
+
+  /*
+   * A REVISION, not a resubmission. The step stays complete — the client already did the
+   * thing the step is about, and un-ticking it because they fixed a typo would punish
+   * them for correcting the record. submitted_at keeps saying when they answered.
+   */
+  const stillDone = await app.db.query<{ step_questionnaire_at: Date | null }>(
+    `SELECT step_questionnaire_at FROM portal_onboarding WHERE contact_id = $1`, [contactId]
+  );
+  assert.deepEqual(stillDone.rows[0]!.step_questionnaire_at, stepAt.rows[0]!.step_questionnaire_at,
+    'the checklist step is untouched by a correction');
+
+  const rows = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM form_submissions
+      WHERE form_key = 'service_onboarding' AND contact_id = $1`,
+    [contactId]
+  );
+  assert.equal(rows.rows[0]!.n, 1, 'one record, revised — not a second submission');
+
+  const audit = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM audit_log
+      WHERE action = 'service_onboarding.revised' AND contact_id = $1`,
+    [contactId]
+  );
+  assert.equal(audit.rows[0]!.n, 1, 'audited as a revision');
+});
+
+test('there is nothing to revise before there is something submitted', async () => {
+  const c = await app.db.query<{ id: string }>(`SELECT id FROM contacts WHERE email = 'nomodules-forms@example.test'`);
+  const session = await clientSessionFor(c.rows[0]!.id, 'nomodules-forms@example.test');
+  const refused = await app.inject({
+    method: 'POST', url: '/portal/service-onboarding/revise',
+    headers: { authorization: `Bearer ${session}` },
+    payload: { answers: { C1: 'never' } },
+  });
+  assert.equal(refused.statusCode, 409, 'revising nothing is a conflict, not a silent create');
+});
