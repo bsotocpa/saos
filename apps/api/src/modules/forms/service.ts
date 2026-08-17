@@ -274,7 +274,7 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
       }
     }
   }
-  await refreshEnrichmentGaps(app.db, contactId);
+  await refreshEnrichmentGaps(app, contactId);
 
   /*
    * Submitting a Soto intake makes someone a Soto contact — which matters most for a Hilo
@@ -362,19 +362,30 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
   await issueMagicLink(app, portalUser.id, { purpose: portalUser.created ? 'invite' : 'login' });
 
   const rene = await ownerForRole(app.db, 'comms_billing');
+  /*
+   * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule).
+   *
+   * `a.ssn_preference === 'phone'` STAYS — it is the reason the task exists, not an owner
+   * gate. Only the `if (rene)` wrapper came off. A client who asked us to phone them for
+   * their SSN and got no call is waiting on a return that cannot be prepared.
+   */
+  if (a.ssn_preference === 'phone') {
+    await createTask(app, {
+      title: `Call ${a.first_name} ${a.last_name} to collect SSN (requested phone entry)`,
+      assignedStaffId: rene,
+      contactId,
+      priority: 1,
+      source: 'automation',
+      sourceType: 'ssn_by_phone',
+      sourceId: submissionId,
+    });
+  }
   if (rene) {
     await notifyOnce(app.db, {
       staffId: rene, type: 'new_intake', severity: 'info',
       title: `New Soto intake: ${a.first_name} ${a.last_name}`,
       contactId, relatedObjectType: 'form_submission', relatedObjectId: submissionId,
     });
-    if (a.ssn_preference === 'phone') {
-      await app.db.query(
-        `INSERT INTO tasks (title, assigned_staff_id, contact_id, priority, source, source_type, source_id)
-         VALUES ($1, $2, $3, 1, 'automation', 'ssn_by_phone', $4)`,
-        [`Call ${a.first_name} ${a.last_name} to collect SSN (requested phone entry)`, rene, contactId, submissionId]
-      );
-    }
   }
   if (a.irs_letters === 'yes') {
     const ana = await ownerForRole(app.db, 'tax_preparer');

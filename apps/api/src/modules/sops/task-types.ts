@@ -33,6 +33,46 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   invoice_needed: { sop: 'rene-invoice-on-filed' },
   quote_accepted: { sop: 'rene-quote-accepted-onboarding' },
   /*
+   * ── The eight types that were invisible until 2026-08-17 ──
+   *
+   * All eight were created by raw `INSERT INTO tasks`, so `check-task-sop-hooks.mjs` — which
+   * reads task types emitted through `createTask()` — never saw them and nobody was ever asked
+   * to decide. Routing them through the one door surfaced eight unmade decisions at once.
+   * That is the SOP hole Brian named, and this block is what closed it.
+   */
+  /** A booked question call. Free by policy — the SOP is where "free" stops. */
+  booking_question: { sop: 'rene-question-call' },
+  /** Restoring IL Secretary of State good standing: a filing procedure with an order. */
+  sos_check: { sop: 'laura-sos-restore' },
+  /** Collecting an SSN by phone. PII handling with hard rules, so it gets written rules. */
+  ssn_by_phone: { sop: 'rene-ssn-by-phone' },
+  /** A client asked for a service and we promised 24 hours. */
+  service_request: { sop: 'rene-service-request' },
+  /** Same work as any other portal lockout — reuses the SOP that already covers it. */
+  magic_link_bounce: { sop: 'rene-portal-access' },
+  /** Filing an annual report; Laura's procedure already existed and was simply unwired. */
+  annual_report: { sop: 'laura-annual-report' },
+  /*
+   * The conversion the module row used to hold on its own. `sop: null`: the six checklist
+   * items ARE the procedure and they now ride on the task itself, in order, where the person
+   * doing the work ticks them off. An SOP page would be the same six lines one click away.
+   */
+  pllc_conversion: {
+    sop: null,
+    reason:
+      'The procedure is the six-item checklist carried on the task itself — verify the license, confirm the entity is improperly formed, hold the advisory session, prepare the amendment, file with IL SOS, update EIN/bank/insurance. It is ordered and it is on the task; an SOP page would restate it a click further away.',
+  },
+  enrichment: {
+    sop: null,
+    reason:
+      'The task body lists the exact fields that are missing and says the portal first-login backfill resolves most of them on its own. There are two moves — fill them from what we already hold, or wait for the client to log in — and both are in the task. An SOP page would restate it.',
+  },
+  meeting_action_item: {
+    sop: null,
+    reason:
+      'The action item IS the procedure: it is a commitment someone made out loud in the session, captured verbatim as the task description. A generic page about how to do an unknown thing cannot be written, and writing one per item is what the task already is.',
+  },
+  /*
    * #48. `sop: null` deliberately: the task's own description IS the procedure — the
    * invoice is a draft on the client record and the one action is to send it. An SOP page
    * would say the same sentence a click further away, and this task is P1 precisely

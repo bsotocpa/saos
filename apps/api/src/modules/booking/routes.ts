@@ -165,11 +165,20 @@ export function registerBookingRoutes(app: FastifyInstance): void {
     // ── Lane 2: questions are ALWAYS free — task the team, bill nothing.
     if (questionSlugs.includes(slug)) {
       const rene = await ownerForRole(app.db, 'comms_billing');
-      await app.db.query(
-        `INSERT INTO tasks (title, assigned_staff_id, contact_id, priority, source, source_type)
-         VALUES ($1, $2, $3, 0, 'automation', 'booking_question')`,
-        [`Question call booked: ${contactFirst} (${body.payload.startTime ?? 'time tbd'}) — no charge`, rene, contactId]
-      );
+      await createTask(app, {
+        title: `Question call booked: ${contactFirst} (${body.payload.startTime ?? 'time tbd'}) — no charge`,
+        assignedStaffId: rene,
+        contactId,
+        priority: 0,
+        source: 'automation',
+        sourceType: 'booking_question',
+        /*
+         * The booking uid is the identity, which the raw INSERT this replaced did not set at
+         * all. Cal.com retries webhooks, and `createTask` dedupes on (source_type, source_id),
+         * so a replay no longer queues a second call for the same booking.
+         */
+        sourceId: body.payload.uid ?? null,
+      });
       return { status: 'ok', lane: 'questions' };
     }
 

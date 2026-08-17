@@ -9,6 +9,7 @@
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { notifyOnce, ownerForRole } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 
 export type SosStatus = 'good_standing' | 'not_good_standing' | 'not_found';
@@ -96,6 +97,24 @@ export async function runSosCheck(app: FastifyInstance, businessId: string): Pro
 
   if (status === 'not_good_standing') {
     const laura = await ownerForRole(app.db, 'va_entity');
+    /*
+     * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule).
+     *
+     * This one was invisible until the raw INSERT became a `createTask()` call — the guard
+     * watches the function, so routing it through the one door is what exposed the gate. An
+     * entity that has lost its charter and a task nobody was given are the same outcome from
+     * the client's side.
+     */
+    await createTask(app, {
+      title: `Restore good standing: ${biz.name} (IL SOS adverse result)`,
+      assignedStaffId: laura,
+      contactId: biz.contact_id,
+      businessId,
+      priority: 1,
+      source: 'automation',
+      sourceType: 'sos_check',
+      sourceId: businessId,
+    });
     if (laura) {
       await notifyOnce(app.db, {
         staffId: laura,
@@ -106,11 +125,6 @@ export async function runSosCheck(app: FastifyInstance, businessId: string): Pro
         relatedObjectType: 'business',
         relatedObjectId: businessId,
       });
-      await app.db.query(
-        `INSERT INTO tasks (title, assigned_staff_id, contact_id, priority, source, source_type, source_id)
-         VALUES ($1, $2, $3, 1, 'automation', 'sos_check', $4)`,
-        [`Restore good standing: ${biz.name} (IL SOS adverse result)`, laura, biz.contact_id, businessId]
-      );
     }
     if (biz.email && biz.first_name) {
       await sendTemplatedEmail(app, {

@@ -176,7 +176,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       ]
     );
     const id = rows[0]!.id;
-    await refreshEnrichmentGaps(app.db, id);
+    await refreshEnrichmentGaps(app, id);
     await writeAudit(app.db, {
       actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
       action: 'contact.created', objectType: 'contact', objectId: id, contactId: id, ...meta(request),
@@ -310,7 +310,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     const res = await app.db.query(`UPDATE contacts SET ${sets.join(', ')} WHERE id = $1 AND NOT is_archived`, params);
     if (res.rowCount === 0) throw new AppError(404, 'not_found', 'Contact not found.');
 
-    const gaps = await refreshEnrichmentGaps(app.db, id);
+    const gaps = await refreshEnrichmentGaps(app, id);
     await writeAudit(app.db, {
       actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
       action: 'contact.updated', objectType: 'contact', objectId: id, contactId: id, ...meta(request),
@@ -345,7 +345,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       `INSERT INTO business_members (business_id, contact_id, member_role, is_primary) VALUES ($1, $2, $3, $4)`,
       [businessId, contactId, b.memberRole, existing.rows[0]!.n === 0]
     );
-    await refreshEnrichmentGaps(app.db, contactId);
+    await refreshEnrichmentGaps(app, contactId);
     await writeAudit(app.db, {
       actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
       action: 'business.created', objectType: 'business', objectId: businessId, contactId, ...meta(request),
@@ -401,7 +401,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       `SELECT contact_id FROM business_members WHERE business_id = $1`,
       [id]
     );
-    for (const m of members.rows) await refreshEnrichmentGaps(app.db, m.contact_id);
+    for (const m of members.rows) await refreshEnrichmentGaps(app, m.contact_id);
     await writeAudit(app.db, {
       actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
       action: 'business.updated', objectType: 'business', objectId: id, ...meta(request),

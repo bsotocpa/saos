@@ -33,8 +33,12 @@
  *            one fails HARDER than rule 1: `notifications.staff_id` is NOT NULL, so an
  *            unresolved recipient means the alert is not created at all and there is no record
  *            that anyone should have been told.
- *   RULE 4 — a task written by RAW `INSERT INTO tasks` is still a task. Eight of those bypass
- *            createTask() entirely, so rules 1 and 2 could not see them.
+ *   RULE 4 — ONE DOOR: tasks are created through createTask(), never by raw `INSERT INTO
+ *            tasks`. Brian's ruling 2026-08-17, "same as one settlement path for money".
+ *            createTask() is where the owner rule, the (source_type, source_id) dedupe and the
+ *            SOP hook live, so bypassing it skips every check at once — eight raw inserts meant
+ *            eight task types with no SOP decision ever made. Exempt: apps/api/src/migration/,
+ *            which imports work that already happened and is already closed.
  *
  * The shape of the mistake keeps repeating: each version watched the exact construct the last
  * bug used. Rules 3 and 4 were both found while extending it, not while fixing something.
@@ -187,47 +191,32 @@ for (const file of files) {
   const lines = codeOnly(readFileSync(file, 'utf8'));
 
   /*
-   * ── RULE 4: a task written by RAW SQL is still a task ──
+   * ── RULE 4: ONE DOOR. Tasks are created through createTask(), never by raw SQL ──
    *
-   * Found while extending this to alerts: eight `INSERT INTO tasks` statements bypass
-   * `createTask()` entirely. Rules 1 and 2 watch the function call, so every one of them was
-   * invisible — the same "guard checks the shape" failure this file keeps teaching, one layer
-   * further out. Brian's rule is that no createTask PATH may depend on a resolver without
-   * fallback, and a raw insert is a path.
+   * Brian's ruling 2026-08-17: "any future direct INSERT INTO tasks should fail the guard on
+   * principle: one door for work creation, same as one settlement path for money."
    *
-   * The assignee is positional in a raw insert, so the resolver cannot be traced by name.
-   * The check is therefore the nearest owner declaration ABOVE the insert, which is how every
-   * one of these is written. That is a heuristic and says so — it can only produce a false
-   * POSITIVE (an unrelated nearby resolver), never a false negative, which is the right
-   * direction for a guard to be wrong in.
+   * The first version of this rule only checked whether a raw insert's owner came from a
+   * resolver with a fallback. That was too narrow, and narrowness is what this file keeps
+   * being rewritten for. `createTask()` is not a convenience wrapper — it is where the owner
+   * rule, the (source_type, source_id) dedupe, and the SOP hook live. Eight raw inserts meant
+   * eight task types with NO SOP decision ever made, because `check-task-sop-hooks.mjs` reads
+   * types emitted through the function. Bypassing the door does not skip one check, it skips
+   * every check the door exists to apply.
    *
-   * A raw insert also skips the SOP hook that `createTask()` applies. That is a separate and
-   * larger problem, logged in tasks/todo.md rather than fixed here.
+   * So the rule is now the door itself, and it needs no heuristics: any `INSERT INTO tasks`
+   * outside the exemption below is a violation.
+   *
+   * ONE EXEMPTION, narrow and named: `apps/api/src/migration/`. A historical import records
+   * work that ALREADY HAPPENED and is already closed — it sets `status`, `completed_at` and a
+   * historical `created_at`, none of which `createTask()` accepts, and correctly so. Importing
+   * a finished Trello card is not creating work.
    */
-  for (let i = 0; i < lines.length; i++) {
-    if (!/INSERT INTO tasks\b/.test(lines[i])) continue;
-    // Only inserts that actually set an owner; an unassigned-by-design insert is its own case.
-    const stmt = lines.slice(i, Math.min(i + 12, lines.length)).join('\n');
-    if (!/assigned_staff_id/.test(stmt)) continue;
-
-    for (let j = i; j >= Math.max(0, i - 12); j--) {
-      const m = new RegExp(
-        '(?:const|let)\\s+\\w+\\s*=\\s*(?:[\\w.]+\\s*\\?\\?\\s*)?\\(?\\s*await\\s+(' +
-          NO_FALLBACK + '|' + WITH_FALLBACK + ")\\(\\s*[^,]+,\\s*'([^']+)'"
-      ).exec(lines[j]);
-      if (!m) continue;
-      const [, resolver, role] = m;
-      if (resolver === NO_FALLBACK && role !== 'ceo') {
-        violations.push({
-          rule: 4,
-          what: 'the task owner (raw INSERT INTO tasks)',
-          field: 'assigned_staff_id',
-          file,
-          line: j + 1,
-          role,
-        });
-      }
-      break; // nearest declaration only
+  const isMigration = file.includes('/migration/') || file.includes('\\migration\\');
+  if (!isMigration) {
+    for (let i = 0; i < lines.length; i++) {
+      if (!/INSERT INTO tasks\b/.test(lines[i])) continue;
+      violations.push({ rule: 4, file, line: i + 1 });
     }
   }
 
@@ -321,9 +310,19 @@ for (const file of files) {
 }
 
 if (violations.length > 0) {
-  const r13 = violations.filter((v) => v.rule === 1 || v.rule === 3 || v.rule === 4);
+  const r13 = violations.filter((v) => v.rule === 1 || v.rule === 3);
   const r2 = violations.filter((v) => v.rule === 2);
-  console.error(`\n✗ ${violations.length} recipient(s) that can silently resolve to nobody:\n`);
+  const r4 = violations.filter((v) => v.rule === 4);
+  console.error(`\n✗ ${violations.length} place(s) where work can go unowned or unrecorded:\n`);
+
+  for (const v of r4) {
+    console.error(`  ${v.file}:${v.line}`);
+    console.error(`      Raw \`INSERT INTO tasks\`. Tasks are created through createTask(), which is`);
+    console.error(`      where the owner rule, the (source_type, source_id) dedupe, and the SOP hook`);
+    console.error(`      live — a raw insert skips all three silently. ONE DOOR for work creation.`);
+    console.error(`      Fix: await createTask(app, { title, assignedStaffId, contactId, source,`);
+    console.error(`      sourceType, sourceId, … }) — and register the sourceType in TASK_TYPE_SOPS.\n`);
+  }
 
   for (const v of r13) {
     console.error(`  ${v.file}:${v.line}`);
@@ -358,6 +357,6 @@ if (violations.length > 0) {
 }
 
 console.log(
-  `✓ Every task owner and alert recipient resolves through a resolver with a fallback ` +
-    `(${files.length} files creating work or raising alerts).`
+  `✓ One door for work creation; every task owner and alert recipient resolves through a ` +
+    `resolver with a fallback (${files.length} files creating work or raising alerts).`
 );

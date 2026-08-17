@@ -130,12 +130,24 @@ test('voice memo → transcript → summary → tasks → referral queue → pro
   assert.equal(summary.rows[0].referral_rec_hilo_to_soto, true);
   assert.equal(summary.rows[0].action_items.length, 2);
 
-  // Auto tasks from action items, owned by the session's staff member.
-  const tasks = await app.db.query(
-    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'meeting_action_item' AND source_id = $1 AND assigned_staff_id = $2`,
+  /*
+   * Auto tasks from action items, owned by the session's staff member.
+   *
+   * INVERTED: `source_id` is now `<meetingId>:<index>` rather than the meeting id repeated.
+   * The pipeline creates tasks through `createTask()` (Brian's one-door rule, 2026-08-17), and
+   * that dedupes on (source_type, source_id) — so a shared id would have collapsed every
+   * action item after the first into one task. A meeting producing five commitments would have
+   * recorded one. The DISTINCT assertion below is the property that change protects.
+   */
+  const tasks = await app.db.query<{ n: number; distinct_ids: number }>(
+    `SELECT count(*)::int AS n, count(DISTINCT source_id)::int AS distinct_ids
+       FROM tasks
+      WHERE source_type = 'meeting_action_item' AND source_id LIKE $1 || ':%'
+        AND assigned_staff_id = $2`,
     [meetingId, jackson.id]
   );
-  assert.equal(tasks.rows[0].n, 2);
+  assert.equal(tasks.rows[0]!.n, 2);
+  assert.equal(tasks.rows[0]!.distinct_ids, 2, 'each action item is its own work item, not deduped into one');
 
   // Referral queued (pure Hilo → no §7216 needed) into the approval queue.
   const referral = await app.db.query(
@@ -445,8 +457,10 @@ test('a placeholder action item does not become a task nobody can act on', async
       await new Promise((r) => setTimeout(r, 150));
     }
 
+    // `source_id` is `<meetingId>:<index>` now — see the inversion note on the walkthrough test.
     const tasks = await app2.db.query<{ description: string }>(
-      `SELECT description FROM tasks WHERE source_id = $1 AND source_type = 'meeting_action_item'`,
+      `SELECT description FROM tasks
+        WHERE source_id LIKE $1 || ':%' AND source_type = 'meeting_action_item'`,
       [meetingId]
     );
     assert.equal(tasks.rows.length, 1, 'exactly one of the four action items was actionable');

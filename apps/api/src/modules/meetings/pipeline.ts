@@ -16,6 +16,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Client as MinioClient } from 'minio';
 import { writeAudit } from '../../audit.ts';
 import { notifyOnce } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 import { createReferral } from '../referrals/service.ts';
 import type { Summarizer, Transcriber } from './adapters.ts';
 
@@ -149,12 +150,25 @@ export async function processMeeting(
     if (discarded > 0) {
       app.log.info({ meetingId, discarded }, 'discarded empty action item(s) from the summary');
     }
-    for (const item of actionable) {
-      await app.db.query(
-        `INSERT INTO tasks (title, description, assigned_staff_id, contact_id, source, source_type, source_id)
-         VALUES ($1, $2, $3, $4, 'meeting', 'meeting_action_item', $5)`,
-        [meetingTaskTitle, item.text.trim().slice(0, 2000), meeting.staff_id, meeting.contact_id, meetingId]
-      );
+    for (const [idx, item] of actionable.entries()) {
+      /*
+       * `sourceId` is the MEETING plus the item index, not the meeting alone.
+       *
+       * The raw INSERT this replaced used the meeting id for every item, which was harmless
+       * only because it did not dedupe. `createTask()` does, so all but the first action item
+       * from one meeting would collapse into one task — a meeting producing five commitments
+       * would record one. The index makes each item its own work item while still making a
+       * re-run of the pipeline idempotent per item.
+       */
+      await createTask(app, {
+        title: meetingTaskTitle,
+        description: item.text.trim().slice(0, 2000),
+        assignedStaffId: meeting.staff_id,
+        contactId: meeting.contact_id,
+        source: 'meeting',
+        sourceType: 'meeting_action_item',
+        sourceId: `${meetingId}:${idx}`,
+      });
     }
 
     // 5. Referral recommendations → approval queue, §7216-aware: a gate block

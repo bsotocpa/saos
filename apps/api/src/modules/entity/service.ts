@@ -8,6 +8,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { isAutomationEnabled } from '../../automations.ts';
 import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { addDays } from '../tax/deadlines.ts';
 
@@ -100,11 +101,16 @@ export async function runEntityComplianceJob(
       relatedObjectType: 'entity_compliance',
       relatedObjectId: r.id,
     });
-    await app.db.query(
-      `INSERT INTO tasks (title, assigned_staff_id, contact_id, due_date, priority, source, source_type, source_id)
-       VALUES ($1, $2, $3, $4, 1, 'automation', 'annual_report', $5)`,
-      [`File annual report — ${r.business_name} (due ${r.due})`, staffId, r.contact_id, r.due, r.id]
-    );
+    await createTask(app, {
+      title: `File annual report — ${r.business_name} (due ${r.due})`,
+      assignedStaffId: staffId,
+      contactId: r.contact_id,
+      dueDate: r.due,
+      priority: 1,
+      source: 'automation',
+      sourceType: 'annual_report',
+      sourceId: r.id,
+    });
     staffReminders++;
   }
 
@@ -168,6 +174,33 @@ export async function createPllcConversion(
   );
   const id = rows[0]!.id;
 
+  /*
+   * THE CONVERSION IS WORK, SO IT IS A TASK (Brian's ruling 2026-08-17).
+   *
+   * This row had an `assigned_staff_id`, a six-item `checklist`, and two notifications — and
+   * NO task. So Laura's name on the row was the only thing pointing at action, which is
+   * precisely "a module-row staff_id standing in for a task". The row stays as domain
+   * attribution: it records who owns the conversion and how far it has got. The TASK is what
+   * assigns the work, and it carries the same six steps so the queue is where the doing
+   * happens.
+   *
+   * `sourceId` is the conversion id: flagging the same one twice — Module I firing plus a
+   * manual flag — is one piece of work, and `createTask()` dedupes on it.
+   */
+  await createTask(app, {
+    title: `PLLC conversion — ${input.licenseType} (improperly formed entity)`,
+    description:
+      'Illinois requires licensed professionals to organize as a PLLC; this client is not. ' +
+      'Work the checklist below with the client, then record the outcome on the conversion record.',
+    assignedStaffId: laura,
+    contactId: input.contactId,
+    ...(input.businessId ? { businessId: input.businessId } : {}),
+    priority: 1,
+    source: 'automation',
+    sourceType: 'pllc_conversion',
+    sourceId: id,
+    checklist: defaultChecklist.map((c) => c.item),
+  });
   if (laura) {
     await notifyOnce(app.db, {
       staffId: laura,

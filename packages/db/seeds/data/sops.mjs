@@ -105,6 +105,63 @@ A client accepted a proposal. The engagement and any deposit invoice already exi
 3. If the deposit was reduced or waived, the engagement is stamped — do not
    re-invoice it.
 `),
+  sop('rene-question-call', 'A question call was booked', 'comms_billing', 'Onboarding', `
+## Why you have this task
+Someone booked a question call. **These are free** — no invoice, no deposit, whatever the
+question turns out to be.
+
+1. Take the call. Answer what you can answer.
+2. **Where free stops:** a question is free; DOING the work is not. If answering means
+   preparing a return, reconstructing books, or writing to the IRS, that is an engagement —
+   say so on the call, and send a quote instead of starting.
+3. If it becomes work, build the quote from the price book. Never name a price on the call
+   that the book does not support.
+4. If it stays a question, close this task with a one-line note on what they asked. That note
+   is how we find out which questions keep coming up.
+`),
+  sop('rene-ssn-by-phone', 'Collecting an SSN by phone', 'comms_billing', 'Intake', `
+## Why you have this task
+The client asked to give their SSN by phone rather than type it into the portal. That is a
+reasonable thing to prefer, and it puts the number in your hands for a few minutes.
+
+**Hard rules — these are not preferences:**
+1. Call THEM on the number already on their record. Never accept an SSN from an inbound
+   caller you have not verified.
+2. Type it straight into the client record while they are on the line. It goes nowhere else.
+3. **Never** write it in a task note, a message, an email, a text, or on paper. If you wrote
+   it somewhere to hold it, delete that and tell Brian.
+4. Read it back once to confirm, then close the task. Do not repeat it in the note.
+5. If they cannot verify who they are, stop and reschedule. An unverified SSN is worse than a
+   missing one.
+`),
+  sop('rene-service-request', 'A client asked for a service', 'comms_billing', 'Onboarding', `
+## Clock
+The portal promised them a reply **within 24 hours**. The task is due tomorrow for that
+reason, and the reply is what the deadline is about — not the answer.
+
+1. Reply first, same day if you can: you have it, and here is what happens next. A holding
+   reply inside 24 hours keeps the promise; a perfect one on day three does not.
+2. Work out whether it is new work or something their engagement already covers. Check the
+   engagement's scope on the client record before quoting anything.
+3. New work → build a quote from the price book. Covered work → schedule it and say so.
+4. Not something Soto does → say that plainly and refer out. "No" delivered quickly is a
+   good answer.
+`),
+  sop('laura-sos-restore', 'Restoring IL SOS good standing', 'va_entity', 'Entity', `
+## Why you have this task
+The Secretary of State search came back adverse for this entity — dissolved, revoked, or not
+in good standing. The client has already had the fix-steps email; this is our side.
+
+1. Confirm it on the ILSOS site directly. The monitor scrapes HTML and can be wrong; a name
+   collision looks identical to a real problem.
+2. Find out WHY: usually missed annual reports, sometimes a registered-agent lapse.
+3. Work out what is owed — back reports plus reinstatement fees. Tell the client the total
+   before filing anything.
+4. File in order: reports oldest-first, then reinstatement. Out of order is rejected.
+5. Re-check standing after filing and record the confirmation on the business record.
+6. **Then fix the cause**: set or correct the annual-report due date so the T-60 reminder
+   catches the next one. A restoration that leaves the calendar wrong buys one year.
+`),
   sop('rene-acceptance-failed', 'A client tried to accept and could not', 'comms_billing', 'Onboarding', `
 ## Why you have this task
 Someone clicked Accept on their quote and the system could not complete it. The whole

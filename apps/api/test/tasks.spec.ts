@@ -191,7 +191,7 @@ test('migration representative: enrichment gaps live as ONE task that follows th
     `INSERT INTO contacts (first_name, last_name, soto_status) VALUES ('Synthetic', 'Gappy', 'lead') RETURNING id`
   )).rows[0]!.id;
 
-  await refreshEnrichmentGaps(app.db, gapId);
+  await refreshEnrichmentGaps(app, gapId);
   const open = await app.db.query<{ id: string; description: string }>(
     `SELECT id, description FROM tasks WHERE contact_id = $1 AND source_type = 'enrichment' AND status = 'not_started'`,
     [gapId]
@@ -201,7 +201,7 @@ test('migration representative: enrichment gaps live as ONE task that follows th
 
   // Fill the gaps → the task closes itself (no human bookkeeping).
   await app.db.query(`UPDATE contacts SET email = 'gappy@example.test', phone = '+13125550188' WHERE id = $1`, [gapId]);
-  await refreshEnrichmentGaps(app.db, gapId);
+  await refreshEnrichmentGaps(app, gapId);
   const closed = await app.db.query(`SELECT status FROM tasks WHERE id = $1`, [open.rows[0]!.id]);
   assert.equal(closed.rows[0].status, 'completed');
 });

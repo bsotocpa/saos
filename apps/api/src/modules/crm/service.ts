@@ -2,7 +2,9 @@
 // queue flags missing email/EIN/entity type/industry" — the portal's Step 1
 // backfill resolves these).
 
+import type { FastifyInstance } from 'fastify';
 import type { Db } from '../../db.ts';
+import { createTask } from '../tasks/service.ts';
 
 /** Compute the currently-missing enrichment fields for a contact. */
 export async function computeEnrichmentGaps(db: Db, contactId: string): Promise<string[]> {
@@ -38,7 +40,13 @@ export async function computeEnrichmentGaps(db: Db, contactId: string): Promise<
  * portal backfill (or staff edit) fills everything. The queue table stays
  * as the machine-readable source the auto-resolution reads.
  */
-export async function refreshEnrichmentGaps(db: Db, contactId: string): Promise<string[]> {
+/*
+ * Takes `app`, not a bare `Db` (2026-08-17). It creates a task now, and `createTask()` is the
+ * only door for that — see Brian's rule. Every caller already had `app` in scope and was
+ * passing `app.db`, so this is a narrower change than it looks.
+ */
+export async function refreshEnrichmentGaps(app: FastifyInstance, contactId: string): Promise<string[]> {
+  const db = app.db;
   const gaps = await computeEnrichmentGaps(db, contactId);
   if (gaps.length === 0) {
     await db.query(
@@ -68,16 +76,29 @@ export async function refreshEnrichmentGaps(db: Db, contactId: string): Promise<
     }
     const description =
       'Missing: ' + gaps.join(', ') + '. Portal first-login backfill resolves most of these automatically.';
-    await db.query(
-      `INSERT INTO tasks (title, description, contact_id, source, source_type, source_id)
-       SELECT 'Complete missing client info: ' || c.first_name || ' ' || c.last_name, $3, $1, 'system', 'enrichment', $2
-       FROM contacts c WHERE c.id = $1
-         AND NOT EXISTS (
-           SELECT 1 FROM tasks t
-           WHERE t.source_type = 'enrichment' AND t.source_id = $2 AND t.status IN ('not_started', 'in_progress', 'waiting_for_input', 'deferred')
-         )`,
-      [contactId, queueId, description]
+    /*
+     * Through `createTask()` like every other work item (Brian's rule, 2026-08-17: one door
+     * for work creation).
+     *
+     * The hand-written `NOT EXISTS` this replaced was `createTask`'s own dedupe, spelled out
+     * in SQL: same (source_type, source_id), same open-status list. Deleting it is not a loss
+     * of protection — it is the same protection, in the place that cannot be forgotten. And
+     * the SOP hook now applies, which a raw insert silently skipped.
+     */
+    const { rows: who } = await db.query<{ name: string }>(
+      `SELECT first_name || ' ' || last_name AS name FROM contacts WHERE id = $1`,
+      [contactId]
     );
+    if (who[0]) {
+      await createTask(app, {
+        title: `Complete missing client info: ${who[0].name}`,
+        description,
+        contactId,
+        source: 'system',
+        sourceType: 'enrichment',
+        sourceId: queueId,
+      });
+    }
     await db.query(
       `UPDATE tasks SET description = $3, updated_at = now()
        WHERE source_type = 'enrichment' AND source_id = $2 AND contact_id = $1 AND status IN ('not_started', 'in_progress', 'waiting_for_input', 'deferred')`,

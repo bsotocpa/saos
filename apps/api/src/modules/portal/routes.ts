@@ -9,9 +9,9 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { refreshEnrichmentGaps } from '../crm/service.ts';
-import { cascadeUnblock } from '../tasks/service.ts';
+import { cascadeUnblock, createTask } from '../tasks/service.ts';
 import { computeQuote } from '../pricing/service.ts';
-import { todayChicago, upcomingEstimateDates } from '../tax/deadlines.ts';
+import { addDays, todayChicago, upcomingEstimateDates } from '../tax/deadlines.ts';
 
 const ProfileBody = z.object({
   firstName: z.string().min(1).optional(),
@@ -98,7 +98,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     }
     if (sets.length === 0) throw new AppError(400, 'empty_update', 'No fields to update.');
     await app.db.query(`UPDATE contacts SET ${sets.join(', ')} WHERE id = $1`, params);
-    await refreshEnrichmentGaps(app.db, client.contactId);
+    await refreshEnrichmentGaps(app, client.contactId);
     await writeAudit(app.db, {
       actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
       action: 'contact.self_updated', objectType: 'contact', objectId: client.contactId,
@@ -434,25 +434,32 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     const client = request.client!;
     const b = ServiceRequestBody.parse(request.body);
     const rene = await ownerForRole(app.db, 'comms_billing');
-    const task = await app.db.query<{ id: string }>(
-      `INSERT INTO tasks (title, description, assigned_staff_id, contact_id, priority, source, source_type, due_date)
-       VALUES ($1, $2, $3, $4, 1, 'automation', 'service_request', CURRENT_DATE + 1)
-       RETURNING id`,
-      [
-        `Service request (${b.service}) — respond within 24h`,
-        b.notes ?? null, rene, client.contactId,
-      ]
-    );
+    /*
+     * No `sourceId`: a client asking for a second service is a second request, not a duplicate
+     * of the first. `createTask()` dedupes on (source_type, source_id), so giving this one a
+     * stable id would silently swallow every request after the first — the opposite of the
+     * 24-hour promise. Omitting it opts out of dedupe deliberately.
+     */
+    const task = await createTask(app, {
+      title: `Service request (${b.service}) — respond within 24h`,
+      description: b.notes ?? null,
+      assignedStaffId: rene,
+      contactId: client.contactId,
+      priority: 1,
+      source: 'automation',
+      sourceType: 'service_request',
+      dueDate: addDays(todayChicago(), 1),
+    });
     if (rene) {
       await notifyOnce(app.db, {
         staffId: rene, type: 'service_request', severity: 'info',
         title: `New service request: ${b.service}`,
-        contactId: client.contactId, relatedObjectType: 'task', relatedObjectId: task.rows[0]!.id,
+        contactId: client.contactId, relatedObjectType: 'task', relatedObjectId: task.id,
       });
     }
     await writeAudit(app.db, {
       actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
-      action: 'service_request.created', objectType: 'task', objectId: task.rows[0]!.id,
+      action: 'service_request.created', objectType: 'task', objectId: task.id,
       contactId: client.contactId, details: { service: b.service },
     });
     return reply.code(201).send({ status: 'ok' });

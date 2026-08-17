@@ -8,7 +8,7 @@ import { writeAudit } from '../../audit.ts';
 import { generateToken, hashToken } from '../../crypto.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole } from '../../staffing.ts';
+import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 
 interface RequestMeta {
@@ -203,32 +203,40 @@ export async function handleMailBounce(app: FastifyInstance, recipient: string):
   const match = rows[0];
   if (!match) return { matched: false };
 
-  const rene = await app.db.query<{ id: string }>(
-    `SELECT st.id FROM staff st JOIN roles r ON r.id = st.role_id
-     WHERE r.key = 'comms_billing' AND st.is_active
-     ORDER BY st.created_at LIMIT 1`
-  );
-  const assignee = rene.rows[0]?.id ?? null;
+  /*
+   * THREE DOORS BYPASSED IN ONE PLACE, all now used properly (2026-08-17).
+   *
+   * This had `firstActiveByRole`'s query written out inline — so it was invisible to a guard
+   * looking for the function — then a raw `INSERT INTO tasks` and a raw `INSERT INTO
+   * notifications`. The consequences stacked: `comms_billing` is unfilled, so the assignee was
+   * null, so the task was created unowned AND the alert was skipped. A client whose portal
+   * email bounces is locked out and nobody was told.
+   */
+  const assignee = await ownerForRole(app.db, 'comms_billing');
 
-  const task = await app.db.query<{ id: string }>(
-    `INSERT INTO tasks (title, description, assigned_staff_id, contact_id, priority, source, source_type, source_id)
-     VALUES ($1, $2, $3, $4, 1, 'automation', 'magic_link_bounce', $5)
-     RETURNING id`,
-    [
-      `Magic link bounced — verify contact info for ${match.first_name} ${match.last_name}`,
-      'Portal email bounced. Verify the email address (or phone the client), correct the contact record, and re-send portal access. Clients can also call the office number for an access reset.',
-      assignee,
-      match.contact_id,
-      match.portal_user_id,
-    ]
-  );
+  const task = await createTask(app, {
+    title: `Magic link bounced — verify contact info for ${match.first_name} ${match.last_name}`,
+    description:
+      'Portal email bounced. Verify the email address (or phone the client), correct the contact record, ' +
+      'and re-send portal access. Clients can also call the office number for an access reset.',
+    assignedStaffId: assignee,
+    contactId: match.contact_id,
+    priority: 1,
+    source: 'automation',
+    sourceType: 'magic_link_bounce',
+    sourceId: match.portal_user_id,
+  });
 
   if (assignee) {
-    await app.db.query(
-      `INSERT INTO notifications (staff_id, type, severity, title, contact_id, related_object_type, related_object_id)
-       VALUES ($1, 'magic_link_bounce', 'warning', $2, $3, 'task', $4)`,
-      [assignee, `Magic link bounced: ${match.first_name} ${match.last_name}`, match.contact_id, task.rows[0]!.id]
-    );
+    await notifyOnce(app.db, {
+      staffId: assignee,
+      type: 'magic_link_bounce',
+      severity: 'warning',
+      title: `Magic link bounced: ${match.first_name} ${match.last_name}`,
+      contactId: match.contact_id,
+      relatedObjectType: 'task',
+      relatedObjectId: task.id,
+    });
   }
 
   await writeAudit(app.db, {
@@ -237,7 +245,7 @@ export async function handleMailBounce(app: FastifyInstance, recipient: string):
     objectType: 'portal_user',
     objectId: match.portal_user_id,
     contactId: match.contact_id,
-    details: { task_id: task.rows[0]!.id, assigned: assignee !== null },
+    details: { task_id: task.id, assigned: assignee !== null },
   });
   return { matched: true };
 }
