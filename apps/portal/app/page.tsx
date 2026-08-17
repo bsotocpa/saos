@@ -34,6 +34,7 @@ interface Engagement {
   service_line: string;
   status: string;
   kind: 'pipeline' | 'ongoing';
+  title: string | null;
   tax_year: number | null;
   return_type: string | null;
   stage: string | null;
@@ -115,7 +116,21 @@ function stagePercent(stage: string): number {
  */
 function projectName(e: Engagement, t: (k: DictKey) => string): string {
   if (e.tax_year && e.return_type) return `${e.tax_year} · ${e.return_type.toUpperCase()}`;
-  return t(`svcline_${e.service_line}` as DictKey);
+  const line = t(`svcline_${e.service_line}` as DictKey);
+  /*
+   * #41 option (1): show the engagement's own title when it says MORE than the bare
+   * service line — that is #19's composition ("Taxes — 1040 individual return +2 more")
+   * reaching the client, so two engagements on one service line are distinguishable.
+   *
+   * #35 deliberately ignored this column because it held "Accepted quote" placeholders.
+   * Those are backfilled, and a title that is merely the service-line name adds nothing,
+   * so it falls through to the translated label rather than showing an English one.
+   */
+  const title = e.title?.trim();
+  if (title && title.toLowerCase() !== line.toLowerCase() && title.toLowerCase() !== e.service_line) {
+    return title;
+  }
+  return line;
 }
 
 export default function Dashboard() {

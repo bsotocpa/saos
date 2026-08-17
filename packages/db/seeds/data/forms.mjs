@@ -845,6 +845,7 @@ export async function seedForms(client) {
   let modules = 0;
   let labelled = 0;
   let added = 0;
+  let optionsAdded = 0;
   for (const m of ONBOARDING_MODULES) {
     const res = await client.query(
       `INSERT INTO onboarding_modules (key, name_en, name_es, trigger, questions, flags, sort_order)
@@ -893,8 +894,42 @@ export async function seedForms(client) {
          * each new question is inserted after the question it depends on when it has a
          * showWhen, and appended otherwise.
          */
+        /*
+         * MISSING OPTIONS TOO, not just missing questions (#46).
+         *
+         * The first version of this upgrade was question-granular: it added questions by
+         * id and never touched an existing one. So when #37 added an "other" OPTION to
+         * F6 and a companion question beside it, the companion arrived and the option did
+         * not — a conditional question whose trigger could never occur. The deploy
+         * reported "12 module question(s) added", which was true and hid it completely.
+         *
+         * Still additive: options are matched by value and inserted at the position they
+         * occupy in the source, so a label Brian reworded in Admin is untouched and the
+         * new option lands where it belongs rather than after "None of these".
+         */
+        for (const [qi, storedQ] of stored.entries()) {
+          const source = m.questions.find((q) => q.id === storedQ.id);
+          if (!source?.options || !storedQ.options) continue;
+          const haveValues = new Set(storedQ.options.map((o) => o.value));
+          const missingOpts = source.options.filter((o) => !haveValues.has(o.value));
+          if (missingOpts.length === 0) continue;
+          const merged = [...storedQ.options];
+          for (const o of missingOpts) {
+            const at = source.options.findIndex((x) => x.value === o.value);
+            merged.splice(Math.min(at, merged.length), 0, o);
+          }
+          stored[qi] = { ...storedQ, options: merged };
+          optionsAdded += missingOpts.length;
+        }
+
         const have = new Set(stored.map((q) => q.id));
         const missing = m.questions.filter((q) => !have.has(q.id));
+        if (optionsAdded > 0 && missing.length === 0) {
+          await client.query(`UPDATE onboarding_modules SET questions = $2::jsonb WHERE key = $1`, [
+            m.key,
+            JSON.stringify(stored),
+          ]);
+        }
         if (missing.length > 0) {
           const next = [...stored];
           for (const q of missing) {
@@ -922,10 +957,51 @@ export async function seedForms(client) {
     );
     resources += res.rowCount;
   }
+  /*
+   * VERIFY THE DEPLOYED DATA, not just what we meant to deploy (#46).
+   *
+   * The build-time check (scripts/check-form-conditionals.mjs) reads the SOURCE and would
+   * not have caught #46: the source was right and the database was stale. A conditional
+   * question whose trigger value is missing from its parent renders as nothing, forever,
+   * without erroring — so the only place that can catch the gap between what we wrote and
+   * what is live is here, after seeding, against the rows themselves.
+   *
+   * It THROWS rather than warns. A silent form is exactly the failure mode that got past
+   * a code review, a test suite, a deploy and a human walkthrough; a warning in a log
+   * nobody reads would have got past this too.
+   */
+  const live = await client.query(`SELECT key, questions FROM onboarding_modules WHERE is_active`);
+  const broken = [];
+  for (const row of live.rows) {
+    const byId = new Map(row.questions.map((q) => [q.id, q]));
+    for (const q of row.questions) {
+      const c = q.showWhen;
+      if (!c) continue;
+      const parent = byId.get(c.question);
+      if (!parent) { broken.push(`${row.key}/${q.id}: no question "${c.question}"`); continue; }
+      if (!parent.options) continue;
+      const available = new Set(parent.options.map((o) => (typeof o === 'string' ? o : o.value)));
+      const wanted = c.includesAny ?? (c.equals !== undefined ? [c.equals] : []);
+      for (const v of wanted) {
+        if (!available.has(v)) {
+          broken.push(`${row.key}/${q.id}: waits for ${c.question} = "${v}", which it does not offer`);
+        }
+      }
+    }
+  }
+  if (broken.length > 0) {
+    throw new Error(
+      `Conditional questions in the DATABASE can never fire — they render as nothing, silently:\n  ` +
+      broken.join('\n  ')
+    );
+  }
+
   return (
     `${inserted} of 2 form definitions, ${modules} of ${ONBOARDING_MODULES.length} onboarding modules, ` +
     `${resources} starter resources inserted` +
     (labelled > 0 ? `; ${labelled} module(s) upgraded to bilingual option labels` : '') +
-    (added > 0 ? `; ${added} module question(s) added` : '')
+    (added > 0 ? `; ${added} module question(s) added` : '') +
+    (optionsAdded > 0 ? `; ${optionsAdded} option(s) added` : '') +
+    `; ${live.rows.length} module conditionals verified`
   );
 }

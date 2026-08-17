@@ -350,6 +350,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
       `SELECT e.id,
               e.service_line::text AS service_line,
               e.status::text       AS status,
+              e.title,
               te.tax_year,
               te.return_type,
               te.stage::text       AS stage,

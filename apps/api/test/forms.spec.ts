@@ -1244,3 +1244,111 @@ test('there is nothing to revise before there is something submitted', async () 
   });
   assert.equal(refused.statusCode, 409, 'revising nothing is a conflict, not a silent create');
 });
+
+/*
+ * #46 — a conditional question whose trigger can never happen.
+ *
+ * F6's "Other" companion shipped; the "Other" OPTION it waits for did not, because the
+ * seed's upgrade was question-granular and the change was option-granular. The deploy
+ * reported "12 module question(s) added" — true, and it hid this completely. The renderer
+ * was correct throughout: it was hiding a question whose condition could never be met.
+ *
+ * This asserts the invariant against the DATABASE, which is where the defect lived. The
+ * source was right the whole time, so a source-only check would have passed.
+ */
+test('every conditional question in the database has a trigger that can actually occur', async () => {
+  const { rows } = await app.db.query<{ key: string; questions: Array<{ id: string; options?: Array<{ value: string }>; showWhen?: { question: string; equals?: unknown; includesAny?: string[] } }> }>(
+    `SELECT key, questions FROM onboarding_modules WHERE is_active`
+  );
+  assert.ok(rows.length > 0, 'modules are seeded');
+
+  const broken: string[] = [];
+  let conditionals = 0;
+  for (const row of rows) {
+    const byId = new Map(row.questions.map((q) => [q.id, q]));
+    for (const q of row.questions) {
+      if (!q.showWhen) continue;
+      conditionals++;
+      const parent = byId.get(q.showWhen.question);
+      if (!parent) { broken.push(`${row.key}/${q.id}: no question "${q.showWhen.question}"`); continue; }
+      if (!parent.options) continue;
+      const available = new Set(parent.options.map((o) => o.value));
+      const wanted = q.showWhen.includesAny ?? (q.showWhen.equals !== undefined ? [q.showWhen.equals as string] : []);
+      for (const v of wanted) {
+        if (!available.has(v)) {
+          broken.push(`${row.key}/${q.id}: waits for ${q.showWhen.question} = "${v}", which it does not offer`);
+        }
+      }
+    }
+  }
+  assert.ok(conditionals >= 12, `expected the companions to be present, found ${conditionals}`);
+  assert.deepEqual(broken, [], 'a conditional that can never fire renders as nothing, silently');
+});
+
+test('the "Other" option F6 waits for is actually on F6', async () => {
+  // The specific shape of #46, pinned: the companion and the option are a pair, and one
+  // without the other is a question the client can never reach.
+  const { rows } = await app.db.query<{ questions: Array<{ id: string; options?: Array<{ value: string }> }> }>(
+    `SELECT questions FROM onboarding_modules WHERE key = 'module_f'`
+  );
+  const f6 = rows[0]!.questions.find((q) => q.id === 'F6');
+  const companion = rows[0]!.questions.find((q) => q.id === 'F6_other');
+  assert.ok(companion, 'the companion exists');
+  assert.ok((f6?.options ?? []).some((o) => o.value === 'other'), 'and F6 offers the option it waits for');
+});
+
+test('#46 REPRODUCED: stripping the option a companion waits for is DETECTED, not silent', async () => {
+  /*
+   * The two checks above pass on a fresh database, because a fresh database is seeded
+   * from source and the source was always right. #46 lived in the gap between source and
+   * an UPGRADED database — so this reproduces the upgraded-and-drifted state directly and
+   * asserts the invariant catches it.
+   *
+   * Without this the guard is only asserted against data that cannot fail, which is the
+   * same mistake as measuring overflow on a page whose stylesheet never loaded.
+   */
+  const before = await app.db.query<{ questions: unknown }>(
+    `SELECT questions FROM onboarding_modules WHERE key = 'module_f'`
+  );
+
+  // Exactly #46: remove 'other' from F6 while F6_other still waits for it.
+  await app.db.query(`
+    UPDATE onboarding_modules
+       SET questions = (
+         SELECT jsonb_agg(
+           CASE WHEN q->>'id' = 'F6'
+             THEN jsonb_set(q, '{options}',
+                  (SELECT jsonb_agg(o) FROM jsonb_array_elements(q->'options') o WHERE o->>'value' <> 'other'))
+             ELSE q END ORDER BY ord)
+           FROM jsonb_array_elements(questions) WITH ORDINALITY AS t(q, ord))
+     WHERE key = 'module_f'`);
+
+  const detect = async () => {
+    const { rows } = await app.db.query<{ key: string; questions: Array<{ id: string; options?: Array<{ value: string }>; showWhen?: { question: string; includesAny?: string[] } }> }>(
+      `SELECT key, questions FROM onboarding_modules WHERE is_active`
+    );
+    const broken: string[] = [];
+    for (const row of rows) {
+      const byId = new Map(row.questions.map((q) => [q.id, q]));
+      for (const q of row.questions) {
+        if (!q.showWhen) continue;
+        const parent = byId.get(q.showWhen.question);
+        if (!parent?.options) continue;
+        const available = new Set(parent.options.map((o) => o.value));
+        for (const v of q.showWhen.includesAny ?? []) {
+          if (!available.has(v)) broken.push(`${row.key}/${q.id}`);
+        }
+      }
+    }
+    return broken;
+  };
+
+  const found = await detect();
+  assert.ok(found.includes('module_f/F6_other'), 'the drifted state is caught, not shrugged at');
+
+  // Put it back, so the rest of the suite sees the real seeded shape.
+  await app.db.query(`UPDATE onboarding_modules SET questions = $1::jsonb WHERE key = 'module_f'`, [
+    JSON.stringify(before.rows[0]!.questions),
+  ]);
+  assert.deepEqual(await detect(), [], 'restored');
+});
