@@ -98,6 +98,19 @@ export async function runSosCheck(app: FastifyInstance, businessId: string): Pro
   if (status === 'not_good_standing') {
     const laura = await ownerForRole(app.db, 'va_entity');
     /*
+     * The restoration steps, in order — on the TASK, so the doing happens in the queue.
+     * `laura-sos-restore` has one section per item explaining it, and
+     * scripts/check-sop-task-alignment.mjs fails the build if the two drift apart.
+     */
+    const restoreSteps = [
+      'Confirm the adverse result on the ILSOS site',
+      'Find out why standing was lost',
+      'Total what is owed and tell the client before filing',
+      'File back reports oldest-first, then reinstatement',
+      'Re-check standing and record the confirmation',
+      'Correct the annual-report due date so the next one is caught',
+    ];
+    /*
      * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule).
      *
      * This one was invisible until the raw INSERT became a `createTask()` call — the guard
@@ -114,6 +127,7 @@ export async function runSosCheck(app: FastifyInstance, businessId: string): Pro
       source: 'automation',
       sourceType: 'sos_check',
       sourceId: businessId,
+      checklist: restoreSteps,
     });
     if (laura) {
       await notifyOnce(app.db, {

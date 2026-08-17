@@ -39,6 +39,18 @@ const PAIRINGS = [
     stepsVar: 'conversionSteps',
     sopSlug: 'laura-pllc-conversion',
   },
+  {
+    label: 'IL SOS restoration',
+    source: 'apps/api/src/modules/entity/sos.ts',
+    stepsVar: 'restoreSteps',
+    sopSlug: 'laura-sos-restore',
+  },
+  {
+    label: 'Annual report filing',
+    source: 'apps/api/src/modules/entity/service.ts',
+    stepsVar: 'annualReportSteps',
+    sopSlug: 'laura-annual-report',
+  },
 ];
 
 const SOPS = 'packages/db/seeds/data/sops.mjs';
@@ -86,6 +98,39 @@ function sopBody(slug) {
 }
 
 const problems = [];
+
+/*
+ * ── An SOP must be filed under a role that EXISTS ──
+ *
+ * `laura-annual-report` shipped with `role_key: 'entity_admin'`, which is not one of the ten
+ * roles. The SOP list filters by role (sops/service.ts builds a `role_key = $n` clause), so
+ * Laura — whose role is `va_entity` — could never surface her own annual-report procedure. A
+ * written SOP nobody can find is the same as an unwritten one, and it fails silently: nothing
+ * errors, the page simply never appears.
+ *
+ * `null` is allowed and deliberate: the two booking SOPs are not role-specific.
+ */
+const ROLES = 'packages/db/seeds/data/roles.mjs';
+const roleKeys = new Set(
+  [...readFileSync(ROLES, 'utf8').matchAll(/^\s*key: '([a-z_]+)',/gm)].map((m) => m[1])
+);
+if (roleKeys.size === 0) {
+  problems.push(`${ROLES}: parsed ZERO role keys — the guard is not reading what it thinks it is.`);
+}
+
+const sopsSrc = readFileSync(SOPS, 'utf8');
+for (const m of sopsSrc.matchAll(/sop\('([a-z0-9-]+)',\s*'[^']*',\s*(null|'([a-z_]+)')/g)) {
+  const [, slug, rawRole, role] = m;
+  if (rawRole === 'null') continue; // not role-specific, on purpose
+  if (!roleKeys.has(role)) {
+    problems.push(
+      `SOP '${slug}' is filed under role '${role}', which is not a role in ${ROLES}.\n` +
+        `      Roles: ${[...roleKeys].join(', ')}\n` +
+        `      The SOP list filters by role, so nobody can find this page. Use a real role, or null` +
+        ` if it belongs to no one role.`
+    );
+  }
+}
 
 for (const p of PAIRINGS) {
   const steps = stepsFrom(p.source, p.stepsVar);

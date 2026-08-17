@@ -251,18 +251,66 @@ tick it with a note saying why — a skipped step and a done step must not look 
 `),
   sop('laura-sos-restore', 'Restoring IL SOS good standing', 'va_entity', 'Entity', `
 ## Why you have this task
-The Secretary of State search came back adverse for this entity — dissolved, revoked, or not
-in good standing. The client has already had the fix-steps email; this is our side.
+The Secretary of State search came back adverse for this entity — dissolved, revoked, or not in
+good standing. The client has already had the fix-steps email; this is our side.
 
-1. Confirm it on the ILSOS site directly. The monitor scrapes HTML and can be wrong; a name
-   collision looks identical to a real problem.
-2. Find out WHY: usually missed annual reports, sometimes a registered-agent lapse.
-3. Work out what is owed — back reports plus reinstatement fees. Tell the client the total
-   before filing anything.
-4. File in order: reports oldest-first, then reinstatement. Out of order is rejected.
-5. Re-check standing after filing and record the confirmation on the business record.
-6. **Then fix the cause**: set or correct the annual-report due date so the T-60 reminder
-   catches the next one. A restoration that leaves the calendar wrong buys one year.
+**This page has one section per checklist item on the task, in the same order.** The task names
+the step; this explains it.
+
+## What losing standing actually costs
+Not a filing inconvenience. An entity not in good standing can lose the right to sue in
+Illinois courts, and the liability shield the client believes they have may not be there. That
+is why this is P1 and why it blocks the annual report rather than waiting behind it.
+
+---
+
+### 1. Confirm the adverse result on the ILSOS site
+Look it up yourself before doing anything else. The monitor scrapes ILSOS HTML, and a **name
+collision** — a different company with a similar name — looks identical to a real problem from
+the scraper's side.
+
+If the entity is actually fine, close the task with a note saying what you searched and what
+you found. A false positive is a normal outcome, not a failure, and the note is how we find out
+the matcher needs work.
+
+### 2. Find out why standing was lost
+The cause decides the whole rest of the list, so do not skip to filing. Usually it is **missed
+annual reports**; sometimes a **registered-agent lapse**, which no amount of report filing
+fixes.
+
+**STOP and bring it to Brian if the entity was dissolved VOLUNTARILY.** Someone chose to close
+it, and reinstating a company the client deliberately wound up is not a clerical fix — it is a
+question about what they are doing now, and possibly about a new entity instead. Not Laura's
+call.
+
+### 3. Total what is owed and tell the client before filing
+Add up back reports, penalties and the reinstatement fee, and tell the client the number
+**before** anything is filed. Two reasons: it is their money, and the total sometimes changes
+their mind.
+
+**If the total is large enough that forming a fresh entity might be the better answer, that is
+a scope conversation for Brian**, not a decision to make on their behalf. Bring him the number.
+
+### 4. File back reports oldest-first, then reinstatement
+The order is not a preference. Illinois processes the reports as a sequence, and a reinstatement
+filed before the outstanding reports is rejected — you pay the fee and get nothing.
+
+File every missing year oldest-first, confirm each one landed, then file the reinstatement.
+
+### 5. Re-check standing and record the confirmation
+Look the entity up again after filing and confirm it now reads in good standing. A submitted
+filing that was quietly rejected looks identical to a successful one from our side until
+somebody looks.
+
+Record the confirmation on the business record and keep the stamped copies in their documents.
+
+### 6. Correct the annual-report due date so the next one is caught
+The step that decides whether this happens again. Standing was almost certainly lost because
+nothing was watching the date — so set or correct \`annual_report_due_date\` on the compliance
+record, and let the T-60 reminder pick it up.
+
+**A restoration that leaves the calendar wrong buys exactly one year.** If there is no
+compliance record for this business at all, create one; that absence is the reason we are here.
 `),
   sop('rene-acceptance-failed', 'A client tried to accept and could not', 'comms_billing', 'Onboarding', `
 ## Why you have this task
@@ -371,15 +419,57 @@ A close finished and the client had no upcoming session to attach the statements
 `),
 
   // ── Laura (entity) ─────────────────────────────────────────────────────────
-  sop('laura-annual-report', 'Annual report filing', 'entity_admin', 'Entity services', `
+  sop('laura-annual-report', 'Annual report filing', 'va_entity', 'Entity services', `
 ## Clock
-You are reminded at **T-60**; the client is reminded at T-30 (that email is gated
-by the annual_report_client_reminders automation).
+You are reminded at **T-60**. The client is reminded at T-30, and that email is gated by the
+\`annual_report_client_reminders\` automation — so if it is disarmed, the client has heard
+nothing and the whole deadline is yours to carry.
 
-1. Confirm the entity's state and its actual due date — it derives from the state
-   and formation date, never a fixed calendar entry.
-2. Check IL SOS good standing before filing. Not-in-good-standing is its own task.
-3. File, record the confirmation, and store it against the business.
+**This page has one section per checklist item on the task, in the same order.** The task names
+the step; this explains it.
+
+---
+
+### 1. Confirm the state and the actual due date
+The due date is **derived**, never a fixed calendar entry: in Illinois it is the first day of
+the entity's anniversary (formation) month; elsewhere it is the formation anniversary itself.
+Check it against the formation date on record rather than trusting the stored date.
+
+**If the stored due date disagrees with the state rule, do not just file to whichever is
+sooner — find out which is right.** An admin override is legitimate (a state can assign a date
+that does not follow the general rule), but a wrong stored date is also exactly what a missed
+deadline looks like in advance.
+
+**For a non-Illinois entity, check the state's own rule before relying on the derived date.**
+The calculation covers Illinois properly and falls back to the formation anniversary elsewhere,
+which is a reasonable default and not a researched one. Bring anything unusual to Brian.
+
+### 2. Check IL SOS good standing before filing
+Look the entity up before filing anything. If it is **not in good standing**, stop: filing an
+annual report does not restore standing, and Illinois will not process the report as if it did.
+You would spend the fee and still have a dissolved company.
+
+Not-in-good-standing is its own task with its own procedure — see \`laura-sos-restore\`. Work
+that first; this report becomes one of the back filings inside it.
+
+### 3. File the report and pay the fee
+File it and pay. Nothing subtle here except one thing worth checking as you go: if the entity's
+**registered agent** or address has changed since last year, correct it in the same filing
+rather than leaving a second one to do.
+
+### 4. Record the filing in SAOS so the next due date rolls
+Mark it filed on the compliance record in SAOS. This is not bookkeeping — **recording it is what
+rolls the due date to next year and re-arms the T-60 reminder.** Skip it and the next reminder
+never fires, which is the same failure that produces a restoration task.
+
+If a filing you already made is not showing, fix the record rather than filing again.
+
+### 5. Store the stamped confirmation on the business record
+Put the stamped copy in the client's documents, on the business record. Documents go through the
+portal or SAOS storage, never an email attachment.
+
+A year from now the question is "did we file it", and the confirmation is the only thing that
+answers it without asking Illinois.
 `),
 
   // ── Jackson (nonprofit / grants) ───────────────────────────────────────────

@@ -87,6 +87,19 @@ export async function runEntityComplianceJob(
     return rows;
   };
 
+  /*
+   * The annual-report steps, in order — on the TASK, so the doing happens in the queue.
+   * `laura-annual-report` has one section per item explaining it, and
+   * scripts/check-sop-task-alignment.mjs fails the build if the two drift apart.
+   */
+  const annualReportSteps = [
+    'Confirm the state and the actual due date',
+    'Check IL SOS good standing before filing',
+    'File the report and pay the fee',
+    'Record the filing in SAOS so the next due date rolls',
+    'Store the stamped confirmation on the business record',
+  ];
+
   // T-60: remind assigned staff (default: Laura's role) + create a task.
   let staffReminders = 0;
   for (const r of await loadDue(addDays(today, staffDays))) {
@@ -110,6 +123,7 @@ export async function runEntityComplianceJob(
       source: 'automation',
       sourceType: 'annual_report',
       sourceId: r.id,
+      checklist: annualReportSteps,
     });
     staffReminders++;
   }
