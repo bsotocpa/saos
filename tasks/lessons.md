@@ -858,3 +858,25 @@ Corollary: a build guard that reads "everything emitted through X" is silently s
 callers of X. That is not a bug in the guard, but it means **adding a bypass shrinks every
 guard downstream of it at once** — which is the real argument for one door, over and above
 tidiness. Related: [[the-role-guard-tested-17s-shape-not-17s-rule]]
+
+## Sabotage one claim at a time, or the later assertions go unproven (2026-08-17)
+
+Retiring the PLLC checklist column made two claims: the checklist now READS from the task, and
+the old WRITE path is refused. I sabotaged both at once and the run reported one failure —
+"the six conversion steps, composed from the task" — which looked like a pass for the sabotage.
+
+It was not. The read assertion sits ABOVE the write assertion in the same test, so breaking the
+read aborted the test before the write assertion ever ran. The second sabotage was never
+exercised. Had the write refusal been broken in the real code, that run would have looked
+identical.
+
+**Rule:** one sabotage per run when the claims live in the same test. Two sabotages in one test
+prove the FIRST assertion that fails and say nothing about anything after it — and "the right
+test failed" is exactly the signal that makes you stop looking.
+
+Re-run with only the write refusal broken, it failed on
+`/lives on the task now/` — which is the proof the combined run could not give.
+
+Related: [[an-absence-assertion-needs-a-matching-presence-assertion]] and
+[[a-codemod-must-refuse-what-it-cannot-verify]] — the same family. A check that reports what
+you expected to see is not the same as a check that verified it.

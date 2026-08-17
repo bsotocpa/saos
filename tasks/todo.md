@@ -2051,9 +2051,19 @@ treat a module-row staff_id as a substitute for a task, and actionable work spaw
       module-local to-do list, which CLAUDE.md forbids outright. It now spawns a task carrying
       those six steps in order.
 
-- [ ] **Remaining: `pllc_conversions.checklist` still exists as a column.** The task now
-      carries the same six items, so progress can be ticked in two places and they can
-      disagree. The column is written at creation and PATCHable via `entity/routes.ts`.
-      Retiring it means deciding whether the ops UI reads the task's checklist instead —
-      a small UI question, not a data-model one. Left for Brian to sequence rather than
-      guessed at.
+- [x] **`pllc_conversions.checklist` RETIRED 2026-08-17** (migration 0069), on the soto_status
+      pattern — and it needed no mirror phase, because the reader inventory came back empty.
+      Nothing in either frontend read it; there is no PLLC screen yet, so the only consumer of
+      `GET /pllc-conversions` was a test.
+
+      · The READ moved: that endpoint composes the checklist from `task_checklist_items` and
+        returns `taskId` beside it, so a future screen reads the one source and ticks through
+        the `/tasks/:id/checklist` endpoints that already exist. `taskId` is nullable — a
+        conversion predating the task has none, and minting one on read would be a write
+        hiding in a GET.
+      · The WRITE is refused with a 400 naming the task endpoint, not dropped. Removing the
+        field from the zod schema would have stripped it and answered 200, so someone ticking
+        an item would be told it worked and see nothing change.
+      · The column went in ONE step rather than lingering as a mirror nobody reads, which is
+        how a mirror quietly becomes a second source of truth again.
+      · Production: column gone, zero conversions (the module has never fired), services green.
