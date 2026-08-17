@@ -2001,7 +2001,29 @@ Chicago disagree on the date. Three assertions in document-chase, one in billing
       used across billing, tasks and audit. The latch (shipped 2026-08-16) closes the
       duplicate-acceptance hole on its own; this closes the partial-write one.
 
-- [ ] **Same shape, other paths.** `recordEfileResult`, packet assembly and quote CREATION
-      are all non-transactional in the same way. Acceptance went first because it takes
-      money and creates commitments. Whatever pattern part two settles is the one these
-      should follow.
+- [x] **Same shape, other paths — DONE 2026-08-17 for the three you named.** Quote creation,
+      e-file results (both branches) and packet assembly (Master signature + packet creation)
+      are each one transaction now. Five tests, each injecting a real trigger failure at the
+      LAST write in its sequence; sabotaging all four wraps fails exactly those five.
+
+## THE OUTBOX TRIGGER IS ABOUT TO FIRE — two paths send BEFORE they commit
+
+Found while doing the above, deliberately NOT changed: two sequences reach outward in the
+middle, so wrapping them in a transaction is the wrong move — it would put an email inside a
+transaction, which is wrong twice over (unrecallable, and it holds a pool connection).
+
+- [ ] **** () emails the client the
+      signature link and THEN calls . If the mark fails, the client is
+      holding a packet the system believes was never sent — no follow-up, no ladder, and the
+      packet still reads unsent to every screen. Inverse of the invoice bug: there the send
+      was too early, here the record is too late.
+- [ ] **** () calls ,
+      which sends the invoice email inside a multi-write sequence. Not reachable from
+       (which only moves to /), so wrapping that
+      function was safe — but this path is the same defect one door over.
+
+      **Both need the acceptance treatment: durable state in a transaction, send after the
+      commit, loud task on failure. Doing either one creates a SECOND post-commit effect
+      path — which is exactly the trigger you named for building the transactional outbox.**
+      So this is one decision, not three: fix these two and build the outbox, or leave them
+      until you want the outbox. Brian rules; I am not taking that unilaterally.

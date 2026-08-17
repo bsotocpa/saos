@@ -195,45 +195,63 @@ export async function createQuote(
     }
   }
 
-  const { rows } = await app.db.query<{ id: string }>(
-    `INSERT INTO quotes
-       (contact_id, business_id, language, bundle_slug, price_book_version_id,
-        subtotal_cents, discount_cents, total_cents, range_min_cents, range_max_cents,
-        deposit_item_code, expires_at, created_by_staff_id, notes,
-        interview_answers, range_basis)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16)
-     RETURNING id`,
-    [
-      input.contactId, input.businessId ?? null, input.language ?? 'en', input.bundleSlug ?? null, version.id,
-      subtotalCents, discountCents, totalCents, rangeMinCents, rangeMaxCents,
-      input.depositItemCode ?? null,
-      input.expiresInDays ? `${addDays(todayChicago(), input.expiresInDays)}T23:59:59Z` : null,
-      actor.id, input.notes ?? null,
-      input.interviewAnswers ? JSON.stringify(input.interviewAnswers) : null,
-      input.asRange ? (input.rangeBasis ?? 'total') : null,
-    ]
-  );
-  const quoteId = rows[0]!.id;
-  for (const [i, l] of lines.entries()) {
-    await app.db.query(
-      `INSERT INTO quote_line_items
-         (quote_id, item_code, description_en, description_es, quantity, unit_cents, line_cents,
-          min_cents, max_cents, is_optional, chosen, is_pass_through, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+  /*
+   * ONE TRANSACTION (#48, same shape as acceptance).
+   *
+   * A quote is a header plus N line items, written one statement at a time. A failure
+   * part-way through the loop left a quote carrying SOME of its lines — and a quote missing
+   * lines is not a broken record, it is a quote that UNDER-PRICES THE WORK. Nothing
+   * downstream could tell: `subtotal_cents` on the header still says what the full set came
+   * to, so the totals and the lines would disagree, and the coverage gate would decide what
+   * schedules the quote implies from an incomplete set of items.
+   *
+   * The audit row is inside for the same reason it is inside everywhere else — a quote with
+   * no record of who built it, or a record of a quote that does not exist, are both wrong.
+   *
+   * Nothing here reaches outward. A quote is not sent until `sendQuote`, which is where the
+   * email lives.
+   */
+  return withTransaction(app.db, async () => {
+    const { rows } = await app.db.query<{ id: string }>(
+      `INSERT INTO quotes
+         (contact_id, business_id, language, bundle_slug, price_book_version_id,
+          subtotal_cents, discount_cents, total_cents, range_min_cents, range_max_cents,
+          deposit_item_code, expires_at, created_by_staff_id, notes,
+          interview_answers, range_basis)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16)
+       RETURNING id`,
       [
-        quoteId, l.itemCode, l.descriptionEn, l.descriptionEs, l.quantity, l.unitCents,
-        l.unitCents === null ? null : Math.round(l.unitCents * l.quantity),
-        l.minCents, l.maxCents, l.isOptional, l.chosen, l.isPassThrough, i,
+        input.contactId, input.businessId ?? null, input.language ?? 'en', input.bundleSlug ?? null, version.id,
+        subtotalCents, discountCents, totalCents, rangeMinCents, rangeMaxCents,
+        input.depositItemCode ?? null,
+        input.expiresInDays ? `${addDays(todayChicago(), input.expiresInDays)}T23:59:59Z` : null,
+        actor.id, input.notes ?? null,
+        input.interviewAnswers ? JSON.stringify(input.interviewAnswers) : null,
+        input.asRange ? (input.rangeBasis ?? 'total') : null,
       ]
     );
-  }
-  await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
-    action: 'quote.created', objectType: 'quote', objectId: quoteId,
-    contactId: input.contactId,
-    details: { bundle: input.bundleSlug ?? null, total_cents: totalCents, lines: lines.length },
+    const quoteId = rows[0]!.id;
+    for (const [i, l] of lines.entries()) {
+      await app.db.query(
+        `INSERT INTO quote_line_items
+           (quote_id, item_code, description_en, description_es, quantity, unit_cents, line_cents,
+            min_cents, max_cents, is_optional, chosen, is_pass_through, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [
+          quoteId, l.itemCode, l.descriptionEn, l.descriptionEs, l.quantity, l.unitCents,
+          l.unitCents === null ? null : Math.round(l.unitCents * l.quantity),
+          l.minCents, l.maxCents, l.isOptional, l.chosen, l.isPassThrough, i,
+        ]
+      );
+    }
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      action: 'quote.created', objectType: 'quote', objectId: quoteId,
+      contactId: input.contactId,
+      details: { bundle: input.bundleSlug ?? null, total_cents: totalCents, lines: lines.length },
+    });
+    return { id: quoteId, totalCents, rangeMinCents, rangeMaxCents };
   });
-  return { id: quoteId, totalCents, rangeMinCents, rangeMaxCents };
 }
 
 /** Send the quote: mints the client link, pins the version, moves the pipeline. */

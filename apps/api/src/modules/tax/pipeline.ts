@@ -10,6 +10,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
+import { withTransaction } from '../../db.ts';
 import { AppError } from '../../types.ts';
 import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
@@ -202,6 +203,42 @@ export async function recordEfileResult(
     throw new AppError(409, 'not_filed', `E-file results apply to filed returns — this one is '${te.stage}'.`);
   }
 
+  /*
+   * ONE TRANSACTION, BOTH BRANCHES (#48, same shape as acceptance).
+   *
+   * This is the path that turns an IRS response into everything that follows it, and each
+   * branch is a chain where a break leaves the return telling one story and its surroundings
+   * another:
+   *
+   *   ACCEPTED — stamp `efile_accepted_at`, move the stage to `completed`, then close the
+   *   engagement and recompute the client's lifecycle (#44 §4). Break it midway and the
+   *   return is accepted while the engagement stays open forever, which is the exact untruth
+   *   #44 §4 was built to remove, reintroduced by a failed write instead of a missing one.
+   *
+   *   REJECTED — stamp the reject code and the perfection deadline, move the stage, then
+   *   create the owned re-file task and alert its owner. Break it midway and the return
+   *   reads `rejected` with a live perfection clock and NOBODY OWNS IT: no task, no alert,
+   *   and the D3/D7/D14/D30 ladder has nothing to hang from. The original filing date is
+   *   what runs out, silently.
+   *
+   * Nothing in either branch reaches outward — checked call by call. `transitionStage`,
+   * `createTask` and `notifyOnce` are all database-only, and the client is not told about an
+   * e-file result from here at all.
+   */
+  return withTransaction(app.db, () => applyEfileResult(app, actor, taxEngagementId, input, te));
+}
+
+/** The durable half of {@link recordEfileResult} — see the transaction note there. */
+async function applyEfileResult(
+  app: FastifyInstance,
+  actor: { staffId: string | null; label: string },
+  taxEngagementId: string,
+  input: { result: 'accepted' | 'rejected'; rejectCode?: string | undefined; rejectReason?: string | undefined; today?: string | undefined },
+  te: {
+    return_type: string; tax_year: number; preparer_id: string | null;
+    contact_id: string; first_name: string; last_name: string;
+  }
+): Promise<{ stage: TaxStage; perfectionDeadline: string | null }> {
   if (input.result === 'accepted') {
     await app.db.query(`UPDATE tax_engagements SET efile_accepted_at = now() WHERE id = $1`, [taxEngagementId]);
     await transitionStage(app, actor, taxEngagementId, 'completed', { note: 'e-file ACCEPTED' });

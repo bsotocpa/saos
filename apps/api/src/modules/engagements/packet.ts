@@ -23,6 +23,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { stripWetSignatureLines } from '../compliance/consent-presentation.ts';
+import { withTransaction } from '../../db.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
 
@@ -337,27 +338,35 @@ export async function createPacket(
     );
   }
 
-  const { rows } = await app.db.query<{ id: string }>(
-    `INSERT INTO engagement_packets
-       (contact_id, master_template_key, master_version, schedule_codes,
-        created_by_staff_id, attest_addendum_id)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [
-      contactId, preview.masterKey, preview.masterVersion, preview.codes, actor.id,
-      preview.attestAddendum?.id ?? null,
-    ]
-  );
-  await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
-    action: 'packet.created', objectType: 'engagement_packet', objectId: rows[0]!.id,
-    contactId,
-    details: {
-      schedules: preview.codes, reasons: preview.reasons, master_version: preview.masterVersion,
-      attest_addendum_id: preview.attestAddendum?.id ?? null,
-      attest_engagement_type: preview.attestAddendum?.engagementType ?? null,
-    },
+  /*
+   * The packet and its audit row land together (#48). Only two writes, but they are the two
+   * that must not disagree: a legal packet with no record of who assembled it, or a record of
+   * a packet that does not exist. CLAUDE.md requires audit coverage on anything touching
+   * client documents, and "the audit write failed" is not an exception it grants.
+   */
+  return withTransaction(app.db, async () => {
+    const { rows } = await app.db.query<{ id: string }>(
+      `INSERT INTO engagement_packets
+         (contact_id, master_template_key, master_version, schedule_codes,
+          created_by_staff_id, attest_addendum_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [
+        contactId, preview.masterKey, preview.masterVersion, preview.codes, actor.id,
+        preview.attestAddendum?.id ?? null,
+      ]
+    );
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      action: 'packet.created', objectType: 'engagement_packet', objectId: rows[0]!.id,
+      contactId,
+      details: {
+        schedules: preview.codes, reasons: preview.reasons, master_version: preview.masterVersion,
+        attest_addendum_id: preview.attestAddendum?.id ?? null,
+        attest_engagement_type: preview.attestAddendum?.engagementType ?? null,
+      },
+    });
+    return { packetId: rows[0]!.id, scheduleCodes: preview.codes, masterKey: preview.masterKey };
   });
-  return { packetId: rows[0]!.id, scheduleCodes: preview.codes, masterKey: preview.masterKey };
 }
 
 /**
@@ -547,45 +556,67 @@ export async function recordMasterSignature(
   if (!p) throw new AppError(404, 'not_found', 'Packet not found.');
   if (p.status === 'signed') throw new AppError(409, 'already_signed', 'This packet is already signed.');
 
-  await app.db.query(
-    `UPDATE engagement_packets
-     SET status = 'signed', signed_at = now(), signature_method = $2
-     WHERE id = $1`,
-    [packetId, meta.method ?? 'docuseal']
-  );
-
-  for (const code of p.schedule_codes) {
-    const tpl = await app.db.query<{ version: number }>(
-      `SELECT t.version FROM templates t
-       JOIN service_schedules s ON s.template_key = t.key
-       WHERE s.schedule_code = $1`,
-      [code]
-    );
+  /*
+   * ONE TRANSACTION (#48, same shape as acceptance) — and of the paths that needed it, this
+   * is the one whose partial state is worst.
+   *
+   * A client signs ONE document that covers N schedules. The packet is marked signed, then
+   * each schedule's acceptance is inserted ONE AT A TIME, then the legacy flag, then the
+   * audit, then the lifecycle. A break in the middle of that loop leaves the system holding a
+   * signed Master that records acceptance of only SOME of the schedules the client actually
+   * signed for.
+   *
+   * `schedule_acceptances` is not bookkeeping. It is the evidence of what the client agreed
+   * to, `coveredSchedules()` reads it to decide whether a quote may be sent, and the packet
+   * itself would already say `signed` — so nothing downstream has any reason to doubt it. The
+   * document on file and the record of it would simply disagree, quietly, about the scope of
+   * a signed agreement.
+   *
+   * Nothing here reaches outward. The two occurrences of 'docuseal' below are the signature
+   * METHOD as a stored value, not a call to the vendor — the envelope work happens before
+   * this function is ever reached.
+   */
+  return withTransaction(app.db, async () => {
     await app.db.query(
-      `INSERT INTO schedule_acceptances
-         (contact_id, schedule_code, via, packet_id, template_version, ip, user_agent)
-       VALUES ($1, $2, 'master_signature', $3, $4, $5, $6)
-       ON CONFLICT (contact_id, schedule_code) DO NOTHING`,
-      [p.contact_id, code, packetId, tpl.rows[0]?.version ?? 1, meta.ip ?? null, meta.userAgent ?? null]
+      `UPDATE engagement_packets
+       SET status = 'signed', signed_at = now(), signature_method = $2
+       WHERE id = $1`,
+      [packetId, meta.method ?? 'docuseal']
     );
-  }
 
-  // The old single flag stays in step, so every existing gate keeps working.
-  await app.db.query(
-    `UPDATE contacts SET engagement_letter_status = 'signed' WHERE id = $1`,
-    [p.contact_id]
-  );
-  await writeAudit(app.db, {
-    actorType: 'client', actorId: p.contact_id, actorLabel: 'master signature',
-    action: 'packet.signed', objectType: 'engagement_packet', objectId: packetId,
-    contactId: p.contact_id,
-    details: { schedules: p.schedule_codes, master_version: p.master_version, ...meta },
+    for (const code of p.schedule_codes) {
+      const tpl = await app.db.query<{ version: number }>(
+        `SELECT t.version FROM templates t
+         JOIN service_schedules s ON s.template_key = t.key
+         WHERE s.schedule_code = $1`,
+        [code]
+      );
+      await app.db.query(
+        `INSERT INTO schedule_acceptances
+           (contact_id, schedule_code, via, packet_id, template_version, ip, user_agent)
+         VALUES ($1, $2, 'master_signature', $3, $4, $5, $6)
+         ON CONFLICT (contact_id, schedule_code) DO NOTHING`,
+        [p.contact_id, code, packetId, tpl.rows[0]?.version ?? 1, meta.ip ?? null, meta.userAgent ?? null]
+      );
+    }
+
+    // The old single flag stays in step, so every existing gate keeps working.
+    await app.db.query(
+      `UPDATE contacts SET engagement_letter_status = 'signed' WHERE id = $1`,
+      [p.contact_id]
+    );
+    await writeAudit(app.db, {
+      actorType: 'client', actorId: p.contact_id, actorLabel: 'master signature',
+      action: 'packet.signed', objectType: 'engagement_packet', objectId: packetId,
+      contactId: p.contact_id,
+      details: { schedules: p.schedule_codes, master_version: p.master_version, ...meta },
+    });
+    // #42: signing the Master is one half of "active" — the lifecycle asks the record
+    // for the other half (an open engagement) rather than assuming it.
+    const { refreshContactStatus } = await import('../crm/lifecycle.ts');
+    await refreshContactStatus(app, p.contact_id, 'master_signed');
+    return { contactId: p.contact_id, accepted: p.schedule_codes };
   });
-  // #42: signing the Master is one half of "active" — the lifecycle asks the record
-  // for the other half (an open engagement) rather than assuming it.
-  const { refreshContactStatus } = await import('../crm/lifecycle.ts');
-  await refreshContactStatus(app, p.contact_id, 'master_signed');
-  return { contactId: p.contact_id, accepted: p.schedule_codes };
 }
 
 /**
