@@ -398,11 +398,21 @@ test('a bookkeeping client can finally see their own work — the portal was tax
   assert.equal(list[0]!.stage, null, 'no stage on a service that does not end');
 
   /*
-   * And the name shown to the client is NOT engagements.title. That column is internal
-   * and full of legacy values — this row's title is literally "Accepted quote", which is
-   * not a thing to tell someone about their own business.
+   * INVERTED 2026-08-16 by #41 option (1), which Brian approved.
+   *
+   * This asserted that `title` is never served, because when #35 shipped that column held
+   * "Accepted quote" placeholders and putting one in front of a client would have been
+   * worse than a generic label. Those are backfilled now, and #19's composition writes
+   * titles like "Taxes — 1040 individual return +2 more" — which is the only thing that
+   * can tell two engagements on one service line apart.
+   *
+   * So the title IS served, and the portal decides: it shows the title when it says more
+   * than the bare service line, and falls through to the translated label when it does
+   * not. What has not changed is the rule underneath — a client is never shown a
+   * placeholder or an untranslated English label where a real name belongs.
    */
-  assert.ok(!('title' in list[0]!), 'the internal title is never served to a client');
+  assert.ok('title' in list[0]!, 'the title is served so the portal can use #19 composition');
+  assert.equal(list[0]!.title, 'Accepted quote', 'including a legacy one, which the portal then declines to show');
 });
 
 test('a tax engagement with no tax row is still the client’s work, and still shows', async () => {
