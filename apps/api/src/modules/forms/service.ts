@@ -361,7 +361,7 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
   const portalUser = await ensurePortalUser(app, contactId);
   await issueMagicLink(app, portalUser.id, { purpose: portalUser.created ? 'invite' : 'login' });
 
-  const rene = await firstActiveByRole(app.db, 'comms_billing');
+  const rene = await ownerForRole(app.db, 'comms_billing');
   if (rene) {
     await notifyOnce(app.db, {
       staffId: rene, type: 'new_intake', severity: 'info',

@@ -7,7 +7,7 @@
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { isAutomationEnabled } from '../../automations.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { addDays } from '../tax/deadlines.ts';
 
@@ -89,7 +89,7 @@ export async function runEntityComplianceJob(
   // T-60: remind assigned staff (default: Laura's role) + create a task.
   let staffReminders = 0;
   for (const r of await loadDue(addDays(today, staffDays))) {
-    const staffId = r.assigned_staff_id ?? (await firstActiveByRole(app.db, 'va_entity'));
+    const staffId = r.assigned_staff_id ?? (await ownerForRole(app.db, 'va_entity'));
     if (!staffId) continue;
     await notifyOnce(app.db, {
       staffId,
@@ -146,7 +146,7 @@ export async function createPllcConversion(
     detectedVia?: string | undefined;
   }
 ): Promise<{ id: string }> {
-  const laura = await firstActiveByRole(app.db, 'va_entity');
+  const laura = await ownerForRole(app.db, 'va_entity');
   const defaultChecklist = [
     'Verify professional license (IDFPR)',
     'Confirm current entity is improperly formed for a licensed professional',

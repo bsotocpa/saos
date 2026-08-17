@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { notifyOnce, ownerForRole } from '../../staffing.ts';
 import { makeMinioClient } from '../documents/storage.ts';
 import { uploadDocument } from '../documents/service.ts';
 import { scanBuffer } from './scan.ts';
@@ -83,7 +83,7 @@ export async function ingestInboundAttachment(
   });
 
   // Unified inbox alert — Rene owns triage.
-  const rene = await firstActiveByRole(app.db, 'comms_billing');
+  const rene = await ownerForRole(app.db, 'comms_billing');
   if (rene) {
     await notifyOnce(app.db, {
       staffId: rene,

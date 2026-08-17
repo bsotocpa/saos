@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { refreshEnrichmentGaps } from '../crm/service.ts';
 import { cascadeUnblock } from '../tasks/service.ts';
 import { computeQuote } from '../pricing/service.ts';
@@ -433,7 +433,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
   app.post('/portal/service-requests', scoped, async (request, reply) => {
     const client = request.client!;
     const b = ServiceRequestBody.parse(request.body);
-    const rene = await firstActiveByRole(app.db, 'comms_billing');
+    const rene = await ownerForRole(app.db, 'comms_billing');
     const task = await app.db.query<{ id: string }>(
       `INSERT INTO tasks (title, description, assigned_staff_id, contact_id, priority, source, source_type, due_date)
        VALUES ($1, $2, $3, $4, 1, 'automation', 'service_request', CURRENT_DATE + 1)

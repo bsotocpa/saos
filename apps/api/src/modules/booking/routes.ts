@@ -26,7 +26,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
 import { isAutomationEnabled } from '../../automations.ts';
-import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
+import { notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 
@@ -164,7 +164,7 @@ export function registerBookingRoutes(app: FastifyInstance): void {
 
     // ── Lane 2: questions are ALWAYS free — task the team, bill nothing.
     if (questionSlugs.includes(slug)) {
-      const rene = await firstActiveByRole(app.db, 'comms_billing');
+      const rene = await ownerForRole(app.db, 'comms_billing');
       await app.db.query(
         `INSERT INTO tasks (title, assigned_staff_id, contact_id, priority, source, source_type)
          VALUES ($1, $2, $3, 0, 'automation', 'booking_question')`,

@@ -8,7 +8,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { notifyOnce, ownerForRole } from '../../staffing.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 
 export type SosStatus = 'good_standing' | 'not_good_standing' | 'not_found';
@@ -95,7 +95,7 @@ export async function runSosCheck(app: FastifyInstance, businessId: string): Pro
   });
 
   if (status === 'not_good_standing') {
-    const laura = await firstActiveByRole(app.db, 'va_entity');
+    const laura = await ownerForRole(app.db, 'va_entity');
     if (laura) {
       await notifyOnce(app.db, {
         staffId: laura,

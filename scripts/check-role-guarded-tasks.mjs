@@ -22,19 +22,31 @@
  * started and nobody was told.
  *
  * A guard that cannot fail on a fresh instance of the rule being broken is a regression test
- * wearing a guard's clothes. So this now checks the rule directly, in two parts:
+ * wearing a guard's clothes. So this checks the rule directly, in four parts — and each part
+ * exists because a previous version of this file missed a real defect:
  *
- *   RULE 1 — the owner passed to createTask() must not come from a no-fallback resolver.
- *   RULE 2 — createTask() must not sit inside an `if (owner)` (the original #17 shape,
- *            still worth catching: it skips the work entirely rather than merely orphaning it).
+ *   RULE 1 — the owner passed to createTask() must come from a resolver with a fallback.
+ *   RULE 2 — createTask() must not sit inside an `if (owner)`, which skips the work entirely
+ *            rather than merely orphaning it. (The original #17 shape.)
+ *   RULE 3 — the recipient passed to notifyOnce() must come from a resolver with a fallback.
+ *            Added 2026-08-17 on Brian's ruling that every alert needs a real recipient. This
+ *            one fails HARDER than rule 1: `notifications.staff_id` is NOT NULL, so an
+ *            unresolved recipient means the alert is not created at all and there is no record
+ *            that anyone should have been told.
+ *   RULE 4 — a task written by RAW `INSERT INTO tasks` is still a task. Eight of those bypass
+ *            createTask() entirely, so rules 1 and 2 could not see them.
+ *
+ * The shape of the mistake keeps repeating: each version watched the exact construct the last
+ * bug used. Rules 3 and 4 were both found while extending it, not while fixing something.
  *
  * WHAT IS DELIBERATELY ALLOWED:
  *   · `firstActiveByRole(db, 'ceo')` — the CEO IS the fallback; asking for it directly is the
  *     end of the chain, not a missing link.
- *   · `firstActiveByRole` for anything that is not a task owner — an alert recipient, a
- *     report column, a fan-out list. Only `assignedStaffId` is governed here.
- *   · gating `notifyOnce()` on a real person. A notification row with no staff_id belongs to
- *     nobody's queue, so that `if` is correct and must stay.
+ *   · `firstActiveByRole` for anything that is neither a task owner nor an alert recipient —
+ *     a report column, an escalation fan-out, a scoping check.
+ *   · gating `notifyOnce()` on a real person. `notifications.staff_id` is NOT NULL, so that
+ *     `if` is not a convention — it is the only way to call it safely, and it must stay. The
+ *     rule is about WHERE the person comes from, not whether the check exists.
  *
  * Run via `npm run check:role-tasks` (wired into `npm test`).
  */
@@ -47,29 +59,52 @@ const NO_FALLBACK = 'firstActiveByRole';
 /** The resolver that falls back. */
 const WITH_FALLBACK = 'ownerForRole';
 
-const files = execSync('grep -rl "createTask(" apps/api/src --include=*.ts', { encoding: 'utf8' })
+const files = execSync(
+  'grep -rlE "createTask\\(|notifyOnce\\(" apps/api/src --include=*.ts',
+  { encoding: 'utf8' }
+)
   .trim()
   .split('\n')
-  .filter((f) => f && !f.includes('tasks/service.ts')); // where createTask is defined
+  .filter(
+    (f) =>
+      f &&
+      !f.includes('tasks/service.ts') && // where createTask is defined
+      !f.includes('staffing.ts')         // where notifyOnce and the resolvers are defined
+  );
 
 const violations = [];
 
 /**
- * The expression a call passes as `assignedStaffId`.
+ * The expression a call passes as `field` — `assignedStaffId` for a task, `staffId` for an
+ * alert.
  *
- * Scans forward from the `createTask(` line to the end of that call's argument object, so a
- * multi-line call — which is all of them — is read whole. Bounded rather than brace-matched:
- * a task literal running past 40 lines is a different problem.
+ * Scans forward from the call line to the end of that call's argument object, so a multi-line
+ * call — which is all of them — is read whole. Bounded rather than brace-matched: an argument
+ * literal running past 40 lines is a different problem.
  */
-function assigneeExpression(lines, callLine) {
+function recipientExpression(lines, callLine, field) {
+  const re = new RegExp(field + ':\\s*(.+?),?\\s*$');
   for (let j = callLine; j < Math.min(callLine + 40, lines.length); j++) {
-    const m = /assignedStaffId:\s*(.+?),?\s*$/.exec(lines[j]);
+    const m = re.exec(lines[j]);
     if (m) return { expr: m[1].replace(/,$/, '').trim(), line: j };
     // Stop at the end of the call rather than wandering into the next statement.
     if (j > callLine && /^\s*\}\s*\)/.test(lines[j])) return null;
   }
   return null;
 }
+
+/**
+ * The two things a role can be resolved FOR, and what breaks when the role is empty.
+ *
+ * They fail differently and both fail silently, which is why one rule covers both:
+ *   · a TASK with no owner still exists, in nobody's queue
+ *   · an ALERT with no recipient cannot exist at all — `notifications.staff_id` is NOT NULL,
+ *     so the call is skipped and there is no record that anyone should have been told
+ */
+const RECIPIENT_KINDS = [
+  { call: 'createTask(', field: 'assignedStaffId', what: 'the task owner', rule: 1 },
+  { call: 'notifyOnce(', field: 'staffId', what: 'the alert recipient', rule: 3 },
+];
 
 /**
  * Trace an expression back to the resolver that produced it.
@@ -151,22 +186,75 @@ function codeOnly(src) {
 for (const file of files) {
   const lines = codeOnly(readFileSync(file, 'utf8'));
 
+  /*
+   * ── RULE 4: a task written by RAW SQL is still a task ──
+   *
+   * Found while extending this to alerts: eight `INSERT INTO tasks` statements bypass
+   * `createTask()` entirely. Rules 1 and 2 watch the function call, so every one of them was
+   * invisible — the same "guard checks the shape" failure this file keeps teaching, one layer
+   * further out. Brian's rule is that no createTask PATH may depend on a resolver without
+   * fallback, and a raw insert is a path.
+   *
+   * The assignee is positional in a raw insert, so the resolver cannot be traced by name.
+   * The check is therefore the nearest owner declaration ABOVE the insert, which is how every
+   * one of these is written. That is a heuristic and says so — it can only produce a false
+   * POSITIVE (an unrelated nearby resolver), never a false negative, which is the right
+   * direction for a guard to be wrong in.
+   *
+   * A raw insert also skips the SOP hook that `createTask()` applies. That is a separate and
+   * larger problem, logged in tasks/todo.md rather than fixed here.
+   */
   for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].includes('createTask(')) continue;
-    if (/^\s*(\/\/|\*)/.test(lines[i])) continue; // a mention in a comment
+    if (!/INSERT INTO tasks\b/.test(lines[i])) continue;
+    // Only inserts that actually set an owner; an unassigned-by-design insert is its own case.
+    const stmt = lines.slice(i, Math.min(i + 12, lines.length)).join('\n');
+    if (!/assigned_staff_id/.test(stmt)) continue;
 
-    // ── RULE 1: the assignee must come from a resolver that falls back ──
-    const assignee = assigneeExpression(lines, i);
-    if (assignee) {
-      const resolved = resolverFor(lines, assignee.expr, assignee.line);
+    for (let j = i; j >= Math.max(0, i - 12); j--) {
+      const m = new RegExp(
+        '(?:const|let)\\s+\\w+\\s*=\\s*(?:[\\w.]+\\s*\\?\\?\\s*)?\\(?\\s*await\\s+(' +
+          NO_FALLBACK + '|' + WITH_FALLBACK + ")\\(\\s*[^,]+,\\s*'([^']+)'"
+      ).exec(lines[j]);
+      if (!m) continue;
+      const [, resolver, role] = m;
+      if (resolver === NO_FALLBACK && role !== 'ceo') {
+        violations.push({
+          rule: 4,
+          what: 'the task owner (raw INSERT INTO tasks)',
+          field: 'assigned_staff_id',
+          file,
+          line: j + 1,
+          role,
+        });
+      }
+      break; // nearest declaration only
+    }
+  }
+
+  /*
+   * ── RULES 1 and 3: the recipient must come from a resolver that falls back ──
+   *
+   * One loop over both kinds, because it is one rule. Splitting it would invite the next
+   * person to fix a task site and leave the alert beside it — which is exactly how the tax
+   * pipeline ended up with an unassigned task AND no alert.
+   */
+  for (const kind of RECIPIENT_KINDS) {
+    for (let i = 0; i < lines.length; i++) {
+      if (!lines[i].includes(kind.call)) continue;
+
+      const recipient = recipientExpression(lines, i, kind.field);
+      if (!recipient) continue;
+      const resolved = resolverFor(lines, recipient.expr, recipient.line);
       // Asking for the CEO directly IS the fallback.
       if (resolved.kind === 'no_fallback' && resolved.role !== 'ceo') {
         violations.push({
-          rule: 1,
+          rule: kind.rule,
+          what: kind.what,
+          field: kind.field,
           file,
-          line: (resolved.declLine ?? assignee.line) + 1,
+          line: (resolved.declLine ?? recipient.line) + 1,
           role: resolved.role,
-          expr: assignee.expr,
+          expr: recipient.expr,
         });
       }
     }
@@ -233,19 +321,21 @@ for (const file of files) {
 }
 
 if (violations.length > 0) {
-  const r1 = violations.filter((v) => v.rule === 1);
+  const r13 = violations.filter((v) => v.rule === 1 || v.rule === 3 || v.rule === 4);
   const r2 = violations.filter((v) => v.rule === 2);
-  console.error(`\n✗ ${violations.length} task owner(s) that can silently resolve to nobody:\n`);
+  console.error(`\n✗ ${violations.length} recipient(s) that can silently resolve to nobody:\n`);
 
-  for (const v of r1) {
+  for (const v of r13) {
     console.error(`  ${v.file}:${v.line}`);
     console.error(
-      `      assignedStaffId comes from ${NO_FALLBACK}(…, '${v.role}'), which returns null the`
+      `      ${v.what} (${v.field}) comes from ${NO_FALLBACK}(…, '${v.role}'), which returns null`
     );
+    console.error(`      the moment '${v.role}' is unfilled — and it is unfilled today.`);
     console.error(
-      `      moment '${v.role}' is unfilled — and it is unfilled today. The task would be created`
+      v.rule === 1
+        ? `      The task would be created with no owner, in nobody's queue.`
+        : `      notifications.staff_id is NOT NULL, so the alert is not created at all — there is\n      no record that anyone should have been told.`
     );
-    console.error(`      with no owner, and any alert gated on it would not fire.`);
     console.error(`      Fix: ${WITH_FALLBACK}(app.db, '${v.role}')  — falls back to the CEO.\n`);
   }
   for (const v of r2) {
@@ -268,5 +358,6 @@ if (violations.length > 0) {
 }
 
 console.log(
-  `✓ Every task owner resolves through a resolver with a fallback (${files.length} files creating tasks).`
+  `✓ Every task owner and alert recipient resolves through a resolver with a fallback ` +
+    `(${files.length} files creating work or raising alerts).`
 );
