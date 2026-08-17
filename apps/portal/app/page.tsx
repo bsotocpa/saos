@@ -145,7 +145,8 @@ export default function Dashboard() {
   const [packetToSign, setPacketToSign] = useState(false);
   const [pendingSchedules, setPendingSchedules] = useState(0);
   const [consentOffers, setConsentOffers] = useState(0);
-  const [bookingUrl, setBookingUrl] = useState<string | null>(null);
+  // The ONBOARDING CONSULTATION — checklist step 6 only (#39).
+  const [kickoffUrl, setKickoffUrl] = useState<string | null>(null);
   const [supportUrl, setSupportUrl] = useState<string | null>(null);
   const [irsUrl, setIrsUrl] = useState<string | null>(null);
   const [stateUrl, setStateUrl] = useState<string | null>(null);
@@ -166,7 +167,7 @@ export default function Dashboard() {
     void Promise.all([
       api<{
         onboarding: Onboarding | null;
-        bookingUrl: string | null;
+        kickoffBookingUrl: string | null;
         supportBookingUrl: string | null;
         irsPaymentUrl: string | null;
         statePaymentUrl: string | null;
@@ -175,7 +176,7 @@ export default function Dashboard() {
         bookingApplies: boolean;
       }>('/portal/onboarding').then((r) => {
         setOnboarding(r.onboarding);
-        setBookingUrl(r.bookingUrl ?? null);
+        setKickoffUrl(r.kickoffBookingUrl ?? null);
         setSupportUrl(r.supportBookingUrl ?? null);
         setIrsUrl(r.irsPaymentUrl ?? null);
         setStateUrl(r.statePaymentUrl ?? null);
@@ -278,7 +279,7 @@ export default function Dashboard() {
             const done = Boolean(onboarding?.[s.key as keyof Onboarding]);
             // Booking lives on an external scheduler, so its destination is a setting
             // rather than a route. Every other step is a portal page.
-            const href = s.key === 'step_book_consult_at' ? (bookingUrl ?? '') : s.href;
+            const href = s.key === 'step_book_consult_at' ? (kickoffUrl ?? '') : s.href;
             return (
               /* Keyed on the COLUMN, not on `step`: self-completing steps have no
                  `step` name, and there are now four of them — React would see four
@@ -366,7 +367,7 @@ export default function Dashboard() {
         show the client the meeting they made — and if it is not here, we genuinely do not
         have it, which is a truthful thing for the client to be able to see.
       */}
-      {bookingUrl || bookings.length > 0 ? (
+      {supportUrl || bookings.length > 0 ? (
         <section className="card">
           <h2>{t('sched_title')}</h2>
           {bookings.length > 0 ? (
@@ -387,8 +388,13 @@ export default function Dashboard() {
           ) : (
             <p className="muted small">{t('sched_none')}</p>
           )}
-          {bookingUrl ? (
-            <a className="btn accent block" href={bookingUrl} target="_blank" rel="noreferrer">
+          {/*
+            SUPPORT, not the kickoff (#39). A client reading this section has finished
+            onboarding — "book a meeting" means they want to talk to us about something,
+            not repeat the consultation that started the engagement.
+          */}
+          {supportUrl ? (
+            <a className="btn accent block" href={supportUrl} target="_blank" rel="noreferrer">
               {t('sched_book')}
             </a>
           ) : null}

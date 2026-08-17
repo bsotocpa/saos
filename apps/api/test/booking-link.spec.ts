@@ -105,7 +105,7 @@ test('the checklist endpoint returns a prefilled link, and null while scheduling
   // Seeded state: the setting is null, so step 4 must not become a link at all.
   const closed = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: cookie });
   assert.equal(closed.statusCode, 200, closed.body);
-  assert.equal((closed.json() as { bookingUrl: string | null }).bookingUrl, null,
+  assert.equal((closed.json() as { kickoffBookingUrl: string | null }).kickoffBookingUrl, null,
     'null setting means scheduling is not open — the portal says so instead of misrouting');
 
   await app.db.query(
@@ -114,7 +114,67 @@ test('the checklist endpoint returns a prefilled link, and null while scheduling
   );
   const open = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: cookie });
   assert.equal(open.statusCode, 200, open.body);
-  const url = new URL((open.json() as { bookingUrl: string }).bookingUrl);
+  const url = new URL((open.json() as { kickoffBookingUrl: string }).kickoffBookingUrl);
   assert.equal(url.searchParams.get('name'), 'Synthetic Booker', 'name came from the session, not the browser');
   assert.equal(url.searchParams.get('email'), 'booker@example.test');
+});
+
+/*
+ * #39 — a booking link has to open the right conversation (Brian, 2026-08-16).
+ *
+ * The post-onboarding scheduling section pointed at the ONBOARDING CONSULTATION, so a
+ * client who had finished onboarding and pressed "Reservar una reunión" was sent to book
+ * a second kickoff. The ruling: checklist step 6 keeps onboarding-consultation;
+ * post-onboarding "a meeting" means customer-support.
+ *
+ * The fix was to name the fields for the conversation they open — `bookingUrl` said
+ * nothing, so using it in a support context read fine. This pins that they stay distinct,
+ * because the failure is invisible: both links work, and both take the client somewhere.
+ */
+test('kickoff and support are different destinations, and both arrive prefilled', async () => {
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Twolinks', email: 'twolinks@example.test',
+  });
+  const pu = await app.db.query<{ id: string }>(
+    `INSERT INTO portal_users (contact_id, email) VALUES ($1, $2) RETURNING id`,
+    [c.id, 'twolinks@example.test']
+  );
+  const token = randomBytes(32).toString('base64url');
+  await app.db.query(
+    `INSERT INTO portal_sessions (portal_user_id, token_hash, expires_at)
+     VALUES ($1, $2, now() + interval '1 hour')`,
+    [pu.rows[0]!.id, createHash('sha256').update(token).digest('hex')]
+  );
+  const cookie = { cookie: `saos_portal_session=${token}` };
+
+  await app.db.query(
+    `INSERT INTO app_settings (key, value) VALUES ('booking.client_booking_url', to_jsonb($1::text))
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    ['https://book.sotoaccounting.com/sotocpa/onboarding-consultation']
+  );
+  await app.db.query(
+    `INSERT INTO app_settings (key, value) VALUES ('booking.support_booking_url', to_jsonb($1::text))
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    ['https://book.sotoaccounting.com/sotocpa/customer-support']
+  );
+
+  const res = await app.inject({ method: 'GET', url: '/portal/onboarding', headers: cookie });
+  assert.equal(res.statusCode, 200, res.body);
+  const body = res.json() as { kickoffBookingUrl: string; supportBookingUrl: string };
+
+  assert.match(body.kickoffBookingUrl, /onboarding-consultation/, 'step 6 books the kickoff');
+  assert.match(body.supportBookingUrl, /customer-support/, 'post-onboarding books support');
+  assert.notEqual(
+    new URL(body.kickoffBookingUrl).pathname,
+    new URL(body.supportBookingUrl).pathname,
+    'a client who has finished onboarding must not be sent to book a second kickoff'
+  );
+
+  // Both are prefilled from the SESSION, so neither asks a signed-in client to retype
+  // their own name and email.
+  for (const url of [body.kickoffBookingUrl, body.supportBookingUrl]) {
+    const u = new URL(url);
+    assert.equal(u.searchParams.get('email'), 'twolinks@example.test');
+    assert.equal(u.searchParams.get('name'), 'Synthetic Twolinks');
+  }
 });

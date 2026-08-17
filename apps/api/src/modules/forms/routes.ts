@@ -405,7 +405,13 @@ export function registerFormRoutes(app: FastifyInstance): void {
     return {
       onboarding: rows[0] ?? null,
       pendingSignatures: pendingEnvelopes.rows[0]!.n,
-      bookingUrl: rawBookingUrl ? prefillBookingUrl(rawBookingUrl, identityRow) : null,
+      /*
+       * Named for the conversation it opens (#39). This is the ONBOARDING CONSULTATION —
+       * checklist step 6 and nothing else. The post-onboarding "book a meeting" is
+       * supportBookingUrl below, because a client who has finished onboarding does not
+       * need a second kickoff.
+       */
+      kickoffBookingUrl: rawBookingUrl ? prefillBookingUrl(rawBookingUrl, identityRow) : null,
       depositApplies: depositOwed.rows[0]!.owed,
       questionnaireApplies,
       consentApplies,
