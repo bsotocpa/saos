@@ -57,6 +57,11 @@ interface Quote {
 }
 interface Engagement {
   id: string; service_line: string; status: string; title: string | null; created_at: string;
+  ended_on: string | null; close_reason: string | null;
+  /** #47 — what was agreed, snapshotted at acceptance. Empty for pre-#47 engagements. */
+  scopeName: string | null;
+  scope: Array<{ itemCode: string; descriptionEn: string; quantity: string; lineCents: number | null; isPassThrough: boolean }>;
+  scopeSummary: { count: number; totalCents: number };
 }
 interface PacketPreview {
   codes: string[];
@@ -710,6 +715,51 @@ export default function ClientPacketPage() {
           <p className="muted small">Working out what this client needs…</p>
         )}
       </section>
+
+      {/*
+        ENGAGEMENTS (#47). This card did not exist: engagements appeared only as a COUNT
+        inside the Returns card and as bare service-line names in a dropdown. So the one
+        surface where Brian would have seen two identical `tax`/`active` rows never showed
+        them side by side — #41 was found on the portal instead.
+
+        Scope is what makes two rows on one service line tell themselves apart, and it is a
+        snapshot of the quote lines at acceptance, so this is the agreement speaking rather
+        than a title someone typed.
+      */}
+      {engagements.length > 0 ? (
+        <section className="card span" style={{ marginTop: 12 }}>
+          <h2>Engagements</h2>
+          {engagements.map((e) => (
+            <div className="quote-line" key={e.id}>
+              <span className="name">
+                {e.scopeName ?? e.title ?? e.service_line}{' '}
+                <span className="badge">{e.status}</span>
+                {e.service_line !== (e.scopeName ?? e.title ?? e.service_line) ? (
+                  <span className="badge">{e.service_line}</span>
+                ) : null}
+              </span>
+              <span className="muted small" style={{ flex: '1 1 100%' }}>
+                {e.scope.length > 0
+                  ? e.scope.filter((s) => !s.isPassThrough).map((s) => s.descriptionEn).join(' · ')
+                  : /*
+                     * NO BACKFILL, Brian's ruling. These were split from a quote in code
+                     * before #47 and the split was never recorded, so what each one covered
+                     * is genuinely unknowable. Saying so beats composing a confident guess.
+                     */
+                    'Scope not recorded — created before scope was captured at acceptance.'}
+              </span>
+              <span className="muted small" style={{ flex: '1 1 100%' }}>
+                started {e.created_at.slice(0, 10)}
+                {e.ended_on ? ` · ended ${e.ended_on}` : ''}
+                {e.close_reason ? ` · ${e.close_reason}` : ''}
+              </span>
+              <span className="amt">
+                {e.scopeSummary.count > 0 ? formatMoney(e.scopeSummary.totalCents) : '—'}
+              </span>
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       <section className="card span" style={{ marginTop: 12 }}>
         <h2>Returns</h2>

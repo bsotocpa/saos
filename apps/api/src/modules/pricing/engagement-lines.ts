@@ -70,11 +70,31 @@ export function engagementLineFor(priceServiceLine: string, itemCode: string): E
   return LINE_MAP[priceServiceLine] ?? null;
 }
 
+/**
+ * One quote line, as it read at acceptance (#47).
+ *
+ * Carried by value rather than by id on purpose: these become `engagement_scope_items`,
+ * which is a snapshot. A later edit to the quote line must not reach the engagement.
+ */
+export interface QuotedScopeItem {
+  sourceQuoteLineId: string;
+  itemCode: string;
+  descriptionEn: string;
+  descriptionEs: string | null;
+  quantity: string;
+  unitCents: number | null;
+  lineCents: number | null;
+  isPassThrough: boolean;
+  sortOrder: number;
+}
+
 export interface QuotedEngagementLine {
   serviceLine: EngagementLine;
   /** Item names on this quote that belong to this line — the title is built from them. */
   itemNames: string[];
   itemCodes: string[];
+  /** #47 — the lines themselves, to be snapshotted onto the engagement. */
+  scope: QuotedScopeItem[];
 }
 
 /** Human label per engagement line, for titles a person can tell apart at a glance. */
@@ -119,8 +139,20 @@ export async function engagementLinesForQuote(
 ): Promise<QuotedEngagementLine[]> {
   const { rows } = await app.db.query<{
     service_line: string; item_code: string; name_en: string; sort_order: number;
+    line_id: string; description_en: string; description_es: string | null;
+    quantity: string; unit_cents: number | null; line_cents: number | null;
+    is_pass_through: boolean;
   }>(
-    `SELECT pbi.service_line::text AS service_line, qli.item_code, pbi.name_en, pbi.sort_order
+    /*
+     * #47 — the line's own text comes back too, not just the price book's name.
+     *
+     * `qli.description_en/_es` is what the CLIENT read and agreed to; `pbi.name_en` is
+     * what the book calls the item today. They can differ, and the one that belongs on
+     * the record of an agreement is the one that was on the page.
+     */
+    `SELECT pbi.service_line::text AS service_line, qli.item_code, pbi.name_en, pbi.sort_order,
+            qli.id AS line_id, qli.description_en, qli.description_es,
+            qli.quantity::text AS quantity, qli.unit_cents, qli.line_cents, qli.is_pass_through
        FROM quote_line_items qli
        JOIN quotes q ON q.id = qli.quote_id
        JOIN price_book_items pbi
@@ -135,12 +167,26 @@ export async function engagementLinesForQuote(
   for (const r of rows) {
     const line = engagementLineFor(r.service_line, r.item_code);
     if (!line) continue;
+    const item: QuotedScopeItem = {
+      sourceQuoteLineId: r.line_id,
+      itemCode: r.item_code,
+      descriptionEn: r.description_en,
+      descriptionEs: r.description_es,
+      quantity: r.quantity,
+      unitCents: r.unit_cents,
+      lineCents: r.line_cents,
+      isPassThrough: r.is_pass_through,
+      sortOrder: r.sort_order,
+    };
     const existing = byLine.get(line);
     if (existing) {
       existing.itemNames.push(r.name_en);
       existing.itemCodes.push(r.item_code);
+      existing.scope.push(item);
     } else {
-      byLine.set(line, { serviceLine: line, itemNames: [r.name_en], itemCodes: [r.item_code] });
+      byLine.set(line, {
+        serviceLine: line, itemNames: [r.name_en], itemCodes: [r.item_code], scope: [item],
+      });
     }
   }
   return [...byLine.values()];

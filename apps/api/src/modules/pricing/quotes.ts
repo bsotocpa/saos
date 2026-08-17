@@ -625,9 +625,13 @@ export async function acceptQuote(
     deposit_item_code: string | null; bundle_slug: string | null;
     deposit_override_cents: number | null; deposit_override_reason: string | null;
     deposit_override_by_staff_id: string | null;
+    price_book_version_id: string;
   }>(
+    // `price_book_version_id` is read here rather than on the client-facing quote object:
+    // #47 pins it onto the engagement's scope, and the portal has no business knowing it.
     `SELECT discount_cents, contact_id, business_id, deposit_item_code, bundle_slug,
-            deposit_override_cents, deposit_override_reason, deposit_override_by_staff_id
+            deposit_override_cents, deposit_override_reason, deposit_override_by_staff_id,
+            price_book_version_id
      FROM quotes WHERE id = $1`,
     [quote.id]
   );
@@ -668,6 +672,7 @@ export async function acceptQuote(
     );
   }
 
+  const { captureEngagementScope, warnIfScopeless } = await import('../engagements/scope.ts');
   const engagements: Array<{ id: string; serviceLine: string; title: string }> = [];
   for (const line of quotedLines) {
     const title = engagementTitle(line);
@@ -683,6 +688,21 @@ export async function acceptQuote(
       },
       {}
     );
+    /*
+     * #47 — WHAT THIS ENGAGEMENT COVERS, snapshotted here and never again.
+     *
+     * Immediately after the engagement exists and before anything else in acceptance can
+     * fail. The split from quote into engagements happens right here in code and used to
+     * leave no trace, which is why #41's two rows were indistinguishable: they were the
+     * same thing twice and nothing recorded what either one was.
+     *
+     * The lines are copied by VALUE. A quote edited next week must not change what this
+     * client agreed to today.
+     */
+    const captured = await captureEngagementScope(
+      app, created.id, quote.id, row.price_book_version_id, line.scope
+    );
+    warnIfScopeless(app.log, created.id, captured);
     engagements.push({ id: created.id, serviceLine: line.serviceLine, title });
   }
   /*

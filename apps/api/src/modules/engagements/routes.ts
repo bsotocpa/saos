@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { createEngagement } from './service.ts';
 import { configureRecurringEngagement, configuratorOptions, enterMaintenanceMode } from './configurator.ts';
+import { scopeForEngagements, scopeName, scopeSummary } from './scope.ts';
 
 const PREP = ['weekly', 'monthly', 'quarterly', 'semi_annual'] as const;
 const SESSION = ['weekly', 'biweekly', 'monthly', 'quarterly', 'semi_annual', 'annual'] as const;
@@ -59,13 +60,32 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
       const { rows } = await app.db.query(
         `SELECT e.id, e.contact_id, e.business_id, e.service_line, e.status, e.title,
                 e.lead_staff_id, e.started_on, e.price_book_version_id,
+                e.ended_on, e.close_reason,
                 e.independence_override_at IS NOT NULL AS independence_overridden,
                 e.created_at
          FROM engagements e ${where}
          ORDER BY e.created_at DESC LIMIT 200`,
         params
       );
-      return { engagements: rows };
+      /*
+       * #47 — what each engagement covers. Staff read English; the Spanish text is on the
+       * row and belongs to the client-facing surface, not this one.
+       *
+       * Two identical `tax`/`active` rows on one client (#41) are only distinguishable by
+       * their scope, so this is the list that most needed it.
+       */
+      const scopes = await scopeForEngagements(app, rows.map((r) => String(r.id)));
+      return {
+        engagements: rows.map((r) => {
+          const items = scopes.get(String(r.id)) ?? [];
+          return {
+            ...r,
+            scopeName: scopeName(items, 'en'),
+            scope: items,
+            scopeSummary: scopeSummary(items),
+          };
+        }),
+      };
     }
   );
 

@@ -40,6 +40,9 @@ interface Engagement {
   stage: string | null;
   extension_filed: boolean;
   deadline: string | null;
+  /** #47 — what this engagement covers, snapshotted at acceptance, already in this language. */
+  scopeName: string | null;
+  scope: Array<{ itemCode: string; description: string; quantity: string; isPassThrough: boolean }>;
 }
 interface Booking { id: string; event_slug: string; title: string | null; starts_at: string | null; location: string | null }
 interface DocRequest { id: string; title_en: string; title_es: string | null; items: Array<{ id: string; status: string }> }
@@ -115,16 +118,32 @@ function stagePercent(stage: string): number {
  * that is how a client thinks about it; everything else by its service line.
  */
 function projectName(e: Engagement, t: (k: DictKey) => string): string {
+  /*
+   * THE TAX YEAR STAYS FIRST, deviating slightly from #47's design.
+   *
+   * The design said "prefers scope items → tax year/form → title → service line". Applied
+   * literally that DROPS the year from tax work, and "2025 · 1040" is how a client thinks
+   * about a return — losing it to gain a scope description would be a regression on the
+   * surface #35 and #41 already fixed. So the year leads where there is one, and scope
+   * takes the next slot, which is exactly the case #41 hit: both of Brian's rows had no
+   * tax year at all.
+   */
   if (e.tax_year && e.return_type) return `${e.tax_year} · ${e.return_type.toUpperCase()}`;
   const line = t(`svcline_${e.service_line}` as DictKey);
+  /*
+   * #47 — the name comes from what was AGREED, in the client's own language, snapshotted
+   * at acceptance. This is the first name on this surface that is data rather than a text
+   * column someone typed into.
+   */
+  if (e.scopeName) return e.scopeName;
   /*
    * #41 option (1): show the engagement's own title when it says MORE than the bare
    * service line — that is #19's composition ("Taxes — 1040 individual return +2 more")
    * reaching the client, so two engagements on one service line are distinguishable.
    *
-   * #35 deliberately ignored this column because it held "Accepted quote" placeholders.
-   * Those are backfilled, and a title that is merely the service-line name adds nothing,
-   * so it falls through to the translated label rather than showing an English one.
+   * Still the fallback for engagements created before #47, which genuinely do not know
+   * what they cover. It is English-only, which is the honest cost of a free-text column
+   * and the reason scope outranks it.
    */
   const title = e.title?.trim();
   if (title && title.toLowerCase() !== line.toLowerCase() && title.toLowerCase() !== e.service_line) {
@@ -350,6 +369,27 @@ export default function Dashboard() {
                   {e.kind === 'pipeline' && e.stage ? (
                     <span className="progress" style={{ display: 'block', marginTop: 6 }}>
                       <span style={{ display: 'block', width: `${stagePercent(e.stage)}%` }} />
+                    </span>
+                  ) : null}
+                  {/*
+                    #47 — "what am I paying for", answerable at last. These are the quote
+                    lines as the client read them at acceptance, so this is the agreement
+                    speaking rather than a summary of it. Pass-through software is left out:
+                    it is on the bill but is not work we agreed to do.
+
+                    Only shown when there is MORE than the heading already says — one line
+                    that repeats the name is noise, and a pre-#47 engagement shows nothing
+                    rather than an empty label.
+                  */}
+                  {e.scope.filter((s) => !s.isPassThrough).length > 1 ? (
+                    <span className="scopetags">
+                      {e.scope
+                        .filter((s) => !s.isPassThrough)
+                        .map((s) => (
+                          <span key={s.itemCode} className="scopetag">
+                            {s.description}
+                          </span>
+                        ))}
                     </span>
                   ) : null}
                 </span>

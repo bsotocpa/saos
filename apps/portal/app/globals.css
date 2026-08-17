@@ -176,6 +176,27 @@ p.muted, span.muted { color: var(--muted); }
 }
 .chip:focus-visible { outline: 2px solid var(--electric); outline-offset: 2px; }
 
+/*
+ * #47 — what an engagement covers, listed under its name.
+ *
+ * DELIBERATELY NOT `.chip`. These look adjacent but are opposite things: a chip is a 44px
+ * tappable answer, and these are read-only facts about an agreement. Borrowing the chip
+ * style would put something button-shaped and button-sized on the page that does nothing
+ * when tapped — the dead-control problem #36/#37 existed to fix, rebuilt on purpose.
+ *
+ * So: smaller than a touch target, no border, no pointer cursor, muted. It reads as text.
+ */
+.scopetags { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; }
+.scopetag {
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--paper);
+  border-radius: 6px;
+  padding: 2px 8px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .list { list-style: none; margin: 0; padding: 0; }
 .list li {
   display: flex;

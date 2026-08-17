@@ -436,3 +436,170 @@ test('schedule resolution PINS the price-book version — a reclassification is 
   await app.db.query(`DELETE FROM price_book_items WHERE version_id = $1`, [v2.rows[0]!.id]);
   await app.db.query(`DELETE FROM price_book_versions WHERE id = $1`, [v2.rows[0]!.id]);
 });
+
+/*
+ * #47 — WHAT AN ENGAGEMENT COVERS, and why it is a snapshot.
+ *
+ * #41's two identical `tax`/`active` rows were indistinguishable because nothing recorded
+ * what either one covered. The split from quote into engagements happens in code and left
+ * no trace. These tests hold the line on both halves: scope IS captured, and it does NOT
+ * move afterwards.
+ */
+test('#47: acceptance snapshots each engagement scope, split along the same lines', async () => {
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Scoped', email: 'scoped@example.test',
+  });
+  const other = await app.db.query<{ item_code: string }>(
+    `SELECT pbi.item_code
+       FROM price_book_items pbi
+       JOIN price_book_versions v ON v.id = pbi.version_id
+      WHERE pbi.service_line::text = 'entity_services' AND pbi.is_active
+        AND pbi.display_on_quote AND pbi.amount_cents IS NOT NULL
+        AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
+      ORDER BY pbi.item_code LIMIT 1`
+  );
+  const taxCode = await taxItemCode();
+  const quote = await createQuote(
+    app,
+    { contactId: c.id, lines: [{ itemCode: taxCode }, { itemCode: other.rows[0]!.item_code }] },
+    staffActor(await ceoId())
+  );
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
+  assert.equal(accepted.engagements.length, 2);
+
+  const { scopeForEngagement, scopeName } = await import('../src/modules/engagements/scope.ts');
+  for (const e of accepted.engagements) {
+    const items = await scopeForEngagement(app, e.id);
+    assert.ok(items.length >= 1, `${e.serviceLine} engagement knows what it covers`);
+    assert.ok(scopeName(items, 'en'), 'and can name itself in English');
+    assert.ok(scopeName(items, 'es'), 'and in Spanish');
+  }
+
+  // The SPLIT is the point: the tax item belongs to the tax engagement and nowhere else.
+  const taxEng = accepted.engagements.find((e) => e.serviceLine === 'tax')!;
+  const entityEng = accepted.engagements.find((e) => e.serviceLine === 'entity')!;
+  const taxScope = await scopeForEngagement(app, taxEng.id);
+  const entityScope = await scopeForEngagement(app, entityEng.id);
+  assert.ok(taxScope.some((i) => i.itemCode === taxCode), 'the tax line landed on the tax engagement');
+  assert.ok(
+    !entityScope.some((i) => i.itemCode === taxCode),
+    'and NOT on the other one — the split is recorded, not just performed'
+  );
+
+  // The version is pinned beside the text, so the engagement can answer "under which book".
+  const pinned = await app.db.query<{ n: number; versions: number }>(
+    `SELECT count(*)::int AS n, count(DISTINCT price_book_version_id)::int AS versions
+       FROM engagement_scope_items WHERE engagement_id = ANY($1)`,
+    [accepted.engagements.map((e) => e.id)]
+  );
+  assert.ok(pinned.rows[0]!.n >= 2, 'both engagements have scope rows');
+  assert.equal(pinned.rows[0]!.versions, 1, 'all pinned to the same price-book version as the quote');
+});
+
+test('#47: editing the quote line afterwards does NOT rewrite what was agreed', async () => {
+  /*
+   * THE REASON THIS IS A SNAPSHOT (Brian's requirement, and he was right that my design
+   * missed it). The obvious table was (engagement_id, quote_line_item_id) — a foreign key
+   * to a live row. Editing that line later would silently change what the engagement
+   * claims to cover and nothing would look wrong: an agreement whose terms move after it
+   * was agreed, which is the exact bug the price-lock fields exist to prevent.
+   */
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Frozen', email: 'frozen-scope@example.test',
+  });
+  const quote = await createQuote(
+    app, { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
+  );
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
+
+  const { scopeForEngagement } = await import('../src/modules/engagements/scope.ts');
+  const before = await scopeForEngagement(app, accepted.engagementId);
+  assert.ok(before[0], 'scope was captured');
+
+  // Someone edits the quote line after the fact — text AND price.
+  await app.db.query(
+    `UPDATE quote_line_items
+        SET description_en = 'REWRITTEN AFTER ACCEPTANCE',
+            description_es = 'REESCRITO', line_cents = 999999, unit_cents = 999999
+      WHERE quote_id = $1`,
+    [quote.id]
+  );
+
+  const after = await scopeForEngagement(app, accepted.engagementId);
+  assert.equal(after[0]!.descriptionEn, before[0]!.descriptionEn, 'the agreement still reads what it read');
+  assert.notEqual(after[0]!.descriptionEn, 'REWRITTEN AFTER ACCEPTANCE');
+  assert.equal(after[0]!.lineCents, before[0]!.lineCents, 'and at the price that was agreed');
+});
+
+test('#47: the snapshot refuses to be updated at all', async () => {
+  /*
+   * "Written once, never updated" is the whole point, and a comment saying so is exactly
+   * the kind of guarantee that survives until the first person in a hurry. The database
+   * refuses; this proves the refusal rather than trusting the convention.
+   */
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Immutable', email: 'immutable-scope@example.test',
+  });
+  const quote = await createQuote(
+    app, { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
+  );
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
+
+  await assert.rejects(
+    () => app.db.query(
+      `UPDATE engagement_scope_items SET description_en = 'tampered' WHERE engagement_id = $1`,
+      [accepted.engagementId]
+    ),
+    /snapshot of what was agreed and cannot be updated/,
+    'the database refuses, not just the convention'
+  );
+
+  const scoped = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM engagement_scope_items WHERE engagement_id = $1`,
+    [accepted.engagementId]
+  );
+  assert.ok(scoped.rows[0]!.n > 0, 'the row exists to refuse the update');
+
+  /*
+   * IMMUTABLE IS NOT UNDELETABLE. The trigger refuses UPDATE only, so ON DELETE CASCADE
+   * from engagements still works — otherwise the snapshot would pin engagements in place
+   * forever. Proven on a standalone engagement: an ACCEPTED one cannot be deleted at all,
+   * because `quotes.converted_engagement_id` points at it, which is its own good rule.
+   */
+  const version = await app.db.query<{ id: string }>(
+    `SELECT id FROM price_book_versions ORDER BY version_number DESC LIMIT 1`
+  );
+  const loose = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, status, price_book_version_id)
+     VALUES ($1, 'bookkeeping', 'active', $2) RETURNING id`,
+    [c.id, version.rows[0]!.id]
+  );
+  await app.db.query(
+    `INSERT INTO engagement_scope_items
+       (engagement_id, price_book_version_id, item_code, description_en, quantity)
+     VALUES ($1, $2, 'SYNTHETIC_ITEM', 'Synthetic line', 1)`,
+    [loose.rows[0]!.id, version.rows[0]!.id]
+  );
+  await app.db.query(`DELETE FROM engagements WHERE id = $1`, [loose.rows[0]!.id]);
+  const gone = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM engagement_scope_items WHERE engagement_id = $1`,
+    [loose.rows[0]!.id]
+  );
+  assert.equal(gone.rows[0]!.n, 0, 'ON DELETE CASCADE still works — immutable is not undeletable');
+});
+
+test('#47: an engagement with no scope names itself null rather than guessing', async () => {
+  /*
+   * NO BACKFILL, confirmed by Brian. The 5 existing production quotes were split in code
+   * and the split was never recorded, so which engagement covered which line is genuinely
+   * unknowable. A composed-looking name over a guess is the 426-client backfill again:
+   * a confident wrong answer derived from incomplete evidence.
+   */
+  const { scopeName, scopeSummary } = await import('../src/modules/engagements/scope.ts');
+  assert.equal(scopeName([], 'en'), null, 'no scope → no name, and the caller falls back');
+  assert.equal(scopeName([], 'es'), null);
+  assert.deepEqual(scopeSummary([]), { count: 0, totalCents: 0 });
+});

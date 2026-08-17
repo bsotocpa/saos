@@ -365,7 +365,36 @@ export function registerPortalRoutes(app: FastifyInstance): void {
         ORDER BY te.tax_year DESC NULLS LAST, e.service_line, e.created_at`,
       [client.contactId]
     );
-    return { engagements: rows };
+
+    /*
+     * #47 — what each service actually covers, in the client's own language.
+     *
+     * "Impuestos — En marcha" twice was #41: two engagements with nothing to tell them
+     * apart. The scope rows are the answer, and they carry both languages because they were
+     * snapshotted from a quote the client read in one of them.
+     *
+     * Engagements created before #47 have no scope and get `null` — the page keeps
+     * composing from service line and tax year, which is honest about what is known.
+     */
+    const { scopeForEngagements, scopeName } = await import('../engagements/scope.ts');
+    const ids = rows.map((r) => String(r.id));
+    const scopes = await scopeForEngagements(app, ids);
+    const lang = client.language;
+    return {
+      engagements: rows.map((r) => {
+        const items = scopes.get(String(r.id)) ?? [];
+        return {
+          ...r,
+          scopeName: scopeName(items, lang),
+          scope: items.map((i) => ({
+            itemCode: i.itemCode,
+            description: lang === 'es' ? i.descriptionEs || i.descriptionEn : i.descriptionEn,
+            quantity: i.quantity,
+            isPassThrough: i.isPassThrough,
+          })),
+        };
+      }),
+    };
   });
 
   /*
