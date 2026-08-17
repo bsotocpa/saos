@@ -1973,57 +1973,40 @@ Chicago disagree on the date. Three assertions in document-chase, one in billing
       test/rehearsal mode must decide where the flag lives, and per-contact is already
       known to be the wrong altitude. Related: [#15 ruling]
 
-## The outbox — build it when a SECOND post-commit effect appears (Brian's named trigger, 2026-08-16)
+## The outbox — BUILT 2026-08-17 (trigger fired: three paths at once)
 
-- [ ] **Transactional outbox for outward effects.** Not "someday": the trigger is named.
-      **Build it the moment a second post-commit effect path exists anywhere in the
-      system.** One caller does not justify the general mechanism; two does, because at two
-      the loud-failure handling starts being copy-pasted and the copies drift.
+- [x] **Transactional outbox.** `outbox` table + `apps/api/src/outbox.ts`, drained every tick.
+      The intent to send is a row written INSIDE the transaction that justifies it, so it
+      commits or vanishes with that state. Front-loaded backoff (1/5/20/60 min), five attempts,
+      then a P1 task naming the client and what they never received. Payload is IDs only —
+      the handler re-reads at send time, and a queue of rendered emails would be PII outside
+      its own tables.
+- [x] **Both send paths fixed.** `sendPacketForPortalSignature` records and queues in one
+      transaction instead of emailing then recording. `invoiceForFiledEngagement` creates the
+      invoice as a draft and queues delivery instead of sending from inside `transitionStage`.
+- [x] **Acceptance migrated onto it**, replacing part one’s inline post-commit block.
+- [x] **The statutory perfection clock.** `ownerForRole` instead of the no-fallback resolver,
+      P1 instead of P2, and migration 0068’s deferred constraint trigger making an unowned
+      live clock unstorable.
 
-      Today there is exactly one: #48's deposit-invoice email in `acceptQuote`, sent after
-      the durable writes with a P1 task + critical alert on failure
-      (`sourceType: 'invoice_send_failed'`).
+## OPEN, AND WIDER THAN #48 — the no-fallback resolver is used in ~20 more places
 
-      **What counts as the trigger:** any code path that commits durable state and THEN
-      sends something outward that cannot be rolled back — a client email, an SMS, a Stripe
-      call, a Docuseal envelope. Candidates already visible: engagement-packet send,
-      `recordEfileResult`'s client notifications, and the acceptance-transaction work below,
-      which will likely surface more.
+Found while fixing the perfection clock. `firstActiveByRole` has NO CEO fallback;
+`ownerForRole` exists precisely because of finding #17 and does. Production holds exactly
+ONE staff account (ceo) — `tax_preparer`, `comms_billing`, `va_entity`, `bookkeeper` are all
+unfilled — so every automation routing to one of those creates an UNASSIGNED task and, where
+the alert is gated on `if (owner)`, fires no alert at all.
 
-      **What it replaces:** the try/catch-and-raise-a-task block at the end of `acceptQuote`.
-      An outbox row written inside the same transaction as the state, drained by the
-      existing daily/tick job runner, with retries and a dead-letter that raises the same P1
-      task after N attempts. The loud failure does not go away — it moves.
+- [ ] **Audit and convert the ~20 remaining `firstActiveByRole` task-owner call sites.**
+      Confirmed instances include `billing/dunning.ts`, `billing/service.ts`,
+      `booking/routes.ts`, `bookkeeping/close.ts`, `bookkeeping/routes.ts`,
+      `comms/attachments.ts`, `documents/routes.ts`, `documents/service.ts`,
+      `entity/service.ts`, `entity/sos.ts`, `events/service.ts`, `forms/service.ts`.
+      Uses resolving the CEO directly are fine (that IS the fallback).
+- [ ] **Extend `check-role-guarded-tasks.mjs`** so it fails on `firstActiveByRole` feeding a
+      task assignee at all, not only inside an `if (owner)`. The guard passed through this
+      entire class because it checks the shape of the branch rather than the resolver.
+      **That is the real lesson: the guard tested the symptom #17 presented as, not the rule.**
 
-- [ ] **#48 part two: acceptance as one transaction.** Ruled by Brian as its own piece of
-      work, deliberately not folded into the latch. Threading a transaction client through
-      `createEngagement` / `createInvoice` / `createTask` / `writeAudit` changes signatures
-      used across billing, tasks and audit. The latch (shipped 2026-08-16) closes the
-      duplicate-acceptance hole on its own; this closes the partial-write one.
-
-- [x] **Same shape, other paths — DONE 2026-08-17 for the three you named.** Quote creation,
-      e-file results (both branches) and packet assembly (Master signature + packet creation)
-      are each one transaction now. Five tests, each injecting a real trigger failure at the
-      LAST write in its sequence; sabotaging all four wraps fails exactly those five.
-
-## THE OUTBOX TRIGGER IS ABOUT TO FIRE — two paths send BEFORE they commit
-
-Found while doing the above, deliberately NOT changed: two sequences reach outward in the
-middle, so wrapping them in a transaction is the wrong move — it would put an email inside a
-transaction, which is wrong twice over (unrecallable, and it holds a pool connection).
-
-- [ ] **`sendPacketForPortalSignature`** (`engagements/packet.ts`) emails the client the
-      signature link and THEN calls `markPacketSent`. If the mark fails, the client is
-      holding a packet the system believes was never sent — no follow-up, no ladder, and the
-      packet still reads unsent to every screen. Inverse of the invoice bug: there the send
-      was too early, here the record is too late.
-- [ ] **`transitionStage(→ filed)`** (`tax/pipeline.ts`) calls `invoiceForFiledEngagement`,
-      which sends the invoice email inside a multi-write sequence. Not reachable from
-      `recordEfileResult` (which only moves to `completed`/`rejected`), so wrapping that
-      function was safe — but this path is the same defect one door over.
-
-      **Both need the acceptance treatment: durable state in a transaction, send after the
-      commit, loud task on failure. Doing either one creates a SECOND post-commit effect
-      path — which is exactly the trigger you named for building the transactional outbox.**
-      So this is one decision, not three: fix these two and build the outbox, or leave them
-      until you want the outbox. Brian rules; I am not taking that unilaterally.
+      Not done here — it touches twelve files across every module and Brian sequences
+      deliberately. The tax one was fixed because he named it and it is statutory.

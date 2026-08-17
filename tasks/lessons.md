@@ -763,3 +763,28 @@ deliberately, assert on the message: a different error means a different code pa
 Same family as the earlier miss where a post-commit test guarded on
 `if (!depositInvoiceId) return` and passed by asserting nothing, and as the 390px overflow
 measurement taken from a page that was 500ing. Related: [[reject-a-mechanism-whose-incomplete-application-recreates-the-bug]]
+
+## A guard that checks the shape of a bug misses the rule behind it (2026-08-17)
+
+`check-role-guarded-tasks.mjs` was written after finding #17, where a task and its alert
+both sat inside `if (rene)` for a role nobody held. The guard fails the build when
+`createTask` appears inside an `if (x)` whose `x` came from `firstActiveByRole`.
+
+It has passed cleanly ever since — and the same defect was sitting in the tax pipeline the
+whole time. `recordEfileResult` calls `createTask` UNCONDITIONALLY, so the guard was happy,
+but the owner came from `firstActiveByRole('tax_preparer')` — the resolver with no CEO
+fallback — for a role nobody holds. The task was created unassigned and the alert, gated on
+`if (owner)`, never fired. A statutory perfection clock started and nobody was told.
+
+The guard encoded the SHAPE #17 happened to take (a wrapping `if`) rather than the RULE it
+taught (resolve owners with the resolver that falls back). ~20 more call sites have the
+same shape.
+
+**Rule:** when writing a guard after a bug, write down the rule in one sentence first, then
+check whether the guard tests that sentence or the incident. "createTask is not inside an
+if" is an incident. "A task's owner is resolved with a resolver that falls back" is the rule.
+If the guard cannot fail on a fresh instance of the rule being broken, it is a regression
+test wearing a guard's clothes.
+
+Related: [[an-absence-assertion-needs-a-matching-presence-assertion]] — same family, a check
+that cannot fail.
