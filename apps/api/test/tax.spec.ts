@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
+import { withTransaction } from '../src/db.ts';
 import { createTestConfig, makeStaff, makeContact, auditRows } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { computeComplexityScore } from '../src/modules/tax/complexity.ts';
@@ -304,8 +305,15 @@ test('e-file result: accepted completes; rejected re-queues with perfection cloc
     [rejected]
   );
   assert.equal(task.rows.length, 1, 'rejects are OWNED, never dead-ended');
-  assert.equal(task.rows[0]!.priority, 2);
+  /*
+   * INVERTED FOR #48. This asserted P2. It is P1 now, on Brian's ruling that the perfection
+   * window is "a statutory deadline, same tier as the deadline table" — what expires is the
+   * return's ORIGINAL filing date, with penalties and interest dated from it. A P2 sitting
+   * behind other work is not what that deserves.
+   */
+  assert.equal(task.rows[0]!.priority, 1, 'P1 — a statutory clock is running');
   assert.equal(task.rows[0]!.due_date, '2026-08-10');
+  assert.ok(task.rows[0]!.id, 'and it is owned rather than merely created');
 
   // E-file results only apply to filed returns.
   const notFiled = await newTaxEngagement();
@@ -334,16 +342,31 @@ test('perfection clock job: T-2 warns the preparer, past-deadline escalates to B
     `SELECT id FROM staff WHERE email = 'anamaria-test@example.test'`
   );
 
-  const closing = await newTaxEngagement();
-  await app.db.query(
-    `UPDATE tax_engagements SET stage = 'rejected', perfection_deadline = '2026-08-11', preparer_id = $2 WHERE id = $1`,
-    [closing, preparerRow.rows[0]!.id]
-  );
-  const missed = await newTaxEngagement();
-  await app.db.query(
-    `UPDATE tax_engagements SET stage = 'rejected', perfection_deadline = '2026-08-01', preparer_id = $2 WHERE id = $1`,
-    [missed, preparerRow.rows[0]!.id]
-  );
+  /*
+   * Both fixtures now create the OWNING TASK alongside the clock (#48). Setting the deadline
+   * alone is the state the deferred constraint forbids — a statutory clock nobody is watching —
+   * and the real path writes both in one transaction, so a fixture doing only one was
+   * modelling something that cannot occur.
+   */
+  const withClock = async (deadline: string): Promise<string> => {
+    const id = await newTaxEngagement();
+    // ONE transaction: outside one, each statement commits alone and the deferred trigger fires
+    // on the UPDATE before the task exists.
+    await withTransaction(app.db, async () => {
+      await app.db.query(
+        `UPDATE tax_engagements SET stage = 'rejected', perfection_deadline = $3::date, preparer_id = $2 WHERE id = $1`,
+        [id, preparerRow.rows[0]!.id, deadline]
+      );
+      await app.db.query(
+        `INSERT INTO tasks (title, assigned_staff_id, due_date, priority, source, source_type, source_id)
+         VALUES ($1, $2, $3::date, 1, 'automation', 'efile_reject', $4)`,
+        [`E-file REJECTED — fix & re-file by ${deadline}`, preparerRow.rows[0]!.id, deadline, id]
+      );
+    });
+    return id;
+  };
+  const closing = await withClock('2026-08-11');
+  const missed = await withClock('2026-08-01');
 
   const { runPerfectionClockJob } = await import('../src/modules/tax/pipeline.ts');
   const run = await runPerfectionClockJob(app, '2026-08-09');

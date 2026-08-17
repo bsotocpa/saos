@@ -23,6 +23,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { stripWetSignatureLines } from '../compliance/consent-presentation.ts';
+import { enqueueEffect } from '../../outbox.ts';
 import { withTransaction } from '../../db.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
@@ -437,33 +438,44 @@ export async function sendPacketForPortalSignature(
     .map((s) => s.title)
     .join(', ');
 
-  const { sendTemplatedEmail } = await import('../templates/service.ts');
-  await sendTemplatedEmail(app, {
-    to: p.email,
-    templateKey: 'packet_ready_to_sign',
-    // The CLIENT's language, not the staffer's. English controls until Brian
-    // approves the translation, and renderTemplate falls back on its own.
-    language: p.language,
-    vars: {
-      first_name: p.first_name,
-      schedules: titles || 'your engagement',
-      sign_link: `${app.config.PORTAL_BASE_URL}/sign`,
-    },
-    contactId: p.contact_id,
-  });
-
-  await markPacketSent(app, packetId);
-
-  await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
-    action: 'packet.sent', objectType: 'engagement_packet', objectId: packetId,
-    contactId: p.contact_id,
-    details: {
-      method: 'portal_esign',
-      schedules: p.schedule_codes,
-      sections: doc.sections.map((s) => ({ kind: s.kind, code: s.code, key: s.templateKey, version: s.templateVersion })),
-      excluded_consents: doc.deliberatelyExcluded.map((e) => e.templateKey),
-    },
+  /*
+   * RECORD FIRST, DELIVER AFTERWARDS (#48).
+   *
+   * This used to email the client and THEN call `markPacketSent`. If the mark failed, the
+   * client was holding a signing link for a packet the system believed had never been sent —
+   * so every screen read "unsent", nothing followed up, and a second send would have emailed
+   * them the same link again. The inverse of the invoice bug: there the send was too early,
+   * here the record was too late.
+   *
+   * Both writes plus the outbox row now land in one transaction. The email is performed by the
+   * drain, minutes later at most, and five failed attempts raise a P1 task naming the client
+   * rather than disappearing.
+   *
+   * `markPacketSent` is honest about what it means: the packet is sent because we have
+   * committed to sending it and the intent cannot now be lost. That is a stronger claim than
+   * the old ordering made, where "sent" meant "an email call returned".
+   */
+  await withTransaction(app.db, async () => {
+    await markPacketSent(app, packetId);
+    await enqueueEffect(app, {
+      effect: 'packet.send_signature_link',
+      payload: { packetId },
+      contactId: p.contact_id,
+      objectType: 'engagement_packet',
+      objectId: packetId,
+    });
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      action: 'packet.sent', objectType: 'engagement_packet', objectId: packetId,
+      contactId: p.contact_id,
+      details: {
+        method: 'portal_esign',
+        schedules: p.schedule_codes,
+        sections: doc.sections.map((s) => ({ kind: s.kind, code: s.code, key: s.templateKey, version: s.templateVersion })),
+        excluded_consents: doc.deliberatelyExcluded.map((e) => e.templateKey),
+        delivery: 'outbox',
+      },
+    });
   });
 
   return {
@@ -515,6 +527,63 @@ export async function envelopeForPacket(
   );
   await app.db.query(`UPDATE engagement_packets SET envelope_id = $2 WHERE id = $1`, [packetId, env.id]);
   return { envelopeId: env.id, contactId: p.contact_id, reused: false };
+}
+
+/**
+ * Deliver the signing link — the outbox handler for `packet.send_signature_link` (#48).
+ *
+ * Separate from `sendPacketForPortalSignature`, which decides and records; this one only
+ * performs. It RE-READS the packet and the contact, so an address corrected between the
+ * decision and the delivery is used, and a packet signed or voided in that window is not
+ * emailed at all.
+ *
+ * Returns rather than throws for the outcomes the drain must tell apart: `already_sent` is a
+ * resolution and retires the row quietly, everything else is retried and eventually becomes a
+ * task with a person's name on it.
+ */
+export async function deliverPacketSignatureLink(
+  app: FastifyInstance,
+  packetId: string
+): Promise<{ sent: boolean; reason?: string }> {
+  const { rows } = await app.db.query<{
+    contact_id: string; status: string; schedule_codes: string[];
+    first_name: string; email: string | null; language: 'en' | 'es';
+  }>(
+    `SELECT p.contact_id, p.status::text AS status, p.schedule_codes,
+            c.first_name, c.email, c.language
+       FROM engagement_packets p JOIN contacts c ON c.id = p.contact_id
+      WHERE p.id = $1`,
+    [packetId]
+  );
+  const p = rows[0];
+  if (!p) return { sent: false, reason: 'packet no longer exists' };
+  // Signed or voided between the decision and the delivery: sending now would ask a client to
+  // sign something they already signed, or something we withdrew.
+  if (p.status === 'signed') return { sent: false, reason: 'already_sent' };
+  if (p.status === 'void') return { sent: false, reason: 'already_sent' };
+  if (!p.email) return { sent: false, reason: 'the client has no email address' };
+
+  const schedules = await app.db.query<{ title: string }>(
+    `SELECT title FROM service_schedules WHERE schedule_code = ANY($1) ORDER BY sort_order`,
+    [p.schedule_codes]
+  );
+  const titles = schedules.rows.map((s) => s.title).join(', ');
+
+  const { sendTemplatedEmail } = await import('../templates/service.ts');
+  await sendTemplatedEmail(app, {
+    to: p.email,
+    templateKey: 'packet_ready_to_sign',
+    // The CLIENT's language, not the staffer's. English controls until Brian
+    // approves the translation, and renderTemplate falls back on its own.
+    language: p.language,
+    vars: {
+      first_name: p.first_name,
+      schedules: titles || 'your engagement',
+      sign_link: `${app.config.PORTAL_BASE_URL}/sign`,
+    },
+    contactId: p.contact_id,
+  });
+  return { sent: true };
 }
 
 /** Mark a packet sent. Called only after the envelope actually reached Docuseal. */

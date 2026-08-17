@@ -12,7 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { withTransaction } from '../../db.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { addDays, daysBetween, todayChicago } from './deadlines.ts';
 import { invoiceForFiledEngagement } from '../billing/service.ts';
@@ -276,8 +276,26 @@ async function applyEfileResult(
     note: `e-file REJECTED${input.rejectCode ? ` (${input.rejectCode})` : ''}`,
   });
 
-  // Owned work item — never a dead end. Urgent, clocked to the perfection window.
-  const owner = te.preparer_id ?? (await firstActiveByRole(app.db, 'tax_preparer'));
+  /*
+   * OWNED WORK ITEM — and "owned" now means it, which it did not before (#48, Brian's
+   * statutory-tier ruling 2026-08-17).
+   *
+   * This resolved the owner with `firstActiveByRole('tax_preparer')`, which has NO FALLBACK,
+   * and `tax_preparer` is a role nobody currently holds — production has one staff account.
+   * So the task was created UNASSIGNED and the alert below, gated on `if (owner)`, never
+   * fired at all. A statutory perfection clock started and literally nobody was told.
+   *
+   * That is finding #17 exactly, reproduced in the tax pipeline with a different role, and
+   * worse here because what runs out is the original filing date rather than a follow-up.
+   * `ownerForRole` is the resolver that falls back to Brian and returns null only when the
+   * firm has nobody at all; the alert below is no longer gated on the role being filled.
+   *
+   * The transaction wrapping this branch guarantees the clock and the task land together. It
+   * could not make the task owned — "together" happily included "together with no owner".
+   * Both halves are needed, which is why the deferred constraint trigger in migration 0068
+   * enforces the pair at COMMIT rather than trusting this comment.
+   */
+  const owner = te.preparer_id ?? (await ownerForRole(app.db, 'tax_preparer'));
   await createTask(app, {
     title: `E-file REJECTED: ${te.first_name} ${te.last_name} ${te.tax_year} ${te.return_type.toUpperCase()} — fix & re-file by ${deadline}`,
     description:
@@ -286,11 +304,17 @@ async function applyEfileResult(
     assignedStaffId: owner,
     contactId: te.contact_id,
     dueDate: deadline,
-    priority: 2,
+    // P1, not P2. A statutory clock is running and the original filing date is what expires.
+    priority: 1,
     source: 'automation',
     sourceType: 'efile_reject',
     sourceId: taxEngagementId,
   });
+  /*
+   * The alert still needs a real person to alert — a notification row with no staff_id belongs
+   * to nobody's queue. But `owner` now falls back to Brian, so this is only skipped when the
+   * firm has NO active staff at all, which is a different situation from "the role is unfilled".
+   */
   if (owner) {
     await notifyOnce(app.db, {
       staffId: owner,

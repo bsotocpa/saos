@@ -699,12 +699,23 @@ test('#48: the claim is what stops it — the quote leaves "sent" before any wor
   );
 });
 
-test('#48: the deposit invoice is emailed AFTER acceptance commits, not during it', async () => {
-  /*
-   * An email cannot be rolled back. Sending it mid-sequence meant every failure below that
-   * point left a client holding an invoice for an acceptance that never finished. The row
-   * is durable state and stays where it was; only the send moved.
-   */
+/*
+ * INVERTED FOR THE OUTBOX (#48). These two asserted the INLINE post-commit behaviour part one
+ * shipped: the send happening at the end of `acceptQuote`, and a try/catch there raising a P1
+ * task when it failed.
+ *
+ * Both premises are now wrong, and the reason is worth keeping rather than deleting. Part one
+ * was right about WHERE the send belongs and wrong about durability: an effect that only exists
+ * in code after the commit is lost if the process dies between the two, and the client is never
+ * told about an acceptance that definitely happened. The intent is a row now, written inside the
+ * transaction, drained afterwards.
+ *
+ * What replaced them lives in outbox.spec.ts, which tests the stronger claims: nothing is sent
+ * during acceptance, the intent commits and rolls back WITH the acceptance, the drain performs
+ * it, and five failed attempts end at a person. The two assertions below are what survives here
+ * — the part that is still this file's business.
+ */
+test('#48: acceptance itself sends nothing, and queues the delivery instead', async () => {
   const c = await makeContact(app.db, {
     firstName: 'Synthetic', lastName: 'Postcommit', email: 'postcommit@example.test',
   });
@@ -713,75 +724,21 @@ test('#48: the deposit invoice is emailed AFTER acceptance commits, not during i
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
   const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
-
-  assert.ok(accepted.depositInvoiceId, 'the fixture carries a deposit — otherwise this test proves nothing');
+  assert.ok(accepted.depositInvoiceId, 'the fixture carries a deposit — otherwise this proves nothing');
 
   const inv = await app.db.query<{ status: string; sent_at: Date | null }>(
     `SELECT status::text AS status, sent_at FROM invoices WHERE id = $1`,
     [accepted.depositInvoiceId]
   );
-  assert.equal(inv.rows[0]!.status, 'sent', 'the send still happens — it just happens last');
-  assert.ok(inv.rows[0]!.sent_at, 'and stamps sent_at only because a message actually went');
+  assert.equal(inv.rows[0]!.status, 'draft', 'the invoice does not claim to have been sent');
+  assert.equal(inv.rows[0]!.sent_at, null, 'and carries no sent_at, because nothing was sent yet');
 
-  const order = await app.db.query<{ accepted_at: Date; sent_at: Date }>(
-    `SELECT q.accepted_at, i.sent_at
-       FROM quotes q JOIN invoices i ON i.id = $2 WHERE q.id = $1`,
-    [quote.id, accepted.depositInvoiceId]
+  const queued = await app.db.query<{ effect: string; status: string }>(
+    `SELECT effect, status::text AS status FROM outbox WHERE object_id = $1`,
+    [accepted.depositInvoiceId]
   );
-  assert.ok(
-    order.rows[0]!.sent_at.getTime() >= order.rows[0]!.accepted_at.getTime(),
-    'the client is emailed after the acceptance is durable, never before'
-  );
-});
-
-test('#48: a post-commit send failure is LOUD — the acceptance stands and a person is paged', async () => {
-  /*
-   * Brian's ruling: "silent post-commit failure is how a client gets an engagement and
-   * never learns it exists." So the client's acceptance succeeds — they did their part —
-   * and the failure becomes a P1 task naming the invoice, plus a critical alert.
-   *
-   * The failure is induced the way it would really happen: the contact has no email
-   * address, so there is nobody to send to.
-   */
-  const c = await makeContact(app.db, {
-    firstName: 'Synthetic', lastName: 'Noemail', email: 'noemail-48@example.test',
-  });
-  const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
-  );
-  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
-
-  // Strip the address AFTER the quote was sent — the send has nowhere to go.
-  await app.db.query(`UPDATE contacts SET email = NULL WHERE id = $1`, [c.id]);
-
-  const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
-  assert.ok(accepted.engagementId, 'the acceptance itself succeeded — the client did their part');
-
-  const q = await app.db.query<{ status: string }>(
-    `SELECT status::text AS status FROM quotes WHERE id = $1`, [quote.id]
-  );
-  assert.equal(q.rows[0]!.status, 'accepted', 'and it is committed, not rolled back over a send');
-
-  assert.ok(accepted.depositInvoiceId, 'the fixture carries a deposit — the send is what this test is about');
-  {
-    const inv = await app.db.query<{ status: string; sent_at: Date | null }>(
-      `SELECT status::text AS status, sent_at FROM invoices WHERE id = $1`,
-      [accepted.depositInvoiceId]
-    );
-    assert.equal(inv.rows[0]!.status, 'draft', 'the invoice does NOT claim to have been sent');
-    assert.equal(inv.rows[0]!.sent_at, null, 'and carries no sent_at, because nothing was sent');
-  }
-
-  // THE LOUD PART. A person is told, by name, that a client is waiting on something we
-  // did not send. Without this the failure is invisible until the client asks.
-  const task = await app.db.query<{ n: number; title: string; priority: number }>(
-    `SELECT count(*)::int AS n, max(title) AS title, min(priority) AS priority
-       FROM tasks WHERE contact_id = $1 AND source_type = 'invoice_send_failed'`,
-    [c.id]
-  );
-  assert.equal(task.rows[0]!.n, 1, 'a task was raised for the undelivered invoice');
-  assert.equal(task.rows[0]!.priority, 1, 'at P1 — the client is waiting');
-  assert.match(task.rows[0]!.title, /SEND FAILED/);
+  assert.equal(queued.rows[0]!.effect, 'invoice.send');
+  assert.equal(queued.rows[0]!.status, 'pending', 'the delivery is an intent that committed with the acceptance');
 });
 
 /*

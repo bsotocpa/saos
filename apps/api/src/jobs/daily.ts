@@ -87,6 +87,23 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
     const recovered = await recoverStuckMeetings(app, app.meetingQueue);
     if (recovered > 0) app.log.info({ job: 'meeting_recovery', recovered }, 'stuck meetings re-enqueued');
   }
+  /*
+   * THE OUTBOX DRAIN, EVERY TICK — not daily (#48).
+   *
+   * Every row here is a client waiting: a payment link, a signing link. The gap between the
+   * state committing and the client hearing about it should be minutes. Cheap when empty —
+   * one indexed query that returns nothing and breaks out.
+   *
+   * Runs FIRST among the tick jobs, ahead of the escalation work, because chasing someone
+   * about a document while an unsent invoice sits in the queue is the wrong order to do
+   * things in.
+   */
+  const { drainOutbox } = await import('../outbox.ts');
+  const outbox = await drainOutbox(app);
+  if (outbox.considered > 0) {
+    app.log.info({ job: 'outbox_drain', ...outbox }, 'outbox effects performed');
+  }
+
   // Notice escalations run EVERY tick (48h precision matters); idempotent per notice.
   const notices = await runNoticeEscalations(app);
   if (notices.unactioned > 0 || notices.deadline > 0) {

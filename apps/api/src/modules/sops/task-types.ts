@@ -51,6 +51,17 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
    * exactly what an SOP is for.
    */
   acceptance_failed: { sop: 'rene-acceptance-failed' },
+  /*
+   * #48 outbox dead letter. `sop: null`: the task's description carries the whole procedure —
+   * the record is fine, only delivery failed, so send it by hand and then find out why
+   * delivery broke. What the effect WAS is named in the title, so one SOP page covering every
+   * effect would have to be vaguer than the task already is.
+   */
+  outbox_abandoned: {
+    sop: null,
+    reason:
+      'The task names which delivery failed and to whom, and the fix is to send that one thing by hand from the client record. An SOP would have to generalise across every effect type and would say less than the task does.',
+  },
   client_non_response: { sop: 'rene-escalation-call' },
 
   // ── Tax (Ana-Maria) ───────────────────────────────────────────────────────

@@ -364,12 +364,33 @@ export async function invoiceForFiledEngagement(
       qty: 1,
     });
   }
+  /*
+   * DRAFT NOW, DELIVERED BY THE OUTBOX (#48).
+   *
+   * `send: true` mailed the client from inside `transitionStage`, which is a multi-write
+   * sequence: the stage change, the stage-history row, the audit row, the perfection-clock
+   * clear and the reject-task close all happen around it. An email in the middle of that
+   * cannot be rolled back, so the moment `transitionStage` became transactional-capable this
+   * had to move out.
+   *
+   * The invoice ROW is durable state and stays exactly where it was. Only the delivery moved,
+   * and it is now an intent that commits with the filing rather than a call that happens to
+   * be in the right place.
+   */
   const invoice = await createInvoice(app, { type: 'system', label: 'filed automation' }, {
     contactId: te.contact_id,
     engagementId: te.engagement_id,
     taxEngagementId: te.id,
     lines,
-    send: true,
+    send: false,
+  });
+  const { enqueueEffect } = await import('../../outbox.ts');
+  await enqueueEffect(app, {
+    effect: 'invoice.send',
+    payload: { invoiceId: invoice.id },
+    contactId: te.contact_id,
+    objectType: 'invoice',
+    objectId: invoice.id,
   });
 
   if (rene) {

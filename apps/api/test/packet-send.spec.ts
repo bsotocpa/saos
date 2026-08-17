@@ -112,9 +112,30 @@ test('sending emails a PORTAL LINK and creates no signature envelope at all', as
   assert.equal(packet.rows[0]!.status, 'sent');
   assert.equal(packet.rows[0]!.envelope_id, null);
 
-  // The email carries a link, never the document itself.
+  /*
+   * INVERTED FOR #48. This asserted the client was emailed DURING the send. They are not
+   * any more: the packet is marked sent and the delivery is queued in one transaction, then
+   * the drain performs it. The old ordering emailed first and recorded second, so a failed
+   * record left the client holding a link for a packet the system thought was never sent.
+   *
+   * The premise flips; the rule underneath does not. The email still carries a LINK and
+   * never the document, and that is now checked on what the drain actually sends.
+   */
+  assert.equal(
+    sentMail.find((m) => m.to === email),
+    undefined,
+    'nothing was emailed inline — the delivery is an intent, not a call'
+  );
+  const queued = await app.db.query<{ effect: string; status: string }>(
+    `SELECT effect, status::text AS status FROM outbox WHERE object_id = $1`, [packetId]
+  );
+  assert.equal(queued.rows[0]!.effect, 'packet.send_signature_link');
+  assert.equal(queued.rows[0]!.status, 'pending');
+
+  const { drainOutbox } = await import('../src/outbox.ts');
+  await drainOutbox(app);
   const mail = sentMail.find((m) => m.to === email);
-  assert.ok(mail, 'the client was emailed');
+  assert.ok(mail, 'the drain emailed the client');
   assert.match(mail.text, /\/sign/, 'points at the portal');
   assert.doesNotMatch(mail.text, /MASTER ENGAGEMENT AGREEMENT/, 'documents never travel by email');
 

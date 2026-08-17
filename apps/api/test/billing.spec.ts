@@ -118,7 +118,28 @@ test('automation 12: filed with a final fee → invoice + ES portal notice + Ren
   assert.equal(invoice.rows.length, 1, 'invoice auto-generated on filing');
   const inv = invoice.rows[0];
   assert.match(inv.invoice_number, /^SA-\d{4}-\d{4}$/);
-  assert.equal(inv.status, 'sent');
+  /*
+   * INVERTED FOR #48. This asserted 'sent' the moment the return was filed, because
+   * `invoiceForFiledEngagement` emailed the client from inside `transitionStage` — an
+   * unrollbackable send in the middle of a multi-write sequence. The invoice is now a DRAFT
+   * with its delivery queued, and becomes 'sent' when the drain actually sends it.
+   *
+   * The claim being tested is stronger than before: 'sent' now means a message went, not that
+   * a function was called in the right place.
+   */
+  assert.equal(inv.status, 'draft', 'created, not yet delivered');
+  const queued = await app.db.query<{ effect: string }>(
+    `SELECT effect FROM outbox WHERE object_id = $1 AND status = 'pending'`, [inv.id]
+  );
+  assert.equal(queued.rows[0]!.effect, 'invoice.send', 'the delivery is queued with the filing');
+
+  const { drainOutbox } = await import('../src/outbox.ts');
+  await drainOutbox(app);
+  const delivered = await app.db.query<{ status: string; sent_at: Date | null }>(
+    `SELECT status::text AS status, sent_at FROM invoices WHERE id = $1`, [inv.id]
+  );
+  assert.equal(delivered.rows[0]!.status, 'sent', 'sent once the drain performed it');
+  assert.ok(delivered.rows[0]!.sent_at);
   assert.equal(inv.total_cents, 38000);
   assert.equal(inv.qb_exported_at, null, 'QB export flag pending (automation 12)');
 

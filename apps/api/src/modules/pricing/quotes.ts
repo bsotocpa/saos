@@ -11,6 +11,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
+import { enqueueEffect } from '../../outbox.ts';
 import { withTransaction } from '../../db.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
 import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
@@ -874,17 +875,29 @@ async function convertAcceptedQuote(
         // invoice that follows it is the one that carries the credit.
         isDepositInvoice: true,
         /*
-         * #48 — CREATED AS A DRAFT, SENT AFTER THE DURABLE WRITES FINISH.
+         * #48 — CREATED AS A DRAFT; DELIVERY IS AN INTENT, NOT A CALL.
          *
          * The invoice ROW has to exist here: the quote points at it two statements down.
-         * The EMAIL does not, and sending it here meant every failure below this line
-         * left a client holding an invoice for an acceptance that never completed — a
-         * message no rollback can recall.
+         * The EMAIL does not, and sending it here meant every failure below this line left a
+         * client holding an invoice for an acceptance that never completed — a message no
+         * rollback can recall.
          */
         send: false,
       }
     );
     depositInvoiceId = invoice.id;
+    /*
+     * The intent to email it is written HERE, inside the same transaction as the acceptance.
+     * If the acceptance rolls back, so does the instruction to tell the client about it —
+     * which is the property the inline post-commit version could not have.
+     */
+    await enqueueEffect(app, {
+      effect: 'invoice.send',
+      payload: { invoiceId: invoice.id },
+      contactId: row.contact_id,
+      objectType: 'invoice',
+      objectId: invoice.id,
+    });
   }
 
   if (deposit.treatment) {
@@ -1045,82 +1058,19 @@ export async function acceptQuote(
   const engagement = { id: converted.engagementId };
 
   /*
-   * ── #48: POST-COMMIT EFFECTS ──────────────────────────────────────────────
+   * The deposit invoice is DELIVERED BY THE OUTBOX (#48).
    *
-   * Everything above is durable state. This is the one thing that leaves the building, and
-   * it happens last so that no failure in it can undo an acceptance that legitimately
-   * happened — and so no failure above it can send a client an invoice for an acceptance
-   * that did not.
+   * Part one sent it here, after the commit, with a try/catch that raised a P1 task on
+   * failure. That was right about where the send belongs and wrong about durability: an
+   * effect that only exists in code after the commit is lost if the process dies between
+   * the two, and the client is never told about an acceptance that definitely happened.
    *
-   * A FAILURE HERE IS LOUD, per Brian's ruling: "silent post-commit failure is how a client
-   * gets an engagement and never learns it exists." The invoice stays `draft` (its status is
-   * a claim about whether we told them, and we did not), a P1 task lands on the billing
-   * owner naming the invoice, and it logs at error level. The client's own acceptance
-   * SUCCEEDS regardless — they did their part, and the send is our problem to fix.
-   *
-   * When a SECOND post-commit effect path appears anywhere in the system, this becomes the
-   * transactional outbox — Brian's named trigger, logged in tasks/todo.md. One caller does
-   * not justify the general mechanism; two does.
+   * The intent is now a row written INSIDE the transaction above — see
+   * `convertAcceptedQuote` — so it commits with the acceptance or vanishes with it. The drain
+   * performs it within a tick, retries with backoff, and after five attempts raises the same
+   * P1 task the inline version did. The loud failure did not go away; it moved somewhere it
+   * cannot be skipped.
    */
-  if (depositInvoiceId) {
-    /*
-     * TWO WAYS TO FAIL, one of them quiet, and both have to be loud.
-     *
-     * A throwing mailer is the obvious one. The other is `sent: false` — no address on the
-     * contact — which returns normally and would slide past a bare try/catch. That case is
-     * Brian's sentence exactly: the client has an engagement and no way to learn it exists.
-     * `already_sent` is the one non-event, because it means they WERE told.
-     */
-    let failure: string | null = null;
-    try {
-      const { sendInvoiceNow } = await import('../billing/service.ts');
-      const result = await sendInvoiceNow(app, depositInvoiceId, {
-        type: 'system', label: 'quote acceptance',
-      });
-      if (!result.sent && result.reason !== 'already_sent') {
-        failure = result.reason ?? 'not_sent';
-      }
-    } catch (err) {
-      failure = err instanceof Error ? err.message : 'send threw';
-      app.log.error(
-        { err, quoteId: quote.id, invoiceId: depositInvoiceId, contactId: quote.contact_id },
-        '#48 POST-COMMIT SEND FAILED: the acceptance is committed and the deposit invoice was NOT emailed'
-      );
-    }
-
-    if (failure) {
-      app.log.error(
-        { reason: failure, quoteId: quote.id, invoiceId: depositInvoiceId, contactId: quote.contact_id },
-        '#48 CLIENT NOT TOLD: quote accepted, deposit invoice not delivered'
-      );
-      const billingOwner = await ownerForRole(app.db, 'comms_billing');
-      await createTask(app, {
-        title: `SEND FAILED: deposit invoice for ${quote.first_name} ${quote.last_name} — they accepted but were not emailed`,
-        description:
-          `The quote was accepted and every record was written, but the deposit invoice did not reach the client (${failure}). ` +
-          'The invoice is sitting as a draft on their record. Send it — they are waiting on a payment link ' +
-          'they never received, and nothing else in the system will chase this.',
-        assignedStaffId: billingOwner,
-        contactId: quote.contact_id,
-        priority: 1,
-        source: 'automation',
-        sourceType: 'invoice_send_failed',
-        sourceId: depositInvoiceId,
-      });
-      if (billingOwner) {
-        await notifyOnce(app.db, {
-          staffId: billingOwner,
-          type: 'invoice_send_failed',
-          severity: 'critical',
-          title: `Deposit invoice NOT sent: ${quote.first_name} ${quote.last_name}`,
-          contactId: quote.contact_id,
-          relatedObjectType: 'invoice',
-          relatedObjectId: depositInvoiceId,
-        });
-      }
-    }
-  }
-
   // engagementId stays the primary, so existing callers and the portal are unchanged;
   // engagements carries the full set for anything that needs to show them all.
   return {

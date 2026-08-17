@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
+import { withTransaction } from '../src/db.ts';
 import type { Mailer } from '../src/mailer.ts';
 import { createTestConfig, makeContact, makeStaff, auditRows, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
@@ -56,19 +57,42 @@ async function makeReturn(opts: {
     `INSERT INTO engagements (contact_id, service_line, status) VALUES ($1, 'tax', 'active') RETURNING id`,
     [c.id]
   );
-  const te = await app.db.query<{ id: string }>(
-    `INSERT INTO tax_engagements
-       (engagement_id, tax_year, return_type, stage, preparer_id, original_deadline, extended_deadline,
-        extension_filed, docs_received_at, perfection_deadline)
-     VALUES ($1, 2025, $2::return_type, $3::tax_stage, $4, $5::date, $6::date, $7, $8, $9::date)
-     RETURNING id`,
-    [
-      eng.rows[0]!.id, opts.returnType ?? '1040', opts.stage ?? 'in_preparation', opts.preparerId,
-      opts.originalDeadline ?? null, opts.extendedDeadline ?? null, opts.extensionFiled ?? false,
-      opts.docsReceived ? new Date() : null, opts.perfectionDeadline ?? null,
-    ]
-  );
-  return { taxEngagementId: te.rows[0]!.id, contactId: c.id };
+  /*
+   * A LIVE PERFECTION CLOCK NEEDS ITS OWNING TASK, IN THE SAME TRANSACTION (#48).
+   *
+   * The fixture used to set the deadline alone, which is the state the deferred constraint now
+   * forbids: a statutory clock nobody is watching. Two separate statements would not do —
+   * outside an explicit transaction each is its own, so the trigger fires at the end of the
+   * INSERT and never sees the task. The real path writes both inside one transaction, and a
+   * fixture that cannot model the real path is not a fixture.
+   */
+  const teId = await withTransaction(app.db, async () => {
+    const te = await app.db.query<{ id: string }>(
+      `INSERT INTO tax_engagements
+         (engagement_id, tax_year, return_type, stage, preparer_id, original_deadline, extended_deadline,
+          extension_filed, docs_received_at, perfection_deadline)
+       VALUES ($1, 2025, $2::return_type, $3::tax_stage, $4, $5::date, $6::date, $7, $8, $9::date)
+       RETURNING id`,
+      [
+        eng.rows[0]!.id, opts.returnType ?? '1040', opts.stage ?? 'in_preparation', opts.preparerId,
+        opts.originalDeadline ?? null, opts.extendedDeadline ?? null, opts.extensionFiled ?? false,
+        opts.docsReceived ? new Date() : null, opts.perfectionDeadline ?? null,
+      ]
+    );
+    if (opts.perfectionDeadline) {
+      await app.db.query(
+        `INSERT INTO tasks (title, assigned_staff_id, contact_id, due_date, priority,
+                            source, source_type, source_id)
+         VALUES ($1, $2, $3, $4::date, 1, 'automation', 'efile_reject', $5)`,
+        [
+          `E-file REJECTED: Synthetic ${opts.label} — fix & re-file by ${opts.perfectionDeadline}`,
+          opts.preparerId, c.id, opts.perfectionDeadline, te.rows[0]!.id,
+        ]
+      );
+    }
+    return te.rows[0]!.id;
+  });
+  return { taxEngagementId: teId, contactId: c.id };
 }
 
 before(async () => {

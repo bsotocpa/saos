@@ -298,7 +298,15 @@ test('a REDUCED deposit invoices the reduced amount, not the price-book figure',
   assert.equal(eng.rows[0]!.deposit_treatment, 'reduced');
   assert.equal(eng.rows[0]!.deposit_charged_cents, reduced);
 
-  // A/R aging can now isolate these engagements — the whole point of the flag.
+  /*
+   * A/R aging can now isolate these engagements — the whole point of the flag.
+   *
+   * The drain runs first (#48): the deposit invoice is created as a draft with its delivery
+   * queued, and A/R aging is about invoices that were actually SENT. Backdating `sent_at` on a
+   * draft would have made this pass on an invoice no client ever received.
+   */
+  const { drainOutbox } = await import('../src/outbox.ts');
+  await drainOutbox(app);
   await app.db.query(`UPDATE invoices SET sent_at = now() - interval '40 days' WHERE contact_id = $1`, [contactId]);
   const report = await runReport(app, 'ar_aging', { from: '2020-01-01', to: '2030-12-31' });
   const total = report.rows.reduce((n, r) => n + (r.waived_deposit_invoices as number), 0);
