@@ -329,6 +329,13 @@ label.inline-check input[type='checkbox'],
 .quote-line .ctl input[type='number'] { width: 62px; margin: 0; }
 .quote-line .amt { margin-left: auto; font-variant-numeric: tabular-nums; }
 
+/* #44 — close / hold / resume on an engagement row.
+   Its own row (flex-basis 100%) rather than trailing the amount: at 390px a trailing
+   button group is the first thing to push a line past the viewport, which is the whole
+   class of bug #43 was about. */
+.rowactions { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+.btn.small { padding: 5px 10px; font-size: 12px; min-height: 32px; }
+
 /* Reports (M27). One dataset, two presentations: the dense table on a desktop,
    one card per row on a phone. A report is mostly numbers, and a horizontally
    scrolling grid of numbers on a phone is unreadable even when it technically

@@ -68,9 +68,14 @@ export async function resolveSchedules(
   contactId: string,
   opts: { extraServiceLines?: ServiceLine[] } = {}
 ): Promise<ResolvedSchedules> {
+  /*
+   * `on_hold` belongs here (#44). A paused engagement still HAS an agreement, and dropping
+   * its schedule out of the packet would mean pausing one service silently rewrites the
+   * legal document covering all of them.
+   */
   const engagements = await app.db.query<{ service_line: ServiceLine }>(
     `SELECT DISTINCT service_line::text AS service_line FROM engagements
-     WHERE contact_id = $1 AND status IN ('draft', 'active')`,
+     WHERE contact_id = $1 AND status IN ('draft', 'active', 'on_hold')`,
     [contactId]
   );
   const lines = new Set<ServiceLine>([
@@ -186,7 +191,7 @@ export async function attestAddendumFor(
             to_char(a.expected_report_date, 'YYYY-MM-DD') AS expected_report_date
      FROM attest_addenda a
      JOIN engagements e ON e.id = a.engagement_id
-     WHERE a.contact_id = $1 AND e.status IN ('draft', 'active')
+     WHERE a.contact_id = $1 AND e.status IN ('draft', 'active', 'on_hold')
      ORDER BY a.created_at DESC LIMIT 1`,
     [contactId]
   );
@@ -219,7 +224,7 @@ export async function assertAttestAddendum(
   if (!addendum) {
     const eng = await app.db.query<{ id: string; title: string | null }>(
       `SELECT id, title FROM engagements
-       WHERE contact_id = $1 AND service_line = 'attest' AND status IN ('draft', 'active')
+       WHERE contact_id = $1 AND service_line = 'attest' AND status IN ('draft', 'active', 'on_hold')
        ORDER BY created_at LIMIT 1`,
       [contactId]
     );

@@ -600,7 +600,7 @@ interface LadderRow {
 export async function runLadderJob(
   app: FastifyInstance,
   today: string
-): Promise<{ skipped: boolean; rungs: number[]; suppressed?: number }> {
+): Promise<{ skipped: boolean; rungs: number[]; suppressed?: number; pausedHeld?: number }> {
   const ACTION = 'job.escalation_ladder';
   const already = await app.db.query(
     `SELECT 1 FROM audit_log WHERE action = $1 AND details->>'run_date' = $2 LIMIT 1`,
@@ -632,17 +632,53 @@ export async function runLadderJob(
   );
   const [d3, d7, d14, d30] = (daysSetting.rows[0]?.value ?? [3, 7, 14, 30]) as [number, number, number, number];
 
+  /*
+   * PAUSED WORK IS NOT CHASED (#44).
+   *
+   * The ladder sends the client an email at D3 and an SMS at D7. Without this clause, a
+   * staff member holding an engagement would still have the system chasing that client for
+   * documents about the very work we stopped — and refunding waiting_since on resume does
+   * not un-send a reminder that already went out.
+   *
+   * BOTH pause sources skip, for different reasons that land in the same place: a staff
+   * hold is our delay, and a dunning pause is the deliberate quiet while an invoice is
+   * overdue. What differs is the CLOCK, not the silence — a staff pause pushes
+   * waiting_since forward on resume and a dunning pause does not, so a client who ran their
+   * own clock down arrives back at the rung they earned.
+   *
+   * Engagement-blind for tasks with no engagement_id, which Brian ruled acceptable for now:
+   * those are not attached to work anyone can pause.
+   */
   const { rows } = await app.db.query<LadderRow>(
     `SELECT t.id, t.title, t.contact_id, t.ladder_rung,
             (EXTRACT(EPOCH FROM (($2::date + time '12:00') - t.waiting_since)) / 86400)::int AS waiting_days,
             c.first_name, c.last_name, c.email, c.language, c.sms_consent
      FROM tasks t
      JOIN contacts c ON c.id = t.contact_id
+     LEFT JOIN engagements e ON e.id = t.engagement_id
      WHERE t.waiting_since IS NOT NULL
        AND (t.status = 'waiting_for_input' OR (t.client_visible AND t.status = ANY($1::task_status[])))
-       AND t.ladder_rung < 4`,
+       AND t.ladder_rung < 4
+       AND e.work_paused_at IS NULL`,
     [OPEN_STATUSES, today]
   );
+
+  /*
+   * Counted, not merely skipped. CLAUDE.md's rule for gated sends is that every suppression
+   * shows up in the job's run record — a quiet day and a day where twelve reminders were
+   * held back must not look identical from the outside.
+   */
+  const held = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n
+       FROM tasks t
+       JOIN engagements e ON e.id = t.engagement_id
+      WHERE t.waiting_since IS NOT NULL
+        AND (t.status = 'waiting_for_input' OR (t.client_visible AND t.status = ANY($1::task_status[])))
+        AND t.ladder_rung < 4
+        AND e.work_paused_at IS NOT NULL`,
+    [OPEN_STATUSES]
+  );
+  const pausedHeld = held.rows[0]!.n;
 
   const rungs = [0, 0, 0, 0];
   const rene = await firstActiveByRole(app.db, 'comms_billing');
@@ -713,9 +749,12 @@ export async function runLadderJob(
   await writeAudit(app.db, {
     actorType: 'system', actorLabel: 'daily-jobs',
     action: ACTION,
-    details: { run_date: today, d3: rungs[0], d7: rungs[1], d14: rungs[2], d30: rungs[3] },
+    details: {
+      run_date: today, d3: rungs[0], d7: rungs[1], d14: rungs[2], d30: rungs[3],
+      paused_held: pausedHeld,
+    },
   });
-  return { skipped: false, rungs };
+  return { skipped: false, rungs, pausedHeld };
 }
 
 /** Reminder sweep (every scheduler tick): due reminders → assignee alert. */

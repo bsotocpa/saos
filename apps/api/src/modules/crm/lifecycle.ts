@@ -47,7 +47,12 @@ export async function deriveLifecycle(app: FastifyInstance, contactId: string): 
   }>(
     `SELECT
        EXISTS (SELECT 1 FROM engagement_packets p WHERE p.contact_id = $1 AND p.status = 'signed') AS master_signed,
-       (SELECT count(*)::int FROM engagements e WHERE e.contact_id = $1 AND e.status = 'active')   AS open_engagements,
+       -- on_hold IS OPEN (#44). Brian's ruling: a pause keeps the client active. A client
+       -- whose work we deliberately held this week has not stopped being a client, and
+       -- flipping them to dormant would be the system reporting our own decision back to
+       -- us as their disengagement.
+       (SELECT count(*)::int FROM engagements e
+         WHERE e.contact_id = $1 AND e.status IN ('active', 'on_hold'))                            AS open_engagements,
        EXISTS (SELECT 1 FROM engagements e WHERE e.contact_id = $1)                                AS ever_engaged,
        EXISTS (SELECT 1 FROM quotes q WHERE q.contact_id = $1 AND q.status = 'accepted')           AS accepted_quote,
        (SELECT c.source::text = 'dubsado' FROM contacts c WHERE c.id = $1)                         AS from_client_book`,

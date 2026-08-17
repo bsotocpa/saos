@@ -179,9 +179,20 @@ export async function runDunningJob(
     // ── 30 days unpaid → work pauses, visibly ──
     if (daysOverdue >= WORK_PAUSE_DAYS && inv.engagement_id) {
       const res = await app.db.query(
+        /*
+         * `work_pause_source = 'dunning'` (#44) — the pause is stamped with who caused it,
+         * because that decides what resume does. This one is the CLIENT's: it suppresses
+         * chasing while it lasts, but their clock keeps running and the price lock does not
+         * extend. A staff hold sets 'staff' and the opposite is true of both.
+         *
+         * The status is deliberately NOT moved to `on_hold`. That state is a deliberate
+         * staff decision about scope; this is an automatic billing consequence that lifts
+         * itself the moment the invoice is paid.
+         */
         `UPDATE engagements
          SET work_paused_at = now(),
-             work_pause_reason = 'account needs attention'
+             work_pause_reason = 'account needs attention',
+             work_pause_source = 'dunning'
          WHERE id = $1 AND work_paused_at IS NULL`,
         [inv.engagement_id]
       );
@@ -306,9 +317,19 @@ export async function resumeAfterPayment(app: FastifyInstance, invoiceId: string
   const inv = rows[0];
   if (!inv) return;
   if (inv.engagement_id) {
+    /*
+     * ONLY LIFTS ITS OWN PAUSE (#44).
+     *
+     * This used to clear whatever pause it found. Once a staff member can hold an
+     * engagement through the same columns, that becomes a real bug: a client paying an
+     * overdue invoice would silently resume work someone had deliberately stopped — an
+     * automatic action reversing a human decision, with an audit row claiming the payment
+     * did it.
+     */
     const res = await app.db.query(
-      `UPDATE engagements SET work_paused_at = NULL, work_pause_reason = NULL
-       WHERE id = $1 AND work_paused_at IS NOT NULL`,
+      `UPDATE engagements
+          SET work_paused_at = NULL, work_pause_reason = NULL, work_pause_source = NULL
+        WHERE id = $1 AND work_pause_source = 'dunning'`,
       [inv.engagement_id]
     );
     if ((res.rowCount ?? 0) > 0) {

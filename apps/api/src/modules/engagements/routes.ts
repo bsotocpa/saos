@@ -4,10 +4,23 @@ import { requirePermission } from '../../plugins/auth.ts';
 import { createEngagement } from './service.ts';
 import { configureRecurringEngagement, configuratorOptions, enterMaintenanceMode } from './configurator.ts';
 import { scopeForEngagements, scopeName, scopeSummary } from './scope.ts';
+import { closeEngagement } from './close.ts';
+import { pauseEngagement, resumeEngagement } from './pause.ts';
 
 const PREP = ['weekly', 'monthly', 'quarterly', 'semi_annual'] as const;
 const SESSION = ['weekly', 'biweekly', 'monthly', 'quarterly', 'semi_annual', 'annual'] as const;
 const RUNGS = ['registration_setup', 'review_audit', 'admin_training', 'full_management'] as const;
+
+/*
+ * `declined` is deliberately absent (#44). It describes a QUOTE, and `quotes.status` already
+ * holds it with `decline_reason`. An engagement exists only because a quote was accepted, so
+ * it cannot be declined — the case it might describe is `withdrawn` with a reason.
+ */
+const CloseBody = z.object({
+  outcome: z.enum(['completed', 'withdrawn']),
+  reason: z.string().max(2000).optional(),
+  endedOn: z.iso.date().optional(),
+});
 
 const ConfigureBody = z.object({
   prepCadence: z.enum(PREP),
@@ -127,4 +140,49 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
       return enterMaintenanceMode(app, id, b.sessionCadence, request.staff!, b.note);
     }
   );
+
+  /*
+   * CLOSING, HOLDING AND RESUMING (#44) — all three behind `engagements.write`.
+   *
+   * A separate permission from `engagements.create` on purpose: creating an engagement is
+   * the start of a commitment and ending one is the end of it, and the roles that should be
+   * able to do the second are not automatically the roles that can do the first. Today only
+   * the wildcard holders have it, which is the conservative direction to be wrong in.
+   *
+   * NOT automation-gated. `isAutomationEnabled()` exists to stop the system messaging
+   * clients on its own; a staff member clicking a button about a named engagement IS the
+   * decision the gate stands in for. The audit row records who — Brian's ruling, restated
+   * here because this is the third feature to sit on that line.
+   */
+  const closeGate = { preHandler: [app.authenticate, requirePermission('engagements.write')] };
+
+  app.post<{ Params: { id: string } }>('/engagements/:id/close', closeGate, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = CloseBody.parse(request.body);
+    return closeEngagement(
+      app,
+      id,
+      {
+        outcome: b.outcome,
+        reason: b.reason ?? null,
+        endedOn: b.endedOn ?? null,
+      },
+      { type: 'staff', id: request.staff!.id, label: request.staff!.email }
+    );
+  });
+
+  app.post<{ Params: { id: string } }>('/engagements/:id/pause', closeGate, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ reason: z.string().min(1).max(2000) }).parse(request.body);
+    return pauseEngagement(app, id, { reason: b.reason }, {
+      type: 'staff', id: request.staff!.id, label: request.staff!.email,
+    });
+  });
+
+  app.post<{ Params: { id: string } }>('/engagements/:id/resume', closeGate, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    return resumeEngagement(app, id, {
+      type: 'staff', id: request.staff!.id, label: request.staff!.email,
+    });
+  });
 }

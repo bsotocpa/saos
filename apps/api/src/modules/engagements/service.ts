@@ -53,9 +53,18 @@ export async function createEngagement(
   let independenceOverridden = false;
 
   if (input.serviceLine === 'attest') {
+    /*
+     * `on_hold` COUNTS, and this is the reason the pause work had to touch this file.
+     *
+     * Independence is about the RELATIONSHIP, not about whether we happen to be working
+     * this week. Reading only `active` would mean pausing a bookkeeping engagement makes
+     * the conflict disappear — a compliance gate anyone could walk around by holding the
+     * engagement for a day, which is the opposite of what a gate is for.
+     */
     const conflicts = await app.db.query<{ id: string; service_line: string; title: string | null }>(
       `SELECT id, service_line, title FROM engagements
-       WHERE contact_id = $1 AND status = 'active' AND service_line = ANY($2::service_line[])`,
+       WHERE contact_id = $1 AND status IN ('active', 'on_hold')
+         AND service_line = ANY($2::service_line[])`,
       [input.contactId, [...INDEPENDENCE_CONFLICT_LINES]]
     );
 

@@ -150,7 +150,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
                  bm.is_primary DESC, b.name
                LIMIT 1) AS business_name,
               (SELECT count(*)::int FROM engagements e
-               WHERE e.contact_id = c.id AND e.status = 'active') AS active_engagements
+               WHERE e.contact_id = c.id AND e.status IN ('active', 'on_hold')) AS active_engagements
        FROM contacts c
        WHERE ${clauses.join(' AND ')}
        ORDER BY c.last_name, c.first_name

@@ -245,6 +245,37 @@ export default function ClientPacketPage() {
     }
   }, [params.id]);
 
+  /*
+   * #44 — close / hold / resume, all three through one helper.
+   *
+   * Reloads on success AND on failure: the API refuses a second close, a reasonless
+   * withdrawal and a click-through of a dunning pause, and in every one of those cases the
+   * row on screen is the thing that was out of date. Reporting the refusal without
+   * refreshing would leave the button that caused it still sitting there, still wrong.
+   */
+  const runEngagementAction = useCallback(
+    async (
+      engagementId: string,
+      action: 'close' | 'pause' | 'resume',
+      body: Record<string, unknown>,
+      okMessage: string
+    ) => {
+      setBusy(true);
+      setActionMsg('');
+      setActionErr('');
+      try {
+        await api(`/engagements/${engagementId}/${action}`, { method: 'POST', body });
+        setActionMsg(okMessage);
+      } catch (err) {
+        setActionErr(err instanceof Error ? err.message : 'Could not update the engagement.');
+      } finally {
+        await load();
+        setBusy(false);
+      }
+    },
+    [load]
+  );
+
   useEffect(() => {
     if (!isAuthed()) {
       router.replace('/login');
@@ -729,6 +760,10 @@ export default function ClientPacketPage() {
       {engagements.length > 0 ? (
         <section className="card span" style={{ marginTop: 12 }}>
           <h2>Engagements</h2>
+          {/* The result reports HERE, beside the button that caused it — #40's lesson:
+              a message at the far end of the page reads as nothing having happened. */}
+          {actionMsg ? <p className="alert ok">{actionMsg}</p> : null}
+          {actionErr ? <p className="alert warn">{actionErr}</p> : null}
           {engagements.map((e) => (
             <div className="quote-line" key={e.id}>
               <span className="name">
@@ -756,6 +791,61 @@ export default function ClientPacketPage() {
               <span className="amt">
                 {e.scopeSummary.count > 0 ? formatMoney(e.scopeSummary.totalCents) : '—'}
               </span>
+              {/*
+                #44 — the controls for the three states that existed in the enum and had no
+                way to be reached. A route with no button is the #9/#40 class: wire it or
+                do not ship it.
+
+                Each one asks for its reason in a prompt rather than a modal, because the
+                reason is REQUIRED on withdraw and on hold and an optional-looking field is
+                how a required reason ends up empty. Closed engagements show nothing —
+                re-opening is a new engagement, not a button.
+              */}
+              {e.status === 'active' || e.status === 'on_hold' ? (
+                <span className="rowactions">
+                  {e.status === 'active' ? (
+                    <>
+                      <button
+                        className="btn ghost small" type="button" disabled={busy}
+                        onClick={async () => {
+                          const reason = window.prompt('Why is this engagement being held? (required)');
+                          if (!reason?.trim()) return;
+                          await runEngagementAction(e.id, 'pause', { reason }, 'On hold. The clock stops — waiting time and the price lock both move out by the length of the hold.');
+                        }}
+                      >
+                        Hold
+                      </button>
+                      <button
+                        className="btn ghost small" type="button" disabled={busy}
+                        onClick={async () => {
+                          const reason = window.prompt('Anything to note about how this finished? (optional)');
+                          if (reason === null) return;
+                          await runEngagementAction(e.id, 'close', { outcome: 'completed', reason: reason || undefined }, 'Closed as completed.');
+                        }}
+                      >
+                        Close
+                      </button>
+                      <button
+                        className="btn ghost small" type="button" disabled={busy}
+                        onClick={async () => {
+                          const reason = window.prompt('Why is this being withdrawn? (required)');
+                          if (!reason?.trim()) return;
+                          await runEngagementAction(e.id, 'close', { outcome: 'withdrawn', reason }, 'Withdrawn.');
+                        }}
+                      >
+                        Withdraw
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="btn ghost small" type="button" disabled={busy}
+                      onClick={() => runEngagementAction(e.id, 'resume', {}, 'Resumed — the held days were given back to the client.')}
+                    >
+                      Resume
+                    </button>
+                  )}
+                </span>
+              ) : null}
             </div>
           ))}
         </section>

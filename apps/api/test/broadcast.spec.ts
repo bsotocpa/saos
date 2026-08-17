@@ -334,14 +334,20 @@ test('review asks: never after a notice, an overdue invoice, or paused work', as
   await app.db.query(`UPDATE invoices SET status = 'paid', amount_paid_cents = 10000, paid_at = now() WHERE id = $1`, [inv.rows[0]!.id]);
   // Paused work blocks it too.
   const eng = await app.db.query<{ id: string }>(
-    `INSERT INTO engagements (contact_id, service_line, status, work_paused_at)
-     VALUES ($1, 'bookkeeping', 'active', now()) RETURNING id`,
+    // A pause now records who caused it (#44) — and this one is the dunning pause, which is
+    // exactly what the assertion below says it is.
+    `INSERT INTO engagements (contact_id, service_line, status, work_paused_at, work_pause_source)
+     VALUES ($1, 'bookkeeping', 'active', now(), 'dunning') RETURNING id`,
     [client.id]
   );
   d = await reviewAskDecision(app, client.id);
   assert.equal(d.reason, 'work paused for non-payment');
 
-  await app.db.query(`UPDATE engagements SET work_paused_at = NULL WHERE id = $1`, [eng.rows[0]!.id]);
+  // Clearing a pause clears its source too — the two move together, by constraint (#44).
+  await app.db.query(
+    `UPDATE engagements SET work_paused_at = NULL, work_pause_source = NULL WHERE id = $1`,
+    [eng.rows[0]!.id]
+  );
   assert.equal((await reviewAskDecision(app, client.id)).send, true, 'clean again');
 });
 
