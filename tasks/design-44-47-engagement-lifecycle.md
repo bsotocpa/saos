@@ -418,3 +418,75 @@ argument about when billing should have stopped. All three now set the date.
   (`waiting_since` pushed forward by the pause duration on resume) and extends
   `price_lock_expires_on` by the same; dunning/client-caused quiet stays suppress-only and
   extends nothing.
+
+---
+
+# #47 — BUILT, VERIFIED AND DEPLOYED 2026-08-16
+
+## What shipped
+
+| File | What |
+|---|---|
+| `packages/db/migrations/0065_engagement_scope_items.js` | the snapshot table + an UPDATE-refusing trigger |
+| `apps/api/src/modules/engagements/scope.ts` | capture, read (single + batched), `scopeName`, `scopeSummary` |
+| `apps/api/src/modules/pricing/engagement-lines.ts` | the quote lines now come back by value, not just their names |
+| `apps/api/src/modules/pricing/quotes.ts` | acceptance snapshots scope onto each engagement it creates |
+| `apps/api/src/modules/portal/routes.ts` | `/portal/engagements` returns a name and covered lines, in the client's language |
+| `apps/api/src/modules/engagements/routes.ts` | `/engagements` returns scope, plus `ended_on`/`close_reason` from #44 |
+| `apps/portal/app/page.tsx` + `globals.css` | the service name comes from the agreement; covered lines listed beneath |
+| `apps/internal/app/clients/[id]/page.tsx` | an **Engagements card**, which did not exist |
+
+## Three things worth your ruling attention
+
+**1. `acceptQuote` is not transactional, and never was.** The design said scope is written
+"in the same transaction that creates the engagement". There is no transaction — acceptance
+creates engagements, then invoices, then packets in sequence, and has always been that way.
+What shipped: scope is written in the same loop iteration, immediately after the engagement
+exists and before anything else can fail, as ONE statement so a *partial* scope is
+impossible. That is weaker than the design claimed. Making acceptance atomic is its own
+piece of work and I did not start it inside #47.
+
+**2. The portal name ordering deviates slightly.** §2.3 said composition prefers
+scope → tax year/form → title → service line. Applied literally that drops the YEAR from
+tax work, and "2025 · 1040" is how a client thinks about a return — losing it to gain a
+scope description would regress the surface #35 and #41 already fixed. So the year leads
+where there is one, and scope takes the next slot. That is exactly the case #41 hit: both
+of your rows had no tax year at all, so both now name themselves from what was agreed.
+
+**3. The ops client record had no Engagements card.** Engagements appeared only as a COUNT
+inside the Returns card and as bare service-line names in a scheduling dropdown. The one
+internal surface that would have shown two identical rows side by side never showed them —
+which is why #41 was found on the portal instead of at your own desk. There is a card now.
+
+## Immutability is enforced, and drilled in production
+
+The trigger refuses UPDATE outright. `UPDATE 0` against an empty table proves nothing — a
+BEFORE UPDATE trigger never fires when no row matches — so the production check inserted a
+real row, tried to tamper with it, and rolled back:
+
+```
+DRILL PASSED — refused with: engagement_scope_items is a snapshot of what was agreed
+and cannot be updated (engagement be05e44f…). To change scope, withdraw the engagement
+and create a new one.
+rows_after_rollback = 0
+```
+
+DELETE stays allowed so `ON DELETE CASCADE` still works — immutable is not undeletable, and
+a test covers both halves.
+
+## Verification
+
+- 463 pass / 0 fail; all six build guards green; both frontends typecheck.
+- **Sabotage**: capturing nothing fails exactly the three tests that depend on capture. The
+  fourth — a scopeless engagement declines to name itself — correctly still passes, because
+  that is the pre-#47 path and it must keep working.
+- Production: 0065 applied, trigger enabled and drilled, both dynamic import sites resolve
+  inside the container, portal and ops both 200.
+- Scope table is **empty in production**, as ruled. It fills on the next quote acceptance.
+
+## Still to build on #44
+
+- `POST /engagements/:id/close` + `engagements.write` + the ops control.
+- `on_hold` with the ruled pause semantics: a staff pause holds the clock (`waiting_since`
+  pushed forward by the pause duration on resume) and extends `price_lock_expires_on` by
+  the same; dunning/client-caused quiet stays suppress-only and extends nothing.
