@@ -16,7 +16,7 @@
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
-import { firstActiveByRole } from '../../staffing.ts';
+import { firstActiveByRole, ownerForRole } from '../../staffing.ts';
 import { addTaskDependency, createTask } from '../tasks/service.ts';
 import { createEngagement } from '../engagements/service.ts';
 import { createEnvelope } from '../signatures/service.ts';
@@ -58,7 +58,7 @@ export async function spawnResolutionCase(
   );
   const caseId = caseRow.rows[0]!.id;
   const plan = planResolution({ years: input.years }, today); // sorted oldest first
-  const preparer = input.preparerId ?? (await firstActiveByRole(app.db, 'tax_preparer'));
+  const preparer = input.preparerId ?? (await ownerForRole(app.db, 'tax_preparer'));
   const bookkeeper = await firstActiveByRole(app.db, 'bookkeeper');
 
   const spawned: Array<{ taxEngagementId: string; taxYear: number; kind: 'return' | 'reconstruction'; lane: string; taskId: string }> = [];
@@ -208,7 +208,7 @@ export async function onF8821Signed(app: FastifyInstance, envelopeId: string): P
   );
   const c = rows[0];
   if (!c) return;
-  const preparer = await firstActiveByRole(app.db, 'tax_preparer');
+  const preparer = await ownerForRole(app.db, 'tax_preparer');
   await createTask(app, {
     title: 'Request IRS transcripts for every year in scope',
     description: 'The 8821 is signed. Pull wage & income and account transcripts per year; flag any SFR the IRS already filed.',

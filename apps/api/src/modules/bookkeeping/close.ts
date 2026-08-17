@@ -15,7 +15,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Client as MinioClient } from 'minio';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole } from '../../staffing.ts';
+import { ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { uploadDocument } from '../documents/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
@@ -50,7 +50,7 @@ export async function createCloseCycle(
   },
   actor: { id: string; email: string }
 ): Promise<{ id: string; created: boolean }> {
-  const marian = input.assignedStaffId ?? (await firstActiveByRole(app.db, 'bookkeeper'));
+  const marian = input.assignedStaffId ?? (await ownerForRole(app.db, 'bookkeeper'));
   const { rows } = await app.db.query<{ id: string }>(
     `INSERT INTO close_cycles (contact_id, business_id, engagement_id, cadence, period_start, period_end, assigned_staff_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -181,7 +181,7 @@ export async function completeClose(
   let schedulingTaskCreated = false;
   if (!session) {
     // No session on the calendar — THIS is when a task is warranted.
-    const marian = cycle.assigned_staff_id ?? (await firstActiveByRole(app.db, 'bookkeeper'));
+    const marian = cycle.assigned_staff_id ?? (await ownerForRole(app.db, 'bookkeeper'));
     await createTask(app, {
       title: `Schedule a books review with this client (${cycle.period_start} → ${cycle.period_end})`,
       description:

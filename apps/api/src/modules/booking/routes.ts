@@ -177,6 +177,21 @@ export function registerBookingRoutes(app: FastifyInstance): void {
     if (!discoverySlugs.includes(slug)) {
       // Unknown event type: accept, flag for staff so nothing silently slips.
       const rene = await ownerForRole(app.db, 'comms_billing');
+      /*
+       * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule, 2026-08-17).
+       *
+       * Both sat inside `if (rene)`, so an unfilled role meant the work was never
+       * recorded at all. An unassigned task in the queue is visible; a skipped one never
+       * existed. A notification still needs a real person — that gate stays.
+       */
+      await createTask(app, {
+        title: `Map Cal.com event type '${slug}' in Admin → Settings (booking.discovery_events)`,
+        assignedStaffId: rene,
+        contactId,
+        source: 'automation',
+        sourceType: 'booking_unmapped',
+        sourceId: slug,
+      });
       if (rene) {
         await notifyOnce(app.db, {
           staffId: rene,
@@ -188,14 +203,6 @@ export function registerBookingRoutes(app: FastifyInstance): void {
           relatedObjectId: contactId,
         });
         // M25: mapping the slug is a work item, deduped per slug.
-        await createTask(app, {
-          title: `Map Cal.com event type '${slug}' in Admin → Settings (booking.discovery_events)`,
-          assignedStaffId: rene,
-          contactId,
-          source: 'automation',
-          sourceType: 'booking_unmapped',
-          sourceId: slug,
-        });
       }
       return { status: 'ok', lane: 'unmapped' };
     }
@@ -242,6 +249,22 @@ export function registerBookingRoutes(app: FastifyInstance): void {
     const location = (body.payload.videoCallData?.type ?? body.payload.location ?? '').toLowerCase();
     if (!location.includes('zoom')) {
       const rene = await ownerForRole(app.db, 'comms_billing');
+      /*
+       * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule, 2026-08-17).
+       *
+       * Both sat inside `if (rene)`, so an unfilled role meant the work was never
+       * recorded at all. An unassigned task in the queue is visible; a skipped one never
+       * existed. A notification still needs a real person — that gate stays.
+       */
+      await createTask(app, {
+        title: `Fix non-Zoom discovery booking (${location || 'no location'}) — Zoom-only rule`,
+        assignedStaffId: rene,
+        contactId,
+        priority: 1,
+        source: 'automation',
+        sourceType: 'booking_not_zoom',
+        sourceId: contactId,
+      });
       if (rene) {
         await notifyOnce(app.db, {
           staffId: rene,
@@ -253,15 +276,6 @@ export function registerBookingRoutes(app: FastifyInstance): void {
           // of this alert anyway — the invoice was only ever the nearest object to hand.
           relatedObjectType: 'contact',
           relatedObjectId: contactId,
-        });
-        await createTask(app, {
-          title: `Fix non-Zoom discovery booking (${location || 'no location'}) — Zoom-only rule`,
-          assignedStaffId: rene,
-          contactId,
-          priority: 1,
-          source: 'automation',
-          sourceType: 'booking_not_zoom',
-          sourceId: contactId,
         });
       }
     }

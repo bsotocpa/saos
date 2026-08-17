@@ -7,7 +7,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
-import { allActiveByRoles, firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { allActiveByRoles, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { addDays } from '../tax/deadlines.ts';
 
@@ -40,7 +40,7 @@ export async function createIrsNotice(
   actor: { type: 'staff' | 'client' | 'system'; id?: string | null; label?: string | null },
   input: CreateNoticeInput
 ): Promise<{ id: string; handlerStaffId: string | null; responseDeadline: string | null }> {
-  const handlerStaffId = await firstActiveByRole(app.db, 'tax_preparer');
+  const handlerStaffId = await ownerForRole(app.db, 'tax_preparer');
   const defaultDays = await settingNumber(app, 'irs_notice.default_response_days', 30);
   const responseDeadline =
     input.responseDeadline ?? (input.noticeDate ? addDays(input.noticeDate, defaultDays) : null);

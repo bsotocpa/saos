@@ -230,9 +230,26 @@ export async function runRestoreDrillReminderJob(
   let reminded = false;
   if (ageDays > intervalDays) {
     const ceo = await ownerForRole(app.db, 'ceo');
+    // One reminder per quarter (dedupe key), not one per day. Declared out here because both
+    // the task and the alert key off it, and the task is no longer inside the alert's guard.
+    const quarter = `${today.slice(0, 4)}-Q${Math.ceil(Number(today.slice(5, 7)) / 3)}`;
+    /*
+     * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule, 2026-08-17).
+     *
+     * Both sat inside `if (ceo)`. Unproven backups with nobody on staff produced no task and
+     * no record — and this is the drill that exists because backups nobody has restored are
+     * not backups. An unassigned task in the queue is visible; a skipped one never was.
+     */
+    await createTask(app, {
+      title: `Run the quarterly restore drill (${quarter})`,
+      description: 'scripts/restore-drill.sh — record the pass in Admin → Settings → ops.last_restore_drill_at. Procedure: RUNBOOK_OPS.md.',
+      assignedStaffId: ceo,
+      priority: 1,
+      source: 'system',
+      sourceType: 'restore_drill',
+      sourceId: quarter,
+    });
     if (ceo) {
-      // One reminder per quarter (dedupe key), not one per day.
-      const quarter = `${today.slice(0, 4)}-Q${Math.ceil(Number(today.slice(5, 7)) / 3)}`;
       reminded = await notifyOnce(app.db, {
         staffId: ceo,
         type: 'restore_drill_due',
@@ -243,16 +260,6 @@ export async function runRestoreDrillReminderJob(
             : `Quarterly restore drill overdue (last passed ${lastDrill.slice(0, 10)}). Run scripts/restore-drill.sh.`,
         relatedObjectType: 'ops_quarter',
         relatedObjectId: quarter,
-      });
-      // M25: the drill is Brian's work item (owner rollup), one per quarter.
-      await createTask(app, {
-        title: `Run the quarterly restore drill (${quarter})`,
-        description: 'scripts/restore-drill.sh — record the pass in Admin → Settings → ops.last_restore_drill_at. Procedure: RUNBOOK_OPS.md.',
-        assignedStaffId: ceo,
-        priority: 1,
-        source: 'system',
-        sourceType: 'restore_drill',
-        sourceId: quarter,
       });
     }
   } else {
@@ -301,6 +308,22 @@ export async function runBackupStaleCheckJob(
     stale = Date.now() - Date.parse(status.last_backup_at) > 26 * 3_600_000;
     if (stale) {
       const ceo = await ownerForRole(app.db, 'ceo');
+      /*
+       * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule, 2026-08-17).
+       *
+       * M25: one open work item until fixed (dedupe on a stable source id). It sat inside
+       * `if (ceo)`, so a stale backup with nobody on staff left no work item — and a stale
+       * backup is the thing this whole job exists to make impossible to miss.
+       */
+      await createTask(app, {
+        title: 'Fix the stale nightly backup',
+        description: `Last snapshot ${status.last_backup_at}. Check /etc/cron.d/saos-backup and /var/log/saos-backup.log on the server.`,
+        assignedStaffId: ceo,
+        priority: 2,
+        source: 'system',
+        sourceType: 'backup_stale',
+        sourceId: 'backup-stale', // stable: re-opens only after the last one closes
+      });
       if (ceo) {
         await notifyOnce(app.db, {
           staffId: ceo,
@@ -309,16 +332,6 @@ export async function runBackupStaleCheckJob(
           title: `Nightly backup is stale — last snapshot ${status.last_backup_at}. Check the cron + scripts/backup.sh log.`,
           relatedObjectType: 'ops_date',
           relatedObjectId: today, // re-nags daily until fixed
-        });
-        // M25: one open work item until fixed (dedupe on a stable source id).
-        await createTask(app, {
-          title: 'Fix the stale nightly backup',
-          description: `Last snapshot ${status.last_backup_at}. Check /etc/cron.d/saos-backup and /var/log/saos-backup.log on the server.`,
-          assignedStaffId: ceo,
-          priority: 2,
-          source: 'system',
-          sourceType: 'backup_stale',
-          sourceId: 'backup-stale', // stable: re-opens only after the last one closes
         });
       }
     }

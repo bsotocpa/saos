@@ -11,7 +11,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
-import { firstActiveByRole } from '../../staffing.ts';
+import { firstActiveByRole, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { daysBetween } from '../tax/deadlines.ts';
 
@@ -86,7 +86,7 @@ export async function runOnboardingRescueJob(
   );
 
   const brian = await firstActiveByRole(app.db, 'ceo');
-  const rene = await firstActiveByRole(app.db, 'comms_billing');
+  const rene = await ownerForRole(app.db, 'comms_billing');
   const byStage: Record<string, number> = {};
   let nudged = 0;
   let stalled = 0;

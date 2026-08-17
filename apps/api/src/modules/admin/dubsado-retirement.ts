@@ -81,6 +81,28 @@ export async function runDubsadoRetirementCheckJob(
 
   if (readiness.ready) {
     const brian = await ownerForRole(app.db, 'ceo');
+    /*
+     * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule, 2026-08-17).
+     *
+     * Both sat inside `if (brian)`, so an unfilled role meant the work was never
+     * recorded at all. An unassigned task in the queue is visible; a skipped one never
+     * existed. A notification still needs a real person — that gate stays.
+     */
+    await createTask(app, {
+      title: 'Retire Dubsado — the trigger you set has been met',
+      description:
+        `Your trigger (2026-08-09): ${MIGRATED_LOGIN_TARGET} migrated clients logged into the portal AND one ` +
+        `full month-end close run in SAOS. Both are now true (${readiness.migratedLoggedIn} logins, ` +
+        `${readiness.closesCompleted} closes).\n\n` +
+        'Before cancelling: export anything you still want that SAOS does not hold (old proposals, ' +
+        'canned-email history), confirm no active workflow still emails clients from Dubsado, then cancel ' +
+        'the subscription and record the date here.',
+      assignedStaffId: brian,
+      priority: 1,
+      source: 'automation',
+      sourceType: 'dubsado_retirement',
+      sourceId: 'trigger_met',
+    });
     if (brian) {
       // relatedObjectId is a fixed key, so notifyOnce makes this a
       // once-ever alert rather than a daily nag after the trigger lands.
@@ -93,21 +115,6 @@ export async function runDubsadoRetirementCheckJob(
           `and ${readiness.closesCompleted} month-end close(s) have run in SAOS`,
         relatedObjectType: 'ops_milestone',
         relatedObjectId: 'dubsado_retirement',
-      });
-      await createTask(app, {
-        title: 'Retire Dubsado — the trigger you set has been met',
-        description:
-          `Your trigger (2026-08-09): ${MIGRATED_LOGIN_TARGET} migrated clients logged into the portal AND one ` +
-          `full month-end close run in SAOS. Both are now true (${readiness.migratedLoggedIn} logins, ` +
-          `${readiness.closesCompleted} closes).\n\n` +
-          'Before cancelling: export anything you still want that SAOS does not hold (old proposals, ' +
-          'canned-email history), confirm no active workflow still emails clients from Dubsado, then cancel ' +
-          'the subscription and record the date here.',
-        assignedStaffId: brian,
-        priority: 1,
-        source: 'automation',
-        sourceType: 'dubsado_retirement',
-        sourceId: 'trigger_met',
       });
     }
   }

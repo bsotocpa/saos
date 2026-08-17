@@ -9,7 +9,7 @@ import type { Client as MinioClient } from 'minio';
 import { writeAudit } from '../../audit.ts';
 import { isAutomationEnabled } from '../../automations.ts';
 import { AppError } from '../../types.ts';
-import { allActiveByRoles, firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { allActiveByRoles, firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { createIrsNotice } from '../notices/service.ts';
@@ -628,7 +628,7 @@ export async function runDocumentChaseJob(
   let nonResponseAlerts = 0;
   if (stalled.rows.length > 0) {
     const leadership = await allActiveByRoles(app.db, ['ceo', 'ed_coo']);
-    const rene = await firstActiveByRole(app.db, 'comms_billing');
+    const rene = await ownerForRole(app.db, 'comms_billing');
     for (const s of stalled.rows) {
       let fired = false;
       for (const staffId of leadership) {

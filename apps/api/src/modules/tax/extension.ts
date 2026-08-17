@@ -101,18 +101,27 @@ export async function runExtensionDecisionListJob(
     // M25: the review itself is Brian's work item (owner rollup); the
     // notifications below remain the alert channel.
     const ceo = await ownerForRole(app.db, 'ceo');
-    if (ceo) {
-      await createTask(app, {
-        title: `Review Extension Decision List — deadline ${list.deadline} (${list.count} engagement(s))`,
-        description: 'Mark each engagement: Extend or Push to finish. The auto-extension batch (Mar 25 / Apr 1 cutoffs) files only after this review.',
-        assignedStaffId: ceo,
-        dueDate: list.deadline,
-        priority: 2,
-        source: 'automation',
-        sourceType: 'extension_batch_review',
-        sourceId: list.deadline,
-      });
-    }
+    /*
+     * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule, 2026-08-17).
+     *
+     * Both sat inside `if (ceo)`, so an unfilled role meant the work was never
+     * recorded at all. An unassigned task in the queue is visible; a skipped one never
+     * existed. A notification still needs a real person — that gate stays.
+     */
+    await createTask(app, {
+      title: `Review Extension Decision List — deadline ${list.deadline} (${list.count} engagement(s))`,
+      description: 'Mark each engagement: Extend or Push to finish. The auto-extension batch (Mar 25 / Apr 1 cutoffs) files only after this review.',
+      assignedStaffId: ceo,
+      dueDate: list.deadline,
+      priority: 2,
+      source: 'automation',
+      sourceType: 'extension_batch_review',
+      sourceId: list.deadline,
+    });
+    /*
+     * No `if (ceo)` remains here: the alerts below fan out to every active ceo/tax_preparer
+     * from their own query, so they were never gated on this variable in the first place.
+     */
     const staff = await app.db.query<{ id: string }>(
       `SELECT st.id FROM staff st JOIN roles r ON r.id = st.role_id
        WHERE st.is_active AND r.key IN ('ceo', 'tax_preparer')`

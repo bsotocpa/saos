@@ -72,6 +72,22 @@ export async function createReferral(
   // The approval queue lives with the receiving side's lead: Jackson approves
   // Hilo→Soto handoffs; the ED/COO role also holds the Soto→Hilo queue.
   const approver = await ownerForRole(app.db, 'ed_coo');
+  /*
+   * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule, 2026-08-17).
+   *
+   * Both sat inside `if (approver)`, so an unfilled role meant the work was never
+   * recorded at all. An unassigned task in the queue is visible; a skipped one never
+   * existed. A notification still needs a real person — that gate stays.
+   */
+  await createTask(app, {
+    title: `Approve referral: ${input.direction === 'hilo_to_soto' ? 'Hilo → Soto' : 'Soto → Hilo'}`,
+    assignedStaffId: approver,
+    contactId: input.contactId,
+    priority: 1,
+    source: 'automation',
+    sourceType: 'referral_approval',
+    sourceId: id,
+  });
   if (approver) {
     await notifyOnce(app.db, {
       staffId: approver,
@@ -84,15 +100,6 @@ export async function createReferral(
     });
     // M25: the approval is a WORK ITEM — a task in the owner rollup, closed
     // automatically by the decision (v4.4 unified-task rule).
-    await createTask(app, {
-      title: `Approve referral: ${input.direction === 'hilo_to_soto' ? 'Hilo → Soto' : 'Soto → Hilo'}`,
-      assignedStaffId: approver,
-      contactId: input.contactId,
-      priority: 1,
-      source: 'automation',
-      sourceType: 'referral_approval',
-      sourceId: id,
-    });
   }
   await writeAudit(app.db, {
     actorType: actor.type,

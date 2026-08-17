@@ -24,7 +24,7 @@
 import net from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { getSetting } from '../tax/extension.ts';
 
@@ -83,12 +83,32 @@ export async function recordContainerHealth(
 
   const alerted: string[] = [];
   if (unhealthy.length > 0) {
-    const ceo = await firstActiveByRole(app.db, 'ceo');
+    const ceo = await ownerForRole(app.db, 'ceo');
     for (const c of unhealthy) {
       const why = reasonFor(c.name);
       const detail = c.state === 'running'
         ? `unhealthy for ~${c.unhealthyMinutes ?? '?'} min (${c.failingStreak} failed checks)`
         : `state ${c.state}`;
+      /*
+       * THE TASK IS UNCONDITIONAL; only the ALERT needs a person (Brian's rule).
+       *
+       * Both used to sit inside `if (ceo)`. Even for the CEO — the end of the fallback chain —
+       * that is the #17 shape: a wedged container with nobody on staff produced no task at
+       * all, so the record of the outage did not exist either. An unassigned task in the queue
+       * is visible the moment someone logs in; a skipped one never was.
+       */
+      await createTask(app, {
+        title: `Fix ${c.name} — ${c.health === 'unhealthy' ? 'unhealthy' : c.state}`,
+        description:
+          `${why ?? 'Service is not healthy.'}\n\n${detail}\n\n` +
+          `Check: docker logs ${c.name} --tail 50 · docker inspect ${c.name} --format '{{json .State.Health}}'\n` +
+          `A wedged container usually clears with: docker restart ${c.name}`,
+        assignedStaffId: ceo,
+        priority: severityFor(c.name) === 'critical' ? 1 : 2,
+        source: 'system',
+        sourceType: 'container_unhealthy',
+        sourceId: c.name, // stable: one open task per container until it closes
+      });
       if (ceo) {
         await notifyOnce(app.db, {
           staffId: ceo,
@@ -98,18 +118,6 @@ export async function recordContainerHealth(
           relatedObjectType: 'container',
           // Re-nags per container per day rather than every cron tick.
           relatedObjectId: `${c.name}:${new Date().toISOString().slice(0, 10)}`,
-        });
-        await createTask(app, {
-          title: `Fix ${c.name} — ${c.health === 'unhealthy' ? 'unhealthy' : c.state}`,
-          description:
-            `${why ?? 'Service is not healthy.'}\n\n${detail}\n\n` +
-            `Check: docker logs ${c.name} --tail 50 · docker inspect ${c.name} --format '{{json .State.Health}}'\n` +
-            `A wedged container usually clears with: docker restart ${c.name}`,
-          assignedStaffId: ceo,
-          priority: severityFor(c.name) === 'critical' ? 1 : 2,
-          source: 'system',
-          sourceType: 'container_unhealthy',
-          sourceId: c.name, // stable: one open task per container until it closes
         });
       }
       alerted.push(c.name);

@@ -11,7 +11,7 @@ import { AppError } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
 import { makeMinioClient } from '../documents/storage.ts';
 import { createTask } from '../tasks/service.ts';
-import { firstActiveByRole } from '../../staffing.ts';
+import { ownerForRole } from '../../staffing.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import {
   CLOSE_STEPS, closeWorkbench, completeClose, createCloseCycle, markCloseStep, upcomingSession,
@@ -183,7 +183,7 @@ export function registerBookkeepingRoutes(app: FastifyInstance): void {
       engagementTitle = eng.rows[0].service_line;
     }
 
-    const owner = await firstActiveByRole(app.db, 'comms_billing');
+    const owner = await ownerForRole(app.db, 'comms_billing');
     const task = await createTask(app, {
       title: engagementTitle
         ? `Schedule a meeting — ${engagementTitle}`

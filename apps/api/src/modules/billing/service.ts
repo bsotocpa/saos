@@ -13,7 +13,7 @@ import {
   availableDepositCredit,
   consumeDepositCredit,
 } from './deposit-credit.ts';
-import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
+import { notifyOnce, ownerForRole } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { currentPriceBookVersion } from '../pricing/service.ts';
@@ -329,6 +329,22 @@ export async function invoiceForFiledEngagement(
   const rene = await ownerForRole(app.db, 'comms_billing');
 
   if (te.final_fee_cents === null) {
+    /*
+     * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule, 2026-08-17).
+     *
+     * Both used to sit inside `if (rene)`, so an unfilled role meant the work was
+     * never recorded at all. An unassigned task in the queue is visible; a skipped one
+     * never existed. A notification still needs a real person — that gate stays.
+     */
+    await createTask(app, {
+      title: `Set final fee + invoice: ${te.first_name} ${te.last_name} (${te.tax_year} ${te.return_type.toUpperCase()})`,
+      assignedStaffId: rene,
+      contactId: te.contact_id,
+      priority: 1,
+      source: 'automation',
+      sourceType: 'invoice_needed',
+      sourceId: te.id,
+    });
     if (rene) {
       await notifyOnce(app.db, {
         staffId: rene,
@@ -338,15 +354,6 @@ export async function invoiceForFiledEngagement(
         contactId: te.contact_id,
         relatedObjectType: 'tax_engagement',
         relatedObjectId: te.id,
-      });
-      await createTask(app, {
-        title: `Set final fee + invoice: ${te.first_name} ${te.last_name} (${te.tax_year} ${te.return_type.toUpperCase()})`,
-        assignedStaffId: rene,
-        contactId: te.contact_id,
-        priority: 1,
-        source: 'automation',
-        sourceType: 'invoice_needed',
-        sourceId: te.id,
       });
     }
     return { invoiced: false };
@@ -501,7 +508,7 @@ export async function runInvoiceOverdueJob(
     [today, days]
   );
 
-  const rene = await firstActiveByRole(app.db, 'comms_billing');
+  const rene = await ownerForRole(app.db, 'comms_billing');
   // Kill switch covers the CLIENT reminder only — invoices still flip to
   // overdue (A/R truth) and Rene still gets the flag + chase task.
   const dunningArmed = await isAutomationEnabled(app, 'ar_dunning');

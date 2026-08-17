@@ -21,7 +21,7 @@
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { isAutomationEnabled } from '../../automations.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { addDays, daysBetween } from '../tax/deadlines.ts';
@@ -113,7 +113,7 @@ export async function runDunningJob(
   // decisions worth surfacing rather than differences someone has to reverse-engineer.
   let feesBlockedNoDisclosedRate = 0;
   let feesCappedByDisclosure = 0;
-  const rene = await firstActiveByRole(app.db, 'comms_billing');
+  const rene = await ownerForRole(app.db, 'comms_billing');
 
   for (const inv of rows) {
     // Deposits and credits net against the balance FIRST (v4.3 rule).

@@ -15,7 +15,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
 import { isAutomationEnabled } from '../../automations.ts';
-import { firstActiveByRole } from '../../staffing.ts';
+import { ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendSms } from '../comms/send-sms.ts';
 
@@ -403,8 +403,20 @@ export async function completeEvent(
   // ONE follow-up task, not one per attendee — the work item is the follow-up
   // pass, and CLAUDE.md forbids module-local to-do lists.
   const unlinked = attendees.rows.length;
-  const jackson = await firstActiveByRole(app.db, 'ed_coo');
-  if (jackson && unlinked > 0) {
+  const jackson = await ownerForRole(app.db, 'ed_coo');
+  /*
+   * THE OWNER GATE GOES; THE BUSINESS CONDITION STAYS (Brian's rule, 2026-08-17).
+   *
+   * This was `if (jackson && unlinked > 0)` — two conditions doing different jobs. The owner
+   * half was the #17 defect: an unfilled `ed_coo` meant the follow-up work was never recorded.
+   * The `unlinked > 0` half is real: an event nobody attended has no attendees to link, and a
+   * task reading "0 attendees" is noise that teaches people to ignore the queue.
+   *
+   * Worth stating because a script I wrote to do this sweep hoisted BOTH out and I caught it
+   * in review. "Create the task unconditionally" means unconditional on WHO OWNS IT, never on
+   * whether there is anything to do.
+   */
+  if (unlinked > 0) {
     await createTask(app, {
       title: `Post-event follow-up: ${e.title_en} (${unlinked} attendees)`,
       description:

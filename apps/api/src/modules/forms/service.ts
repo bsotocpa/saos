@@ -378,6 +378,22 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
   }
   if (a.irs_letters === 'yes') {
     const ana = await ownerForRole(app.db, 'tax_preparer');
+    /*
+     * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule, 2026-08-17).
+     *
+     * Both sat inside `if (ana)`, so an unfilled role meant the work was never
+     * recorded at all. An unassigned task in the queue is visible; a skipped one never
+     * existed. A notification still needs a real person — that gate stays.
+     */
+    await createTask(app, {
+      title: `Triage IRS letters flagged at intake: ${a.first_name} ${a.last_name}`,
+      assignedStaffId: ana,
+      contactId,
+      priority: 1,
+      source: 'automation',
+      sourceType: 'intake_irs_letters',
+      sourceId: submissionId,
+    });
     if (ana) {
       await notifyOnce(app.db, {
         staffId: ana, type: 'intake_irs_letter_flag', severity: 'warning',
@@ -385,15 +401,6 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
         contactId, relatedObjectType: 'form_submission', relatedObjectId: submissionId,
       });
       // M25: priority triage is a work item on the handler's list.
-      await createTask(app, {
-        title: `Triage IRS letters flagged at intake: ${a.first_name} ${a.last_name}`,
-        assignedStaffId: ana,
-        contactId,
-        priority: 1,
-        source: 'automation',
-        sourceType: 'intake_irs_letters',
-        sourceId: submissionId,
-      });
     }
   }
 
