@@ -931,3 +931,29 @@ Two details worth copying:
 
 Related: [[retire-dont-edit]] — the same family of question. What already exists is the part a
 content change forgets.
+
+## A drill that reports zero is not the same as a drill that ran (2026-08-17)
+
+The production drill for Laura's annual-report task called `runEntityComplianceJob` and reported
+`the job reminded staff (0)` — which reads as a real finding: the job did not create the task.
+
+It had not run at all. The job is date-guarded on `audit_log` per calendar date, the daily runner
+had already used today, so it returned `{ skipped: true, staffReminders: 0 }` immediately. The
+drill was measuring a job that declined to execute.
+
+Worse, in the same run: `ok(observed.task?.assigned_staff_id !== null, 'assigned to a real
+person')` **PASSED**, because `observed.task` was `undefined`, and `undefined !== null` is true.
+A check reported success on a task that did not exist.
+
+**Two rules, both about the same mistake:**
+
+1. **When exercising a guarded or idempotent job, assert it ACTUALLY RAN** — `skipped === false` —
+   before believing any count it returns. A date-guarded job is designed to no-op, so "it did
+   nothing" is its normal behaviour and cannot be read as evidence about anything else.
+2. **Never assert `!== null` on an optional-chained field.** `x?.y !== null` is true whenever
+   `x` is missing. Assert the type and the shape: `typeof x?.y === 'string' && x.y.length > 0`.
+
+Related: [[an-absence-assertion-needs-a-matching-presence-assertion]] and
+[[sabotage-one-claim-at-a-time-within-a-test]] — the third time this session that a check reported
+what I expected rather than what it verified. The pattern is always the same: the assertion was
+technically true about something other than the thing being tested.

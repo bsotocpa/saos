@@ -2016,6 +2016,39 @@ until staff exist. An unassigned task with no alert is work that doesn’t exist
 - [x] **Rule 4: raw `INSERT INTO tasks`.** Eight statements bypass `createTask()`, so rules 1
       and 2 could not see them; four had no-fallback resolvers.
 
+### Laura's other two SOPs — SAME TREATMENT 2026-08-17
+
+- [x] **`laura-sos-restore` (6 steps) and `laura-annual-report` (5 steps)**, section-per-step
+      with headings verbatim. Both tasks had NO checklist, so the structure had to be created
+      first — the SOP can only explain steps the task names. Guard now covers 3 pairings,
+      17 steps.
+- [x] **A ROLE THAT DOES NOT EXIST, fixed.** `laura-annual-report` shipped with
+      `role_key = 'entity_admin'`; there is no such role. The SOP list filters by role, so
+      Laura (`va_entity`) could never surface her own annual-report procedure — and it failed
+      silently: nothing errored, the page simply never appeared. The alignment guard now fails
+      the build on any SOP filed under a role that is not real (`null` still allowed — the two
+      booking SOPs belong to no one role).
+- [x] **Migration 0071** carries both bodies plus the role fix, scoped to `version = 1` and
+      reporting per SOP whether it applied or was left alone as hand-edited. Generated FROM the
+      seed then frozen, verified byte-identical (3,457 / 2,969 chars).
+- [x] **Production drill**: annual-report end-to-end through the real job (task created, five
+      steps, assigned, linked to the SOP); SOS path checked for link + section-per-step but
+      **the ILSOS scraper deliberately NOT fired** — `SOS_MODE=live`, and pointing it at a
+      synthetic company name to test our own wiring is not something to do to a government
+      site.
+
+- [ ] **Stop-points needing Brian's ruling** (drafted from what the system and Illinois enforce,
+      not from him):
+      · **SOS: a VOLUNTARY dissolution.** Drafted as "stop, go to Brian" — reinstating a company
+        someone chose to wind up is a question about what the client is doing now.
+      · **SOS: reinstatement total large enough that a fresh entity might be better.** Drafted as
+        a scope conversation for Brian rather than Laura's call.
+      · **Annual report: a stored due date that disagrees with the state rule.** Drafted as
+        "find out which is right" — an admin override is legitimate, but so is a wrong stored
+        date, and they look identical in advance.
+      · **Annual report: a non-Illinois entity.** The derived date is researched for IL and a
+        plain formation-anniversary fallback elsewhere. Drafted as "check that state's own rule".
+
 ### The PLLC conversion SOP — WRITTEN 2026-08-17, before Laura's first real one
 
 Brian: "draft it against the six-step task checklist so the SOP and the task literally share
