@@ -6,6 +6,7 @@ import argon2 from 'argon2';
 import pg from 'pg';
 import { migrate, seedAll } from '@saos/db';
 import { loadConfig, type Config } from '../src/config.ts';
+import type { Db } from '../src/db.ts';
 import { encryptSecret } from '../src/crypto.ts';
 
 /**
@@ -62,7 +63,7 @@ export interface TestStaff {
 
 /** Insert a synthetic staff member. All test identities use example.test addresses. */
 export async function makeStaff(
-  db: pg.Pool,
+  db: Db,
   config: Config,
   opts: { email: string; name: string; role: string; password: string; totpSecret?: string }
 ): Promise<TestStaff> {
@@ -87,7 +88,7 @@ export async function makeStaff(
 
 /** Insert a synthetic contact (no real client data in tests — CLAUDE.md). */
 export async function makeContact(
-  db: pg.Pool,
+  db: Db,
   opts: { firstName: string; lastName: string; email: string; language?: 'en' | 'es' }
 ): Promise<{ id: string; email: string }> {
   const { rows } = await db.query<{ id: string }>(
@@ -120,7 +121,7 @@ export function multipartBody(
   };
 }
 
-export async function auditRows(db: pg.Pool, action: string, actorLabel?: string): Promise<number> {
+export async function auditRows(db: Db, action: string, actorLabel?: string): Promise<number> {
   const { rows } = await db.query<{ n: number }>(
     actorLabel
       ? `SELECT count(*)::int AS n FROM audit_log WHERE action = $1 AND actor_label = $2`

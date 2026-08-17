@@ -11,6 +11,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
+import { withTransaction } from '../../db.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
 import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
@@ -588,26 +589,101 @@ export async function overrideQuoteDeposit(
  * Client accepts. Converts to an engagement with NO re-entry, and issues the
  * deposit invoice when the quote carries a deposit item.
  */
-export async function acceptQuote(
+/**
+ * A rolled-back acceptance, recorded OUTSIDE the transaction that discarded itself.
+ *
+ * Brian's rule from part one, applied at the transaction boundary: silent failure is how a
+ * client ends up with nothing and nobody knowing. Here the client has nothing — which is the
+ * correct database outcome — but they DID just try to buy something, the quote is open again,
+ * and that is a hot lead with a broken checkout. It is worth more attention than a successful
+ * acceptance, not less.
+ *
+ * Every write in here is best-effort and swallowed: this runs while an error is already on its
+ * way to the caller, and a failure to record the failure must not replace the failure.
+ */
+async function recordFailedAcceptance(
   app: FastifyInstance,
-  token: string,
-  opts: { chooseOptional?: string[] | undefined } = {}
+  quote: { id: string; contact_id: string; first_name: string; last_name: string },
+  err: unknown
+): Promise<void> {
+  const reason = err instanceof Error ? err.message : String(err);
+  app.log.error(
+    { err, quoteId: quote.id, contactId: quote.contact_id },
+    '#48 ACCEPTANCE ROLLED BACK: the client tried to accept and nothing was written'
+  );
+  try {
+    await writeAudit(app.db, {
+      actorType: 'client',
+      actorId: quote.contact_id,
+      actorLabel: `${quote.first_name} ${quote.last_name}`,
+      action: 'quote.acceptance_failed',
+      objectType: 'quote',
+      objectId: quote.id,
+      contactId: quote.contact_id,
+      details: { reason, rolled_back: true },
+    });
+    /*
+     * `already_accepted` is deliberately NOT paged. It is the losing half of a double-tap —
+     * the acceptance went through, the client is fine, and raising a P1 for it would train
+     * whoever holds the queue to ignore this task type.
+     */
+    const isRace = err instanceof AppError && err.code === 'already_accepted';
+    if (isRace) return;
+
+    const owner = await ownerForRole(app.db, 'comms_billing');
+    await createTask(app, {
+      title: `ACCEPTANCE FAILED: ${quote.first_name} ${quote.last_name} tried to accept their quote and could not`,
+      description:
+        `Their acceptance was rolled back, so nothing was created — no engagement, no invoice, no charge (${reason}). ` +
+        'The quote is open again and they can still accept it. Call them, or accept it on their behalf once the ' +
+        'cause is fixed. Nothing else in the system will chase this.',
+      assignedStaffId: owner,
+      contactId: quote.contact_id,
+      priority: 1,
+      source: 'automation',
+      sourceType: 'acceptance_failed',
+      sourceId: quote.id,
+    });
+    if (owner) {
+      await notifyOnce(app.db, {
+        staffId: owner,
+        type: 'acceptance_failed',
+        severity: 'critical',
+        title: `Quote acceptance FAILED: ${quote.first_name} ${quote.last_name}`,
+        contactId: quote.contact_id,
+        relatedObjectType: 'quote',
+        relatedObjectId: quote.id,
+      });
+    }
+  } catch (recordErr) {
+    app.log.error({ err: recordErr, quoteId: quote.id }, '#48 could not record the failed acceptance');
+  }
+}
+
+/**
+ * The DURABLE half of acceptance — everything that must land together or not at all (#48
+ * part two).
+ *
+ * Lifted out of `acceptQuote` for one reason: it runs inside `withTransaction`, and a named
+ * function keeps the transaction boundary a single readable line at the call site instead of
+ * a hundred-and-fifty-line closure. Nothing in here sends anything outward — that was
+ * checked call-by-call through the whole graph (createEngagement, captureEngagementScope,
+ * createInvoice with send:false, createTask, notifyOnce, writeAudit, refreshContactStatus,
+ * setLeadStage) and it is the property that lets this be transactional at all.
+ *
+ * Every `app.db.query` below joins the caller's transaction automatically — see db.ts for
+ * why that is ambient rather than threaded through 792 signatures.
+ */
+async function convertAcceptedQuote(
+  app: FastifyInstance,
+  quote: { id: string; contact_id: string; first_name: string; last_name: string },
+  opts: { chooseOptional?: string[] | undefined }
 ): Promise<{
-  /** The primary engagement — the quote's first line by price-book sort order. */
   engagementId: string;
-  /** Every engagement created, one per distinct service line on the quote (#19). */
   engagements: Array<{ id: string; serviceLine: string; title: string }>;
   depositInvoiceId: string | null;
   totalCents: number;
 }> {
-  const { quote } = await quoteByToken(app, token);
-  if (quote.status === 'accepted') throw new AppError(409, 'already_accepted', 'This quote was already accepted.');
-  if (quote.status !== 'sent') throw new AppError(409, 'not_open', `This quote is '${quote.status}'.`);
-  if (quote.expired) {
-    await expireQuote(app, quote.id, 'expired before acceptance');
-    throw new AppError(409, 'expired', 'This quote has expired. We will send you a fresh one.');
-  }
-
   /*
    * #48 — CLAIM THE QUOTE BEFORE DOING ANY WORK.
    *
@@ -885,6 +961,71 @@ export async function acceptQuote(
       deposit_invoice_id: depositInvoiceId,
     },
   });
+
+  return {
+    engagementId: engagement.id,
+    engagements: engagements.map((e) => ({ id: e.id, serviceLine: e.serviceLine, title: e.title })),
+    depositInvoiceId,
+    totalCents,
+  };
+}
+
+export async function acceptQuote(
+  app: FastifyInstance,
+  token: string,
+  opts: { chooseOptional?: string[] | undefined } = {}
+): Promise<{
+  /** The primary engagement — the quote's first line by price-book sort order. */
+  engagementId: string;
+  /** Every engagement created, one per distinct service line on the quote (#19). */
+  engagements: Array<{ id: string; serviceLine: string; title: string }>;
+  depositInvoiceId: string | null;
+  totalCents: number;
+}> {
+  const { quote } = await quoteByToken(app, token);
+  if (quote.status === 'accepted') throw new AppError(409, 'already_accepted', 'This quote was already accepted.');
+  if (quote.status !== 'sent') throw new AppError(409, 'not_open', `This quote is '${quote.status}'.`);
+  if (quote.expired) {
+    await expireQuote(app, quote.id, 'expired before acceptance');
+    throw new AppError(409, 'expired', 'This quote has expired. We will send you a fresh one.');
+  }
+
+  /*
+   * ── #48 part two: ONE TRANSACTION ─────────────────────────────────────────
+   *
+   * Part one moved the claim to the top so two acceptances could not both proceed. It did
+   * not help the other half of the problem: eighteen writes in sequence, any of which
+   * could fail and leave the client with some of an acceptance — engagements but no
+   * invoice, an invoice but no onboarding task, a charge and nobody at Soto knowing to
+   * start. Silent, and the worst of them looks exactly like nothing happening.
+   *
+   * THE CLAIM IS INSIDE THE TRANSACTION, and that composes better than either fix alone:
+   *
+   *   · Two concurrent acceptances no longer race — the second BLOCKS on the row lock the
+   *     first holds, and when the first commits it re-checks `status = 'sent'`, finds it
+   *     gone and is refused. Serialised rather than merely detected.
+   *   · A failed acceptance UN-CLAIMS the quote. The rollback puts it back to `sent`, so
+   *     the client can try again — and the retry cannot collide with the wreckage of the
+   *     failed attempt, because there is none.
+   */
+  let converted: Awaited<ReturnType<typeof convertAcceptedQuote>>;
+  try {
+    converted = await withTransaction(app.db, () => convertAcceptedQuote(app, quote, opts));
+  } catch (err) {
+    /*
+     * A ROLLED-BACK ACCEPTANCE IS STILL AN EVENT.
+     *
+     * Everything the transaction wrote is gone, including any audit row it managed to
+     * write — which is correct, there was no acceptance to record. But a client just tried
+     * to buy something and could not, and that must not evaporate with the transaction.
+     * This runs OUTSIDE it, so it survives.
+     */
+    await recordFailedAcceptance(app, quote, err);
+    throw err;
+  }
+  const { engagements, depositInvoiceId, totalCents } = converted;
+  const engagement = { id: converted.engagementId };
+
   /*
    * ── #48: POST-COMMIT EFFECTS ──────────────────────────────────────────────
    *
@@ -924,14 +1065,14 @@ export async function acceptQuote(
     } catch (err) {
       failure = err instanceof Error ? err.message : 'send threw';
       app.log.error(
-        { err, quoteId: quote.id, invoiceId: depositInvoiceId, contactId: row.contact_id },
+        { err, quoteId: quote.id, invoiceId: depositInvoiceId, contactId: quote.contact_id },
         '#48 POST-COMMIT SEND FAILED: the acceptance is committed and the deposit invoice was NOT emailed'
       );
     }
 
     if (failure) {
       app.log.error(
-        { reason: failure, quoteId: quote.id, invoiceId: depositInvoiceId, contactId: row.contact_id },
+        { reason: failure, quoteId: quote.id, invoiceId: depositInvoiceId, contactId: quote.contact_id },
         '#48 CLIENT NOT TOLD: quote accepted, deposit invoice not delivered'
       );
       const billingOwner = await ownerForRole(app.db, 'comms_billing');
@@ -942,7 +1083,7 @@ export async function acceptQuote(
           'The invoice is sitting as a draft on their record. Send it — they are waiting on a payment link ' +
           'they never received, and nothing else in the system will chase this.',
         assignedStaffId: billingOwner,
-        contactId: row.contact_id,
+        contactId: quote.contact_id,
         priority: 1,
         source: 'automation',
         sourceType: 'invoice_send_failed',
@@ -954,7 +1095,7 @@ export async function acceptQuote(
           type: 'invoice_send_failed',
           severity: 'critical',
           title: `Deposit invoice NOT sent: ${quote.first_name} ${quote.last_name}`,
-          contactId: row.contact_id,
+          contactId: quote.contact_id,
           relatedObjectType: 'invoice',
           relatedObjectId: depositInvoiceId,
         });

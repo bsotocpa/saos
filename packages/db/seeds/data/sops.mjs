@@ -105,6 +105,28 @@ A client accepted a proposal. The engagement and any deposit invoice already exi
 3. If the deposit was reduced or waived, the engagement is stamped — do not
    re-invoice it.
 `),
+  sop('rene-acceptance-failed', 'A client tried to accept and could not', 'comms_billing', 'Onboarding', `
+## Why you have this task
+Someone clicked Accept on their quote and the system could not complete it. The whole
+acceptance was rolled back, so **nothing exists**: no engagement, no invoice, no charge.
+The quote went back to open and they can still accept it.
+
+This is a hot lead with a broken checkout, which needs more attention than a successful
+acceptance, not less.
+
+1. **Check the reason on the task.** If it says the quote was already accepted, close this
+   task — a double-click, and their real acceptance went through.
+2. **Look at the client record.** Confirm there is no engagement and no invoice. If there
+   IS one, stop and tell Brian: a rollback left something behind, which should be
+   impossible.
+3. **Call them the same day.** They tried to buy. Say the link had a problem, not that
+   "the system failed" — and do not ask them to try again until step 4.
+4. **Get the cause fixed before re-accepting.** A second attempt down the same path fails
+   the same way. Once it is fixed, either send them back to the quote link or accept it on
+   their behalf.
+5. **Nothing else chases this.** There is no ladder behind it, because there is no
+   engagement for a ladder to hang from.
+`),
 
   // ── Ana-Maria (tax + notices) ──────────────────────────────────────────────
   sop('ana-notice-playbook', 'IRS notice playbook', 'tax_preparer', 'IRS notices', `

@@ -3,7 +3,7 @@
 // transaction and is idempotent: re-running marks everything 'duplicate'
 // instead of inserting twice. Existing NATIVE records are never modified.
 
-import type pg from 'pg';
+import type { Db } from '../db.ts';
 import { writeAudit } from '../audit.ts';
 import type { ImportPlan } from './plan.ts';
 
@@ -22,7 +22,7 @@ export interface ExecuteResult {
 }
 
 export async function executePlan(
-  pool: pg.Pool,
+  pool: Db,
   plan: ImportPlan,
   opts: { dryRun: boolean; dirLabel: string }
 ): Promise<ExecuteResult> {

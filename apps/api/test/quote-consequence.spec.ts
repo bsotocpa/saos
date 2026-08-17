@@ -783,3 +783,233 @@ test('#48: a post-commit send failure is LOUD — the acceptance stands and a pe
   assert.equal(task.rows[0]!.priority, 1, 'at P1 — the client is waiting');
   assert.match(task.rows[0]!.title, /SEND FAILED/);
 });
+
+/*
+ * ── #48 PART TWO: ACCEPTANCE AS ONE TRANSACTION ────────────────────────────
+ *
+ * Part one stopped two acceptances from both proceeding. It did nothing for the other half:
+ * eighteen writes in sequence, any of which could fail and leave the client with SOME of an
+ * acceptance — engagements but no invoice, an invoice but no onboarding task, a charge and
+ * nobody at Soto knowing to start.
+ *
+ * THE FAILURE IS INJECTED WITH A REAL DATABASE TRIGGER, at the LAST write in the sequence.
+ * That matters: a failure at step 3 would prove almost nothing, because there is barely
+ * anything to roll back. Failing at the onboarding task — after the engagements, the scope
+ * snapshot and the deposit invoice — is the case where the old code left the most wreckage.
+ */
+
+/** Block the onboarding-task insert for ONE synthetic client, by name. */
+async function blockOnboardingTaskFor(lastName: string): Promise<void> {
+  await app.db.query(`
+    CREATE OR REPLACE FUNCTION synthetic_block_onboarding() RETURNS trigger AS $fn$
+    BEGIN
+      IF NEW.title LIKE 'Start onboarding:%${lastName}%' THEN
+        RAISE EXCEPTION 'synthetic failure at the last write in acceptance';
+      END IF;
+      RETURN NEW;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trg_synthetic_block_onboarding ON tasks;
+    CREATE TRIGGER trg_synthetic_block_onboarding
+      BEFORE INSERT ON tasks
+      FOR EACH ROW EXECUTE FUNCTION synthetic_block_onboarding();
+  `);
+}
+
+async function unblockOnboardingTask(): Promise<void> {
+  await app.db.query(`
+    DROP TRIGGER IF EXISTS trg_synthetic_block_onboarding ON tasks;
+    DROP FUNCTION IF EXISTS synthetic_block_onboarding();
+  `);
+}
+
+test('#48b: a failure at the LAST write leaves absolutely nothing behind', async () => {
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Rollback', email: 'rollback-48@example.test',
+  });
+  const quote = await createQuote(
+    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+  );
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  const token = sent.url.split('/').pop()!;
+
+  await blockOnboardingTaskFor('Rollback');
+  try {
+    await assert.rejects(
+      () => acceptQuote(app, token, {}),
+      /synthetic failure at the last write/,
+      'the acceptance fails, as designed'
+    );
+
+    /*
+     * The old code would have left every one of these behind. Each row here is a way a
+     * client could have ended up half-onboarded and nobody noticing.
+     */
+    const left = await app.db.query<{
+      engagements: number; scope: number; invoices: number; quote_status: string;
+      accepted_at: Date | null; lead_stage: string | null; contact_status: string;
+    }>(
+      `SELECT (SELECT count(*)::int FROM engagements WHERE contact_id = $1)                    AS engagements,
+              (SELECT count(*)::int FROM engagement_scope_items s
+                 JOIN engagements e ON e.id = s.engagement_id WHERE e.contact_id = $1)         AS scope,
+              (SELECT count(*)::int FROM invoices WHERE contact_id = $1)                       AS invoices,
+              (SELECT status::text FROM quotes WHERE id = $2)                                  AS quote_status,
+              (SELECT accepted_at FROM quotes WHERE id = $2)                                   AS accepted_at,
+              (SELECT lead_stage::text FROM contacts WHERE id = $1)                            AS lead_stage,
+              (SELECT contact_status::text FROM contacts WHERE id = $1)                         AS contact_status`,
+      [c.id, quote.id]
+    );
+    const r = left.rows[0]!;
+    assert.equal(r.engagements, 0, 'no engagement');
+    assert.equal(r.scope, 0, 'no scope snapshot');
+    assert.equal(r.invoices, 0, 'no invoice — the client was not charged for a failed acceptance');
+    assert.notEqual(r.lead_stage, 'deposit_paid', 'the pipeline did not advance');
+    assert.notEqual(r.contact_status, 'onboarding', 'and neither did the lifecycle');
+
+    /*
+     * THE QUOTE IS OPEN AGAIN. The claim from part one is inside the transaction, so the
+     * rollback un-claims it — a failed acceptance does not burn the quote.
+     */
+    assert.equal(r.quote_status, 'sent', 'the quote went back to open');
+    assert.equal(r.accepted_at, null, 'and carries no acceptance timestamp');
+  } finally {
+    await unblockOnboardingTask();
+  }
+});
+
+test('#48b: the rolled-back acceptance is LOUD — the client tried to buy and someone is told', async () => {
+  /*
+   * Everything the transaction wrote is gone, including any audit row it managed to write.
+   * That is correct — there was no acceptance. But the ATTEMPT must not evaporate with it,
+   * so the record is written outside the transaction. Brian's rule from part one, applied at
+   * the transaction boundary.
+   */
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Loudrollback', email: 'loudrollback-48@example.test',
+  });
+  const quote = await createQuote(
+    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+  );
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+
+  await blockOnboardingTaskFor('Loudrollback');
+  try {
+    await assert.rejects(() => acceptQuote(app, sent.url.split('/').pop()!, {}));
+  } finally {
+    await unblockOnboardingTask();
+  }
+
+  const audit = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM audit_log
+      WHERE action = 'quote.acceptance_failed' AND object_id = $1`,
+    [quote.id]
+  );
+  assert.equal(audit.rows[0]!.n, 1, 'the failed attempt is on the record, outside the transaction');
+
+  const task = await app.db.query<{ n: number; title: string; priority: number }>(
+    `SELECT count(*)::int AS n, max(title) AS title, min(priority) AS priority
+       FROM tasks WHERE contact_id = $1 AND source_type = 'acceptance_failed'`,
+    [c.id]
+  );
+  assert.equal(task.rows[0]!.n, 1, 'and a person is told');
+  assert.equal(task.rows[0]!.priority, 1, 'at P1 — a hot lead with a broken checkout');
+  assert.match(task.rows[0]!.title, /ACCEPTANCE FAILED/);
+});
+
+test('#48b: after a failed acceptance the client can simply try again', async () => {
+  /*
+   * The point of un-claiming. The retry cannot collide with the wreckage of the failed
+   * attempt because there is none — so it produces exactly one of everything.
+   */
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Retryable', email: 'retryable-48@example.test',
+  });
+  const quote = await createQuote(
+    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+  );
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  const token = sent.url.split('/').pop()!;
+
+  await blockOnboardingTaskFor('Retryable');
+  try {
+    await assert.rejects(() => acceptQuote(app, token, {}));
+  } finally {
+    await unblockOnboardingTask();
+  }
+
+  // Same token, same client, nothing changed except the cause being fixed.
+  const accepted = await acceptQuote(app, token, {});
+  assert.ok(accepted.engagementId, 'the retry goes through on the original link');
+
+  const counts = await app.db.query<{ engagements: number; invoices: number; onboarding: number }>(
+    `SELECT (SELECT count(*)::int FROM engagements WHERE contact_id = $1) AS engagements,
+            (SELECT count(*)::int FROM invoices WHERE contact_id = $1)    AS invoices,
+            (SELECT count(*)::int FROM tasks
+               WHERE contact_id = $1 AND source_type = 'quote_accepted')  AS onboarding`,
+    [c.id]
+  );
+  assert.equal(counts.rows[0]!.engagements, 1, 'exactly one engagement, not one per attempt');
+  assert.equal(counts.rows[0]!.invoices, 1, 'exactly one invoice');
+  assert.equal(counts.rows[0]!.onboarding, 1, 'exactly one onboarding task');
+});
+
+test('#48b: withTransaction is re-entrant — a nested call joins rather than nesting', async () => {
+  /*
+   * This is what makes it safe to wrap a service call some other caller has already wrapped.
+   * Asserted directly because the alternative — a second BEGIN on the same client — fails
+   * quietly with a Postgres warning rather than an error, so nothing else would catch it.
+   */
+  const { withTransaction, inTransaction } = await import('../src/db.ts');
+
+  assert.equal(inTransaction(), false, 'no transaction outside');
+  let innerSawTransaction = false;
+  await withTransaction(app.db, async () => {
+    assert.equal(inTransaction(), true, 'inside, the ambient client is visible');
+    await withTransaction(app.db, async () => {
+      innerSawTransaction = inTransaction();
+      // A write here is governed by the OUTER transaction — the whole point.
+      await app.db.query(`SELECT 1`);
+    });
+  });
+  assert.equal(innerSawTransaction, true, 'the nested call joined the outer transaction');
+  assert.equal(inTransaction(), false, 'and the context is gone afterwards');
+});
+
+test('#48b: a rollback inside withTransaction discards every write, including nested ones', async () => {
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Discarded', email: 'discarded-48@example.test',
+  });
+  const { withTransaction } = await import('../src/db.ts');
+
+  await assert.rejects(
+    () =>
+      withTransaction(app.db, async () => {
+        await app.db.query(`UPDATE contacts SET last_name = 'Committed' WHERE id = $1`, [c.id]);
+        // A nested call joins, so its write is discarded with the outer one.
+        await withTransaction(app.db, async () => {
+          await app.db.query(`UPDATE contacts SET first_name = 'Nested' WHERE id = $1`, [c.id]);
+        });
+        throw new Error('synthetic');
+      }),
+    /synthetic/
+  );
+
+  const after = await app.db.query<{ first_name: string; last_name: string }>(
+    `SELECT first_name, last_name FROM contacts WHERE id = $1`, [c.id]
+  );
+  assert.equal(after.rows[0]!.last_name, 'Discarded', 'the outer write is gone');
+  assert.equal(after.rows[0]!.first_name, 'Synthetic', 'and so is the nested one');
+});
+
+test('#48b: an ordinary query outside a transaction still uses the pool', async () => {
+  /*
+   * The wrapper is on the path of all ~792 call sites, so the boring case has to be boring.
+   * The rest of the suite is the real regression test for this; the assertion here is that
+   * the wrapper is transparent when no transaction is in progress.
+   */
+  const { inTransaction } = await import('../src/db.ts');
+  assert.equal(inTransaction(), false);
+  const r = await app.db.query<{ n: number }>(`SELECT 1::int AS n`);
+  assert.equal(r.rows[0]!.n, 1);
+});

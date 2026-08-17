@@ -43,6 +43,14 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
     reason:
       'The procedure is one action and the task already names it: the deposit invoice is sitting as a draft on the client record, and it needs sending. An SOP page would repeat that sentence a click further away, which is the wrong trade for a P1 task that exists because a client is waiting on a payment link they never received.',
   },
+  /*
+   * #48 part two. Deliberately NOT null: this one needs a written procedure, because the
+   * right first move is not obvious. The client is a hot lead with a broken checkout, the
+   * quote is open again, nothing was charged — and whether to call them, accept on their
+   * behalf, or wait for a fix depends on why it failed. That is a judgement call, which is
+   * exactly what an SOP is for.
+   */
+  acceptance_failed: { sop: 'rene-acceptance-failed' },
   client_non_response: { sop: 'rene-escalation-call' },
 
   // ── Tax (Ana-Maria) ───────────────────────────────────────────────────────
