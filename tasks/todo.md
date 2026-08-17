@@ -2012,14 +2012,14 @@ Found while doing the above, deliberately NOT changed: two sequences reach outwa
 middle, so wrapping them in a transaction is the wrong move — it would put an email inside a
 transaction, which is wrong twice over (unrecallable, and it holds a pool connection).
 
-- [ ] **** () emails the client the
-      signature link and THEN calls . If the mark fails, the client is
+- [ ] **`sendPacketForPortalSignature`** (`engagements/packet.ts`) emails the client the
+      signature link and THEN calls `markPacketSent`. If the mark fails, the client is
       holding a packet the system believes was never sent — no follow-up, no ladder, and the
       packet still reads unsent to every screen. Inverse of the invoice bug: there the send
       was too early, here the record is too late.
-- [ ] **** () calls ,
+- [ ] **`transitionStage(→ filed)`** (`tax/pipeline.ts`) calls `invoiceForFiledEngagement`,
       which sends the invoice email inside a multi-write sequence. Not reachable from
-       (which only moves to /), so wrapping that
+      `recordEfileResult` (which only moves to `completed`/`rejected`), so wrapping that
       function was safe — but this path is the same defect one door over.
 
       **Both need the acceptance treatment: durable state in a transaction, send after the
