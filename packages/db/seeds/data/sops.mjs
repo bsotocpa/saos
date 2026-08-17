@@ -175,8 +175,11 @@ Record what you found: licence type, number, status, expiry. If the licence is *
 inactive**, stop here and tell Brian. A conversion for someone not currently licensed is a
 different conversation, and possibly the wrong one.
 
-If the profession is not on the IDFPR list at all, this may not need a PLLC. Stop and check
-with Brian before telling the client anything.
+**If the profession is not on the IDFPR list at all: STOP and bring it to Brian.** Not because
+it is complicated, but because the likely answer is that the client belongs at the Secretary of
+State as an ordinary LLC and needs no conversion — and deciding that changes what we are
+engaged to do. That is a scope conversation with the client, so it is Brian's to have, not
+yours. Say nothing to the client until he has had it.
 
 ### 2. Confirm current entity is improperly formed for a licensed professional
 Pull the entity's actual filing from the **IL Secretary of State**, not the client's
@@ -186,8 +189,14 @@ description of it. You are confirming two things:
 - the entity is in **good standing** — if it is not, that is a separate problem and it blocks
   the conversion. Run the SOS restoration first (see \`laura-sos-restore\`).
 
-If it turns out to be correctly formed already, close the conversion as **dismissed** with a
-note saying so. A false positive is a normal outcome here, not a failure.
+**If it turns out to be correctly formed already: tell the client, then close the conversion as
+dismissed.** Both halves matter. They were flagged for a problem they do not have, so they hear
+that from us — "we checked your filing against the licence and it is correctly formed, nothing
+needed" — rather than never hearing anything.
+
+Closing with "nothing needed" is a **completed outcome, not a failure**. We were asked whether
+the entity was wrong; the answer was no; that is the work finished. Note what you checked and
+close it.
 
 ### 3. Advisory session scheduled with client
 Brian takes this session — it is advisory work, not admin. Your job is to get it on the
@@ -222,9 +231,16 @@ one from our side until someone looks.
 The part that gets forgotten, and the part that actually bites the client. The entity is
 converted; everything pointing at it still says LLC.
 
-- **IRS/EIN** — the EIN usually survives a conversion, but the name on file must be updated.
-  If you are unsure whether a new EIN is required, ask Ana-Maria; guessing here creates a tax
-  filing problem
+- **IRS/EIN — no new EIN. Update the name on file, keep the number.** The reason, because the
+  rule is useless without it: an Illinois statutory conversion **continues the same legal
+  entity**. The LLC does not dissolve and a PLLC does not come into existence — one entity
+  changes its organisational form, so its EIN follows it. Applying for a new one would split the
+  client's tax history in two across a single continuous business.
+
+  That reasoning is also the limit of the rule. It holds because the filing is a **statutory
+  conversion**. If this client's situation is instead a dissolve-and-reform — a new entity
+  formed and the old one wound up — it is a different filing and the EIN question reopens. Stop
+  and ask Ana-Maria in that case, and only that case.
 - **Bank** — the account name must match the new entity name or deposits start bouncing
 - **Insurance** — the malpractice or professional-liability policy must name the PLLC. A policy
   naming a dissolved LLC is the worst outcome on this list
