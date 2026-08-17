@@ -833,3 +833,28 @@ expansion. Cheap, total, and it removes a whole class of silent corruption.
 Caught only because `node` refused to parse the result. It would have been far worse in a data
 file, where nothing checks syntax. Related: [[a-codemod-must-refuse-what-it-cannot-verify]] —
 same session, same shape: the tooling was confidently wrong and an external check noticed.
+
+## Routing through the front door is how you find out what the side door skipped (2026-08-17)
+
+Eight `INSERT INTO tasks` statements bypassed `createTask()`. The obvious cost was the one
+Brian named: no owner rule. Converting them surfaced two more that nobody had counted.
+
+**All eight task types were missing from the SOP registry.** `check-task-sop-hooks.mjs` reads
+task types emitted through `createTask()`, so it had never seen them — eight unmade decisions,
+invisible for exactly as long as the side door existed. The guard was not broken; it was
+looking at a door nothing came through.
+
+**And converting them broke two tests, correctly.** `meetings/pipeline` used the meeting id as
+`source_id` for every action item, which was harmless only because a raw insert does not dedupe.
+`createTask()` does — so through the front door, a meeting producing five commitments would
+have recorded one. The bug was latent in the raw version and became live on conversion.
+
+**Rule:** when a code path bypasses a shared entry point, do not enumerate what the entry point
+does and check those things individually. Route the path through it and let the failures tell
+you. The checks you would have listed are the ones you already knew about; the ones that matter
+are the ones the wrapper does that you had forgotten it does.
+
+Corollary: a build guard that reads "everything emitted through X" is silently scoped to
+callers of X. That is not a bug in the guard, but it means **adding a bypass shrinks every
+guard downstream of it at once** — which is the real argument for one door, over and above
+tidiness. Related: [[the-role-guard-tested-17s-shape-not-17s-rule]]

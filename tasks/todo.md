@@ -2016,17 +2016,44 @@ until staff exist. An unassigned task with no alert is work that doesn’t exist
 - [x] **Rule 4: raw `INSERT INTO tasks`.** Eight statements bypass `createTask()`, so rules 1
       and 2 could not see them; four had no-fallback resolvers.
 
-### OPEN — found while doing the above, Brian to sequence
+### One door for work creation — CLOSED 2026-08-17
 
-- [ ] **Raw task inserts skip the SOP hook.** `createTask()` calls `sopLinkForTaskType`; the
-      eight raw `INSERT INTO tasks` statements do not, so those task types have no
-      "how to do this" link however the registry is filled in. `check-task-sop-hooks.mjs`
-      does not catch it either — it reads which task TYPES are emitted, not how the row is
-      written. Routing them through `createTask()` fixes this and rule 4 permanently.
-      Sites: `booking/routes.ts`, `crm/service.ts`, `entity/service.ts`, `entity/sos.ts`,
-      `forms/service.ts`, `meetings/pipeline.ts`, `portal/routes.ts`,
-      `portal-auth/service.ts`. (`migration/trello.ts` is a bulk import — legitimately raw.)
-- [ ] **Three module tables carry their own `assigned_staff_id`**: `close_cycles`,
-      `entity_compliance`, and the entity-conversion table. Their resolvers are fixed now, but
-      an owner living on a module row is outside the unified task system CLAUDE.md requires
-      every work item to live in. Worth a ruling on whether those rows should spawn tasks.
+Brian's ruling: "any future direct INSERT INTO tasks should fail the guard on principle: one
+door for work creation, same as one settlement path for money."
+
+- [x] **All eight raw inserts route through `createTask()`**, and rule 4 is now the door
+      itself rather than a check on what came through it. One narrow, named exemption:
+      `apps/api/src/migration/` imports work that already happened and is already closed —
+      it sets `status`, `completed_at` and a historical `created_at`, none of which
+      `createTask()` accepts.
+- [x] **The SOP hole closed by consequence.** All eight task types were missing from
+      `TASK_TYPE_SOPS` — the checker reads types emitted through the function, so it had never
+      seen them. Two reused SOPs that already existed and were merely unwired, two are
+      self-describing, four were written.
+- [x] **Three inserts were worse than raw.** `portal-auth` had `firstActiveByRole`'s query
+      inline plus a raw task AND a raw notification insert; `meetings/pipeline` reused the
+      meeting id for every action item (through the door that would have collapsed five
+      commitments into one task); `booking` set no `source_id` at all, and Cal.com retries.
+
+### Module-table attribution — RULED AND APPLIED 2026-08-17
+
+Brian's ruling: those columns stay as domain attribution — who owns the close cycle or
+compliance item is a fact about the record. But attribution is not a work queue: nothing may
+treat a module-row staff_id as a substitute for a task, and actionable work spawns through
+`createTask()` like everything else.
+
+- [x] **Audited every reader** of `close_cycles`, `entity_compliance` and `pllc_conversions`.
+      All of them either record attribution (insert, display, report filter) or use it to
+      ROUTE a real task to the attributed person. Both are what the ruling allows.
+- [x] **One exception, and it was the case the ruling was for.** `pllc_conversions` carried an
+      `assigned_staff_id`, a six-item `checklist`, two notifications — and NO task. Laura's
+      name on the row was the only thing pointing at action, and the checklist is a
+      module-local to-do list, which CLAUDE.md forbids outright. It now spawns a task carrying
+      those six steps in order.
+
+- [ ] **Remaining: `pllc_conversions.checklist` still exists as a column.** The task now
+      carries the same six items, so progress can be ticked in two places and they can
+      disagree. The column is written at creation and PATCHable via `entity/routes.ts`.
+      Retiring it means deciding whether the ops UI reads the task's checklist instead —
+      a small UI question, not a data-model one. Left for Brian to sequence rather than
+      guessed at.
