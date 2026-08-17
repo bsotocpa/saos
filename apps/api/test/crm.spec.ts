@@ -675,8 +675,8 @@ test('a meeting can only be scoped to an OPEN engagement belonging to this clien
     [otherId, version.rows[0]!.id]
   );
   const closed = await app.db.query<{ id: string }>(
-    `INSERT INTO engagements (contact_id, service_line, status, price_book_version_id)
-     VALUES ($1, 'tax', 'completed', $2) RETURNING id`,
+    `INSERT INTO engagements (contact_id, service_line, status, price_book_version_id, ended_on)
+     VALUES ($1, 'tax', 'completed', $2, CURRENT_DATE) RETURNING id`,
     [contactId, version.rows[0]!.id]
   );
 
@@ -752,7 +752,7 @@ test('lifecycle climbs from what happened, and never from a hand-set value', asy
   assert.equal(nowRow.rows[0]!.soto_status, 'active');
 
   // Work concludes: no open engagements, relationship intact.
-  await app.db.query(`UPDATE engagements SET status = 'completed' WHERE id = $1`, [eng.rows[0]!.id]);
+  await app.db.query(`UPDATE engagements SET status = 'completed', ended_on = CURRENT_DATE WHERE id = $1`, [eng.rows[0]!.id]);
   await refreshContactStatus(app, contactId, 'test');
   assert.equal((await app.db.query(`SELECT contact_status FROM contacts WHERE id = $1`, [contactId])).rows[0].contact_status,
     'dormant', 'the last engagement closing moves active → dormant');

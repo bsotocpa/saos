@@ -7,9 +7,10 @@ import assert from 'node:assert/strict';
 import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
-import { createTestConfig, makeStaff, auditRows } from './helpers.ts';
+import { createTestConfig, makeStaff, makeContact, auditRows } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { computeComplexityScore } from '../src/modules/tax/complexity.ts';
+import { recordEfileResult } from '../src/modules/tax/pipeline.ts';
 
 let app: FastifyInstance;
 let config: Config;
@@ -364,4 +365,154 @@ test('perfection clock job: T-2 warns the preparer, past-deadline escalates to B
   // Same-day rerun: date guard.
   const rerun = await runPerfectionClockJob(app, '2026-08-09');
   assert.equal(rerun.skipped, true);
+});
+
+/*
+ * #44 §4 — a return reaching its terminal stage finishes the engagement holding it.
+ *
+ * `completed` was terminal in the tax pipeline from the start and NOTHING propagated it.
+ * So an accepted return sat inside a permanently active engagement, and the client kept
+ * reading as active because an "open" engagement existed — the same untruth as #42's
+ * "lead", one level down, waiting for the first IRS acceptance.
+ */
+test('an accepted return closes its engagement, and the client follows when the last one does', async () => {
+  /*
+   * ONE ENGAGEMENT HOLDS ONE RETURN — tax_engagements.engagement_id is UNIQUE. My design
+   * justified this check with "a client with a 2024 and a 2025 return on one engagement",
+   * which the schema does not allow: two years are two engagements. The check that every
+   * return is terminal stays (it is correct, and cheap if that constraint is ever
+   * relaxed), but the case worth testing is the real one — a client with TWO engagements
+   * does not become dormant when the first finishes.
+   */
+  const { refreshContactStatus } = await import('../src/modules/crm/lifecycle.ts');
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Twoyears', email: 'twoyears@example.test',
+  });
+  const version = await app.db.query<{ id: string }>(
+    `SELECT id FROM price_book_versions ORDER BY version_number DESC LIMIT 1`
+  );
+  await app.db.query(
+    `INSERT INTO engagement_packets (contact_id, master_template_key, master_version, schedule_codes, status, signed_at, signature_method)
+     VALUES ($1, 'engagement_master', 1, ARRAY[]::text[], 'signed', now(), 'portal_esign')`,
+    [c.id]
+  );
+
+  const mkYear = async (year: number) => {
+    const eng = await app.db.query<{ id: string }>(
+      `INSERT INTO engagements (contact_id, service_line, status, price_book_version_id)
+       VALUES ($1, 'tax', 'active', $2) RETURNING id`,
+      [c.id, version.rows[0]!.id]
+    );
+    const te = await app.db.query<{ id: string }>(
+      `INSERT INTO tax_engagements
+         (engagement_id, tax_year, return_type, stage, engagement_letter_signed_at,
+          estimate_locked_at, f8879_signed_at)
+       VALUES ($1, $2, '1040', 'filed', now(), now(), now()) RETURNING id`,
+      [eng.rows[0]!.id, year]
+    );
+    return { engagementId: eng.rows[0]!.id, returnId: te.rows[0]!.id };
+  };
+  const y2024 = await mkYear(2024);
+  const y2025 = await mkYear(2025);
+  await refreshContactStatus(app, c.id, 'test');
+
+  const actor = { staffId: null, label: 'test' };
+  await recordEfileResult(app, actor, y2024.returnId, { result: 'accepted' });
+
+  const first = await app.db.query<{ status: string; ended_on: string | null; close_reason: string | null }>(
+    `SELECT status::text AS status, ended_on::text AS ended_on, close_reason FROM engagements WHERE id = $1`,
+    [y2024.engagementId]
+  );
+  assert.equal(first.rows[0]!.status, 'completed', 'the accepted return finished its own engagement');
+  assert.ok(first.rows[0]!.ended_on, 'a closed engagement has an end date');
+  assert.match(first.rows[0]!.close_reason ?? '', /filed and accepted/);
+
+  const other = await app.db.query<{ status: string }>(
+    `SELECT status::text AS status FROM engagements WHERE id = $1`, [y2025.engagementId]
+  );
+  assert.equal(other.rows[0]!.status, 'active', 'the other year is untouched');
+
+  const midway = await app.db.query<{ contact_status: string }>(
+    `SELECT contact_status::text AS contact_status FROM contacts WHERE id = $1`, [c.id]
+  );
+  assert.equal(midway.rows[0]!.contact_status, 'active', 'still active — one engagement is still open');
+
+  await recordEfileResult(app, actor, y2025.returnId, { result: 'accepted' });
+
+  /*
+   * The last engagement closing is what moves the client, and it comes from the EVENT now
+   * rather than the health sweep that was standing in for it (#42).
+   */
+  const done = await app.db.query<{ contact_status: string }>(
+    `SELECT contact_status::text AS contact_status FROM contacts WHERE id = $1`, [c.id]
+  );
+  assert.equal(done.rows[0]!.contact_status, 'dormant',
+    'the last engagement closing moves the client to dormant, from the event rather than a sweep');
+});
+
+test('a REJECTED return does not finish anything — it is still open work', async () => {
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Rejected', email: 'rejected-close@example.test',
+  });
+  const version = await app.db.query<{ id: string }>(
+    `SELECT id FROM price_book_versions ORDER BY version_number DESC LIMIT 1`
+  );
+  const eng = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, status, price_book_version_id)
+     VALUES ($1, 'tax', 'active', $2) RETURNING id`,
+    [c.id, version.rows[0]!.id]
+  );
+  const te = await app.db.query<{ id: string }>(
+    `INSERT INTO tax_engagements
+       (engagement_id, tax_year, return_type, stage, engagement_letter_signed_at,
+        estimate_locked_at, f8879_signed_at)
+     VALUES ($1, 2025, '1040', 'filed', now(), now(), now()) RETURNING id`,
+    [eng.rows[0]!.id]
+  );
+
+  await recordEfileResult(app, { staffId: null, label: 'test' }, te.rows[0]!.id, {
+    result: 'rejected', rejectCode: 'IND-031-04', rejectReason: 'AGI mismatch',
+  });
+
+  const still = await app.db.query<{ status: string }>(
+    `SELECT status::text AS status FROM engagements WHERE id = $1`, [eng.rows[0]!.id]
+  );
+  assert.equal(still.rows[0]!.status, 'active',
+    'a reject re-queues with a perfection clock — that is open work, not a finished engagement');
+});
+
+test('withdrawing needs a reason, and closing twice is refused', async () => {
+  const { closeEngagement } = await import('../src/modules/engagements/close.ts');
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Withdrawme', email: 'withdrawme@example.test',
+  });
+  const version = await app.db.query<{ id: string }>(
+    `SELECT id FROM price_book_versions ORDER BY version_number DESC LIMIT 1`
+  );
+  const eng = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, status, price_book_version_id)
+     VALUES ($1, 'bookkeeping', 'active', $2) RETURNING id`,
+    [c.id, version.rows[0]!.id]
+  );
+  const actor = { type: 'staff' as const, id: null, label: 'test' };
+
+  await assert.rejects(
+    closeEngagement(app, eng.rows[0]!.id, { outcome: 'withdrawn' }, actor),
+    /reason/i,
+    'work that ended without being delivered has to say why'
+  );
+
+  await closeEngagement(app, eng.rows[0]!.id, { outcome: 'withdrawn', reason: 'Client sold the business.' }, actor);
+
+  await assert.rejects(
+    closeEngagement(app, eng.rows[0]!.id, { outcome: 'completed', reason: 'oops' }, actor),
+    /already closed/i,
+    'a second click must not silently overwrite the outcome someone recorded'
+  );
+
+  // And the database refuses it too, not just the service.
+  await assert.rejects(
+    app.db.query(`UPDATE engagements SET close_reason = NULL WHERE id = $1`, [eng.rows[0]!.id]),
+    /engagements_withdrawn_has_reason/
+  );
 });

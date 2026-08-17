@@ -759,10 +759,14 @@ edit — all three now report next to the control that caused them.
 
 | # | State |
 |---|---|
-| 37 (second half) | "Other" + free-text on module questions — needs `showWhen` in the module renderer |
-| 39 | booking URL by context — kickoff vs support vs review |
-| 41 | see below — needs a ruling |
-| 42 | contact status advancement — needs a ruling |
+| 44 | engagement close — §4 propagation SHIPPED 2026-08-16; route + `on_hold` still to build |
+| 47 | engagement scope snapshot — designed and signed off, building after #44 §4 |
+
+Closed since this table was written: **#37 second half** (`showWhen` in the module
+renderer, plus #46's option-granular seed upgrade), **#39** (booking URL by context),
+**#41** (duplicates withdrawn, titles composed), **#42** (the lifecycle field and its
+ladder), **#43** (the layout-wide overflow cause), **#45** (the questionnaire's persistent
+home), **#46** (the missing `Otro` option).
 
 ### #41 — the two engagements are genuinely identical
 

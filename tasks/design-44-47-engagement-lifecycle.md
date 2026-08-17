@@ -362,3 +362,59 @@ two months either keeps the price they were quoted or does not. `maintenance_mod
 
 **I have not built any of B.** Recommend: settle B.3 and B.4 before `on_hold` ships. It
 does not block #44 §4 or #47, which is what I am building now.
+
+---
+
+# #44 §4 — BUILT AND VERIFIED 2026-08-16
+
+Brian's build order: §4 propagation first, then #47, then the rest of #44.
+
+## What shipped
+
+| File | What |
+|---|---|
+| `packages/db/migrations/0064_engagement_close.js` | `close_reason`; CHECK `withdrawn` has a reason; CHECK a terminal status has `ended_on`; backfills 0061's three withdrawn duplicates |
+| `apps/api/src/modules/engagements/close.ts` | `closeEngagement()` (refuses a second close, requires a reason on `withdrawn`, audits, refreshes contact status) and `closeEngagementIfAllReturnsDone()` |
+| `apps/api/src/modules/tax/pipeline.ts` | wired into `recordEfileResult`'s accepted branch |
+
+`active → dormant` now comes from the **event** rather than the health sweep that was
+standing in for it. The sweep still recomputes the same thing; it is no longer the only
+thing that would ever notice.
+
+## A correction to §4's own premise
+
+§4 above says "a client with 2024 and 2025 returns on one engagement is not finished when
+the first is accepted." **The schema does not allow that shape** —
+`tax_engagements.engagement_id` is UNIQUE, so one engagement holds exactly one return and
+two tax years are two engagements. I discovered this only when the test I wrote to prove
+the multi-return case hit `duplicate key value violates unique constraint
+"tax_engagements_engagement_id_key"`.
+
+The all-returns-terminal check stays: it is correct, it costs one subquery, and reporting
+an engagement finished while a return is still open is the one outcome worse than never
+closing. But the case worth *testing* is the real one, and the test now asserts it — a
+client with **two engagements** stays `active` when the first closes and only goes
+`dormant` when the second does.
+
+## Three fixtures the new constraint caught
+
+`engagements_terminal_has_end_date` failed three existing tests that set
+`status = 'completed'` with no `ended_on`. The fixtures were incomplete, not the
+constraint — a closed engagement with no end date is exactly the gap that turns into an
+argument about when billing should have stopped. All three now set the date.
+
+## Verification
+
+- Full suite **459 pass / 0 fail**, all six build guards green.
+- **Sabotage**: removed the `closeEngagementIfAllReturnsDone` call, leaving the old
+  behaviour (acceptance propagates nowhere) rather than a crash. Exactly one test failed —
+  `an accepted return closes its engagement…` on the assertion *"the accepted return
+  finished its own engagement"*. Restored byte-identical, re-ran green.
+
+## Still to build on #44
+
+- `POST /engagements/:id/close` + `engagements.write` permission + the ops control.
+- `on_hold`, with the ruled pause semantics: staff-initiated pause holds the clock
+  (`waiting_since` pushed forward by the pause duration on resume) and extends
+  `price_lock_expires_on` by the same; dunning/client-caused quiet stays suppress-only and
+  extends nothing.

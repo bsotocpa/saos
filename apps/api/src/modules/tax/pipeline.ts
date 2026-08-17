@@ -205,6 +205,25 @@ export async function recordEfileResult(
   if (input.result === 'accepted') {
     await app.db.query(`UPDATE tax_engagements SET efile_accepted_at = now() WHERE id = $1`, [taxEngagementId]);
     await transitionStage(app, actor, taxEngagementId, 'completed', { note: 'e-file ACCEPTED' });
+
+    /*
+     * #44 §4 — the return is finished, so the engagement holding it might be too.
+     *
+     * `completed` was terminal here from the start and nothing above this line propagated
+     * it: the return ended, the engagement stayed active forever, and the client kept
+     * reading as active because an "open" engagement existed. That is the same untruth as
+     * #42's "lead", one level down, and it was waiting for the first IRS acceptance.
+     *
+     * Only closes when EVERY return on the engagement is terminal. In today's schema that
+     * is always exactly one — `tax_engagements.engagement_id` is UNIQUE, so two tax years
+     * are two engagements — and the check is a formality. It stays because reporting an
+     * engagement finished with a return still open is the one failure mode worse than
+     * never closing at all, and it costs a subquery to be right if that constraint moves.
+     */
+    const { closeEngagementIfAllReturnsDone } = await import('../engagements/close.ts');
+    await closeEngagementIfAllReturnsDone(app, taxEngagementId, {
+      type: 'staff', id: actor.staffId, label: actor.label,
+    });
     return { stage: 'completed', perfectionDeadline: null };
   }
 
