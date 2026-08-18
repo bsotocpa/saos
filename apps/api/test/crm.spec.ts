@@ -96,8 +96,18 @@ test('CRM walkthrough: contact → business → gaps shrink as data lands → en
   assert.equal(biz.statusCode, 201, biz.body);
   const businessId = biz.json().id as string;
 
+  /*
+   * INVERTED 2026-08-17: this asserted the BARE names — ['ein', 'entity_type', 'industry'] — and
+   * was right about the code and wrong about the system. The July import wrote the same gaps
+   * PREFIXED (`business:entity_type`, 304 rows in production against 1 bare), so one column
+   * carried two spellings of one meaning and any filter on either missed part of the book. The
+   * prefixed form wins because it says the gap is about a BUSINESS rather than the person.
+   * Migration 0077 converts the strays.
+   */
   detail = await app.inject({ method: 'GET', url: `/contacts/${contactId}`, headers: auth(brian) });
-  assert.deepEqual(detail.json().enrichmentGaps, ['ein', 'email', 'entity_type', 'industry', 'phone']);
+  assert.deepEqual(detail.json().enrichmentGaps, [
+    'business:ein', 'business:entity_type', 'business:industry', 'email', 'phone',
+  ]);
 
   // Backfill everything → gaps resolve.
   await app.inject({
@@ -796,5 +806,122 @@ test('archived is the only hand-set state, it needs a reason, and no sweep undoe
   await assert.rejects(
     app.db.query(`UPDATE contacts SET archived_reason = NULL WHERE id = $1`, [contactId]),
     /contacts_archived_has_reason/
+  );
+});
+
+test('the entity-type gap names WHICH business, because that gap blocks something specific', async () => {
+  /*
+   * "Missing: business:entity_type" says a gap exists; it does not say where, and a contact can
+   * own several companies. A task nobody can act on directly is how 611 enrichment rows came to
+   * sit untouched — so the one gap that blocks annual-report enrolment names its businesses.
+   */
+  const created = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Multiowner', email: 'multi@example.test', phone: '+13125550188' },
+  });
+  const contactId = created.json().id as string;
+
+  for (const name of ['Synthetic Alpha LLC', 'Synthetic Beta LLC']) {
+    await app.inject({
+      method: 'POST', url: `/contacts/${contactId}/businesses`, headers: auth(brian),
+      payload: { name, zip: '60608' },
+    });
+  }
+  // A third one that IS classified — it must not appear in the chase list.
+  const classified = await app.inject({
+    method: 'POST', url: `/contacts/${contactId}/businesses`, headers: auth(brian),
+    payload: { name: 'Synthetic Gamma LLC', zip: '60608', entityType: 'llc' },
+  });
+  assert.equal(classified.statusCode, 201, classified.body);
+
+  const task = await app.db.query<{ description: string | null }>(
+    `SELECT description FROM tasks WHERE source_type = 'enrichment' AND contact_id = $1`,
+    [contactId]
+  );
+  const description = task.rows[0]?.description ?? '';
+  assert.match(description, /Entity type unknown for: Synthetic Alpha LLC, Synthetic Beta LLC/,
+    'both unclassified businesses, by name');
+  assert.doesNotMatch(description, /Gamma/, 'and not the one that already has a type');
+  assert.match(description, /none of these can be enrolled in annual-report tracking/,
+    'saying what the gap actually blocks');
+});
+
+test('owesAnnualReport: no is an answer, unknown is not', async () => {
+  const { owesAnnualReport } = await import('../src/modules/entity/service.ts');
+
+  /*
+   * Brian's scope ruling: "a sole prop owes nothing, and manufacturing obligations is worse than
+   * missing them." So the function has THREE answers, and the third is the important one — an
+   * unclassified business must never be read as "owes nothing" just because it is not a yes.
+   */
+  assert.equal(owesAnnualReport('llc'), true);
+  assert.equal(owesAnnualReport('pllc'), true);
+  assert.equal(owesAnnualReport('s_corp'), true);
+  assert.equal(owesAnnualReport('c_corp'), true);
+  assert.equal(owesAnnualReport('nonprofit'), true);
+  assert.equal(owesAnnualReport('coop'), true);
+
+  assert.equal(owesAnnualReport('sole_prop'), false, 'a sole prop registers nothing and owes nothing');
+
+  assert.equal(owesAnnualReport(null), null, 'unclassified is NOT "owes nothing"');
+  assert.equal(owesAnnualReport('not_sure'), null);
+  assert.equal(owesAnnualReport('other'), null);
+  /*
+   * `partnership` is unresolved ON PURPOSE. A general partnership registers nothing; an LP or
+   * LLP does. The enum cannot tell them apart, and guessing either way is the thing the ruling
+   * forbids — so it asks, like an unresearched state does.
+   */
+  assert.equal(owesAnnualReport('partnership'), null, 'the enum cannot tell a GP from an LP');
+});
+
+test('the classify pass orders by what the answer unblocks', async () => {
+
+  // A researched state (FL) on an in-scope client, and a lead that will not enrol whatever we learn.
+  const inScope = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Dormant', email: 'dormant@example.test', phone: '+13125550189' },
+  });
+  const inScopeId = inScope.json().id as string;
+  await app.db.query(`UPDATE contacts SET soto_status = 'inactive' WHERE id = $1`, [inScopeId]);
+  await app.inject({
+    method: 'POST', url: `/contacts/${inScopeId}/businesses`, headers: auth(brian),
+    payload: { name: 'Synthetic Zulu Enrollable FL LLC', zip: '33101', state: 'FL' },
+  });
+
+  const lead = await app.inject({
+    method: 'POST', url: '/contacts', headers: auth(brian),
+    payload: { firstName: 'Synthetic', lastName: 'Prospect', email: 'prospect@example.test', phone: '+13125550190' },
+  });
+  await app.inject({
+    method: 'POST', url: `/contacts/${lead.json().id}/businesses`, headers: auth(brian),
+    payload: { name: 'Synthetic Alpha Lead FL LLC', zip: '33101', state: 'FL' },
+  });
+
+  const res = await app.inject({ method: 'GET', url: '/entity-compliance/unclassified', headers: auth(brian) });
+  assert.equal(res.statusCode, 200, res.body);
+  const rows = res.json().businesses as Array<Record<string, unknown>>;
+  assert.match(res.json().caveat, /not "owes nothing"/, 'the limit is stated with the data');
+  const enrollable = rows.find((r) => r.business_name === 'Synthetic Zulu Enrollable FL LLC');
+  const leadRow = rows.find((r) => r.business_name === 'Synthetic Alpha Lead FL LLC');
+
+  assert.ok(enrollable, 'the in-scope business is listed');
+  assert.equal(enrollable.unblocks, 'enrolment in annual-report tracking');
+  assert.equal(enrollable.state_researched, true, 'Florida is one of the two researched states');
+
+  assert.ok(leadRow, 'the lead is listed too — but honestly labelled');
+  assert.equal(leadRow.unblocks, 'nothing yet — client is not active or dormant',
+    'a lead is not ours to file for, and the report says so rather than hiding the row');
+
+  /*
+   * The names are chosen to FIGHT this assertion. "Zulu" sorts after "Alpha", so alphabetical
+   * order puts the enrollable one LAST — only the scope-first ordering can put it first.
+   *
+   * The first version of this test used names that happened to sort the right way already, and
+   * the sabotage that replaced the whole ORDER BY with `b.name` passed it. A test that agrees
+   * with the bug is worse than no test, because it reports coverage it does not have.
+   */
+  assert.ok(
+    rows.indexOf(enrollable) < rows.indexOf(leadRow),
+    'the one that actually enrols sorts above the one that cannot — despite sorting later by name'
   );
 });

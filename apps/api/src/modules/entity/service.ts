@@ -117,6 +117,48 @@ export function nextAnnualReportDueDate(
 }
 
 /*
+ * WHO OWES AN ANNUAL REPORT AT ALL (Brian's scope ruling, 2026-08-17).
+ *
+ * "Businesses attached to active or dormant clients, with an entity type that owes a report. Not
+ * all 619 — a sole prop owes nothing, and manufacturing obligations is worse than missing them."
+ *
+ * An annual report is what a state charges a REGISTERED entity for staying on its register. If
+ * the state never registered you, there is nothing to report and no fee to miss:
+ *
+ *   · sole_prop  — no registration, no report. This is the whole point of the ruling.
+ *   · partnership — AMBIGUOUS and therefore NOT auto-scoped. A general partnership registers
+ *     nothing; an LP or LLP does. The enum does not distinguish them, and guessing in either
+ *     direction is exactly what the ruling forbids — so it goes to Brian, like an unresearched
+ *     state does.
+ *   · not_sure / other — unknown by definition. Never enrol on an unknown.
+ *
+ * `null` is deliberately NOT in either list: "we have not classified this yet" is a third
+ * answer, and `owesAnnualReport` returning `null` is how the caller tells "no" from "don't know".
+ */
+const ENTITY_TYPES_OWING_ANNUAL_REPORT = ['llc', 'pllc', 's_corp', 'c_corp', 'nonprofit', 'coop'];
+const ENTITY_TYPES_OWING_NOTHING = ['sole_prop'];
+
+/** true = owes one, false = owes none, null = cannot say (unclassified, or ambiguous). */
+export function owesAnnualReport(entityType: string | null): boolean | null {
+  if (entityType === null) return null;
+  if (ENTITY_TYPES_OWING_ANNUAL_REPORT.includes(entityType)) return true;
+  if (ENTITY_TYPES_OWING_NOTHING.includes(entityType)) return false;
+  return null; // partnership / not_sure / other — a question, not an answer
+}
+
+/*
+ * WHICH CLIENTS ARE IN SCOPE — "active or dormant" against the enum we actually have.
+ *
+ * `soto_status` is (none, lead, active, inactive, former). There is no `dormant`; `inactive` is
+ * it — a real client not currently engaged. A `lead` has not become a client and a `former` one
+ * has stopped being one, so neither is ours to file for.
+ *
+ * Worth knowing when reading counts: the production book today is `lead` 333 and `inactive` 286,
+ * with ZERO `active`. So "active or dormant" currently resolves to the 286 inactive ones.
+ */
+export const ANNUAL_REPORT_CLIENT_STATUSES = ['active', 'inactive'];
+
+/*
  * STATES WHOSE ANNUAL-REPORT RULE WE HAVE ACTUALLY RESEARCHED (Brian's ruling 2026-08-17).
  *
  * `nextAnnualReportDueDate` derives Illinois from the real rule — first day of the anniversary

@@ -6,7 +6,13 @@ import { AppError } from '../../types.ts';
 import { ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { todayChicago } from '../tax/deadlines.ts';
-import { createPllcConversion, nextAnnualReportDueDate, runEntityComplianceJob } from './service.ts';
+import {
+  ANNUAL_REPORT_CLIENT_STATUSES,
+  RESEARCHED_ANNUAL_REPORT_STATES,
+  createPllcConversion,
+  nextAnnualReportDueDate,
+  runEntityComplianceJob,
+} from './service.ts';
 
 const CreateComplianceBody = z.object({
   businessId: z.uuid(),
@@ -100,6 +106,58 @@ export function registerEntityRoutes(app: FastifyInstance): void {
        ORDER BY ec.annual_report_due_date NULLS LAST`
     );
     return { records: rows };
+  });
+
+  /*
+   * THE CLASSIFY-ENTITY-TYPE PASS (Brian's ruling, 2026-08-17: "the entity_type gap is the real
+   * first task … rather than a new mechanism — that's what the enrichment view exists for").
+   *
+   * A view over the existing gap, not a new queue: it reads `businesses.entity_type IS NULL`,
+   * which is the same fact `business:entity_type` in the enrichment queue reports.
+   *
+   * IT LIVES HERE, NOT IN THE REPORTS MODULE. It was written there first and the spec stopped
+   * it — v4.6 line 624 enumerates the Reports & KPIs module as exactly seven owner-facing
+   * analytics, and an operational worklist is not one of them. It belongs beside the enrolment
+   * it unblocks, behind the same `entity.manage` permission that does the enrolling.
+   *
+   * Ordered by what the answer is worth: a researched state on an in-scope client enrols the
+   * moment someone types its type; an out-of-scope one will not enrol whatever the answer is,
+   * and should not compete with it for attention.
+   */
+  app.get('/entity-compliance/unclassified', manage, async () => {
+    const { rows } = await app.db.query(
+      `SELECT b.id AS business_id, b.name AS business_name, b.state,
+              COALESCE(c.soto_status::text, 'no client') AS client_status,
+              (b.state = ANY($1::text[])) AS state_researched,
+              CASE
+                WHEN COALESCE(c.soto_status::text, '') <> ALL($2::text[])
+                  THEN 'nothing yet — client is not active or dormant'
+                WHEN b.state = ANY($1::text[])
+                  THEN 'enrolment in annual-report tracking'
+                ELSE 'enrolment, then a rule ruling from Brian'
+              END AS unblocks
+       FROM businesses b
+       LEFT JOIN business_members m ON m.business_id = b.id AND m.is_primary
+       LEFT JOIN contacts c ON c.id = m.contact_id
+       WHERE b.entity_type IS NULL
+       ORDER BY (COALESCE(c.soto_status::text, '') = ANY($2::text[])) DESC,
+                (b.state = ANY($1::text[])) DESC,
+                b.state, b.name`,
+      [[...RESEARCHED_ANNUAL_REPORT_STATES], ANNUAL_REPORT_CLIENT_STATUSES]
+    );
+    return {
+      businesses: rows,
+      /*
+       * Stated with the data rather than left for the reader to assume. An unknown entity type is
+       * "we have not asked", never "owes nothing" — and `partnership` stays unresolved because
+       * the enum cannot tell a general partnership (registers nothing) from an LP or LLP.
+       */
+      caveat:
+        'An unknown entity type is not "owes nothing" — it is "we have not asked". Nothing enrols ' +
+        'on an unknown, and nothing is assumed in either direction: manufacturing an obligation is ' +
+        'worse than missing one. Client scope is active or inactive ("dormant"); leads and former ' +
+        'clients are listed but marked, because they are not ours to file for.',
+    };
   });
 
   // Filed → history row + roll the due date to the next period.

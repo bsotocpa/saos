@@ -1083,3 +1083,57 @@ was written to avoid.
 must measure the world. A constant that duplicates a measurable fact is a second source of truth
 with no update path. The test asserts the count *changes with the data* (five inserted rows flip
 the verdict), not merely that a number appears.
+
+## Two spellings of one gap is a divergence nothing reports (2026-08-17)
+
+`enrichment_queue.missing_fields` carried `business:entity_type` (304 open rows, written by the
+July import) and `entity_type` (1 row, written by `computeEnrichmentGaps` whenever a contact
+happened to be edited). Same column, same meaning, two vocabularies, and the split grew slowly
+with edits rather than appearing at once.
+
+Nothing crashed, and nothing would have. A filter on either name simply returns part of the book
+and reports a confident count — and the first filter anyone wrote was the entity-type
+classification pass, whose entire job is counting exactly that.
+
+**Rule:** when two code paths write the same column, check that they write the same *values*, not
+just the same type. An enum-like text column with no CHECK constraint accepts both spellings
+forever. The fix picked the more informative form (`business:` says the gap is about a business,
+not the person) and migrated the strays; a CHECK would have caught it on day one.
+
+Related: [[a-rule-with-a-numeric-trigger-cannot-cite-a-frozen-number]] — both are one fact with
+two representations drifting apart.
+
+## The sabotage passed, so the TEST was wrong (2026-08-17)
+
+Sabotaging the classify pass's `ORDER BY` down to plain `b.name` did not fail the ordering test.
+The fixtures were named "Synthetic Enrollable FL LLC" and "Synthetic Lead FL LLC", and alphabetical
+order already put them in the asserted order. The test agreed with the bug.
+
+Renaming them to "Synthetic **Zulu** Enrollable" and "Synthetic **Alpha** Lead" makes alphabetical
+order FIGHT the assertion, so only the scope-first ordering can satisfy it. Same sabotage now
+fails it.
+
+**Rule:** a sabotage that passes is a finding about the test, never a licence to move on. And when
+a test asserts an ORDER, choose fixture values whose natural order is the opposite of the one
+being asserted — otherwise the test cannot distinguish the rule from the default.
+
+This is the fourth time this session that a check reported what I expected rather than what it
+verified, and the first one caught by the sabotage step itself rather than by luck. That is the
+step earning its keep.
+
+Related: [[an-absence-assertion-needs-a-matching-presence-assertion]].
+
+## The spec's enumeration is a boundary, not a starting point (2026-08-17)
+
+I built the classify pass as an eighth entry in the Reports & KPIs registry. Three tests failed on
+"seven reports per the spec", and the instinct was to invert them — the count changed, so update
+the count.
+
+Wrong instinct. v4.6 line 624 enumerates the module as seven named owner-facing analytics, and an
+operational worklist is not one of them. The tests were not stale; they were doing their job. The
+pass moved to `GET /entity-compliance/unclassified`, beside the enrolment it unblocks and behind
+the same `entity.manage` permission — a better home on every axis, arrived at by being told no.
+
+**Rule:** before inverting a test that cites the spec, go read that line of the spec. A stale
+premise and a correct boundary look identical from the failure message. "The spec wins" is in
+CLAUDE.md precisely for the moment when following it is inconvenient.

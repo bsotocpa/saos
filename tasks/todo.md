@@ -2182,8 +2182,81 @@ backfill script does either.
 - **329 of 619 businesses have no `entity_type`**, and entity type decides whether an annual
   report is owed at all. Enrolling all 619 would manufacture obligations for sole proprietors.
 
-- [ ] **DECISION NEEDED FROM BRIAN before any of this gets built** — three questions, in order,
-      because the answer to each changes the next:
+### Enrolment RULED 2026-08-17 — and (a) turned out to enrol zero
+
+Brian ruled all three in dependency order. Scope: **businesses attached to active or dormant
+clients, with an entity type that owes a report.** Illinois formation dates: **extend the ILSOS
+parse**, stored with a source stamp. Enrol how: **(a) the 8 Florida businesses now, (b) enrolment
+as an automatic consequence of entity work, (c) Laura's page ships with staff accounts.**
+
+- [x] **(a) IS BLOCKED BY (1) — all eight of them, for two independent reasons.** Checked against
+      production before building:
+
+      | | |
+      |---|---|
+      | FL businesses | 8 |
+      | …with an entity type recorded | **0** |
+      | …attached to an active or dormant client | **4** (the other 4 are leads) |
+      | **enrollable today** | **0** |
+
+      Brian's own rule closes the door: *"Nothing enrolls with an unknown type."* And a `lead` is
+      not a client, so half of them are out of scope regardless of what they turn out to be. The
+      afternoon's work is therefore rule 1, which he already named as "the real first task" —
+      the 8 become 4 enrolments the moment someone types four entity types.
+
+      Also worth knowing when reading any scope count: `soto_status` is
+      (none, lead, active, inactive, former) with **no `dormant`**. `inactive` is it. The book is
+      lead 333 / inactive 286 and **zero active**, so "active or dormant" currently means the 286.
+
+- [x] **(1) THE CLASSIFY-ENTITY-TYPE PASS — built.** A view over the existing gap, not a new
+      mechanism, per the ruling.
+
+      · **`owesAnnualReport()`** — the scope rule, once. Three answers, and the third is the
+        point: `true` for registered entities, `false` for `sole_prop`, **`null` for
+        unclassified**. `partnership` is deliberately `null` too — a general partnership registers
+        nothing while an LP or LLP does, and the enum cannot tell them apart, so it asks rather
+        than guesses. "Not a yes" must never collapse into "owes nothing".
+      · **`GET /entity-compliance/unclassified`** — the worklist, ordered by what the answer
+        unblocks, with the limits stated in the response rather than left to be assumed.
+      · **The enrichment task now names WHICH business** is unclassified. `business:entity_type`
+        said a gap existed; it did not say where, and a contact can own several companies. A task
+        nobody can act on directly is how 611 enrichment rows came to sit untouched.
+
+- [x] **Two defects found on the way, both fixed (migration 0077).**
+
+      · **Two spellings of one gap.** The July import wrote `business:entity_type` (304 open rows);
+        `computeEnrichmentGaps` wrote bare `entity_type` (1 row, appearing only where a contact
+        had been edited). Any filter on either name silently returns part of the book — and the
+        first such filter was this pass. Standardised on the prefixed form, which carries
+        information the bare one does not.
+      · **The queue was a July snapshot.** Rows were written once by the import and recomputed
+        only for contacts somebody edited, so its idea of who is missing a type had been drifting
+        from the businesses table for a month in both directions. 0077 recomputes every open row's
+        business-level gaps from the live tables.
+
+- [x] **The pass was NOT put in the Reports & KPIs module**, though it was written there first.
+      v4.6 line 624 enumerates that module as seven named owner-facing analytics; three tests
+      failed on "seven reports per the spec" and they were right, not stale. It moved to the
+      entity module, beside the enrolment it unblocks and behind the same `entity.manage`
+      permission — a better home, arrived at by being told no.
+
+- [ ] **STILL TO BUILD, in Brian's order** — sequenced behind nothing, but not started:
+
+      1. **(2) Extend the ILSOS parse for formation dates.** `sos.ts` already fetches the search
+         result page and returns only `good_standing | not_good_standing | not_found`; the
+         formation date is on that same page. Add `businesses.formation_date` with a source stamp
+         (ILSOS vs client-stated), populated at enrolment. No new vendor, and better provenance
+         than asking the client.
+      2. **(3b) Enrolment as an automatic consequence of entity work.** A formation engagement
+         completing, or an annual-report service line activating, enrols the entity — one door,
+         same as tasks. This is what stops the module falling behind again.
+      3. **(3c) Laura's page**, with staff accounts. She is the operator; it ships when she can
+         log in, not before.
+
+      **And (a) itself remains open**: four Florida entity types typed in → four enrolments.
+      Nothing else is needed for it.
+
+- [ ] **Superseded — the three questions Brian answered above:**
 
       1. **Who is actually in scope?** Every business in the book, or only those on an engagement
          that includes annual-report filing? (Today: 0 businesses are linked to any engagement,
