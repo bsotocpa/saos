@@ -2109,6 +2109,23 @@ until staff exist. An unassigned task with no alert is work that doesn’t exist
       Migration **0075** carries the SOP's new *When there is no formation date on record*
       section. Three sabotages, three restores verified by `cmp`.
 
+- [x] **Production drill of the path, on the deployed code — 21 checks, all PASS.** Through the
+      REAL route (fastify inject, real session, real permission check) and the REAL T-60 job,
+      inside one rolled-back transaction. It works across two pools because `txStore` in `db.ts`
+      is module-scoped: the client the transaction puts in the AsyncLocalStorage is the client
+      the server's own pool wrapper reads, so both write through one connection.
+
+      · Florida enrolled with no formation date → **2027-05-01**, and **0** chase tasks.
+      · Illinois enrolled with no formation date → **null**, plus a task titled *Find the
+        formation date — ZZDrill Undated LLC (IL)*, assigned, linked to `/sops/laura-annual-report`.
+      · A Florida row storing 2029-03-15 with no formation date → *Annual report **NEEDS A
+        RULING** — ZZDrill Keys LLC (FL, due 2029-03-15)*, assigned to Brian, both dates in the
+        description. Under the old code that reached Laura as routine work.
+      · `skipped=false`, `staffReminders=1`, `clientReminders=0`, and a precondition check that
+        no real compliance row sat at T-60 or T-30 of the run date.
+      · **Presence asserted INSIDE the transaction** (all three businesses live) before absence
+        after it — a rollback check that never saw a write is not a check.
+
 - [ ] **Research the remaining five non-IL state rules, in volume order.** Adding a state to
       `RESEARCHED_ANNUAL_REPORT_STATES` after confirming its rule is the one-line change that
       makes its annual-report tasks routine again.
