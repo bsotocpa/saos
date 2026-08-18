@@ -94,6 +94,27 @@ export async function closeEngagement(
    */
   await refreshContactStatus(app, eng.contact_id, 'engagement_closed');
 
+  /*
+   * (3b) — A FORMATION ENGAGEMENT COMPLETING ENROLS THE ENTITY IT CREATED.
+   *
+   * On `completed` only. A withdrawn formation means the entity was never formed, and enrolling
+   * it would put a deadline on a company that does not exist.
+   *
+   * Through `enrolFromEngagement`, which is the one door: the scope rule — active-or-dormant
+   * client, an entity type that owes a report — lives there rather than being restated here, and
+   * declining is silent because out-of-scope is the ordinary case.
+   */
+  if (input.outcome === 'completed') {
+    const { enrolFromEngagement } = await import('../entity/enrolment.ts');
+    const enrolment = await enrolFromEngagement(app, engagementId, 'formation_completed');
+    if (enrolment?.enrolled) {
+      app.log.info(
+        { engagementId, complianceId: enrolment.complianceId, dueDate: enrolment.dueDate },
+        'formation engagement completed — entity enrolled in annual-report tracking'
+      );
+    }
+  }
+
   return { engagementId, contactId: eng.contact_id, outcome: input.outcome };
 }
 

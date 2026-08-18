@@ -2310,11 +2310,46 @@ as an automatic consequence of entity work, (c) Laura's page ships with staff ac
          formation date is on that same page. Add `businesses.formation_date` with a source stamp
          (ILSOS vs client-stated), populated at enrolment. No new vendor, and better provenance
          than asking the client.
-      2. **(3b) Enrolment as an automatic consequence of entity work.** A formation engagement
-         completing, or an annual-report service line activating, enrols the entity — one door,
-         same as tasks. This is what stops the module falling behind again.
+      2. ~~**(3b) Enrolment as an automatic consequence of entity work.**~~ **BUILT 2026-08-18** —
+         see below.
       3. **(3c) Laura's page**, with staff accounts. She is the operator; it ships when she can
          log in, not before.
+
+### (3b) Enrolment as a consequence of entity work — BUILT 2026-08-18
+
+- [x] **One door: `enrolEntityIfInScope()`** in `modules/entity/enrolment.ts`, same shape as
+      `createTask()` and for the same reason. Enrolment previously happened only through a staff
+      POST no UI called — which is why `entity_compliance` held nothing while 619 businesses sat
+      in the book. Bolting a second and third path onto whichever module noticed first would
+      rebuild that in a new shape, with the scope rule enforced in three places and eventually
+      in two.
+
+      The scope ruling lives there ONCE: active-or-dormant on `contact_status`,
+      `owesAnnualReport() === true`, and not already enrolled.
+
+- [x] **Two triggers, both keyed on the SCOPE ITEM rather than the service line.** `entity` also
+      covers BOI reports, DBAs, amendments and S-corp conversions — keying on the service line
+      would put an annual-report deadline on a client who asked for one BOI report. The scope
+      snapshot (#47) is what was actually agreed, so it is what decides.
+
+      · `ENTITY_FORMATION_EIN` + engagement closes **completed** → enrol. Not on `withdrawn`:
+        a withdrawn formation means the entity was never formed, and a deadline on a company that
+        does not exist is worse than no tracking.
+      · `ENTITY_ANNUAL_REPORT` in an accepted quote's scope → enrol, inside the acceptance
+        transaction so an enrolment cannot outlive an acceptance that rolls back.
+
+- [x] **Declining is silent, and each reason is distinct.** `type_owes_nothing` is a decision,
+      `type_unknown` is a question, `client_out_of_scope` is about the client. No task is raised
+      on a decline — the unclassified ones are already in the classify pass, and a second queue
+      for the same fact is how the enrichment queue ended up with two vocabularies.
+
+- [x] **An auto-enrolment is not quieter than a manual one.** IL with no formation date derives
+      nothing, and a null due date is invisible rather than pending. It raises the same
+      "Find the formation date" task the staff route does, saying it was automatic — because
+      nobody was watching when it happened, which makes it MORE likely to go unnoticed, not less.
+
+      Sabotages: treating an unknown type as a yes fails the scope test; keying on the service
+      line fails the BOI test. Both restored byte-identical.
 
       **And (a) itself remains open**: four Florida entity types typed in → four enrolments.
       Nothing else is needed for it.

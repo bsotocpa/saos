@@ -832,6 +832,28 @@ async function convertAcceptedQuote(
       app, created.id, quote.id, row.price_book_version_id, line.scope
     );
     warnIfScopeless(app.log, created.id, captured);
+
+    /*
+     * (3b) — AN ANNUAL-REPORT SERVICE LINE ACTIVATING ENROLS THE ENTITY (Brian, 2026-08-17).
+     *
+     * Here, immediately after the scope snapshot, because the scope items ARE the trigger: an
+     * `entity` engagement might be a BOI report or a DBA, and only `ENTITY_ANNUAL_REPORT` means
+     * we have been engaged to file one. Reading the service line instead would enrol clients who
+     * asked for something else entirely.
+     *
+     * Inside the acceptance transaction, so an enrolment cannot survive an acceptance that rolls
+     * back — a compliance row for an engagement that was never created is exactly the orphan
+     * #48 existed to prevent.
+     */
+    const { enrolFromEngagement } = await import('../entity/enrolment.ts');
+    const enrolment = await enrolFromEngagement(app, created.id, 'annual_report_engaged');
+    if (enrolment?.enrolled) {
+      app.log.info(
+        { engagementId: created.id, complianceId: enrolment.complianceId, dueDate: enrolment.dueDate },
+        'annual-report scope accepted — entity enrolled in annual-report tracking'
+      );
+    }
+
     engagements.push({ id: created.id, serviceLine: line.serviceLine, title });
   }
   /*

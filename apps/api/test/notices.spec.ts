@@ -700,3 +700,182 @@ test('enrolment records the formation date on the BUSINESS, and does not claim t
   assert.equal(second.json().annualReportDueDate?.slice(5), '01-01',
     'and the deadline derived from the date we kept, not the one that was posted');
 });
+
+/** A business + primary contact at a given lifecycle status, for the (3b) enrolment tests. */
+async function scopedBusiness(opts: {
+  name: string; slug: string; state: string; entityType: string | null; status: string; formationDate?: string;
+}): Promise<{ businessId: string; contactId: string }> {
+  const c = await app.db.query<{ id: string }>(
+    `INSERT INTO contacts (first_name, last_name, email, contact_status)
+     VALUES ('Synthetic', $1, $2, $3::contact_lifecycle) RETURNING id`,
+    [opts.slug, `${opts.slug.toLowerCase()}@example.test`, opts.status]
+  );
+  const b = await app.db.query<{ id: string }>(
+    `INSERT INTO businesses (name, state, entity_type, formation_date, formation_date_source, formation_date_recorded_at)
+     VALUES ($1, $2, $3::business_entity_type, $4::date,
+             CASE WHEN $4::text IS NULL THEN NULL ELSE 'staff_verified' END,
+             CASE WHEN $4::text IS NULL THEN NULL ELSE now() END)
+     RETURNING id`,
+    [opts.name, opts.state, opts.entityType, opts.formationDate ?? null]
+  );
+  await app.db.query(
+    `INSERT INTO business_members (business_id, contact_id, member_role, is_primary) VALUES ($1, $2, 'owner', true)`,
+    [b.rows[0]!.id, c.rows[0]!.id]
+  );
+  return { businessId: b.rows[0]!.id, contactId: c.rows[0]!.id };
+}
+
+test('(3b) one door: the scope rule is enforced in the enrolment function, not at each caller', async () => {
+  const { enrolEntityIfInScope } = await import('../src/modules/entity/enrolment.ts');
+
+  // In scope: dormant client, an LLC that owes a report, IL with a formation date.
+  const good = await scopedBusiness({
+    name: 'Synthetic Enrolme LLC', slug: 'Enrolme', state: 'IL', entityType: 'llc',
+    status: 'dormant', formationDate: '2021-04-09',
+  });
+  const ok = await enrolEntityIfInScope(app, good.businessId, 'formation_completed');
+  assert.equal(ok.enrolled, true, 'an in-scope entity enrols');
+  assert.ok(
+    ok.enrolled && ok.dueDate?.endsWith('-04-01'),
+    `IL derives the anniversary month (got ${ok.enrolled ? ok.dueDate : 'not enrolled'})`
+  );
+
+  // Idempotent — a second trigger does not create a second compliance row.
+  const again = await enrolEntityIfInScope(app, good.businessId, 'annual_report_engaged');
+  assert.equal(again.enrolled, false);
+  assert.equal(again.enrolled === false && again.reason, 'already_enrolled');
+
+  /*
+   * Each way it can decline is its own reason, and the three are NOT interchangeable:
+   * "owes nothing" is a decision, "unknown" is a question, "out of scope" is about the client.
+   */
+  const lead = await scopedBusiness({
+    name: 'Synthetic Leadco LLC', slug: 'Leadco', state: 'IL', entityType: 'llc', status: 'lead',
+  });
+  const l = await enrolEntityIfInScope(app, lead.businessId, 'formation_completed');
+  assert.equal(l.enrolled === false && l.reason, 'client_out_of_scope', 'a lead is not ours to file for');
+
+  const sole = await scopedBusiness({
+    name: 'Synthetic Soleprop Co', slug: 'Soleprop', state: 'IL', entityType: 'sole_prop', status: 'active',
+  });
+  const s = await enrolEntityIfInScope(app, sole.businessId, 'formation_completed');
+  assert.equal(s.enrolled === false && s.reason, 'type_owes_nothing', 'a sole prop registers nothing');
+
+  const unknown = await scopedBusiness({
+    name: 'Synthetic Untyped Co', slug: 'Untyped', state: 'IL', entityType: null, status: 'active',
+  });
+  const u = await enrolEntityIfInScope(app, unknown.businessId, 'formation_completed');
+  assert.equal(u.enrolled === false && u.reason, 'type_unknown', 'and an unknown type is a question, not a no');
+
+  // None of the three declines created a compliance row.
+  const rows = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM entity_compliance WHERE business_id = ANY($1::uuid[])`,
+    [[lead.businessId, sole.businessId, unknown.businessId]]
+  );
+  assert.equal(rows.rows[0]!.n, 0, 'declining enrols nothing');
+});
+
+test('(3b) an auto-enrolment with no derivable date is not quieter than a manual one', async () => {
+  /*
+   * IL with no formation date derives nothing, and a compliance row with a null due date is
+   * invisible rather than pending. The staff route raises a task for exactly this; an automatic
+   * enrolment is MORE likely to go unnoticed, because nobody was watching when it happened.
+   */
+  const { enrolEntityIfInScope } = await import('../src/modules/entity/enrolment.ts');
+  const biz = await scopedBusiness({
+    name: 'Synthetic Datefree LLC', slug: 'Datefree', state: 'IL', entityType: 'llc', status: 'active',
+  });
+  const res = await enrolEntityIfInScope(app, biz.businessId, 'annual_report_engaged');
+  assert.equal(res.enrolled, true);
+  assert.equal(res.enrolled && res.dueDate, null, 'IL cannot derive without a formation date');
+
+  const task = await app.db.query<{ title: string; assigned_staff_id: string | null; description: string | null }>(
+    `SELECT title, assigned_staff_id, description FROM tasks
+      WHERE source_type = 'annual_report_setup' AND source_id = $1`,
+    [res.enrolled ? res.complianceId : '00000000-0000-0000-0000-000000000000']
+  );
+  assert.ok(task.rows[0], 'the silent row became owned work');
+  assert.match(task.rows[0]!.title, /Synthetic Datefree LLC/);
+  assert.ok(task.rows[0]!.assigned_staff_id, 'assigned to a real person');
+  assert.match(
+    task.rows[0]!.description ?? '',
+    /automatically \(annual_report_engaged\)/,
+    'and says it was automatic, so the reader knows nobody chose this moment'
+  );
+
+  // Florida needs no formation date, so the same situation enrols cleanly and raises nothing.
+  const fl = await scopedBusiness({
+    name: 'Synthetic Datefree FL LLC', slug: 'DatefreeFL', state: 'FL', entityType: 'llc', status: 'active',
+  });
+  const flRes = await enrolEntityIfInScope(app, fl.businessId, 'annual_report_engaged');
+  assert.ok(flRes.enrolled && flRes.dueDate?.endsWith('-05-01'), 'uniform deadline, no date needed');
+  const flTask = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'annual_report_setup' AND source_id = $1`,
+    [flRes.enrolled ? flRes.complianceId : '00000000-0000-0000-0000-000000000000']
+  );
+  assert.equal(flTask.rows[0]!.n, 0, 'nothing to chase');
+});
+
+test('(3b) the trigger is the SCOPE ITEM, not the service line', async () => {
+  /*
+   * `entity` also covers BOI reports, DBAs, amendments and S-corp conversions. Keying enrolment
+   * on the service line would put an annual-report deadline on a client who asked us to file one
+   * BOI report — so the scope snapshot (#47) is what decides.
+   */
+  const { enrolFromEngagement } = await import('../src/modules/entity/enrolment.ts');
+  const version = await app.db.query<{ id: string }>(
+    `SELECT id FROM price_book_versions ORDER BY version_number DESC LIMIT 1`
+  );
+  const versionId = version.rows[0]!.id;
+
+  const withScope = async (
+    who: { businessId: string; contactId: string },
+    itemCode: string
+  ): Promise<string> => {
+    const e = await app.db.query<{ id: string }>(
+      `INSERT INTO engagements (contact_id, business_id, service_line, status)
+       VALUES ($1, $2, 'entity', 'active') RETURNING id`,
+      [who.contactId, who.businessId]
+    );
+    await app.db.query(
+      `INSERT INTO engagement_scope_items
+         (engagement_id, price_book_version_id, item_code, description_en, quantity, unit_cents, line_cents)
+       VALUES ($1, $2, $3, $3, 1, 0, 0)`,
+      [e.rows[0]!.id, versionId, itemCode]
+    );
+    return e.rows[0]!.id;
+  };
+
+  const boiOnly = await scopedBusiness({
+    name: 'Synthetic Boionly LLC', slug: 'Boionly', state: 'FL', entityType: 'llc', status: 'active',
+  });
+  const boi = await withScope(boiOnly, 'ENTITY_BOI');
+  assert.equal(
+    await enrolFromEngagement(app, boi, 'annual_report_engaged'),
+    null,
+    'a BOI engagement enrols nothing — the service line alone would have enrolled it'
+  );
+
+  const annualClient = await scopedBusiness({
+    name: 'Synthetic Annualco LLC', slug: 'Annualco', state: 'FL', entityType: 'llc', status: 'active',
+  });
+  const annual = await withScope(annualClient, 'ENTITY_ANNUAL_REPORT');
+  const res = await enrolFromEngagement(app, annual, 'annual_report_engaged');
+  assert.equal(res?.enrolled, true, 'an annual-report engagement does');
+
+  // And the formation trigger looks at a different code again.
+  const formed = await scopedBusiness({
+    name: 'Synthetic Formed LLC', slug: 'Formedco', state: 'FL', entityType: 'llc', status: 'active',
+  });
+  const formation = await withScope(formed, 'ENTITY_FORMATION_EIN');
+  assert.equal(
+    await enrolFromEngagement(app, formation, 'annual_report_engaged'),
+    null,
+    'a formation engagement is not an annual-report engagement'
+  );
+  assert.equal(
+    (await enrolFromEngagement(app, formation, 'formation_completed'))?.enrolled,
+    true,
+    'but it enrols when the formation completes'
+  );
+});
