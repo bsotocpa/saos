@@ -2240,6 +2240,69 @@ as an automatic consequence of entity work, (c) Laura's page ships with staff ac
       entity module, beside the enrolment it unblocks and behind the same `entity.manage`
       permission — a better home, arrived at by being told no.
 
+### (2) ILSOS formation-date parse — BLOCKED BY THE STATE'S OWN WAF (2026-08-18)
+
+- [x] **Established the block before writing any parsing.** Fetching the ILSOS search endpoint:
+
+      | From | Result |
+      |---|---|
+      | a residential IP | **HTTP 403** — the Secretary of State's own block page, giving a Reference ID and Client IP and saying to email `webmaster@ilsos.gov` |
+      | the Hetzner box | **nothing** — TCP connects, HTTP hangs |
+      | `efile.sunbiz.org`, same box | flat **403** |
+
+      A WAF with a posture toward datacentre egress. Not an outage, not a selector problem — no
+      amount of better parsing reaches a page that never arrives.
+
+      **NOT routing around it.** Rotating user-agents, proxying through residential IPs or
+      otherwise defeating the block is bot-detection evasion against a state agency, and a CPA
+      firm doing that to its own Secretary of State is a compliance exposure rather than a
+      workaround. The block page names the legitimate route: ask to be allowlisted.
+
+- [x] **What that exposed: the SOS monitor has never once run.** `SOS_MODE=live` in production
+      throughout, and: **zero** `sos.checked` audit rows, **0 of 619** businesses with
+      `il_sos_checked_at`. Every call has been failing into a `catch` that logs a warning.
+
+      Three defects fixed, all found here:
+      · **The job reported `checked: 0` for three different situations** — nobody due, everybody
+        due and every lookup failed, and a candidate filter matching nothing. Production was the
+        third: the filter said `soto_status = 'active'` and no business in this book has an
+        active primary contact. It now records `candidates` (the denominator), `checked`,
+        `failed` and `mode`, and logs the zero-candidate case distinctly.
+      · **The candidate filter moved to `contact_status`** — same ruling as the annual-report
+        scope. Deliberately narrower: `active` only, not `active` + `dormant`. Standing is
+        watched while we are acting for someone.
+      · **`fetch()` had no timeout.** Undici waits ~300s on headers and the job loops serially
+        over 50 — fifty hangs is a job that never finishes. Now 15s.
+
+- [ ] **DECISION FOR BRIAN — how ILSOS data actually arrives.** Three routes, and this one is
+      yours because two of them touch the vendor rule:
+      1. **Email `webmaster@ilsos.gov`** with the Reference ID and ask for allowlisting. Free,
+         legitimate, and may simply work. No code changes until they answer.
+      2. **Laura looks it up in a browser**, which is the current real process. Not a workaround —
+         standing and formation date are facts somebody reads either way, and this needs only her
+         page and a place to type the answer, both of which now exist.
+      3. **A paid data vendor.** Would need your approval under the approved-vendor rule
+         (CLAUDE.md lists Stripe, Twilio, SES, KBA only), and sends client entity names to a third
+         party. Not proposing it — noting it so the option is on the record rather than rediscovered.
+
+- [x] **(2)'s buildable half SHIPPED — `businesses.formation_date` with its provenance
+      (migration 0078).** Needed whichever route the data eventually takes.
+
+      · `formation_date`, `formation_date_source`, `formation_date_recorded_at` — **all-or-nothing
+        at the database level**, and the source CHECK-constrained to
+        `sos_register | sos_document | staff_verified | client_stated`. This date derives a
+        statutory deadline, and a remembered one and a register-read one otherwise produce
+        identical rows.
+      · `client_stated` is allowed on purpose: banning the weakest source leaves the column null
+        and the entity untracked, which is worse than a tracked entity labelled unverified.
+      · Enrolment writes **`staff_verified`**, never `sos_register` — a date typed into a form
+        did not come from the register. The sabotage that changes that one string fails a test by
+        name.
+      · **`entity_compliance.formation_date` RETIRED** in the same migration. Two columns for one
+        fact is the defect I wrote up hours ago in the enrichment queue. A company has one
+        formation date whether or not anyone enrolled it, and production held zero rows — the
+        cheapest this will ever be.
+
 - [ ] **STILL TO BUILD, in Brian's order** — sequenced behind nothing, but not started:
 
       1. **(2) Extend the ILSOS parse for formation dates.** `sos.ts` already fetches the search

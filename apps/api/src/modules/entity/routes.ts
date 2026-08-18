@@ -44,23 +44,47 @@ export function registerEntityRoutes(app: FastifyInstance): void {
 
   app.post('/entity-compliance', manage, async (request, reply) => {
     const b = CreateComplianceBody.parse(request.body);
-    const biz = await app.db.query<{ id: string; name: string; state: string }>(
-      `SELECT id, name, state FROM businesses WHERE id = $1`,
+    const biz = await app.db.query<{
+      id: string; name: string; state: string; formation_date: string | null;
+    }>(
+      `SELECT id, name, state, formation_date::text AS formation_date FROM businesses WHERE id = $1`,
       [b.businessId]
     );
     const business = biz.rows[0];
     if (!business) throw new AppError(404, 'not_found', 'Business not found.');
     const state = b.state ?? business.state ?? 'IL';
+
+    /*
+     * The formation date lives on the BUSINESS (0078), so a date supplied at enrolment is
+     * recorded there with its provenance rather than copied onto the compliance row. A date
+     * already on the business wins nothing and loses nothing — it is the same fact — but it is
+     * NOT overwritten by this route: whatever is there was recorded with a source, and an
+     * enrolment form has no way to know it is better.
+     */
+    const formationDate = business.formation_date ?? b.formationDate ?? null;
+    if (b.formationDate && !business.formation_date) {
+      await app.db.query(
+        `UPDATE businesses
+            SET formation_date = $2::date,
+                formation_date_source = $3,
+                formation_date_recorded_at = now()
+          WHERE id = $1`,
+        // `staff_verified` and not `sos_register`: a person typed this into a form. Claiming the
+        // state's register as the source for a hand-entered date is exactly the provenance lie
+        // the source stamp exists to prevent.
+        [b.businessId, b.formationDate, 'staff_verified']
+      );
+    }
+
     // No `formationDate ?` guard: the derivation decides whether it can work without one. A
     // uniform-deadline state can, so a Florida business enrols with a real 1 May date even
     // though nobody recorded when it was formed.
-    const due =
-      b.annualReportDueDate ?? nextAnnualReportDueDate(state, b.formationDate ?? null, todayChicago());
+    const due = b.annualReportDueDate ?? nextAnnualReportDueDate(state, formationDate, todayChicago());
 
     const { rows } = await app.db.query<{ id: string }>(
-      `INSERT INTO entity_compliance (business_id, assigned_staff_id, state, formation_date, annual_report_due_date, status)
-       VALUES ($1, $2, $3, $4, $5, 'unknown') RETURNING id`,
-      [b.businessId, b.assignedStaffId ?? null, state, b.formationDate ?? null, due]
+      `INSERT INTO entity_compliance (business_id, assigned_staff_id, state, annual_report_due_date, status)
+       VALUES ($1, $2, $3, $4, 'unknown') RETURNING id`,
+      [b.businessId, b.assignedStaffId ?? null, state, due]
     );
     const complianceId = rows[0]!.id;
 
@@ -100,7 +124,8 @@ export function registerEntityRoutes(app: FastifyInstance): void {
 
   app.get('/entity-compliance', manage, async () => {
     const { rows } = await app.db.query(
-      `SELECT ec.id, ec.state, ec.formation_date, ec.annual_report_due_date, ec.status,
+      `SELECT ec.id, ec.state, b.formation_date, b.formation_date_source,
+              ec.annual_report_due_date, ec.status,
               ec.last_filed_date, ec.assigned_staff_id, b.id AS business_id, b.name AS business_name
        FROM entity_compliance ec JOIN businesses b ON b.id = ec.business_id
        ORDER BY ec.annual_report_due_date NULLS LAST`
@@ -127,10 +152,10 @@ export function registerEntityRoutes(app: FastifyInstance): void {
   app.get('/entity-compliance/unclassified', manage, async () => {
     const { rows } = await app.db.query(
       `SELECT b.id AS business_id, b.name AS business_name, b.state,
-              COALESCE(c.soto_status::text, 'no client') AS client_status,
+              COALESCE(c.contact_status::text, 'no client') AS client_status,
               (b.state = ANY($1::text[])) AS state_researched,
               CASE
-                WHEN COALESCE(c.soto_status::text, '') <> ALL($2::text[])
+                WHEN COALESCE(c.contact_status::text, '') <> ALL($2::text[])
                   THEN 'nothing yet — client is not active or dormant'
                 WHEN b.state = ANY($1::text[])
                   THEN 'enrolment in annual-report tracking'
@@ -140,7 +165,7 @@ export function registerEntityRoutes(app: FastifyInstance): void {
        LEFT JOIN business_members m ON m.business_id = b.id AND m.is_primary
        LEFT JOIN contacts c ON c.id = m.contact_id
        WHERE b.entity_type IS NULL
-       ORDER BY (COALESCE(c.soto_status::text, '') = ANY($2::text[])) DESC,
+       ORDER BY (COALESCE(c.contact_status::text, '') = ANY($2::text[])) DESC,
                 (b.state = ANY($1::text[])) DESC,
                 b.state, b.name`,
       [[...RESEARCHED_ANNUAL_REPORT_STATES], ANNUAL_REPORT_CLIENT_STATUSES]
@@ -167,8 +192,10 @@ export function registerEntityRoutes(app: FastifyInstance): void {
     const { rows } = await app.db.query<{
       id: string; state: string; formation_date: string | null; annual_report_due_date: string | null;
     }>(
-      `SELECT id, state, formation_date::text AS formation_date, annual_report_due_date::text AS annual_report_due_date
-       FROM entity_compliance WHERE id = $1`,
+      `SELECT ec.id, ec.state, b.formation_date::text AS formation_date,
+              ec.annual_report_due_date::text AS annual_report_due_date
+       FROM entity_compliance ec JOIN businesses b ON b.id = ec.business_id
+       WHERE ec.id = $1`,
       [id]
     );
     const rec = rows[0];

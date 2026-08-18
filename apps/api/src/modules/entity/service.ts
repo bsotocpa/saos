@@ -147,16 +147,21 @@ export function owesAnnualReport(entityType: string | null): boolean | null {
 }
 
 /*
- * WHICH CLIENTS ARE IN SCOPE — "active or dormant" against the enum we actually have.
+ * WHICH CLIENTS ARE IN SCOPE — "active or dormant", on the LIFECYCLE field.
  *
- * `soto_status` is (none, lead, active, inactive, former). There is no `dormant`; `inactive` is
- * it — a real client not currently engaged. A `lead` has not become a client and a `former` one
- * has stopped being one, so neither is ours to file for.
+ * `contacts.contact_status` (type `contact_lifecycle`) is (lead, onboarding, active, dormant,
+ * archived), so Brian's ruling maps onto it exactly: `dormant` is a real value, not a reading of
+ * one. This sat on `soto_status` for half a day, where "dormant" had to be interpreted as
+ * `inactive` — right answer today, and wrong field. `soto_status` is the LEGACY MIRROR that
+ * `refreshContactStatus` keeps in step (see crm/lifecycle.ts), and it retires; scope written
+ * against it would have had to be found and rewritten then, with nothing failing in the meantime
+ * to point at it.
  *
- * Worth knowing when reading counts: the production book today is `lead` 333 and `inactive` 286,
- * with ZERO `active`. So "active or dormant" currently resolves to the 286 inactive ones.
+ * `onboarding` is out, per the ruling as written — a client mid-signup is not yet one we file
+ * for. Nothing needs revisiting when they finish: they become `active` and this picks them up.
+ * `archived` is out because someone deliberately closed them out.
  */
-export const ANNUAL_REPORT_CLIENT_STATUSES = ['active', 'inactive'];
+export const ANNUAL_REPORT_CLIENT_STATUSES = ['active', 'dormant'];
 
 /*
  * STATES WHOSE ANNUAL-REPORT RULE WE HAVE ACTUALLY RESEARCHED (Brian's ruling 2026-08-17).
@@ -269,7 +274,9 @@ export async function runEntityComplianceJob(
     const { rows } = await app.db.query<DueRow>(
       `SELECT ec.id, ec.business_id, b.name AS business_name, ec.state,
               ec.annual_report_due_date::text AS due, ec.assigned_staff_id,
-              ec.formation_date::text AS formation_date,
+              -- On the BUSINESS since 0078: a company has one formation date whether or not
+              -- anyone enrolled it in tracking, and two columns for one fact drift apart.
+              b.formation_date::text AS formation_date,
               ec.due_date_override_reason,
               c.id AS contact_id, c.first_name, c.email, c.language
        FROM entity_compliance ec

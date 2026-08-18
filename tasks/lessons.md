@@ -1137,3 +1137,75 @@ the same `entity.manage` permission — a better home on every axis, arrived at 
 **Rule:** before inverting a test that cites the spec, go read that line of the spec. A stale
 premise and a correct boundary look identical from the failure message. "The spec wins" is in
 CLAUDE.md precisely for the moment when following it is inconvenient.
+
+## The scraper was blocked, not broken — and I will not route around it (2026-08-18)
+
+(2) was "extend the ILSOS parse to pull formation dates." Before writing a line of parsing I tried
+to fetch the page. It never arrived.
+
+  from a residential IP ... HTTP 403, the Secretary of State's own block page, naming a
+                            Reference ID and Client IP and saying to email webmaster@ilsos.gov
+  from the Hetzner box .... nothing. TCP connects, HTTP hangs.
+  efile.sunbiz.org ........ flat 403 to the same box
+
+That is a WAF with a posture toward datacentre egress, not an outage and not a parsing problem.
+No amount of better selectors fixes it.
+
+**The line I did not cross:** rotating user-agents, proxying through residential IPs, or otherwise
+defeating the block. That is bot-detection evasion against a state agency, and a CPA firm doing it
+to its own Secretary of State is a compliance exposure, not a clever workaround. The block page
+names the legitimate route — ask to be allowlisted.
+
+**Rule:** when an integration with an external site fails, establish WHETHER IT IS A BLOCK before
+treating it as a bug. And if it is a block, the fix is a conversation with the operator, never a
+disguise. Write the finding into the code as a comment at the call site, because the next person
+to read `liveChecker()` will otherwise assume it works.
+
+What it exposed, which is the larger point: `SOS_MODE=live` has been set in production the whole
+time, and there are ZERO `sos.checked` audit rows and 0 of 619 businesses with
+`il_sos_checked_at`. A monitor that has never once monitored, failing into a `catch` that logs a
+warning nobody reads.
+
+Related: [[production-verification-means-looking-at-productions-data]].
+
+## "checked: 0" meant three different things (2026-08-18)
+
+`runSosRecheckJob` returned `{ skipped: false, checked: 0 }` for: nobody was due, everybody was
+due and every lookup failed, and the candidate query matched nothing because its filter was wrong.
+Production was in the third — the filter said `soto_status = 'active'` and no business in this
+book has an active primary contact — and the run record looked identical to a clean day.
+
+The fix is not a better name. It is reporting the DENOMINATOR: `candidates` (what the filter
+found), `checked`, `failed`. A filter matching nothing is now visible as `candidates: 0`, which is
+the only number that could ever have exposed it.
+
+**Rule:** a job that reports only its successes cannot distinguish "nothing to do" from "I did
+nothing". Always record what the job's own selection returned, not just what it accomplished — and
+log the difference, because zero-of-zero and zero-of-fifty are different incidents.
+
+Related: [[an-absence-assertion-needs-a-matching-presence-assertion]] — same shape, in a job
+instead of a test.
+
+## Provenance is a constraint, not a column (2026-08-18)
+
+`businesses.formation_date` derives a statutory deadline: in Illinois the formation date IS the
+annual-report due date. A date somebody half-remembered on a call and a date read off the state's
+register produce identical rows and identical-looking deadlines.
+
+So the date cannot be stored alone. `formation_date`, `formation_date_source` and
+`formation_date_recorded_at` are all-or-nothing at the DATABASE level, and the source vocabulary is
+CHECK-constrained to four values — a route that forgets is refused, not trusted. Same shape as
+`entity_compliance_override_is_complete`.
+
+Two judgement calls worth keeping:
+
+- **`client_stated` is allowed.** Banning the weakest source produces no better data — it leaves
+  the column null and the entity untracked. A tracked entity with a date labelled unverified beats
+  an untracked one.
+- **Enrolment writes `staff_verified`, never `sos_register`.** A date typed into a form did not
+  come from the register, and labelling it so would be a lie that later reads as evidence. The
+  sabotage that changes that one string fails a test by name.
+
+**Rule:** when a field's trustworthiness varies by where it came from, the origin is part of the
+value. Store them together or the field is unreadable six months later — and enforce it in the
+schema, because the code path that skips it will be the one written in a hurry.

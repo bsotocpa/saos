@@ -363,17 +363,23 @@ async function complianceRow(opts: {
   dueDate: string;
   overrideReason?: string;
 }): Promise<string> {
+  /*
+   * The formation date is on the BUSINESS since 0078, with its provenance — a company has one
+   * formation date whether or not anyone enrolled it in tracking. `staff_verified` because that
+   * is what a fixture is: a value someone typed, with no register behind it.
+   */
   const b = await app.db.query<{ id: string }>(
-    `INSERT INTO businesses (name, state) VALUES ($1, $2) RETURNING id`,
-    [opts.name, opts.state]
+    `INSERT INTO businesses (name, state, formation_date, formation_date_source, formation_date_recorded_at)
+     VALUES ($1, $2, $3::date, 'staff_verified', now()) RETURNING id`,
+    [opts.name, opts.state, opts.formationDate]
   );
   const ec = await app.db.query<{ id: string }>(
     `INSERT INTO entity_compliance
-       (business_id, state, formation_date, annual_report_due_date, status,
+       (business_id, state, annual_report_due_date, status,
         due_date_override_reason, due_date_override_at)
-     VALUES ($1, $2, $3::date, $4::date, 'unknown', $5, CASE WHEN $5::text IS NULL THEN NULL ELSE now() END)
+     VALUES ($1, $2, $3::date, 'unknown', $4, CASE WHEN $4::text IS NULL THEN NULL ELSE now() END)
      RETURNING id`,
-    [b.rows[0]!.id, opts.state, opts.formationDate, opts.dueDate, opts.overrideReason ?? null]
+    [b.rows[0]!.id, opts.state, opts.dueDate, opts.overrideReason ?? null]
   );
   return ec.rows[0]!.id;
 }
@@ -597,4 +603,100 @@ test('the override columns must be recorded together', async () => {
       ),
     /entity_compliance_override_is_complete/
   );
+});
+
+test('a formation date cannot be stored without saying where it came from', async () => {
+  /*
+   * This date derives a STATUTORY deadline — in Illinois the formation date IS the annual-report
+   * due date. A date somebody half-remembered on a call and a date read off the state's register
+   * produce identical rows and identical deadlines, which is the same indistinguishability that
+   * `due_date_override_reason` and RESEARCHED_ANNUAL_REPORT_STATES exist to break.
+   *
+   * So the database refuses a date with no provenance, rather than the route being trusted to
+   * remember. Same shape as `entity_compliance_override_is_complete` (0072).
+   */
+  await assert.rejects(
+    () =>
+      app.db.query(
+        `INSERT INTO businesses (name, state, formation_date) VALUES ('Synthetic Unsourced LLC', 'IL', '2020-03-04')`
+      ),
+    /businesses_formation_date_is_sourced/,
+    'a date with no source is refused'
+  );
+
+  await assert.rejects(
+    () =>
+      app.db.query(
+        `INSERT INTO businesses (name, state, formation_date, formation_date_source, formation_date_recorded_at)
+         VALUES ('Synthetic Vibes LLC', 'IL', '2020-03-04', 'someone_said_so', now())`
+      ),
+    /businesses_formation_date_source_known/,
+    'and an invented source is refused too — the vocabulary is fixed'
+  );
+
+  // The four real sources, weakest to strongest, all accepted.
+  for (const source of ['client_stated', 'staff_verified', 'sos_document', 'sos_register']) {
+    const ok = await app.db.query<{ id: string }>(
+      `INSERT INTO businesses (name, state, formation_date, formation_date_source, formation_date_recorded_at)
+       VALUES ($1, 'IL', '2020-03-04', $2, now()) RETURNING id`,
+      [`Synthetic Sourced ${source} LLC`, source]
+    );
+    assert.ok(ok.rows[0]?.id, `${source} is a real source`);
+  }
+
+  /*
+   * `client_stated` is ALLOWED on purpose. Banning the weakest source would not produce better
+   * data — it would leave the column null and the entity untracked, and a tracked entity whose
+   * date is labelled unverified beats an untracked one.
+   */
+});
+
+test('enrolment records the formation date on the BUSINESS, and does not claim the register', async () => {
+  const biz = await app.db.query<{ id: string }>(
+    `INSERT INTO businesses (name, state) VALUES ('Synthetic Provenance LLC', 'IL') RETURNING id`
+  );
+  const created = await app.inject({
+    method: 'POST', url: '/entity-compliance', headers: auth(laura),
+    payload: { businessId: biz.rows[0]!.id, formationDate: '2021-06-15' },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  assert.equal(created.json().annualReportDueDate?.slice(5), '06-01', 'and the IL rule derived from it');
+
+  const after = await app.db.query<{ d: string; source: string; at: string | null }>(
+    `SELECT formation_date::text AS d, formation_date_source AS source, formation_date_recorded_at::text AS at
+       FROM businesses WHERE id = $1`,
+    [biz.rows[0]!.id]
+  );
+  assert.equal(after.rows[0]?.d, '2021-06-15', 'the date landed on the business, not the compliance row');
+  assert.equal(after.rows[0]?.source, 'staff_verified',
+    'a date typed into a form is staff_verified — claiming sos_register for it would be the provenance lie the stamp exists to prevent');
+  assert.ok(after.rows[0]?.at, 'and stamped when');
+
+  /*
+   * A second enrolment does NOT overwrite it. Whatever is on the business was recorded with a
+   * source; an enrolment form has no way to know its own value is better, and silently replacing
+   * a register-sourced date with a typed one would downgrade the provenance invisibly.
+   */
+  await app.db.query(
+    `UPDATE businesses SET formation_date = '2019-01-02', formation_date_source = 'sos_register',
+            formation_date_recorded_at = now() WHERE id = $1`,
+    [biz.rows[0]!.id]
+  );
+  const biz2 = await app.db.query<{ id: string }>(
+    `INSERT INTO businesses (name, state, formation_date, formation_date_source, formation_date_recorded_at)
+     VALUES ('Synthetic Registered LLC', 'IL', '2019-01-02', 'sos_register', now()) RETURNING id`
+  );
+  const second = await app.inject({
+    method: 'POST', url: '/entity-compliance', headers: auth(laura),
+    payload: { businessId: biz2.rows[0]!.id, formationDate: '2023-11-30' },
+  });
+  assert.equal(second.statusCode, 201, second.body);
+  const kept = await app.db.query<{ d: string; source: string }>(
+    `SELECT formation_date::text AS d, formation_date_source AS source FROM businesses WHERE id = $1`,
+    [biz2.rows[0]!.id]
+  );
+  assert.equal(kept.rows[0]?.d, '2019-01-02', 'the register-sourced date survived');
+  assert.equal(kept.rows[0]?.source, 'sos_register');
+  assert.equal(second.json().annualReportDueDate?.slice(5), '01-01',
+    'and the deadline derived from the date we kept, not the one that was posted');
 });

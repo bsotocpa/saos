@@ -31,6 +31,30 @@ function stubChecker(): SosChecker {
   };
 }
 
+/*
+ * ⚠ THIS DOES NOT WORK AND HAS NEVER WORKED (verified 2026-08-17).
+ *
+ * ILSOS sits behind a WAF that refuses us. From a residential IP the search endpoint returns
+ * HTTP 403 with the Secretary of State's own block page — "Sorry, the page you are looking for is
+ * not available. Please email webmaster@ilsos.gov including the Reference ID and Client IP" —
+ * and from the Hetzner box it does not answer at all: TCP connects, HTTP hangs. (efile.sunbiz.org
+ * answers the same box with a flat 403, so this is a general posture toward datacentre egress,
+ * not something specific to Illinois.)
+ *
+ * Production has run `SOS_MODE=live` throughout and shows it: ZERO `sos.checked` audit rows, and
+ * 0 of 619 businesses with `il_sos_checked_at` set. Every call has been failing into the `catch`
+ * below, which logs a warning and returns null — a monitor that has never once monitored.
+ *
+ * NOT ROUTING AROUND IT. Rotating user-agents, proxying through residential IPs or otherwise
+ * defeating the block is off the table: it is bot-detection evasion against a state agency, and
+ * a CPA firm doing that to its own Secretary of State is a compliance problem, not a feature.
+ * The block page names the legitimate route — email the webmaster with the Reference ID and ask
+ * for allowlisting.
+ *
+ * Until that is answered, the honest state is that we have no automated ILSOS lookup. Laura
+ * checking by hand in a browser is not a workaround, it is the actual process, and the standing
+ * of an entity is a fact somebody must go and read either way.
+ */
 function liveChecker(): SosChecker {
   return {
     mode: 'live',
@@ -40,7 +64,9 @@ function liveChecker(): SosChecker {
       // record stays reviewable by staff rather than wrongly adverse.
       const res = await fetch(
         `https://apps.ilsos.gov/corporatellc/CorporateLlcController?command=doSearch&type=startsWith&searchValue=${encodeURIComponent(businessName)}`,
-        { headers: { accept: 'text/html' } }
+        // A timeout, because there was none: undici waits ~300s on headers, and the recheck job
+        // calls this in a serial loop of up to 50. Fifty hangs is a job that never finishes.
+        { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(15_000) }
       );
       if (!res.ok) return { status: 'not_found' };
       const html = (await res.text()).toLowerCase();
@@ -157,13 +183,13 @@ export async function runSosCheck(app: FastifyInstance, businessId: string): Pro
 export async function runSosRecheckJob(
   app: FastifyInstance,
   today: string
-): Promise<{ skipped: boolean; checked: number }> {
+): Promise<{ skipped: boolean; checked: number; candidates: number; failed: number }> {
   const ACTION = 'job.sos_recheck';
   const already = await app.db.query(
     `SELECT 1 FROM audit_log WHERE action = $1 AND details->>'run_date' = $2 LIMIT 1`,
     [ACTION, today]
   );
-  if (already.rows.length > 0) return { skipped: true, checked: 0 };
+  if (already.rows.length > 0) return { skipped: true, checked: 0, candidates: 0, failed: 0 };
 
   const setting = await app.db.query<{ value: number }>(
     `SELECT (value)::text::int AS value FROM app_settings WHERE key = 'sos.recheck_days'`
@@ -171,23 +197,52 @@ export async function runSosRecheckJob(
   const staleDays = setting.rows[0]?.value ?? 90;
 
   const { rows } = await app.db.query<{ id: string }>(
+    /*
+     * The LIFECYCLE field, not the legacy `soto_status` mirror (Brian, 2026-08-17). Same ruling
+     * as the annual-report scope, and the same reason: the mirror retires, and a query written
+     * against it would have to be found again with nothing failing to point at it.
+     *
+     * The scope is deliberately NARROWER than the annual-report one — `active` only, not
+     * `active` + `dormant`. Standing is checked to catch a problem while we are acting for
+     * someone; a dormant client's charter is not ours to watch weekly.
+     */
     `SELECT DISTINCT b.id
      FROM businesses b
      JOIN business_members m ON m.business_id = b.id
      JOIN contacts c ON c.id = m.contact_id
-     WHERE c.soto_status = 'active' AND b.state = 'IL'
+     WHERE c.contact_status = 'active' AND b.state = 'IL'
        AND (b.il_sos_checked_at IS NULL OR b.il_sos_checked_at < now() - make_interval(days => $1))
      LIMIT 50`,
     [staleDays]
   );
   let checked = 0;
+  let failed = 0;
   for (const b of rows) {
     if ((await runSosCheck(app, b.id)) !== null) checked++;
+    else failed++;
   }
+  /*
+   * `checked` ALONE WAS A LIE OF OMISSION. It returned {skipped:false, checked:0} for three
+   * different situations that a reader cannot tell apart: nobody was due, everybody was due and
+   * every lookup failed, or the candidate query matched nothing because its filter was wrong.
+   * Production has been in the third all along — `soto_status = 'active'` matches no business in
+   * this book — and the run record said the same thing it says on a clean day.
+   *
+   * So the record now carries what it actually did. `candidates` is the number the filter found,
+   * which is the one that exposes a filter matching nothing.
+   */
   await writeAudit(app.db, {
     actorType: 'system',
     action: ACTION,
-    details: { run_date: today, checked },
+    details: { run_date: today, candidates: rows.length, checked, failed, mode: makeSosChecker(app).mode },
   });
-  return { skipped: false, checked };
+  if (rows.length === 0) {
+    app.log.info({ job: ACTION }, 'sos recheck: no business matched the candidate filter — nothing was checked');
+  } else if (checked === 0) {
+    app.log.warn(
+      { job: ACTION, candidates: rows.length },
+      'sos recheck: every lookup failed — the ILSOS endpoint is refusing us (see the note in sos.ts)'
+    );
+  }
+  return { skipped: false, checked, candidates: rows.length, failed };
 }

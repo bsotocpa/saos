@@ -882,7 +882,13 @@ test('the classify pass orders by what the answer unblocks', async () => {
     payload: { firstName: 'Synthetic', lastName: 'Dormant', email: 'dormant@example.test', phone: '+13125550189' },
   });
   const inScopeId = inScope.json().id as string;
-  await app.db.query(`UPDATE contacts SET soto_status = 'inactive' WHERE id = $1`, [inScopeId]);
+  /*
+   * The LIFECYCLE field, not the legacy mirror (Brian, 2026-08-17): "the scope query should sit
+   * on the lifecycle field so it doesn't need revisiting when the mirror retires." `dormant` is a
+   * real value of `contact_lifecycle`, so the ruling maps onto it with nothing to interpret —
+   * unlike `soto_status`, where it had to be read as `inactive`.
+   */
+  await app.db.query(`UPDATE contacts SET contact_status = 'dormant' WHERE id = $1`, [inScopeId]);
   await app.inject({
     method: 'POST', url: `/contacts/${inScopeId}/businesses`, headers: auth(brian),
     payload: { name: 'Synthetic Zulu Enrollable FL LLC', zip: '33101', state: 'FL' },
