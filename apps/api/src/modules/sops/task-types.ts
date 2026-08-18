@@ -75,7 +75,7 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   enrichment: {
     sop: null,
     reason:
-      'The task body lists the exact fields that are missing and says the portal first-login backfill resolves most of them on its own. There are two moves — fill them from what we already hold, or wait for the client to log in — and both are in the task. An SOP page would restate it.',
+      'The task body lists the exact fields that are missing and says the portal first-login backfill resolves most of them on its own. There are two moves — fill them from what we already hold, or wait for the client to log in — and both are in the task. An SOP page would restate it. STILL null after 2026-08-17, when the entity-type gap gained a third move (look it up at the Secretary of State) and a stated consequence (nothing enrols in annual-report tracking on an unknown type): both went into the task body, naming the businesses, rather than onto a page the reader would have to go and find.',
   },
   meeting_action_item: {
     sop: null,
