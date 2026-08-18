@@ -458,15 +458,54 @@ to you as routine instead of coming to Brian again.
 The system raises this for you — a mismatch with no recorded reason arrives titled **NEEDS A
 RULING** and assigned to Brian, with both dates in the description. You do not have to spot it.
 
-**A non-Illinois entity STOPS and goes to Brian, for now.** Illinois is derived from the real
-rule; every other state falls back to the formation anniversary, and the two come out looking
-equally confident. Rather than have you file against a plain fallback in a state nobody has
-verified, non-IL annual reports go to him until that state's rule is researched and added — and
-then they are routine.
+#### Which states are researched
 
-Today that is seven states, not fifty: **FL (8 entities), CO (3), and one each in WI, IN, AZ,
-TX, AR.** Illinois is 603. When a state's rule is confirmed it is added to
-\\\`RESEARCHED_ANNUAL_REPORT_STATES\\\` and its tasks stop escalating.
+Two so far. A state is "researched" when its rule has been read from the **statute or the
+Secretary of State's own published requirement** — never a summary of one — and encoded. Until
+then its tasks escalate to Brian rather than coming to you.
+
+**ILLINOIS — anniversary-based.** Due the first day of the entity's anniversary (formation)
+month. Every entity has its own date.
+
+**FLORIDA — uniform deadline. Structurally different, and the difference matters.**
+
+> "The first annual report must be delivered to the department between January 1 and May 1 of
+> the year following the calendar year in which the limited liability company's articles of
+> organization became effective … Subsequent annual reports must be delivered to the department
+> between January 1 and May 1 of each calendar year thereafter."
+> — **Fla. Stat. § 605.0212** (LLCs); **§ 607.1622** says the same for corporations.
+
+So for Florida:
+
+- **Everyone is due 1 May.** Not the anniversary. A company formed on 19 July is due 1 May like
+  every other Florida entity — if you find yourself looking at a July date for a Florida
+  company, something derived it wrongly.
+- **The window opens 1 January.** There is no filing before then.
+- **Formation date matters exactly once:** the first report is due the year AFTER the year of
+  formation. An entity formed in 2026 files nothing in 2026; its first report is 1 May 2027.
+
+**The Florida penalty regime, which is why the date is not negotiable** (Sunbiz, *Annual Report
+Filing Requirements*):
+
+> "A $400 late fee will be imposed on all profit corporations, limited liability companies,
+> limited partnerships, and limited liability limited partnerships which fail to file their
+> annual reports on or before May 1st." … **"There is no provision to abate or waive the $400
+> late fee."**
+
+Not-for-profits are exempt from the fee. And missing it far enough is terminal:
+
+> "Failure to file an annual report by the 3rd Friday of September will result in the
+> administrative dissolution or revocation of the business entity on our records at the close of
+> business on the 4th Friday of September."
+
+**$400 per entity, unwaivable, one day late.** Treat a Florida 1 May like a tax deadline, not a
+filing chore — and if a Florida report is going to be late, say so before 1 May rather than
+after, because there is no appeal to make afterwards.
+
+**Every other state still STOPS and goes to Brian.** That is five more with entities in the
+book — **CO (3), and one each in WI, IN, AZ, TX, AR** — against IL 603 and FL 8. When a state's
+rule is confirmed from a primary source it is added to \\\`RESEARCHED_ANNUAL_REPORT_STATES\\\` and
+its tasks stop escalating.
 
 ### 2. Check IL SOS good standing before filing
 Look the entity up before filing anything. If it is **not in good standing**, stop: filing an

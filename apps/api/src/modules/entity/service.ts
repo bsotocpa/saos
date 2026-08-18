@@ -13,22 +13,85 @@ import { sendTemplatedEmail } from '../templates/service.ts';
 import { addDays } from '../tax/deadlines.ts';
 
 /**
+ * A state's annual-report rule, as a SHAPE rather than a date.
+ *
+ * States differ structurally, not just in which day they picked, and collapsing that into "one
+ * date function" is how a rule gets mis-modelled:
+ *
+ *   · ANNIVERSARY-BASED (Illinois) — every entity has its own date, derived from formation.
+ *   · UNIFORM-DEADLINE (Florida) — one day a year for everyone, and formation date is irrelevant
+ *     to it. Florida's formation date matters only for WHICH YEAR the first report is due.
+ *
+ * `firstDueYear` exists for that second half. It is optional because it must only be set where
+ * the rule has actually been read: asserting "the first report is due the year after formation"
+ * for a state nobody has checked would be inventing law, which is the thing
+ * RESEARCHED_ANNUAL_REPORT_STATES exists to prevent.
+ */
+interface AnnualReportRule {
+  /** The due date falling in a given calendar year. */
+  candidate: (year: number, formationDate: string) => string;
+  /** First calendar year in which a report is due at all. Omit unless researched. */
+  firstDueYear?: (formationDate: string) => number;
+}
+
+const month = (d: string) => d.slice(5, 7);
+const day = (d: string) => d.slice(8, 10);
+const yearOf = (d: string) => Number(d.slice(0, 4));
+
+const STATE_RULES: Record<string, AnnualReportRule> = {
+  /**
+   * ILLINOIS — anniversary-based: due the first day of the entity's anniversary month.
+   * Pre-existing behaviour, unchanged. No `firstDueYear`: that half was never researched, and
+   * adding an assumption here would change every existing Illinois record silently.
+   */
+  IL: { candidate: (y, f) => `${y}-${month(f)}-01` },
+
+  /**
+   * FLORIDA — UNIFORM DEADLINE. Every entity, every year, May 1. Formation date does not move
+   * it; a company formed on 19 July is still due 1 May, like everyone else.
+   *
+   * Fla. Stat. § 605.0212 (LLCs) and § 607.1622 (corporations), both:
+   *   "The first annual report must be delivered to the department between January 1 and May 1
+   *    of the year FOLLOWING the calendar year in which the [articles] became effective …
+   *    Subsequent annual reports must be delivered … between January 1 and May 1 of each
+   *    calendar year thereafter."
+   *
+   * So formation date is load-bearing exactly once — the first report is skipped in the
+   * formation year — and irrelevant every year after. That is the whole shape, and it is why
+   * this could not be expressed by tweaking the anniversary calculation.
+   */
+  FL: {
+    candidate: (y) => `${y}-05-01`,
+    firstDueYear: (f) => yearOf(f) + 1,
+  },
+};
+
+/**
  * Next annual-report due date strictly after `from`, per state rule.
- *  - IL: due the first day of the entity's anniversary (formation) month.
- *  - default: the formation anniversary date itself.
+ *
+ * States with no entry fall back to the formation anniversary. That fallback is a reasonable
+ * default and NOT a researched rule — which is why a state absent from
+ * RESEARCHED_ANNUAL_REPORT_STATES escalates its T-60 task to Brian instead of going to Laura to
+ * file against it. Both come out looking like a confident date; only the set says which is real.
+ *
  * Admin can always override the stored date; this is the auto-calculation.
  */
 export function nextAnnualReportDueDate(state: string, formationDate: string, from: string): string {
-  const fMonth = Number(formationDate.slice(5, 7));
-  const fDay = formationDate.slice(8, 10);
-  const fromYear = Number(from.slice(0, 4));
-  const candidate = (year: number): string =>
-    state === 'IL'
-      ? `${year}-${String(fMonth).padStart(2, '0')}-01`
-      : `${year}-${String(fMonth).padStart(2, '0')}-${fDay}`;
-  let due = candidate(fromYear);
-  if (due <= from) due = candidate(fromYear + 1);
-  return due;
+  const rule = STATE_RULES[state];
+  const candidate = rule
+    ? (y: number) => rule.candidate(y, formationDate)
+    : (y: number) => `${y}-${month(formationDate)}-${day(formationDate)}`;
+
+  const fromYear = yearOf(from);
+  let dueYear = fromYear;
+  if (candidate(dueYear) <= from) dueYear += 1;
+
+  // A state that does not require a report until some later year (Florida: the year after
+  // formation) cannot have one due before it.
+  const first = rule?.firstDueYear?.(formationDate);
+  if (first !== undefined && dueYear < first) dueYear = first;
+
+  return candidate(dueYear);
 }
 
 /*
@@ -44,9 +107,13 @@ export function nextAnnualReportDueDate(state: string, formationDate: string, fr
  * one-line change that makes those tasks routine again.
  *
  * The book today: IL 603, FL 8, CO 3, and one each in WI, IN, AZ, TX, AR — seven states to
- * research, not fifty.
+ * research, not fifty. FL was done first because it is the only non-IL state with real volume.
+ *
+ * A state belongs here when its rule has been read from a PRIMARY source and encoded in
+ * STATE_RULES — the statute or the Secretary of State's own published requirement, never a
+ * summary of one. The cites are in each state's rule and in Laura's SOP.
  */
-export const RESEARCHED_ANNUAL_REPORT_STATES = new Set(['IL']);
+export const RESEARCHED_ANNUAL_REPORT_STATES = new Set(['IL', 'FL']);
 
 /** Daily reminder job (date-guarded like the extension jobs). */
 export async function runEntityComplianceJob(

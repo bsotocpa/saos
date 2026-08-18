@@ -179,6 +179,43 @@ test('annual-report due-date rule: IL = first day of anniversary month, strictly
   assert.equal(nextAnnualReportDueDate('WI', '2024-09-10', '2026-07-03'), '2026-09-10'); // default: anniversary date
 });
 
+test('FLORIDA is uniform-deadline: May 1 for everyone, formation date does not move it', () => {
+  /*
+   * Fla. Stat. § 605.0212 (LLCs) / § 607.1622 (corporations). Florida is structurally different
+   * from Illinois: one day a year for every entity, rather than a date derived from formation.
+   *
+   * THE MID-YEAR ENTITY IS THE POINT. An anniversary calculation would put a company formed on
+   * 19 July on a July date, and it would look entirely plausible. Florida does not care what
+   * month it was formed — the deadline is May 1 like everyone else's.
+   */
+  assert.equal(nextAnnualReportDueDate('FL', '2020-07-19', '2026-01-15'), '2026-05-01');
+  assert.equal(nextAnnualReportDueDate('FL', '2020-11-30', '2026-01-15'), '2026-05-01');
+  assert.equal(nextAnnualReportDueDate('FL', '2020-02-03', '2026-01-15'), '2026-05-01');
+  assert.notEqual(
+    nextAnnualReportDueDate('FL', '2020-07-19', '2026-01-15'),
+    '2026-07-19',
+    'the uniform deadline wins over anniversary logic'
+  );
+
+  // Strictly after `from`, same as every other state.
+  assert.equal(nextAnnualReportDueDate('FL', '2020-07-19', '2026-05-01'), '2027-05-01');
+  assert.equal(nextAnnualReportDueDate('FL', '2020-07-19', '2026-06-02'), '2027-05-01');
+
+  /*
+   * And the one place formation DOES matter: "The first annual report must be delivered … between
+   * January 1 and May 1 of the year FOLLOWING the calendar year in which the articles became
+   * effective." So an entity formed mid-2026 has nothing due in 2026 — its first report is
+   * May 1, 2027, not May 1 of the year it was born.
+   */
+  assert.equal(nextAnnualReportDueDate('FL', '2026-07-19', '2026-01-15'), '2027-05-01');
+  assert.equal(nextAnnualReportDueDate('FL', '2026-01-02', '2026-01-01'), '2027-05-01');
+  // Formed in December; still nothing due until the following year.
+  assert.equal(nextAnnualReportDueDate('FL', '2026-12-28', '2026-01-15'), '2027-05-01');
+
+  // Illinois is untouched — the first-year provision is Florida's, and IL's was never researched.
+  assert.equal(nextAnnualReportDueDate('IL', '2026-07-19', '2026-01-15'), '2026-07-01');
+});
+
 test('entity compliance: T-60 Laura reminder + task, T-30 client email (ES), filed rolls the date', async () => {
   const owner = await makeClient('Duena', 'duena@example.test', 'es');
   const biz = await app.db.query<{ id: string }>(
@@ -337,28 +374,53 @@ async function t60TaskFor(ecId: string, runDate: string) {
 
 test('a non-researched state does NOT go to Laura to file against a guess', async () => {
   /*
-   * Illinois is derived from the real rule; every other state falls back to the formation
-   * anniversary, and the two come out looking equally confident. Brian's ruling: non-IL goes to
-   * him until that state's rule is researched.
+   * A state with no researched rule falls back to the formation anniversary, and that comes out
+   * looking exactly as confident as a real derivation. Brian's ruling: it goes to him until the
+   * rule is read from a primary source and encoded.
+   *
+   * INVERTED: this test used Florida, whose rule has now been researched (Fla. Stat. § 605.0212
+   * / § 607.1622) and added. Colorado is the next by volume — 3 entities — and stands in for the
+   * unresearched case. The Florida assertion flips rather than disappearing, because "FL is
+   * researched" is now the thing worth pinning.
    */
   const { RESEARCHED_ANNUAL_REPORT_STATES } = await import('../src/modules/entity/service.ts');
   assert.ok(RESEARCHED_ANNUAL_REPORT_STATES.has('IL'), 'Illinois is researched');
-  assert.ok(!RESEARCHED_ANNUAL_REPORT_STATES.has('FL'), 'Florida is not — 8 entities waiting on it');
+  assert.ok(RESEARCHED_ANNUAL_REPORT_STATES.has('FL'), 'and Florida now is too');
+  assert.ok(!RESEARCHED_ANNUAL_REPORT_STATES.has('CO'), 'Colorado is not — 3 entities waiting on it');
 
   // T-60 from the run date, and a due date that MATCHES the derivation so only the state escalates.
   const runDate = '2026-10-01';
   const ec = await complianceRow({
-    name: 'Synthetic Florida LLC', state: 'FL',
+    name: 'Synthetic Colorado LLC', state: 'CO',
     formationDate: '2020-11-30', dueDate: '2026-11-30',
   });
   const task = await t60TaskFor(ec, runDate);
 
   assert.ok(task, 'the job created a task');
   assert.match(task.title, /NEEDS A RULING/, 'it is not presented as routine filing work');
-  assert.match(task.description ?? '', /FL annual-report rules are NOT researched/);
+  assert.match(task.description ?? '', /CO annual-report rules are NOT researched/);
   assert.match(task.description ?? '', /RESEARCHED_ANNUAL_REPORT_STATES/, 'and says how to make it routine');
   assert.equal(task.assigned_staff_id, brian.id, 'routed to Brian, not Laura');
   assert.equal(task.steps, 5, 'still carries the five steps');
+});
+
+test('a Florida entity now routes to Laura as routine work', async () => {
+  /*
+   * The other half of adding a state: it stops escalating. Formed mid-year, due the uniform
+   * May 1 — a combination that would have been an unexplained mismatch before the rule existed,
+   * because the anniversary fallback would have derived a July date.
+   */
+  const runDate = '2027-03-02'; // T-60 → 2027-05-01
+  const ec = await complianceRow({
+    name: 'Synthetic Florida LLC', state: 'FL',
+    formationDate: '2020-07-19', dueDate: '2027-05-01',
+  });
+  const task = await t60TaskFor(ec, runDate);
+
+  assert.ok(task, 'the job created a task');
+  assert.doesNotMatch(task.title, /NEEDS A RULING/, 'Florida is researched, so this is routine');
+  assert.match(task.title, /^File annual report/);
+  assert.notEqual(task.assigned_staff_id, brian.id, 'it is Laura’s work now, not an escalation');
 });
 
 test('a stored due date that disagrees with the rule goes to Brian with BOTH dates', async () => {
