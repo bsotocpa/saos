@@ -128,14 +128,57 @@ export function nextAnnualReportDueDate(
  * to Brian to confirm the state's rule first. Adding a state here after researching it is the
  * one-line change that makes those tasks routine again.
  *
- * The book today: IL 603, FL 8, CO 3, and one each in WI, IN, AZ, TX, AR — seven states to
- * research, not fifty. FL was done first because it is the only non-IL state with real volume.
+ * The book today: IL 603, FL 8, CO 3, and one each in WI, IN, AZ, TX, AR. FL was done first
+ * because it is the only non-IL state with real volume.
  *
  * A state belongs here when its rule has been read from a PRIMARY source and encoded in
  * STATE_RULES — the statute or the Secretary of State's own published requirement, never a
  * summary of one. The cites are in each state's rule and in Laura's SOP.
+ *
+ * ── THE STANDING RULE FOR WHEN TO RESEARCH THE NEXT ONE (Brian, 2026-08-17) ──
+ *
+ * The remaining five are NOT a backlog and are not scheduled. Escalation is cheaper than five
+ * statutes: at one to three entities each, that is roughly six tasks a year reaching Brian, and
+ * six tasks a year is less work than reading and encoding five states' law — most of which would
+ * then sit unused for another eleven months.
+ *
+ * A state gets researched when EITHER trigger fires, whichever comes first:
+ *
+ *   1. its entity count crosses ~5, or
+ *   2. its escalated tasks start annoying Brian.
+ *
+ * Trigger 2 is not a joke: annoyance is the honest measure of how often the escalation actually
+ * costs something, and it arrives on its own without anyone tracking it. Neither trigger needs a
+ * scheduled review, which is why this is a standing rule rather than a roadmap item.
+ *
+ * The escalation is therefore a FEATURE, not a gap to be closed — and each task carries its own
+ * business case: `escalationBusinessCase` puts the state's live entity count and the threshold
+ * into the description, so the person reading it can decide "research this" or "no, still not
+ * worth it" without going and counting anything.
  */
 export const RESEARCHED_ANNUAL_REPORT_STATES = new Set(['IL', 'FL']);
+
+/** Entity count at which a state stops being cheaper to escalate than to research. */
+export const RESEARCH_STATE_AT_ENTITY_COUNT = 5;
+
+/**
+ * The line that makes an escalated task its own business case: how many entities this state
+ * actually has, against the threshold. Counted live, because the book grows and a rule that
+ * cites a number frozen in a comment is a rule that goes stale silently.
+ */
+async function escalationBusinessCase(app: FastifyInstance, state: string): Promise<string> {
+  const { rows } = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM businesses WHERE state = $1`,
+    [state]
+  );
+  const n = rows[0]?.n ?? 0;
+  const verdict =
+    n >= RESEARCH_STATE_AT_ENTITY_COUNT
+      ? `That is at or past the ~${RESEARCH_STATE_AT_ENTITY_COUNT} threshold — worth researching now.`
+      : `Below the ~${RESEARCH_STATE_AT_ENTITY_COUNT} threshold, so escalating is still the cheaper ` +
+        `answer. Research it anyway if these tasks have started to annoy you; that is the other trigger.`;
+  return `${state} has ${n} ${n === 1 ? 'entity' : 'entities'} in the book. ${verdict}`;
+}
 
 /** Daily reminder job (date-guarded like the extension jobs). */
 export async function runEntityComplianceJob(
@@ -251,7 +294,14 @@ export async function runEntityComplianceJob(
       !stateResearched
         ? `${r.state} annual-report rules are NOT researched — the stored date comes from a ` +
           `formation-anniversary fallback, not that state's rule. Confirm the rule before anything ` +
-          `is filed, then add '${r.state}' to RESEARCHED_ANNUAL_REPORT_STATES so future ones are routine.`
+          `is filed.\n\n` +
+          // The standing rule says this escalation is a feature, so the task has to carry the
+          // decision with it: research the state, or accept the next one of these.
+          `Is it worth researching ${r.state} now? ${await escalationBusinessCase(app, r.state)}\n` +
+          `If yes: read the rule from the state's statute or its Secretary of State's own ` +
+          `published requirement — never a summary — encode it in STATE_RULES, and add ` +
+          `'${r.state}' to RESEARCHED_ANNUAL_REPORT_STATES. Future ones then arrive as routine ` +
+          `work for Laura instead of here.`
         : null,
       unexplainedMismatch
         ? `The stored due date (${r.due}) disagrees with the derived date (${derived}) and no ` +

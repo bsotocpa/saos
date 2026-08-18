@@ -2126,20 +2126,79 @@ until staff exist. An unassigned task with no alert is work that doesn’t exist
       · **Presence asserted INSIDE the transaction** (all three businesses live) before absence
         after it — a rollback check that never saw a write is not a check.
 
-- [ ] **Research the remaining five non-IL state rules, in volume order.** Adding a state to
-      `RESEARCHED_ANNUAL_REPORT_STATES` after confirming its rule is the one-line change that
-      makes its annual-report tasks routine again.
+- [x] **The five stragglers: SKIPPED, by standing rule — RULED 2026-08-17.** Brian: *"escalation
+      is cheaper than five statutes. Six tasks a year to my queue is a feature — each one arrives
+      with the state named and is itself the business case for researching it or not."*
 
-      | State | Entities |
-      |---|---|
-      | ~~FL~~ | ~~8~~ — done |
-      | CO | 3 |
-      | WI, IN, AZ, TX, AR | 1 each |
+      | State | Entities | |
+      |---|---|---|
+      | IL | 603 | researched |
+      | FL | 8 | researched |
+      | CO | 3 | escalates — on purpose |
+      | WI, IN, AZ, TX, AR | 1 each | escalates — on purpose |
 
-      Illinois is 603, so this was seven states rather than fifty, and is now five. Until each is
-      done, its T-60 tasks escalate — which is the ruled behaviour, not a backlog. **Worth asking
-      before CO:** whether five states at one-to-three entities each are worth researching at all,
-      or whether escalating six tasks a year to Brian is simply cheaper than five statutes.
+      **The trigger, so this needs no scheduled review:** a state gets researched when EITHER its
+      entity count crosses **~5**, or its escalated tasks start annoying Brian — whichever comes
+      first. Trigger 2 is the honest one: annoyance measures how often the escalation actually
+      costs something, and it arrives on its own without anyone maintaining a counter.
+
+      **Each escalated task now carries its own business case.** `escalationBusinessCase()` puts
+      the state's live entity count and the threshold into the description, with the verdict
+      spelled out — *"CO has 3 entities in the book. Below the ~5 threshold, so escalating is
+      still the cheaper answer. Research it anyway if these tasks have started to annoy you."* The
+      count is **counted at run time, never frozen**: the trigger is "count crosses ~5", and a
+      literal in a comment would keep reporting "below threshold" while the book grew past it.
+      Its own test, and the sabotage that freezes the counts fails exactly that test.
+
+      Laura's SOP says the same thing from her side, because from where she sits the escalation
+      reads like a defect — a task she cannot action with no stated reason it will ever change.
+      It now says plainly that nothing has gone wrong and nothing is waiting on her.
+      Migration **0076**.
+
+### Entity compliance tracks NOTHING — there is no enrolment path (found 2026-08-17)
+
+Brian: *"entity_compliance is empty — nothing is enrolled, including the 603 Illinois entities.
+What's the enrollment path?"* Answered by reading every writer, not by inference:
+
+**There is no enrolment path.** `POST /entity-compliance` is the only thing that has ever created
+a row, it requires `entity.manage`, and **nothing calls it** — there is no page for it in
+`apps/internal/app/` (no `entity` route at all; the only mention of `annual_report` anywhere in
+the internal app is a task-type string in a filter list). It is reachable by curl and nothing else.
+
+It does **not** ride either importer. `import-legacy` writes contacts, businesses,
+business_members, grants and the enrichment queue — that is where the 619 businesses came from.
+`import-trello` writes tasks. Neither has ever touched `entity_compliance`, and no seeder or
+backfill script does either.
+
+**And a backfill could not simply be written today**, which is the substantive part of the answer:
+
+- `businesses` **has no formation_date column at all**. For Illinois — 603 of the 619 — the
+  formation date IS the deadline, so there is nothing to derive from. Florida is the exception:
+  8 entities that could be enrolled correctly this afternoon, because 1 May needs no formation
+  date.
+- The ILSOS checker (`modules/entity/sos.ts`) returns `good_standing | not_good_standing |
+  not_found` only. It does **not** extract a formation date, so it cannot supply the missing
+  column as it stands.
+- **329 of 619 businesses have no `entity_type`**, and entity type decides whether an annual
+  report is owed at all. Enrolling all 619 would manufacture obligations for sole proprietors.
+
+- [ ] **DECISION NEEDED FROM BRIAN before any of this gets built** — three questions, in order,
+      because the answer to each changes the next:
+
+      1. **Who is actually in scope?** Every business in the book, or only those on an engagement
+         that includes annual-report filing? (Today: 0 businesses are linked to any engagement,
+         so "on an engagement" currently means nobody.)
+      2. **Where do Illinois formation dates come from?** Options: extend the ILSOS scraper to
+         parse the formation date from the same search result it already fetches (one page, no new
+         vendor); ask each client at onboarding; or Laura backfilling by hand at whatever rate
+         suits. The scraper option is the cheapest and reuses a call that is already made.
+      3. **Enrol how?** A backfill script for the in-scope set; enrolment as a step in onboarding
+         so it never falls behind again; or a UI page for Laura. Probably all three eventually,
+         and the order matters more than the list.
+
+      Not building any of it unsequenced. Flagging the size honestly: this is the difference
+      between a module that works and a module that exists, and it is Phase-scale work rather
+      than a patch.
 
 ### The PLLC conversion SOP — WRITTEN 2026-08-17, before Laura's first real one
 

@@ -451,7 +451,7 @@ statutory deadline. So the tiebreaker is the state's own record plus Brian's cal
 neither of which is the stored value.
 
 When he rules, **the reason is recorded on the compliance row**
-(\\\`due_date_override_reason\\\`). That is not paperwork: it is what stops the next disagreement
+(\`due_date_override_reason\`). That is not paperwork: it is what stops the next disagreement
 from being identical to this one. A date with a recorded reason is explained, and the task comes
 to you as routine instead of coming to Brian again.
 
@@ -520,9 +520,20 @@ filing chore — and if a Florida report is going to be late, say so before 1 Ma
 after, because there is no appeal to make afterwards.
 
 **Every other state still STOPS and goes to Brian.** That is five more with entities in the
-book — **CO (3), and one each in WI, IN, AZ, TX, AR** — against IL 603 and FL 8. When a state's
-rule is confirmed from a primary source it is added to \\\`RESEARCHED_ANNUAL_REPORT_STATES\\\` and
-its tasks stop escalating.
+book — **CO (3), and one each in WI, IN, AZ, TX, AR** — against IL 603 and FL 8.
+
+**Those five are staying that way on purpose.** Brian's standing rule, 2026-08-17: escalation is
+cheaper than five statutes. At one to three entities each it is roughly six tasks a year reaching
+him, which is less work than reading and encoding five states' law that would then sit unused for
+another eleven months. **The escalation is the design, not a gap** — if you are handed one of
+these, nothing has gone wrong and nothing is stuck waiting on you.
+
+A state gets researched when **either** trigger fires, whichever comes first: its entity count
+crosses about **five**, or its escalated tasks start annoying Brian. Each escalated task carries
+that decision on it — the state, its live entity count, and the threshold — so the answer is on
+the task rather than somewhere else. Once a state is researched, its rule is read from a primary
+source, encoded, and added to \`RESEARCHED_ANNUAL_REPORT_STATES\`, and its tasks come to you as
+ordinary work from then on.
 
 ### 2. Check IL SOS good standing before filing
 Look the entity up before filing anything. If it is **not in good standing**, stop: filing an

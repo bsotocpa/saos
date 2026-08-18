@@ -1037,3 +1037,49 @@ the exact quote and the Sunbiz cite. The reasoning survived; the guard stayed ab
 
 **Rule:** when a hard-rule guard fires on something that feels like a false positive, change the
 code, not the guard — unless the guard is testing the wrong rule, which is a different repair.
+
+## "What's the enrolment path?" is a question to answer by reading every writer (2026-08-17)
+
+Brian asked whether `entity_compliance` fills from the Trello import or from a backfill. The
+tempting answer is the plausible one — it sounds like it should ride the import, the import
+exists, businesses came from it.
+
+Reading every writer gave a different answer: **there is no enrolment path.** One API route, no
+UI in front of it, neither importer touches the table, no seeder, no backfill. The module has an
+open door nobody can reach.
+
+Two things made the answer useful rather than just correct, and both came from looking one layer
+past the question:
+
+- **`businesses` has no `formation_date` column at all.** So "just write a backfill" is not
+  available for Illinois — 603 of 619 — because in Illinois the formation date IS the deadline.
+  Florida's 8 could be enrolled today; that difference is the uniform-vs-anniversary shape again.
+- **329 of 619 businesses have no `entity_type`.** Enrolling everything would manufacture annual
+  report obligations for sole proprietors. Who is in scope is a business question, not a
+  technical one.
+
+**Rule:** when asked how data gets somewhere, grep every writer of that table and say which ones
+exist — then check whether the obvious fix is even possible with the columns that exist. "There
+is no path" is a complete answer; "there is no path, and here is what the path would need"
+is a useful one. Do not offer to build it in the same breath — say what it would cost and let
+Brian sequence it.
+
+Related: [[production-verification-means-looking-at-productions-data]]. Same failure family,
+one level up: that one was a feature that ran on nothing, this is a module fed by nothing.
+
+## A rule with a numeric trigger cannot cite a frozen number (2026-08-17)
+
+Brian's standing rule: research a state's annual-report rule when its entity count crosses ~5, or
+when the escalations annoy him. He asked that each escalated task be "itself the business case",
+so the task now names the state's entity count and the threshold.
+
+The count is **queried at run time**. Writing `CO: 3` as a literal would have been simpler, would
+have read identically in review, and would have kept saying "3 entities, below threshold" for as
+long as the comment survived — while the book grew past five with nothing reporting that the
+trigger had fired. The rule would have gone stale silently, which is the exact failure the rule
+was written to avoid.
+
+**Rule:** if a rule's trigger is a number about the world, the code that reports on that rule
+must measure the world. A constant that duplicates a measurable fact is a second source of truth
+with no update path. The test asserts the count *changes with the data* (five inserted rows flip
+the verdict), not merely that a number appears.

@@ -424,6 +424,36 @@ test('a non-researched state does NOT go to Laura to file against a guess', asyn
   assert.match(task.description ?? '', /RESEARCHED_ANNUAL_REPORT_STATES/, 'and says how to make it routine');
   assert.equal(task.assigned_staff_id, brian.id, 'routed to Brian, not Laura');
   assert.equal(task.steps, 5, 'still carries the five steps');
+
+  /*
+   * Brian's standing rule, 2026-08-17: the remaining five states are NOT researched, because
+   * escalating ~6 tasks a year is cheaper than reading five statutes. He asked for the escalation
+   * to carry its own business case — "each one arrives with the state named and is itself the
+   * business case for researching it or not" — so the task states the live count and the
+   * threshold rather than making him go and count.
+   */
+  assert.match(task.description ?? '', /CO has 1 entity in the book/, 'the live count, counted not remembered');
+  assert.match(task.description ?? '', /Below the ~5 threshold/, 'and the threshold it is measured against');
+  assert.match(task.description ?? '', /annoy you/, 'plus the other trigger, which needs no counter');
+});
+
+test('the business case is COUNTED, not a number frozen in a comment', async () => {
+  /*
+   * The trigger is "entity count crosses ~5", so the count on the task has to be live. A frozen
+   * number would keep saying "1 entity, below threshold" while the book quietly grew past it —
+   * the rule would go stale with nothing reporting that it had.
+   */
+  for (const n of [1, 2, 3, 4]) {
+    await app.db.query(`INSERT INTO businesses (name, state) VALUES ($1, 'MT')`, [`Synthetic Big Sky ${n} LLC`]);
+  }
+  const ec = await complianceRow({
+    name: 'Synthetic Montana LLC', state: 'MT', // 5th MT business — at the threshold
+    formationDate: '2020-12-01', dueDate: '2026-12-01', // T-60 of the run date below
+  });
+  const task = await t60TaskFor(ec, '2026-10-02');
+  assert.match(task?.description ?? '', /MT has 5 entities in the book/, 'counted at run time');
+  assert.match(task?.description ?? '', /at or past the ~5 threshold — worth researching now/,
+    'and the verdict flips when the count crosses');
 });
 
 test('a Florida entity now routes to Laura as routine work', async () => {
