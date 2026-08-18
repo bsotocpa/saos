@@ -216,6 +216,28 @@ test('FLORIDA is uniform-deadline: May 1 for everyone, formation date does not m
   assert.equal(nextAnnualReportDueDate('IL', '2026-07-19', '2026-01-15'), '2026-07-01');
 });
 
+test('a uniform deadline derives with NO formation date; an anniversary one cannot', () => {
+  /*
+   * This is the shape paying for itself. All eight Florida businesses in the book have no
+   * formation date recorded anywhere — and Florida does not need one: May 1 is May 1.
+   *
+   * Illinois does need one, because in Illinois the formation date IS the deadline. It returns
+   * null rather than guessing, and the caller turns that null into work.
+   */
+  assert.equal(nextAnnualReportDueDate('FL', null, '2026-01-15'), '2026-05-01');
+  assert.equal(nextAnnualReportDueDate('FL', null, '2026-05-01'), '2027-05-01'); // still strictly after
+  assert.equal(nextAnnualReportDueDate('IL', null, '2026-01-15'), null);
+  assert.equal(nextAnnualReportDueDate('WI', null, '2026-07-03'), null); // the anniversary fallback too
+
+  /*
+   * What IS lost without a formation date is only the first-year skip: an entity formed in 2026
+   * would be told 2026-05-01 rather than 2027-05-01. That direction is chosen, not accidental —
+   * an early report is a wasted filing, a late one is $400 Florida will not waive.
+   */
+  assert.equal(nextAnnualReportDueDate('FL', '2026-03-01', '2026-01-15'), '2027-05-01'); // known
+  assert.equal(nextAnnualReportDueDate('FL', null, '2026-01-15'), '2026-05-01'); // unknown → the earlier one
+});
+
 test('entity compliance: T-60 Laura reminder + task, T-30 client email (ES), filed rolls the date', async () => {
   const owner = await makeClient('Duena', 'duena@example.test', 'es');
   const biz = await app.db.query<{ id: string }>(
@@ -462,6 +484,73 @@ test('a RECORDED override reason makes the same disagreement routine', async () 
   assert.doesNotMatch(task.title, /NEEDS A RULING/, 'explained, so not escalated');
   assert.match(task.title, /^File annual report/, 'ordinary filing work');
   assert.notEqual(task.assigned_staff_id, brian.id, 'and it is Laura\u2019s, not Brian\u2019s');
+});
+
+test('enrolling with no formation date: Florida still gets a date, Illinois gets a task', async () => {
+  /*
+   * A compliance row with a null due date is INVISIBLE, not pending — the status sweep skips it
+   * and both reminder loops load by exact due date. It sits in the list looking enrolled and
+   * nothing ever fires. Found while production-verifying Florida: 8 FL businesses in the book,
+   * not one with a formation date, and every one of them would have enrolled into silence.
+   */
+  const fl = await app.db.query<{ id: string }>(
+    `INSERT INTO businesses (name, state) VALUES ('Synthetic Sunshine LLC', 'FL') RETURNING id`
+  );
+  const flId = fl.rows[0]!.id;
+  const flCreated = await app.inject({
+    method: 'POST', url: '/entity-compliance', headers: auth(laura),
+    payload: { businessId: flId },   // no formationDate, no override
+  });
+  assert.equal(flCreated.statusCode, 201, flCreated.body);
+  assert.equal(flCreated.json().annualReportDueDate?.slice(5), '05-01', 'Florida derives anyway');
+  const flSetup = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'annual_report_setup' AND source_id = $1`,
+    [flCreated.json().id]
+  );
+  assert.equal(flSetup.rows[0]!.n, 0, 'nothing to chase — Florida needed no formation date');
+
+  // Illinois cannot derive, so the gap becomes owned work rather than a blank row.
+  const il = await app.db.query<{ id: string }>(
+    `INSERT INTO businesses (name, state) VALUES ('Synthetic Undated LLC', 'IL') RETURNING id`
+  );
+  const ilCreated = await app.inject({
+    method: 'POST', url: '/entity-compliance', headers: auth(laura),
+    payload: { businessId: il.rows[0]!.id },
+  });
+  assert.equal(ilCreated.statusCode, 201, ilCreated.body);
+  assert.equal(ilCreated.json().annualReportDueDate, null);
+  const ilSetup = await app.db.query<{ title: string; assigned_staff_id: string | null; sop_link: string | null }>(
+    `SELECT title, assigned_staff_id, sop_link FROM tasks
+      WHERE source_type = 'annual_report_setup' AND source_id = $1`,
+    [ilCreated.json().id]
+  );
+  const setupTask = ilSetup.rows[0];
+  assert.ok(setupTask, 'the missing date is work, and work is a task');
+  assert.match(setupTask.title, /Synthetic Undated LLC/);
+  assert.ok(setupTask.assigned_staff_id, 'and an unassigned task is work that does not exist');
+  assert.ok(setupTask.sop_link, 'with the procedure attached, like every other generated task');
+});
+
+test('the Florida cross-check works without a formation date', async () => {
+  /*
+   * The T-60 "stored date disagrees with the rule" ruling used to be skipped entirely when the
+   * formation date was missing — `derived` was hard-coded to null before the derivation was even
+   * asked. For Florida that threw away a check it could have made: a stored 2027-03-15 on a FL
+   * row is wrong whether or not we know when the company was formed.
+   */
+  const b = await app.db.query<{ id: string }>(
+    `INSERT INTO businesses (name, state) VALUES ('Synthetic Keys LLC', 'FL') RETURNING id`
+  );
+  const ec = await app.db.query<{ id: string }>(
+    `INSERT INTO entity_compliance (business_id, state, annual_report_due_date, status)
+     VALUES ($1, 'FL', '2027-03-15'::date, 'unknown') RETURNING id`,
+    [b.rows[0]!.id]
+  );
+  const task = await t60TaskFor(ec.rows[0]!.id, '2027-01-14'); // T-60 before 2027-03-15
+  assert.ok(task, 'the T-60 task was created');
+  assert.match(task.title, /NEEDS A RULING/);
+  assert.equal(task.assigned_staff_id, brian.id, 'a disagreement Laura must not settle');
+  assert.match(task.description ?? '', /2027-05-01/, 'and Brian gets both dates');
 });
 
 test('the override columns must be recorded together', async () => {

@@ -982,3 +982,58 @@ asking them to fail.
 
 Related: [[the-role-guard-tested-17s-shape-not-17s-rule]] — same family. Encode the rule in the
 mechanism, not in whoever reads it next.
+
+## Production verification means looking at production's DATA, not just its schema (2026-08-17)
+
+Florida shipped: statute cites read from the primary source, the uniform-deadline shape encoded,
+mid-year derivation tested, migration verified byte-identical, deployed. Every check I had
+defined passed. Then I looked at the actual book:
+
+    IL 603 | FL 8 | CO 3 | AR 1 | AZ 1 | IN 1 | TX 1 | WI 1
+    entity_compliance: 0 rows
+
+Two things fell out that no amount of re-reading the diff would have surfaced.
+
+**First, the Florida work had no formation dates to work with.** Not one of the eight Florida
+businesses has a formation date recorded anywhere. Under the code as shipped, enrolling any of
+them produced a compliance row with a NULL due date — and a null due date is *invisible, not
+pending*: the status sweep filters `WHERE annual_report_due_date IS NOT NULL`, and both reminder
+loops load by exact due date. The row sits in the compliance list looking tracked, with a blank
+date, and no reminder is ever coming.
+
+**Second, the fix was already sitting in the shape.** Florida is uniform-deadline — 1 May is
+1 May — so it needs no formation date at all. Illinois genuinely does, because there the
+formation date *is* the deadline. Modelling the rule as a shape rather than a date is what made
+that distinction expressible: `candidate` returns null when a rule needs a formation date it
+hasn't got, and a real date when it doesn't need one. The T-60 cross-check had the same bug from
+the other side — it hard-coded `derived = null` whenever the formation date was missing, throwing
+away a check Florida could always have made. A FL row storing 2027-03-15 would have gone to Laura
+as routine work with a wrong date on it.
+
+**Rule:** after deploying, query the production data the feature reads. Not "did the migration
+apply" — *what is actually in the columns the code depends on*. A feature can be correct,
+tested, deployed, and inert, and the schema will not tell you.
+
+Corollary, and the reason this belongs with the others: the null due date is the same failure
+family as the role that did not exist and the NOT NULL notification — **absence with no record of
+absence**. So the missing date is now work: enrolment with no derivable date creates a "Find the
+formation date" task through `createTask`, under its own `annual_report_setup` source type,
+because sharing `annual_report` would have made this task swallow the real filing task later via
+the (source_type, source_id) dedupe.
+
+Related: [[a-stop-point-only-works-if-the-person-spots-the-condition]] and
+[[an-absence-assertion-needs-a-matching-presence-assertion]].
+
+## A compliance guard firing on a comment is the guard working (2026-08-17)
+
+`check-no-hardcoded-prices` failed the build on a code comment explaining *why* a Florida
+deadline is not negotiable — the comment contained Florida's late-fee figure as a dollar
+literal. The tempting fix is an exemption for comments.
+
+Don't. The rule is "a price appearing as a literal in application code is a build failure", and
+carving a comments exception into a compliance guard to keep one sentence is trading a control
+for a nicety. The figure was spelled out in words instead, with a pointer to the SOP that carries
+the exact quote and the Sunbiz cite. The reasoning survived; the guard stayed absolute.
+
+**Rule:** when a hard-rule guard fires on something that feels like a false positive, change the
+code, not the guard — unless the guard is testing the wrong rule, which is a different repair.

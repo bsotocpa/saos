@@ -458,6 +458,23 @@ to you as routine instead of coming to Brian again.
 The system raises this for you — a mismatch with no recorded reason arrives titled **NEEDS A
 RULING** and assigned to Brian, with both dates in the description. You do not have to spot it.
 
+#### When there is no formation date on record
+
+Whether that blocks you **depends on the state's shape**, which is the practical reason the two
+kinds of rule are described separately below.
+
+**Illinois: it blocks.** The formation date *is* the deadline there, so nothing can be derived
+and nothing is stored. The system does not let that sit quietly — enrolling a business with no
+formation date creates a **"Find the formation date"** task for you, because a compliance row
+with a blank due date receives no T-60 and no T-30. It appears in the compliance list looking
+tracked, and no reminder is ever coming. Get the date from the Secretary of State's record, save
+it on the row, and the due date derives itself from there.
+
+**Florida: it does not block.** 1 May is 1 May whoever you are, so the date derives with no
+formation date at all. The only thing lost is knowing whether the entity is new enough to skip
+its first year — and there the derivation deliberately errs toward the **earlier** date. An
+early report is a wasted filing; a late one is $400 that nobody can waive.
+
 #### Which states are researched
 
 Two so far. A state is "researched" when its rule has been read from the **statute or the

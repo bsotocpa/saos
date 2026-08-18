@@ -52,6 +52,12 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   magic_link_bounce: { sop: 'rene-portal-access' },
   /** Filing an annual report; Laura's procedure already existed and was simply unwired. */
   annual_report: { sop: 'laura-annual-report' },
+  /**
+   * Chasing the formation date for a business enrolled in tracking without one, so its row stops
+   * being a silent no-op. Same SOP — step one of it is "confirm the state and the actual due
+   * date", which is this task with the answer still missing.
+   */
+  annual_report_setup: { sop: 'laura-annual-report' },
   /*
    * WAS `sop: null`, and that was wrong (Brian, 2026-08-17).
    *

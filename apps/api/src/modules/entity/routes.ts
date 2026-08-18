@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
+import { ownerForRole } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import { createPllcConversion, nextAnnualReportDueDate, runEntityComplianceJob } from './service.ts';
 
@@ -36,22 +38,58 @@ export function registerEntityRoutes(app: FastifyInstance): void {
 
   app.post('/entity-compliance', manage, async (request, reply) => {
     const b = CreateComplianceBody.parse(request.body);
-    const biz = await app.db.query<{ id: string; state: string }>(
-      `SELECT id, state FROM businesses WHERE id = $1`,
+    const biz = await app.db.query<{ id: string; name: string; state: string }>(
+      `SELECT id, name, state FROM businesses WHERE id = $1`,
       [b.businessId]
     );
-    if (!biz.rows[0]) throw new AppError(404, 'not_found', 'Business not found.');
-    const state = b.state ?? biz.rows[0].state ?? 'IL';
+    const business = biz.rows[0];
+    if (!business) throw new AppError(404, 'not_found', 'Business not found.');
+    const state = b.state ?? business.state ?? 'IL';
+    // No `formationDate ?` guard: the derivation decides whether it can work without one. A
+    // uniform-deadline state can, so a Florida business enrols with a real 1 May date even
+    // though nobody recorded when it was formed.
     const due =
-      b.annualReportDueDate ??
-      (b.formationDate ? nextAnnualReportDueDate(state, b.formationDate, todayChicago()) : null);
+      b.annualReportDueDate ?? nextAnnualReportDueDate(state, b.formationDate ?? null, todayChicago());
 
     const { rows } = await app.db.query<{ id: string }>(
       `INSERT INTO entity_compliance (business_id, assigned_staff_id, state, formation_date, annual_report_due_date, status)
        VALUES ($1, $2, $3, $4, $5, 'unknown') RETURNING id`,
       [b.businessId, b.assignedStaffId ?? null, state, b.formationDate ?? null, due]
     );
-    return reply.code(201).send({ id: rows[0]!.id, annualReportDueDate: due });
+    const complianceId = rows[0]!.id;
+
+    /*
+     * A COMPLIANCE ROW WITH NO DUE DATE IS INVISIBLE, NOT PENDING.
+     *
+     * The daily status sweep skips it (`WHERE annual_report_due_date IS NOT NULL`) and the T-60
+     * and T-30 loops load by exact due date, so nothing will ever fire for it. It sits in the
+     * compliance list looking enrolled, with a blank date, and no reminder is coming — absence
+     * with no record of absence, the same family as the role that did not exist.
+     *
+     * So the missing date is work, and work is a task. `annual_report_setup` rather than
+     * `annual_report` on purpose: createTask dedupes on (source_type, source_id), and this row
+     * IS the T-60's source_id — sharing the type would make this task swallow the filing task
+     * later, the moment the date is finally known.
+     */
+    if (due === null) {
+      const owner = b.assignedStaffId ?? (await ownerForRole(app.db, 'va_entity'));
+      await createTask(app, {
+        title: `Find the formation date — ${business.name} (${state})`,
+        description:
+          `${business.name} is enrolled in annual-report tracking with no due date, because ` +
+          `${state}'s rule derives the deadline from the formation date and we do not have one. ` +
+          `Until it is recorded, NO reminder will fire for this business — not T-60 to staff, not ` +
+          `T-30 to the client. Get the formation date from the Secretary of State's record and ` +
+          `save it on the compliance row; the due date derives itself from there.`,
+        assignedStaffId: owner,
+        ...(b.businessId ? { businessId: b.businessId } : {}),
+        priority: 1,
+        source: 'automation',
+        sourceType: 'annual_report_setup',
+        sourceId: complianceId,
+      });
+    }
+    return reply.code(201).send({ id: complianceId, annualReportDueDate: due });
   });
 
   app.get('/entity-compliance', manage, async () => {
@@ -87,8 +125,18 @@ export function registerEntityRoutes(app: FastifyInstance): void {
        DO UPDATE SET filed_date = EXCLUDED.filed_date, status = 'filed'`,
       [id, periodYear, rec.annual_report_due_date, b.filedDate]
     );
-    const anchor = rec.formation_date ?? rec.annual_report_due_date;
-    const nextDue = nextAnnualReportDueDate(rec.state, anchor, rec.annual_report_due_date);
+    /*
+     * Roll to the next period. The formation date goes in as itself — it used to be faked from
+     * the due date when missing, which happened to give the right answer for Florida and would
+     * quietly stop doing so for the next state with a first-year rule: `firstDueYear` would be
+     * reading a filing deadline as a formation date.
+     *
+     * When the rule cannot derive without one, the stored date rolls a year rather than being
+     * wiped — a compliance row with no due date is invisible to every job that matters.
+     */
+    const nextDue =
+      nextAnnualReportDueDate(rec.state, rec.formation_date, rec.annual_report_due_date) ??
+      `${Number(rec.annual_report_due_date.slice(0, 4)) + 1}${rec.annual_report_due_date.slice(4)}`;
     await app.db.query(
       `UPDATE entity_compliance
        SET last_filed_date = $2, annual_report_due_date = $3, status = 'filed'

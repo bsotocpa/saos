@@ -2057,19 +2057,72 @@ until staff exist. An unassigned task with no alert is work that doesn’t exist
       · **Non-Illinois** — `RESEARCHED_ANNUAL_REPORT_STATES` starts as {IL}; every other state
         routes to Brian to confirm that state's rule first.
 
-- [ ] **Research the seven non-IL state rules, in volume order.** Adding a state to
+- [x] **FLORIDA researched and encoded 2026-08-17** — the first one, and the only non-IL state
+      with real volume (8 entities). Primary sources, not a summary: **Fla. Stat. § 605.0212**
+      (LLCs) and **§ 607.1622** (corporations) for the rule, **Sunbiz's** own Annual Report
+      Filing Requirements for the penalty regime. Both quoted in Laura's SOP.
+
+      **The rule's SHAPE, which was the work.** Florida is **uniform-deadline** — 1 May, every
+      entity, every year — where Illinois is **anniversary-based**. Those are different kinds of
+      rule, so `STATE_RULES` now holds a rule OBJECT per state instead of one date function with
+      a branch in it. Formation date is load-bearing in Florida exactly once: the first report is
+      due the year AFTER formation, which is `firstDueYear` — optional on the interface, because
+      asserting it for a state nobody has read would be inventing law.
+
+      The mid-year test is the load-bearing one: a company formed 19 July derives 1 May, and the
+      test asserts it is NOT 19 July. An anniversary calculation would have produced a completely
+      plausible July date.
+
+      **Penalty regime, in the stop-point reasoning:** $400 on profit corporations, LLCs, LPs and
+      LLLPs, *"no provision to abate or waive"*, and administrative dissolution at the close of
+      business on the 4th Friday of September for a report not filed by the 3rd Friday.
+      Not-for-profits are exempt from the fee. The SOP says to treat 1 May like a tax deadline and
+      to flag a late Florida filing BEFORE the date, because there is no appeal afterwards.
+
+      Migration **0074** carries the SOP text (generated from the seed, byte-identical, 6,169
+      chars, scoped to `version = 1`).
+
+- [x] **The production data check that came after it — and what it found.** The book:
+      IL 603 · FL 8 · CO 3 · AR/AZ/IN/TX/WI 1 each, and `entity_compliance` **empty**. Not one of
+      the eight Florida businesses has a formation date recorded anywhere.
+
+      Under the code as shipped, enrolling any of them produced a row with a **NULL due date** —
+      invisible rather than pending, because the status sweep filters `IS NOT NULL` and both
+      reminder loops load by exact due date. Tracked-looking, no reminder ever coming. Absence
+      with no record of absence, the same family as the role that did not exist.
+
+      The shape had the fix in it. Florida needs no formation date (1 May is 1 May); Illinois
+      needs one absolutely (there, formation date *is* the deadline). So `candidate` returns null
+      when a rule needs a date it hasn't got, and a real date when it doesn't need one:
+
+      · **Enrolment** derives for FL with no formation date, and where nothing can be derived it
+        creates a **"Find the formation date"** task through `createTask` — its own
+        `annual_report_setup` source type, because sharing `annual_report` would make it swallow
+        the real filing task later via the (source_type, source_id) dedupe.
+      · **The T-60 cross-check** no longer hard-codes `derived = null` when the formation date is
+        missing — it restores the mismatch check for all eight FL rows. A FL row storing
+        2027-03-15 used to reach Laura as routine work with a wrong date on it.
+      · **The filed-roll** stops faking a formation date out of the due date. It happened to give
+        the right answer for Florida and would quietly stop doing so for the next state with a
+        first-year rule — `firstDueYear` was reading a filing deadline as a formation date.
+
+      Migration **0075** carries the SOP's new *When there is no formation date on record*
+      section. Three sabotages, three restores verified by `cmp`.
+
+- [ ] **Research the remaining five non-IL state rules, in volume order.** Adding a state to
       `RESEARCHED_ANNUAL_REPORT_STATES` after confirming its rule is the one-line change that
       makes its annual-report tasks routine again.
 
       | State | Entities |
       |---|---|
-      | FL | 8 |
+      | ~~FL~~ | ~~8~~ — done |
       | CO | 3 |
       | WI, IN, AZ, TX, AR | 1 each |
 
-      Illinois is 603, so this is seven states rather than fifty, and only Florida has enough
-      volume to be worth doing first. Until each is done, its T-60 tasks escalate — which is the
-      ruled behaviour, not a backlog.
+      Illinois is 603, so this was seven states rather than fifty, and is now five. Until each is
+      done, its T-60 tasks escalate — which is the ruled behaviour, not a backlog. **Worth asking
+      before CO:** whether five states at one-to-three entities each are worth researching at all,
+      or whether escalating six tasks a year to Brian is simply cheaper than five statutes.
 
 ### The PLLC conversion SOP — WRITTEN 2026-08-17, before Laura's first real one
 

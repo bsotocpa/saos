@@ -28,8 +28,16 @@ import { addDays } from '../tax/deadlines.ts';
  * RESEARCHED_ANNUAL_REPORT_STATES exists to prevent.
  */
 interface AnnualReportRule {
-  /** The due date falling in a given calendar year. */
-  candidate: (year: number, formationDate: string) => string;
+  /**
+   * The due date falling in a given calendar year — or null when the rule needs a formation date
+   * it has not been given.
+   *
+   * That nullability is the practical payoff of modelling the shape rather than the date.
+   * Florida's deadline is derivable for a client whose formation date nobody ever recorded, and
+   * Illinois' is not, because in Illinois the formation date IS the deadline. Every one of the
+   * eight Florida businesses in the book today is in exactly that position.
+   */
+  candidate: (year: number, formationDate: string | null) => string | null;
   /** First calendar year in which a report is due at all. Omit unless researched. */
   firstDueYear?: (formationDate: string) => number;
 }
@@ -44,7 +52,7 @@ const STATE_RULES: Record<string, AnnualReportRule> = {
    * Pre-existing behaviour, unchanged. No `firstDueYear`: that half was never researched, and
    * adding an assumption here would change every existing Illinois record silently.
    */
-  IL: { candidate: (y, f) => `${y}-${month(f)}-01` },
+  IL: { candidate: (y, f) => (f ? `${y}-${month(f)}-01` : null) },
 
   /**
    * FLORIDA — UNIFORM DEADLINE. Every entity, every year, May 1. Formation date does not move
@@ -75,23 +83,37 @@ const STATE_RULES: Record<string, AnnualReportRule> = {
  * file against it. Both come out looking like a confident date; only the set says which is real.
  *
  * Admin can always override the stored date; this is the auto-calculation.
+ *
+ * WITH NO FORMATION DATE it returns null for a state whose rule needs one — and a real date for
+ * a uniform-deadline state, because 1 May is 1 May whoever you are. What is lost in that case is
+ * only the first-year skip, so a Florida entity formed this year could be told its first report
+ * is due this May rather than next. That direction is deliberate: an early report is a wasted
+ * filing, a late one is a flat four-hundred-dollar fee Florida has no provision to waive.
+ * (Spelled out, not written as a figure — the price guard scans this file for dollar literals
+ * and is right to. The exact wording and the Sunbiz cite live in Laura's SOP.)
  */
-export function nextAnnualReportDueDate(state: string, formationDate: string, from: string): string {
+export function nextAnnualReportDueDate(
+  state: string,
+  formationDate: string | null,
+  from: string
+): string | null {
   const rule = STATE_RULES[state];
-  const candidate = rule
+  const inYear = rule
     ? (y: number) => rule.candidate(y, formationDate)
-    : (y: number) => `${y}-${month(formationDate)}-${day(formationDate)}`;
+    : (y: number) => (formationDate ? `${y}-${month(formationDate)}-${day(formationDate)}` : null);
 
   const fromYear = yearOf(from);
-  let dueYear = fromYear;
-  if (candidate(dueYear) <= from) dueYear += 1;
+  const thisYear = inYear(fromYear);
+  if (thisYear === null) return null; // the rule needs a formation date and has not got one
+
+  let dueYear = thisYear <= from ? fromYear + 1 : fromYear;
 
   // A state that does not require a report until some later year (Florida: the year after
-  // formation) cannot have one due before it.
-  const first = rule?.firstDueYear?.(formationDate);
+  // formation) cannot have one due before it. Unknowable without the formation date.
+  const first = formationDate ? rule?.firstDueYear?.(formationDate) : undefined;
   if (first !== undefined && dueYear < first) dueYear = first;
 
-  return candidate(dueYear);
+  return inYear(dueYear);
 }
 
 /*
@@ -214,8 +236,10 @@ export async function runEntityComplianceJob(
      * stored date's year and after every candidate in the one before it.
      */
     const periodStart = `${Number(r.due.slice(0, 4)) - 1}-12-31`;
-    const derived =
-      r.formation_date ? nextAnnualReportDueDate(r.state, r.formation_date, periodStart) : null;
+    // No `formation_date ?` guard: the derivation decides for itself whether it can work without
+    // one, and for a uniform-deadline state it can. That restores this cross-check for every
+    // Florida row whose formation date we never recorded — which is all eight of them.
+    const derived = nextAnnualReportDueDate(r.state, r.formation_date, periodStart);
     const unexplainedMismatch =
       derived !== null && derived !== r.due && !r.due_date_override_reason;
 
