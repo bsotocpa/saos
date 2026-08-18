@@ -289,3 +289,131 @@ test('PLLC pipeline: flag routes to Laura + advisory flag to Brian; license veri
   assert.equal(row.rows[0].license_verified, true);
   assert.equal(row.rows[0].status, 'advisory_scheduled');
 });
+
+/*
+ * ── Brian's annual-report stop-points (2026-08-17), encoded in the routing ──
+ *
+ * Both were drafted as "Laura notices and stops". A stop-point only works if the person spots
+ * the condition, and the system can spot both — so it does, and routes to Brian instead of
+ * handing Laura a task that looks routine.
+ */
+async function complianceRow(opts: {
+  name: string;
+  state: string;
+  formationDate: string;
+  dueDate: string;
+  overrideReason?: string;
+}): Promise<string> {
+  const b = await app.db.query<{ id: string }>(
+    `INSERT INTO businesses (name, state) VALUES ($1, $2) RETURNING id`,
+    [opts.name, opts.state]
+  );
+  const ec = await app.db.query<{ id: string }>(
+    `INSERT INTO entity_compliance
+       (business_id, state, formation_date, annual_report_due_date, status,
+        due_date_override_reason, due_date_override_at)
+     VALUES ($1, $2, $3::date, $4::date, 'unknown', $5, CASE WHEN $5::text IS NULL THEN NULL ELSE now() END)
+     RETURNING id`,
+    [b.rows[0]!.id, opts.state, opts.formationDate, opts.dueDate, opts.overrideReason ?? null]
+  );
+  return ec.rows[0]!.id;
+}
+
+/** Run the T-60 job for a date nobody has used, and return the task it made for `ecId`. */
+async function t60TaskFor(ecId: string, runDate: string) {
+  const { runEntityComplianceJob } = await import('../src/modules/entity/service.ts');
+  const run = await runEntityComplianceJob(app, runDate);
+  assert.equal(run.skipped, false, 'the job actually ran rather than hitting its date guard');
+  const { rows } = await app.db.query<{
+    title: string; description: string | null; assigned_staff_id: string | null; steps: number;
+  }>(
+    `SELECT t.title, t.description, t.assigned_staff_id,
+            (SELECT count(*)::int FROM task_checklist_items i WHERE i.task_id = t.id) AS steps
+       FROM tasks t WHERE t.source_type = 'annual_report' AND t.source_id = $1`,
+    [ecId]
+  );
+  return rows[0];
+}
+
+test('a non-researched state does NOT go to Laura to file against a guess', async () => {
+  /*
+   * Illinois is derived from the real rule; every other state falls back to the formation
+   * anniversary, and the two come out looking equally confident. Brian's ruling: non-IL goes to
+   * him until that state's rule is researched.
+   */
+  const { RESEARCHED_ANNUAL_REPORT_STATES } = await import('../src/modules/entity/service.ts');
+  assert.ok(RESEARCHED_ANNUAL_REPORT_STATES.has('IL'), 'Illinois is researched');
+  assert.ok(!RESEARCHED_ANNUAL_REPORT_STATES.has('FL'), 'Florida is not — 8 entities waiting on it');
+
+  // T-60 from the run date, and a due date that MATCHES the derivation so only the state escalates.
+  const runDate = '2026-10-01';
+  const ec = await complianceRow({
+    name: 'Synthetic Florida LLC', state: 'FL',
+    formationDate: '2020-11-30', dueDate: '2026-11-30',
+  });
+  const task = await t60TaskFor(ec, runDate);
+
+  assert.ok(task, 'the job created a task');
+  assert.match(task.title, /NEEDS A RULING/, 'it is not presented as routine filing work');
+  assert.match(task.description ?? '', /FL annual-report rules are NOT researched/);
+  assert.match(task.description ?? '', /RESEARCHED_ANNUAL_REPORT_STATES/, 'and says how to make it routine');
+  assert.equal(task.assigned_staff_id, brian.id, 'routed to Brian, not Laura');
+  assert.equal(task.steps, 5, 'still carries the five steps');
+});
+
+test('a stored due date that disagrees with the rule goes to Brian with BOTH dates', async () => {
+  /*
+   * An admin override and a wrong date look identical in advance, so Laura never picks between
+   * them. The task carries both so the ruling can be made without re-deriving anything.
+   */
+  // The job loads rows due EXACTLY at runDate + 60, so the run date is derived from the fixture:
+  // 2026-12-15 minus 60 days. IL rule puts the real date at the first of the anniversary month.
+  const runDate = '2026-10-16';
+  const ec = await complianceRow({
+    name: 'Synthetic Mismatch LLC', state: 'IL',
+    formationDate: '2019-12-04', dueDate: '2026-12-15',
+  });
+  const task = await t60TaskFor(ec, runDate);
+
+  assert.ok(task, 'the job created a task');
+  assert.match(task.title, /NEEDS A RULING/);
+  assert.match(task.description ?? '', /stored due date \(2026-12-15\)/, 'the stored date');
+  assert.match(task.description ?? '', /derived date \(2026-12-01\)/, 'and the derived one');
+  assert.match(task.description ?? '', /record the reason/, 'and says to record the ruling');
+  assert.equal(task.assigned_staff_id, brian.id, 'Laura never picks between them');
+});
+
+test('a RECORDED override reason makes the same disagreement routine', async () => {
+  /*
+   * The point of recording it: "so the next disagreement isn't identical again." Same mismatch,
+   * same dates — but explained, so it goes to Laura as ordinary filing work.
+   */
+  const runDate = '2026-10-17';
+  const ec = await complianceRow({
+    name: 'Synthetic Explained LLC', state: 'IL',
+    formationDate: '2019-12-04', dueDate: '2026-12-16',
+    overrideReason: 'IL assigned this entity a mid-month date on reinstatement (confirmed on ILSOS 2026-08-17).',
+  });
+  const task = await t60TaskFor(ec, runDate);
+
+  assert.ok(task, 'the job created a task');
+  assert.doesNotMatch(task.title, /NEEDS A RULING/, 'explained, so not escalated');
+  assert.match(task.title, /^File annual report/, 'ordinary filing work');
+  assert.notEqual(task.assigned_staff_id, brian.id, 'and it is Laura\u2019s, not Brian\u2019s');
+});
+
+test('the override columns must be recorded together', async () => {
+  // A reason with no date is a half-recorded decision — the thing the column exists to prevent.
+  const b = await app.db.query<{ id: string }>(
+    `INSERT INTO businesses (name, state) VALUES ('Synthetic Halfrecorded LLC', 'IL') RETURNING id`
+  );
+  await assert.rejects(
+    () =>
+      app.db.query(
+        `INSERT INTO entity_compliance (business_id, state, annual_report_due_date, status, due_date_override_reason)
+         VALUES ($1, 'IL', CURRENT_DATE + 60, 'unknown', 'a reason with no date')`,
+        [b.rows[0]!.id]
+      ),
+    /entity_compliance_override_is_complete/
+  );
+});

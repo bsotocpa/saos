@@ -278,18 +278,24 @@ The cause decides the whole rest of the list, so do not skip to filing. Usually 
 annual reports**; sometimes a **registered-agent lapse**, which no amount of report filing
 fixes.
 
-**STOP and bring it to Brian if the entity was dissolved VOLUNTARILY.** Someone chose to close
-it, and reinstating a company the client deliberately wound up is not a clerical fix — it is a
-question about what they are doing now, and possibly about a new entity instead. Not Laura's
-call.
+**STOP and bring it to Brian if the entity was dissolved VOLUNTARILY.** Someone chose to wind
+that company up. Reinstating it is not a clerical fix — it is a question about what the client
+is doing **now**, and often the real answer is a new entity rather than a resurrection. That is
+a business conversation, not a filing task, so it is Brian's and not yours.
 
 ### 3. Total what is owed and tell the client before filing
 Add up back reports, penalties and the reinstatement fee, and tell the client the number
 **before** anything is filed. Two reasons: it is their money, and the total sometimes changes
 their mind.
 
-**If the total is large enough that forming a fresh entity might be the better answer, that is
-a scope conversation for Brian**, not a decision to make on their behalf. Bring him the number.
+**If the total is large enough that forming a fresh entity might be the better answer, bring
+Brian the number — it is a scope conversation, not a threshold you apply.**
+
+The reason it escalates rather than being a rule you could follow: the comparison is **not just
+fees**. A fresh entity resets the **EIN**, the **bank accounts**, the **licences**, and the
+**contract counterparty** — every agreement the client has signed names the old company. So
+"cheaper" is rarely the whole answer, and there is no number at which it becomes one. That
+judgement needs to see the client's whole situation, which is why it is Brian's.
 
 ### 4. File back reports oldest-first, then reinstatement
 The order is not a preference. Illinois processes the reports as a sequence, and a reinstatement
@@ -435,14 +441,32 @@ The due date is **derived**, never a fixed calendar entry: in Illinois it is the
 the entity's anniversary (formation) month; elsewhere it is the formation anniversary itself.
 Check it against the formation date on record rather than trusting the stored date.
 
-**If the stored due date disagrees with the state rule, do not just file to whichever is
-sooner — find out which is right.** An admin override is legitimate (a state can assign a date
-that does not follow the general rule), but a wrong stored date is also exactly what a missed
-deadline looks like in advance.
+**If the stored due date disagrees with the derived one: STOP. Verify against the Secretary of
+State's own record, then bring Brian BOTH dates.** You never pick between them.
 
-**For a non-Illinois entity, check the state's own rule before relying on the derived date.**
-The calculation covers Illinois properly and falls back to the formation anniversary elsewhere,
-which is a reasonable default and not a researched one. Bring anything unusual to Brian.
+The reason you never pick: a legitimate admin override and a plain wrong date **look identical
+in advance**. There is nothing in the row that distinguishes "a state assigned this entity a
+different date" from "somebody typed it wrong", and the cost of guessing wrong is a missed
+statutory deadline. So the tiebreaker is the state's own record plus Brian's call — two things,
+neither of which is the stored value.
+
+When he rules, **the reason is recorded on the compliance row**
+(\\\`due_date_override_reason\\\`). That is not paperwork: it is what stops the next disagreement
+from being identical to this one. A date with a recorded reason is explained, and the task comes
+to you as routine instead of coming to Brian again.
+
+The system raises this for you — a mismatch with no recorded reason arrives titled **NEEDS A
+RULING** and assigned to Brian, with both dates in the description. You do not have to spot it.
+
+**A non-Illinois entity STOPS and goes to Brian, for now.** Illinois is derived from the real
+rule; every other state falls back to the formation anniversary, and the two come out looking
+equally confident. Rather than have you file against a plain fallback in a state nobody has
+verified, non-IL annual reports go to him until that state's rule is researched and added — and
+then they are routine.
+
+Today that is seven states, not fifty: **FL (8 entities), CO (3), and one each in WI, IN, AZ,
+TX, AR.** Illinois is 603. When a state's rule is confirmed it is added to
+\\\`RESEARCHED_ANNUAL_REPORT_STATES\\\` and its tasks stop escalating.
 
 ### 2. Check IL SOS good standing before filing
 Look the entity up before filing anything. If it is **not in good standing**, stop: filing an

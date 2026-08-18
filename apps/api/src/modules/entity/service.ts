@@ -31,6 +31,23 @@ export function nextAnnualReportDueDate(state: string, formationDate: string, fr
   return due;
 }
 
+/*
+ * STATES WHOSE ANNUAL-REPORT RULE WE HAVE ACTUALLY RESEARCHED (Brian's ruling 2026-08-17).
+ *
+ * `nextAnnualReportDueDate` derives Illinois from the real rule — first day of the anniversary
+ * month — and everything else from a plain formation-anniversary fallback. That fallback is a
+ * reasonable default, not a researched one, and the difference is invisible in the output: both
+ * return a confident-looking date.
+ *
+ * So a non-researched state does NOT go to Laura to file against a guess. The T-60 task routes
+ * to Brian to confirm the state's rule first. Adding a state here after researching it is the
+ * one-line change that makes those tasks routine again.
+ *
+ * The book today: IL 603, FL 8, CO 3, and one each in WI, IN, AZ, TX, AR — seven states to
+ * research, not fifty.
+ */
+export const RESEARCHED_ANNUAL_REPORT_STATES = new Set(['IL']);
+
 /** Daily reminder job (date-guarded like the extension jobs). */
 export async function runEntityComplianceJob(
   app: FastifyInstance,
@@ -67,6 +84,8 @@ export async function runEntityComplianceJob(
     state: string;
     due: string;
     assigned_staff_id: string | null;
+    formation_date: string | null;
+    due_date_override_reason: string | null;
     contact_id: string | null;
     first_name: string | null;
     email: string | null;
@@ -76,6 +95,8 @@ export async function runEntityComplianceJob(
     const { rows } = await app.db.query<DueRow>(
       `SELECT ec.id, ec.business_id, b.name AS business_name, ec.state,
               ec.annual_report_due_date::text AS due, ec.assigned_staff_id,
+              ec.formation_date::text AS formation_date,
+              ec.due_date_override_reason,
               c.id AS contact_id, c.first_name, c.email, c.language
        FROM entity_compliance ec
        JOIN businesses b ON b.id = ec.business_id
@@ -103,20 +124,57 @@ export async function runEntityComplianceJob(
   // T-60: remind assigned staff (default: Laura's role) + create a task.
   let staffReminders = 0;
   for (const r of await loadDue(addDays(today, staffDays))) {
-    const staffId = r.assigned_staff_id ?? (await ownerForRole(app.db, 'va_entity'));
-    if (!staffId) continue;
-    await notifyOnce(app.db, {
-      staffId,
-      type: 'annual_report_t60',
-      severity: 'warning',
-      title: `Annual report due ${r.due}: ${r.business_name} (${r.state})`,
-      contactId: r.contact_id,
-      relatedObjectType: 'entity_compliance',
-      relatedObjectId: r.id,
-    });
+    /*
+     * TWO THINGS THE SYSTEM DECIDES BEFORE HANDING THIS OVER (Brian's rulings 2026-08-17).
+     * Both were drafted as "Laura notices and stops", and the system can notice for her — which
+     * is strictly better, because a stop-point only works if the person spots the condition.
+     *
+     * 1. A state whose rule we have not researched. Illinois is derived from the real rule;
+     *    everything else falls back to the formation anniversary, and the two look identical
+     *    coming out. So it goes to Brian to confirm the state's rule, not to Laura to file.
+     * 2. A stored due date that disagrees with the derivation, with no recorded override. An
+     *    admin override and a wrong date are indistinguishable in advance, so Laura never picks
+     *    between them — Brian gets BOTH dates. If a reason IS recorded, the disagreement is
+     *    already explained and this is routine, which is exactly what recording it was for.
+     */
+    const stateResearched = RESEARCHED_ANNUAL_REPORT_STATES.has(r.state);
+    /*
+     * The derived date FOR THE STORED DATE'S OWN PERIOD.
+     *
+     * `nextAnnualReportDueDate` returns the next due date strictly AFTER `from`, so `from` has to
+     * sit before that period's candidate or the comparison comes back a year out and every row
+     * looks like a mismatch. The last day of the previous year is before any candidate in the
+     * stored date's year and after every candidate in the one before it.
+     */
+    const periodStart = `${Number(r.due.slice(0, 4)) - 1}-12-31`;
+    const derived =
+      r.formation_date ? nextAnnualReportDueDate(r.state, r.formation_date, periodStart) : null;
+    const unexplainedMismatch =
+      derived !== null && derived !== r.due && !r.due_date_override_reason;
+
+    const escalate = !stateResearched || unexplainedMismatch;
+    const laura = r.assigned_staff_id ?? (await ownerForRole(app.db, 'va_entity'));
+    const owner = escalate ? await ownerForRole(app.db, 'ceo') : laura;
+
+    const why = [
+      !stateResearched
+        ? `${r.state} annual-report rules are NOT researched — the stored date comes from a ` +
+          `formation-anniversary fallback, not that state's rule. Confirm the rule before anything ` +
+          `is filed, then add '${r.state}' to RESEARCHED_ANNUAL_REPORT_STATES so future ones are routine.`
+        : null,
+      unexplainedMismatch
+        ? `The stored due date (${r.due}) disagrees with the derived date (${derived}) and no ` +
+          `override reason is recorded. Verify against the state's own record, then rule — and ` +
+          `record the reason on the compliance row so the next disagreement is already answered.`
+        : null,
+    ].filter(Boolean);
+
     await createTask(app, {
-      title: `File annual report — ${r.business_name} (due ${r.due})`,
-      assignedStaffId: staffId,
+      title: escalate
+        ? `Annual report NEEDS A RULING — ${r.business_name} (${r.state}, due ${r.due})`
+        : `File annual report — ${r.business_name} (due ${r.due})`,
+      description: why.length > 0 ? why.join('\n\n') : null,
+      assignedStaffId: owner,
       contactId: r.contact_id,
       dueDate: r.due,
       priority: 1,
@@ -125,6 +183,20 @@ export async function runEntityComplianceJob(
       sourceId: r.id,
       checklist: annualReportSteps,
     });
+    // Alerts need a real person; the task above is the durable record either way.
+    if (owner) {
+      await notifyOnce(app.db, {
+        staffId: owner,
+        type: 'annual_report_t60',
+        severity: 'warning',
+        title: escalate
+          ? `Annual report needs a ruling: ${r.business_name} (${r.state}) due ${r.due}`
+          : `Annual report due ${r.due}: ${r.business_name} (${r.state})`,
+        contactId: r.contact_id,
+        relatedObjectType: 'entity_compliance',
+        relatedObjectId: r.id,
+      });
+    }
     staffReminders++;
   }
 
