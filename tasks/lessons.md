@@ -957,3 +957,28 @@ Related: [[an-absence-assertion-needs-a-matching-presence-assertion]] and
 [[sabotage-one-claim-at-a-time-within-a-test]] — the third time this session that a check reported
 what I expected rather than what it verified. The pattern is always the same: the assertion was
 technically true about something other than the thing being tested.
+
+## A stop-point only works if the person spots the condition (2026-08-17)
+
+I drafted four stop-points for Laura's SOPs as "if X, stop and bring it to Brian". Two of them —
+a state whose annual-report rule we have not researched, and a stored due date disagreeing with
+the derivation — depend on her NOTICING X while working a task that otherwise looks routine.
+
+Both are conditions the system already has everything it needs to detect. So it detects them:
+those tasks arrive titled **NEEDS A RULING**, assigned to Brian, with both dates or the state
+named in the description. The SOP still explains the reasoning, because she needs to understand
+what she is being handed — but she is not the detector.
+
+**Rule:** when writing a procedure step that begins "if you notice…", ask whether the system can
+notice instead. A stop-point the system enforces is a control; one the reader must remember is a
+hope. Keep the prose either way — the person still needs to know WHY it stopped — but move the
+detection.
+
+The tell that this one mattered: the two conditions are invisible by construction. Illinois is
+derived from the researched rule and every other state from a plain fallback, and **both come
+out looking like a confident date**; a legitimate admin override and a typo are likewise
+indistinguishable in the row. Asking someone to spot a difference the data does not express is
+asking them to fail.
+
+Related: [[the-role-guard-tested-17s-shape-not-17s-rule]] — same family. Encode the rule in the
+mechanism, not in whoever reads it next.

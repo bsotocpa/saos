@@ -2037,17 +2037,39 @@ until staff exist. An unassigned task with no alert is work that doesn’t exist
       synthetic company name to test our own wiring is not something to do to a government
       site.
 
-- [ ] **Stop-points needing Brian's ruling** (drafted from what the system and Illinois enforce,
-      not from him):
-      · **SOS: a VOLUNTARY dissolution.** Drafted as "stop, go to Brian" — reinstating a company
-        someone chose to wind up is a question about what the client is doing now.
-      · **SOS: reinstatement total large enough that a fresh entity might be better.** Drafted as
-        a scope conversation for Brian rather than Laura's call.
-      · **Annual report: a stored due date that disagrees with the state rule.** Drafted as
-        "find out which is right" — an admin override is legitimate, but so is a wrong stored
-        date, and they look identical in advance.
-      · **Annual report: a non-Illinois entity.** The derived date is researched for IL and a
-        plain formation-anniversary fallback elsewhere. Drafted as "check that state's own rule".
+- [x] **All four stop-points RULED 2026-08-17.** Two were text; two turned out to be routing,
+      because a stop-point only works if the person spots the condition — and the system can
+      spot both. Those tasks now arrive titled **NEEDS A RULING**, assigned to Brian, with the
+      reason in the description. Laura is not asked to notice.
+
+      · **Voluntary dissolution** — stops, goes to Brian. Someone chose to wind that company up;
+        often the real answer is a new entity rather than a resurrection. A business
+        conversation, not a filing task.
+      · **Reinstatement cost vs a fresh entity** — escalates rather than being a threshold Laura
+        applies, and the SOP carries why: the comparison is NOT just fees. A fresh entity resets
+        the EIN, the bank accounts, the licences and the contract counterparty, so "cheaper" is
+        rarely the whole answer and there is no number at which it becomes one.
+      · **Stored due date vs the derivation** — the job compares them and escalates with BOTH
+        dates when no override reason is recorded. Migration 0072 adds
+        `due_date_override_reason` / `_at` / `_by_staff_id` with a CHECK that a reason and its
+        timestamp are recorded together. A RECORDED reason makes the same mismatch route to
+        Laura as ordinary work — which is the entire point of recording it, and has its own test.
+      · **Non-Illinois** — `RESEARCHED_ANNUAL_REPORT_STATES` starts as {IL}; every other state
+        routes to Brian to confirm that state's rule first.
+
+- [ ] **Research the seven non-IL state rules, in volume order.** Adding a state to
+      `RESEARCHED_ANNUAL_REPORT_STATES` after confirming its rule is the one-line change that
+      makes its annual-report tasks routine again.
+
+      | State | Entities |
+      |---|---|
+      | FL | 8 |
+      | CO | 3 |
+      | WI, IN, AZ, TX, AR | 1 each |
+
+      Illinois is 603, so this is seven states rather than fifty, and only Florida has enough
+      volume to be worth doing first. Until each is done, its T-60 tasks escalate — which is the
+      ruled behaviour, not a backlog.
 
 ### The PLLC conversion SOP — WRITTEN 2026-08-17, before Laura's first real one
 
