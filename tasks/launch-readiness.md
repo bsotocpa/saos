@@ -150,7 +150,7 @@ Developers → API keys → Secret key (starts `sk_test_`). That is the ONLY val
 API response, because Stripe reveals it once, at creation.
 
 ```bash
-ssh -i ~/.ssh/saos_hetzner_ed25519 root@SERVER_IPV4-in-env-production -t 'bash /opt/saos/scripts/install-stripe-test.sh'
+ssh -i ~/.ssh/saos_hetzner_ed25519 "root@$(sed -n 's/^SERVER_IPV4=//p' .env.production)" -t 'bash /opt/saos/scripts/install-stripe-test.sh'
 ```
 
 It then: validates the key and REFUSES a live one outright; confirms Stripe reports

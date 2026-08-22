@@ -440,7 +440,8 @@ OF = SAOS_Onboarding_Forms_Spec_v4.2.md.
       7 new tests; 119/119 green. Console wiring steps in RUNBOOK_OPS.md
       "Launch wiring".
       · Hetzner PROVISIONED 2026-07-06 (Brian green-lit US pricing):
-        saos-prod, CPX41 in Ashburn (id 148628619), IPv4 SERVER_IPV4-in-env-production,
+        saos-prod, CPX41 in Ashburn (id 148628619), IPv4 in .env.production
+        as SERVER_IPV4 (gitignored — deploy.sh reads it from there),
         Ubuntu 24.04 + Docker 29.6.1 via cloud-init, firewall 22/80/443
         only, ssh deploy key ~/.ssh/saos_hetzner_ed25519 (local machine).
         ⛔ Brian: create the 8 DNS records (list in .env.production notes /

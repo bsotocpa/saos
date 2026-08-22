@@ -105,7 +105,7 @@ has no credential. In Docuseal: **Settings → API**, copy the token. Then on th
 server:
 
 ```bash
-ssh -i ~/.ssh/saos_hetzner_ed25519 root@SERVER_IPV4-in-env-production
+ssh -i ~/.ssh/saos_hetzner_ed25519 "root@$(sed -n 's/^SERVER_IPV4=//p' .env.production)"
 ```
 
 Edit `/opt/saos/.env`, set `DOCUSEAL_API_TOKEN=<the token>`, then:
