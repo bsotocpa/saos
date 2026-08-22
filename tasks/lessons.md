@@ -1209,3 +1209,33 @@ Two judgement calls worth keeping:
 **Rule:** when a field's trustworthiness varies by where it came from, the origin is part of the
 value. Store them together or the field is unreadable six months later — and enforce it in the
 schema, because the code path that skips it will be the one written in a hurry.
+
+## A pipe swallowed the exit code, so "exit 0" meant grep succeeded (2026-08-22)
+
+I ran the suite as `npm test 2>&1 | grep -E "..."` in the background. The task notification said
+**exit code 0**, and the grep output showed four green guard lines. Both were true. The suite had
+six failures.
+
+`$?` after a pipeline is the LAST command's status. `grep` found matches, so it exited 0, and the
+suite's own non-zero result was discarded at the pipe. The filter I chose also happened to put the
+guard successes first, so the visible output read like a pass.
+
+Two habits from this:
+
+- **Never read a background run's exit code through a pipe.** Run the command unpiped and echo
+  `$?` explicitly (`npm test 2>&1; echo "SUITE_EXIT=$?"`), then grep the captured FILE afterwards.
+  The file keeps everything; the pipe throws away the one thing being asked for.
+- **Grep for the failure marker, not just the success marker.** `grep -c "^✖ "` returning 0 is a
+  real absence check; a screenful of ✓ is not.
+
+The underlying cause was environmental — Docker Desktop had restarted mid-run (`Up 12 seconds`
+when I looked), so the DB was unreachable. That is the second time this session Docker has taken
+the suite down, and both times the failure looked like a code problem until I checked the
+containers. **Check `docker ps` uptime before diagnosing a broad, fast-failing suite.**
+
+Fifth instance this session of a check reporting something other than what it verified, and the
+first where the faulty check was my own shell rather than the code's. Same rule as always: make
+the check measure the thing.
+
+Related: [[the-sabotage-passed-so-the-test-was-wrong]] and
+[[checked-0-meant-three-different-things]].
