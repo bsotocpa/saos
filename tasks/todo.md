@@ -2247,12 +2247,19 @@ as an automatic consequence of entity work, (c) Laura's page ships with staff ac
 
       | From | Result |
       |---|---|
-      | a residential IP | **HTTP 403** — the Secretary of State's own block page, giving a Reference ID and Client IP and saying to email `webmaster@ilsos.gov` |
-      | the Hetzner box | **nothing** — TCP connects, HTTP hangs |
+      | this office | **HTTP 403** — the Secretary of State's own block page, giving a Reference ID and Client IP and saying to email `webmaster@ilsos.gov` |
+      | the Hetzner box, IPv4 | **HTTP 403** in 0.18s, same block page |
+      | the Hetzner box, IPv6 | **HTTP 403** in 0.18s, same block page |
       | `efile.sunbiz.org`, same box | flat **403** |
 
-      A WAF with a posture toward datacentre egress. Not an outage, not a selector problem — no
-      amount of better parsing reaches a page that never arrives.
+      A WAF with a posture toward automated clients. Not an outage, not a selector problem — no
+      amount of better parsing reaches a page that is refused before it is rendered.
+
+      **CORRECTED 2026-08-22.** This table previously said the Hetzner box got "nothing — TCP
+      connects, HTTP hangs." That was wrong: the hang was a Node `fetch` in my own diagnostic, not
+      ILSOS. `curl` from the same box is refused in under a fifth of a second. The distinction is
+      not cosmetic — a hang is a network fault to chase, a 403 is a decision to appeal, and only
+      the 403 carries the Reference ID the appeal needs.
 
       **NOT routing around it.** Rotating user-agents, proxying through residential IPs or
       otherwise defeating the block is bot-detection evasion against a state agency, and a CPA

@@ -34,12 +34,18 @@ function stubChecker(): SosChecker {
 /*
  * ⚠ THIS DOES NOT WORK AND HAS NEVER WORKED (verified 2026-08-17).
  *
- * ILSOS sits behind a WAF that refuses us. From a residential IP the search endpoint returns
- * HTTP 403 with the Secretary of State's own block page — "Sorry, the page you are looking for is
- * not available. Please email webmaster@ilsos.gov including the Reference ID and Client IP" —
- * and from the Hetzner box it does not answer at all: TCP connects, HTTP hangs. (efile.sunbiz.org
- * answers the same box with a flat 403, so this is a general posture toward datacentre egress,
- * not something specific to Illinois.)
+ * ILSOS sits behind a WAF that refuses us. Every request — from this office and from the Hetzner
+ * box, over IPv4 and IPv6 alike — returns HTTP 403 in under a fifth of a second, carrying the
+ * Secretary of State's own block page: "Sorry, the page you are looking for is not available.
+ * Please email webmaster@ilsos.gov including the Reference ID and Client IP." efile.sunbiz.org
+ * answers the same box with a flat 403 too, so this is a general posture toward automated
+ * clients rather than something specific to Illinois.
+ *
+ * CORRECTION 2026-08-22: this comment previously said the box "does not answer at all: TCP
+ * connects, HTTP hangs." That was wrong. The hang came from a Node `fetch` in my own diagnostic,
+ * not from ILSOS; `curl` from the same box gets the 403 immediately. The distinction matters,
+ * because a hang looks like a network problem to chase and a 403 is a decision to appeal — and
+ * the 403 carries the Reference ID the appeal needs.
  *
  * Production has run `SOS_MODE=live` throughout and shows it: ZERO `sos.checked` audit rows, and
  * 0 of 619 businesses with `il_sos_checked_at` set. Every call has been failing into the `catch`
