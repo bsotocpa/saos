@@ -61,7 +61,7 @@ await db.query(
 // Unsigned envelopes (drafts — queued by intake).
 await db.query(
   `INSERT INTO signature_envelopes (contact_id, tax_engagement_id, type, status, template_key)
-   VALUES ($1, $2, 'engagement_letter', 'draft', 'engagement_letter_tax'), ($1, $2, 'consent_7216', 'draft', 'consent_7216_use')`,
+   VALUES ($1, $2, 'engagement_letter', 'draft', 'engagement_master'), ($1, $2, 'consent_7216', 'draft', 'consent_7216_use')`,
   [contactId, te.rows[0].id]
 );
 

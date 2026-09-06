@@ -116,11 +116,24 @@ test('the Master is final, carries the late-fee disclosure, and the old letters 
     'no ACTIVE template is still a placeholder — that is the launch gate'
   );
 
-  const retired = await app.db.query<{ n: number }>(
-    `SELECT count(*)::int AS n FROM templates
-     WHERE key LIKE 'engagement_letter_%' AND NOT is_active AND retired_reason IS NOT NULL`
+  /*
+   * INVERTED 2026-09-06 (Brian's ruling): the five old letters are DELETED, not retired.
+   *
+   * This asserted the opposite — "retired WITH a reason, not deleted" — on the seed's stated
+   * grounds that they were "the terms any historical engagement was signed under". That never
+   * became true: no executed envelope ever referenced one, in any environment.
+   *
+   * What they did instead was cost a day. On 2026-09-06 a readiness sweep grepped template
+   * bodies for "PLACEHOLDER", matched their warning banners — their body IS the banner — and
+   * reported that no engagement letter could be sent to a client, as the headline blocker for
+   * client #1. The assertion three lines above this one was passing that whole time, saying
+   * plainly that every piece of client-facing legal copy is final and sendable. Migration 0079
+   * removes the rows so the next reader cannot repeat the mistake.
+   */
+  const orphans = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM templates WHERE key LIKE 'engagement_letter_%'`
   );
-  assert.equal(retired.rows[0]!.n, 5, 'the five old letters are retired WITH a reason, not deleted');
+  assert.equal(orphans.rows[0]!.n, 0, 'the five superseded letters are gone, not merely deactivated');
 
   const schedules = await app.db.query<{ schedule_code: string }>(
     `SELECT schedule_code FROM service_schedules ORDER BY schedule_code`

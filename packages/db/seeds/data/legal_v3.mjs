@@ -242,7 +242,17 @@ const LEGAL_TEMPLATES = [
   },
 ];
 
-/** The five letters v3 replaces. Retired, never deleted. */
+/**
+ * The five letters v3 replaced.
+ *
+ * WAS "Retired, never deleted", on the grounds that they were the terms any historical engagement
+ * was signed under. That never became true — no signature envelope ever referenced one — and on
+ * 2026-09-06 their placeholder banners were matched by a readiness sweep and reported as a
+ * blocking launch gate. Migration 0079 deletes them; the template seed no longer creates them.
+ *
+ * The list stays so the UPDATE below remains correct for any database that still holds them. On a
+ * current one it matches nothing, which is the intended end state.
+ */
 const RETIRED = [
   'engagement_letter_tax',
   'engagement_letter_bookkeeping',

@@ -286,11 +286,29 @@ test('PLACEHOLDER GATE: placeholder templates are unsendable in every environmen
     lastName: 'Eve',
     email: 'eve@example.test',
   });
+  /*
+   * ITS OWN FIXTURE, not a borrowed seed row (2026-09-06).
+   *
+   * This used `engagement_letter_tax`, "seeded with is_placeholder = true" — one of five
+   * superseded per-service-line letters deleted in migration 0079. The coupling was the problem
+   * as much as the deletion: the test proves THE GATE, and it was depending on an unrelated
+   * template happening to carry a flag. A row someone retires for reasons of their own then
+   * breaks a test about something else, and the failure names neither.
+   *
+   * A fixture created here says exactly what it is for and cannot be retired out from under it.
+   */
+  await app.db.query(
+    `INSERT INTO templates (key, name, channel, is_placeholder, is_active, body_en, subject_en)
+     VALUES ('synthetic_placeholder_gate', 'Synthetic placeholder (gate fixture)', 'document',
+             true, true, 'Body that must never reach a client.', 'Never sent')
+     ON CONFLICT (key) DO UPDATE SET is_placeholder = true, is_active = true`
+  );
+
   const sentBefore = sentMail.length;
   await assert.rejects(
     sendTemplatedEmail(app, {
       to: eve.email,
-      templateKey: 'engagement_letter_tax', // seeded with is_placeholder = true
+      templateKey: 'synthetic_placeholder_gate',
       language: 'en',
       vars: { client_name: 'Synthetic Eve', service_scope: 'test', fee_summary: 'test' },
     }),

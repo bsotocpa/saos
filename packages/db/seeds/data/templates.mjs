@@ -22,45 +22,23 @@ const PLACEHOLDER_BANNER_ES =
   'enviarse a cualquier cliente. El sistema bloquea el envío mientras la ' +
   'plantilla esté marcada como PROVISIONAL.\n\n';
 
-const letter = (serviceEn, serviceEs) => ({
-  bodyEn:
-    PLACEHOLDER_BANNER_EN +
-    `ENGAGEMENT LETTER — ${serviceEn} (placeholder)\n` +
-    'Parties: Soto Accounting LLC and {{client_name}}.\n' +
-    'Scope of services: {{service_scope}}.\n' +
-    'Fees: {{fee_summary}} (from the engagement’s locked price book version; deposit/true-up terms per the current pricing sheet).\n' +
-    'Late payment: balances unpaid 30 days past the invoice date accrue a late fee of ' +
-    '{{late_fee_rate}} per month (18% APR), itemized on the invoice. Deposits and credits ' +
-    'apply to the balance first. (v4.3 required disclosure block — final wording from Brian.)\n' +
-    'Signatures collected via Docuseal; executed copy filed to the client record.',
-  bodyEs:
-    PLACEHOLDER_BANNER_ES +
-    `CARTA DE COMPROMISO — ${serviceEs} (provisional)\n` +
-    'Partes: Soto Accounting LLC y {{client_name}}.\n' +
-    'Alcance de los servicios: {{service_scope}}.\n' +
-    'Honorarios: {{fee_summary}} (según la versión del libro de precios fijada en el compromiso; términos de depósito y ajuste según la hoja de precios vigente).\n' +
-    'Pago atrasado: los saldos con 30 días de atraso acumulan un cargo por mora de ' +
-    '{{late_fee_rate}} mensual (18% anual), detallado en la factura. Los depósitos y créditos ' +
-    'se aplican primero al saldo. (Bloque de divulgación requerido v4.3 — redacción final de Brian.)\n' +
-    'Firmas mediante Docuseal; la copia firmada se archiva en el expediente del cliente.',
-});
 
+/*
+ * THE FIVE PER-SERVICE-LINE ENGAGEMENT LETTERS ARE GONE (2026-09-06, migration 0079).
+ *
+ * `engagement_letter_{tax,bookkeeping,advisory,coo,entity}` were a v1 design that the
+ * attorney-reviewed legal package v3 replaced with one Master Engagement Agreement plus Schedules
+ * A–F. `seedLegalV3` deactivated them; nothing ever resolved to them
+ * (`templateKeyFor('engagement_letter')` returns 'engagement_master'), and no signature envelope
+ * ever referenced one.
+ *
+ * They are removed from the seed as well as the database because a fresh environment recreating
+ * them would recreate the problem: on 2026-09-06 a readiness sweep grepped template bodies for
+ * "PLACEHOLDER", matched their warning banners, and reported that no engagement letter could be
+ * sent — a false headline blocker for client #1. Their body was the warning; the search found the
+ * sign and reported the hazard.
+ */
 export const templates = [
-  ...[
-    ['engagement_letter_tax', 'Engagement Letter — Tax', 'TAX PREPARATION', 'PREPARACIÓN DE IMPUESTOS'],
-    ['engagement_letter_bookkeeping', 'Engagement Letter — Bookkeeping', 'BOOKKEEPING', 'CONTABILIDAD'],
-    ['engagement_letter_advisory', 'Engagement Letter — Advisory/CFO', 'ADVISORY / CFO', 'ASESORÍA / CFO'],
-    ['engagement_letter_coo', 'Engagement Letter — COO Services', 'COO SERVICES', 'SERVICIOS COO'],
-    ['engagement_letter_entity', 'Engagement Letter — Entity Services', 'ENTITY SERVICES', 'SERVICIOS DE ENTIDAD'],
-  ].map(([key, name, en, es]) => ({
-    key,
-    name,
-    channel: 'document',
-    isPlaceholder: true,
-    variables: ['client_name', 'service_scope', 'fee_summary', 'late_fee_rate'],
-    hasLateFeeDisclosure: true, // v4.3 flow 4: THE late-fee gate reads this
-    ...letter(en, es),
-  })),
   {
     key: 'consent_7216_use',
     name: '§7216 Consent to USE Tax Return Information',

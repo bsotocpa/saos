@@ -8,7 +8,7 @@
     "dev": "node --watch src/index.ts",
     "start": "node src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"test/*.spec.ts\"",
+    "test": "node --test --test-timeout=300000 --test-force-exit \"test/*.spec.ts\"",
     "create-staff": "node src/scripts/create-staff.ts",
     "import:legacy": "node scripts/import-legacy.ts"
   },

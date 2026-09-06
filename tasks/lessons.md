@@ -1405,3 +1405,65 @@ when the premise is false, the deliverable is the proof — not a partial versio
 
 The proof had to be end-to-end: not "the column says false" but the real `previewPacket` running
 in production, for all seven service lines, inside a rolled-back transaction.
+
+## The suite had no timeout, so a dead database wedged it for four hours (2026-09-06)
+
+Two background tasks ran 3h+ and never exited. Diagnosis, from process state rather than guessing:
+
+  PID 16664  node --test-isolation=process --test-timeout=0 … test\document-scans.spec.ts
+             State: LISTEN
+
+`document-scans.spec.ts` starts a fake ClamAV TCP server in `before()`, then builds the app.
+Docker Desktop died mid-run at 02:07; the listener was already up, the DB call after it threw,
+and `after()` — which closes both — never ran. A listening socket keeps a Node process alive
+forever, and **`--test-timeout=0`** meant nothing would ever kill it. The parent `node --test`
+waited for the worker, `npm test` waited for the parent, and the log stopped mid-file at 15KB.
+
+Fixed with `--test-timeout=300000 --test-force-exit`:
+
+- the timeout makes a wedged test FAIL, loudly, with a name
+- force-exit makes a leaked handle stop being an infinite wait
+
+**Rule:** any test suite that opens sockets needs both a per-test timeout and a forced exit. A
+hook that leaks a handle is not exotic — it is what every `before()` does when the thing after the
+listener throws. Without them, an infrastructure blip becomes a process that outlives the session
+that started it.
+
+Related: [[a-pipe-swallowed-the-exit-code]] — same suite, adjacent lesson: it also could not tell
+me it had failed.
+
+## My own safety guard fired, and it was right to even though the condition was wrong (2026-09-06)
+
+Migration 0079 deletes five superseded templates and refuses if any signature envelope references
+them — "they are the terms somebody signed under". It refused immediately on a developer machine:
+two rows.
+
+Both were demo-seed **drafts**, `status = 'draft'`, never sent, never completed. Nobody signed
+anything. The guard was too broad: it treated a queued document as an executed agreement.
+
+The refusal was still the right behaviour. It stopped a destructive migration and made me go and
+look at exactly two rows, which took a minute and produced a better rule — **refuse on executed
+envelopes (past draft), repoint remaining drafts.** Had it been permissive I would have deleted
+without ever knowing the rows existed.
+
+**Rule:** write the destructive-migration guard tight enough to fire, and expect the first firing
+to teach you the real condition. A guard that never fires has told you nothing about whether it
+works. And when it fires, the question is "is the CONDITION right", not "how do I get past this".
+
+## The codebase already knew, in a passing test (2026-09-06)
+
+While inverting a stale assertion I read the three lines above it:
+
+    assert.deepEqual(activePlaceholders.rows.map((r) => r.key), [],
+      'no ACTIVE template is still a placeholder — that is the launch gate');
+    // … every piece of client-facing legal copy is final and sendable.
+
+That test had been passing continuously — including on the morning I told Brian five engagement
+letters were flagged PLACEHOLDER and blocking client #1. A test in the repository was asserting
+the exact opposite of my headline finding, in the file named `master-schedules.spec.ts`, and I
+never opened it.
+
+**Rule:** before reporting a system-level status, check whether a test already asserts something
+about it. A green test is a claim the codebase is making continuously; contradicting one should
+require explaining why the test is wrong. I had grepped the database and never asked what the
+suite believed.
