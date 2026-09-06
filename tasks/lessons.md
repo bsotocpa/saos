@@ -1307,3 +1307,59 @@ from a tool that cannot produce evidence is not evidence of absence.
 
 Related: [[a-pipe-swallowed-the-exit-code]] — same family, one layer out: the check was incapable
 of reporting the thing I was reading it for.
+
+## A rule with no guard is a convention, and conventions hold until someone's model differs (2026-09-06)
+
+`sos_fix_steps` — a bilingual client email — shipped with no `isAutomationEnabled()` check and no
+row in the automations table. CLAUDE.md calls that a build failure in as many words. Seven guards
+ran on every commit and none looked for it.
+
+The convention had held everywhere else, and the reason it broke here is worth keeping: the email
+was written as part of a *lookup* feature, so it read as a consequence of the lookup rather than
+as an automation in its own right. Nobody skipped a step they knew about. **A convention survives
+until someone's mental model of the feature differs from the one the convention was written for**
+— which is the whole argument for encoding it.
+
+**Rule:** when CLAUDE.md says "X is a build failure", check that something actually fails the
+build. If the enforcement is "we always remember", it is a convention wearing a rule's clothes.
+
+## Prove a guard against the real defect, from git, not against a reconstruction (2026-09-06)
+
+Brian asked for confirmation that the new guard would have caught the thing it was written for.
+The weak version of that answer is "yes, because it looks for ungated sends". The version worth
+giving checks out the pre-fix file — `git show 461b7a0:apps/api/src/modules/entity/sos.ts` — runs
+the guard against it, and pastes what came out:
+
+    modules/entity/sos.ts:runSosCheck   (line 176)
+
+File, function, line. Then restore, verified by `cmp`.
+
+**Rule:** a guard's proof is the original defect, retrieved from history. A hand-written imitation
+of the bug proves the guard catches imitations — and it is exactly as easy to write one the guard
+happens to catch as one it does not.
+
+## Writing this guard took four wrong detectors, and each was silently wrong (2026-09-06)
+
+The check itself was ten minutes. Making it say *where* the problem is took four attempts, and
+every failure was quiet — the guard ran, exited, and reported confident nonsense:
+
+1. **Backward brace-walk** → every route file reported `(top level)`. Seven real sites, no useful
+   location.
+2. **Regex string-blanking** → template literals cross-paired with quotes and swallowed real code.
+   Replaced with a single left-to-right scanner.
+3. **Name and `{` required on one line** → missed every multi-line signature, which in this
+   codebase is every important function.
+4. **`const NAME = (`** → matched `const text = (es ? a : b)` and attributed a broadcast SMS to a
+   "function" called `text`. Tightened to require an actual arrow or `function`.
+5. **Contiguous same-owner run** → a nested callback between the gate and the send broke the run,
+   so `runDocumentChaseJob` was reported ungated when it checks its gate twenty-six lines above.
+
+Not one of these announced itself. Each produced a plausible-looking report, and only reading the
+named files showed the names were wrong.
+
+**Rule:** a static-analysis guard needs its OWN verification pass — open the files it names and
+confirm the finding is real, and open a few it passed and confirm they should have passed. A guard
+is a program that makes claims about other programs; it deserves the same suspicion as any other
+check that reports what you hoped to hear.
+
+Related: [[the-sabotage-passed-so-the-test-was-wrong]].
