@@ -13,18 +13,6 @@ left is not code.
 
 ### ⛔ BLOCKING CLIENT #1
 
-**G-A. Five engagement letters still say PLACEHOLDER.** — **BRIAN**
-
-    engagement_letter_tax          engagement_letter_bookkeeping
-    engagement_letter_advisory     engagement_letter_coo
-    engagement_letter_entity
-
-The placeholder gate is enforced in code and must never be removed, so **no engagement letter
-can be sent to a production client today**. That stops the flow at the step right after a quote
-is accepted. §7216 consent is already real — these five are the only templates left.
-
-This is legal copy, not software. Nothing I can do moves it.
-
 **G-B. Stripe is running on TEST keys.** — **BRIAN**
 
 `STRIPE_MODE=live` means the real adapter rather than the stub, but the secret is `sk_test_`.
@@ -34,6 +22,53 @@ A 4242 card charges; a client's real card cannot. Deposits and invoices are both
 companion installer with the same safety properties (never echoes the key, never writes it to
 history, verifies before and after). **Mine to write, once you say go** — and worth doing
 deliberately rather than by editing `.env` on the box.
+
+**This is now the only thing in this section.** See below.
+
+### ✅ G-A WITHDRAWN 2026-09-06 — the engagement letters were never blocked
+
+**I reported this wrong, and it was the headline blocker.** The correction matters more than the
+original claim, so it stays on the page rather than being quietly deleted.
+
+**What I said:** five engagement letters are flagged PLACEHOLDER, so nothing can be papered.
+
+**What is true:** the letter a client signs is the **Master Engagement Agreement (v3, 8,567
+chars, attorney green-lit 2026-08-15) plus the schedules for their service lines**. Master and all
+six schedules are `is_placeholder = false, is_active = true`. Nothing is blocked.
+
+| | |
+|---|---|
+| `engagement_master` | final, active, v3 |
+| `schedule_a_individual_tax` … `schedule_f_attest` | all final, all active |
+| `engagement_letter_tax/_bookkeeping/_advisory/_coo/_entity` | placeholder **and inactive** — and unreferenced |
+
+`templateKeyFor('engagement_letter')` returns `'engagement_master'`; its `_serviceLine` parameter
+is unused. **Nothing resolves to those five.** They are residue of a v1 one-letter-per-service-line
+design that the Master + Schedules architecture replaced, they carry no `has_late_fee_disclosure`
+flag (the Master carries it, which is what the late-fee gate reads), and they cannot send because
+they are inactive.
+
+**Proved end-to-end, not inferred.** A production drill ran the real `previewPacket` for every
+service line inside a rolled-back transaction:
+
+    tax         assembles  [engagement_master v3]  schedules: ["A"]
+    bookkeeping assembles  [engagement_master v3]  schedules: ["C"]
+    advisory    assembles  [engagement_master v3]  schedules: ["D"]
+    coo         assembles  [engagement_master v3]  schedules: ["D"]
+    entity      assembles  [engagement_master v3]  schedules: ["E"]
+    payroll     assembles  [engagement_master v3]  schedules: ["C"]
+    sales_tax   assembles  [engagement_master v3]  schedules: ["C"]
+
+**How I got it wrong:** I grepped the template BODY for the word "PLACEHOLDER". The gate reads the
+`is_placeholder` COLUMN. The five orphans contain the word because their body IS the warning text
+— "⚠ PLACEHOLDER TEMPLATE — NOT FOR CLIENT USE." I matched on the warning and reported the thing
+it warns about.
+
+- [ ] **Open, and the only real item here: retire the five orphans.** — **BRIAN to confirm**
+      They are unreferenced, inactive, and were the sole cause of a false launch blocker. Deleting
+      them removes a tripwire; keeping them costs nothing but will mislead the next reader exactly
+      as it misled me. Deliberately NOT done unilaterally — they are legal-adjacent rows, and the
+      decision is yours.
 
 ### ⚠ BLOCKING SOME PATHS, NOT ALL
 

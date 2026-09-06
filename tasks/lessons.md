@@ -1363,3 +1363,45 @@ is a program that makes claims about other programs; it deserves the same suspic
 check that reports what you hoped to hear.
 
 Related: [[the-sabotage-passed-so-the-test-was-wrong]].
+
+## I matched on the warning label and reported the thing it warns about (2026-09-06)
+
+I told Brian the headline blocker for client #1 was five engagement letters flagged PLACEHOLDER.
+It was wrong, and he acted on it — he came back asking me to draft five schedules and send them to
+his attorney.
+
+The query I used was `body_en ILIKE '%PLACEHOLDER%'`. The gate reads `templates.is_placeholder`, a
+column. The five templates I found contain the word because **their body IS the warning text** —
+"⚠ PLACEHOLDER TEMPLATE — NOT FOR CLIENT USE." I searched for a string, found a sign saying "do
+not use this", and reported that the thing was in use and blocking.
+
+Worse, they were not even in the path: `templateKeyFor('engagement_letter')` returns
+`'engagement_master'` and ignores its service-line argument. Five inactive, unreferenced rows from
+a superseded design, and I made them the top of a launch-readiness report.
+
+**Rule:** when a system has a FLAG for a condition, query the flag. Text that mentions the
+condition is not the condition — it is usually documentation OF it, which means matching on text
+finds the warnings rather than the problems. And before reporting something as blocking, follow
+the path: what does the code actually load at the moment the block would happen?
+
+The cost was not the wrong sentence. It was Brian preparing to spend his attorney's time
+re-reviewing text his attorney had already reviewed, which is what a confidently wrong status
+report buys.
+
+## When the premise of a task is false, stopping IS the work (2026-09-06)
+
+The instruction was concrete: draft five schedules, mark them DRAFT, package them for counsel.
+Every schedule already existed — attorney-reviewed, live, assembling in production for every
+service line, including the COO case Brian expected to have no source at all (Schedule D covers
+advisory, coo, nonprofit_cfo and specialized_cpa).
+
+Drafting them anyway would have been worse than useless. It would have put my invented text
+beside reviewed text in one package, and the failure mode is somebody later pasting the wrong one
+in — the same "two representations of one fact, drifting" defect already in this file twice.
+
+**Rule:** verify the premise before executing a well-specified task, especially one you caused by
+an earlier report. A clear instruction is not evidence that the thing it asks for is needed. And
+when the premise is false, the deliverable is the proof — not a partial version of the work.
+
+The proof had to be end-to-end: not "the column says false" but the real `previewPacket` running
+in production, for all seven service lines, inside a rolled-back transaction.
