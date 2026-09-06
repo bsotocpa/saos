@@ -56,10 +56,15 @@ The block page said:
 
 Identifiers sent with the request, captured 2026-08-22 17:27:50 CDT:
 
-- Reference ID (IPv4): `0.cc00de17.1787437670.7dd1b1dd` — Client IP `178.156.196.114`
-- Reference ID (IPv6): `0.e15ec817.1787437670.5d0b5479` — Client IP `2a01:4ff:f0:3053::1`
+- Reference ID (IPv4): `0.cc00de17.1787437670.7dd1b1dd`
+- Reference ID (IPv6): `0.e15ec817.1787437670.5d0b5479`
 
-Both were included because the host resolves AAAA records first; an allowlist covering only IPv4
+The Client IPs that accompanied them are the server's own IPv4 and IPv6 addresses — see
+`SERVER_IPV4` in `.env.production`, and `ip -6 addr` on the box. They are **deliberately not
+written here**: this repository is public, and a host address in a tracked file outlives the host.
+The addresses went to ILSOS in the appeal itself, which is where they belonged.
+
+Both were sent because the host resolves AAAA records first; an allowlist covering only IPv4
 would not have taken effect in normal operation.
 
 **A correction that mattered.** An earlier note recorded that the server "hangs" while only the
