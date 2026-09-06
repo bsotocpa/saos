@@ -555,14 +555,22 @@ test('enrolling with no formation date: Florida still gets a date, Illinois gets
   });
   assert.equal(ilCreated.statusCode, 201, ilCreated.body);
   assert.equal(ilCreated.json().annualReportDueDate, null);
+  /*
+   * INVERTED 2026-09-06 (Brian's ruling 3). Illinois used to raise its own `annual_report_setup`
+   * errand for the missing formation date. It now rides the ILSOS VERIFICATION task instead —
+   * whoever checks the standing is looking at the formation date on the same screen, so a second
+   * task would be sending someone back to a page they already had open. Keyed on the BUSINESS,
+   * because that task is about the entity rather than about one compliance row.
+   */
   const ilSetup = await app.db.query<{ title: string; assigned_staff_id: string | null; sop_link: string | null }>(
     `SELECT title, assigned_staff_id, sop_link FROM tasks
-      WHERE source_type = 'annual_report_setup' AND source_id = $1`,
-    [ilCreated.json().id]
+      WHERE source_type = 'sos_verify' AND source_id = $1`,
+    [il.rows[0]!.id]
   );
   const setupTask = ilSetup.rows[0];
   assert.ok(setupTask, 'the missing date is work, and work is a task');
-  assert.match(setupTask.title, /Synthetic Undated LLC/);
+  assert.match(setupTask.title, /Verify good standing on ILSOS — Synthetic Undated LLC/);
+  assert.equal(setupTask.sop_link, '/sops/laura-sos-verify', 'and the manual procedure is attached');
   assert.ok(setupTask.assigned_staff_id, 'and an unassigned task is work that does not exist');
   assert.ok(setupTask.sop_link, 'with the procedure attached, like every other generated task');
 });
@@ -789,18 +797,25 @@ test('(3b) an auto-enrolment with no derivable date is not quieter than a manual
   assert.equal(res.enrolled, true);
   assert.equal(res.enrolled && res.dueDate, null, 'IL cannot derive without a formation date');
 
+  /*
+   * INVERTED 2026-09-06 (Brian's ruling 3). An Illinois auto-enrolment with no formation date now
+   * raises the ILSOS VERIFICATION task rather than its own errand — one trip to the state's site,
+   * not two. The rule under test is unchanged and is still the point: an automatic enrolment that
+   * derives nothing must not be QUIETER than a manual one, because nobody was watching when it
+   * happened. Only which task carries it moved.
+   */
   const task = await app.db.query<{ title: string; assigned_staff_id: string | null; description: string | null }>(
     `SELECT title, assigned_staff_id, description FROM tasks
-      WHERE source_type = 'annual_report_setup' AND source_id = $1`,
-    [res.enrolled ? res.complianceId : '00000000-0000-0000-0000-000000000000']
+      WHERE source_type = 'sos_verify' AND source_id = $1`,
+    [biz.businessId]
   );
   assert.ok(task.rows[0], 'the silent row became owned work');
-  assert.match(task.rows[0]!.title, /Synthetic Datefree LLC/);
+  assert.match(task.rows[0]!.title, /Verify good standing on ILSOS — Synthetic Datefree LLC/);
   assert.ok(task.rows[0]!.assigned_staff_id, 'assigned to a real person');
   assert.match(
     task.rows[0]!.description ?? '',
-    /automatically \(annual_report_engaged\)/,
-    'and says it was automatic, so the reader knows nobody chose this moment'
+    /no formation date on record/,
+    'and it asks for the date too, so one visit answers both'
   );
 
   // Florida needs no formation date, so the same situation enrols cleanly and raises nothing.

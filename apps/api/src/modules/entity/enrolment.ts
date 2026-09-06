@@ -110,7 +110,15 @@ export async function enrolEntityIfInScope(
    * task for exactly this, and an automatic enrolment must not be quieter than a manual one —
    * it is MORE likely to go unnoticed, because nobody was watching when it happened.
    */
-  if (dueDate === null) {
+  if (dueDate === null && state === 'IL') {
+    /*
+     * ILLINOIS RIDES THE ILSOS VERIFICATION TASK (Brian's ruling 3, 2026-09-06) — the same trip
+     * that reads the standing reads the formation date. Same choice as the staff enrolment route,
+     * made in both places because both create compliance rows.
+     */
+    const { requestSosVerification } = await import('./sos.ts');
+    await requestSosVerification(app, businessId, 'enrolment');
+  } else if (dueDate === null) {
     const { createTask } = await import('../tasks/service.ts');
     const { ownerForRole } = await import('../../staffing.ts');
     await createTask(app, {

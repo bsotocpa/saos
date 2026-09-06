@@ -1,101 +1,150 @@
-// IL Secretary of State good-standing monitor (MP v4.2 module 3) — replaces
-// Brian's manual lookup on every discovery call. Adapter pattern:
-//   stub — dev/test: deterministic by name ('dissolved' → not in good
-//          standing, 'unknown' → not found, else good standing)
-//   live — self-hosted scraper against the ILSOS corporate/LLC search
-//          (no third-party service — vendor rule)
-// Adverse results create a Laura task + bilingual fix-steps email.
+/*
+ * IL SECRETARY OF STATE GOOD-STANDING MONITOR — human lookup, system cadence.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════════════════
+ * THERE IS NO AUTOMATED ILSOS LOOKUP IN THIS FILE, AND THERE MUST NOT BE ONE.
+ *
+ * The Illinois Secretary of State has told us IN WRITING that automated querying of their
+ * search endpoints violates their Terms of Use, and that they do not whitelist. That is not a
+ * technical obstacle to route around; it is the operator of the data saying no. The full
+ * exchange — the block, our request, their refusal — is recorded in
+ * docs/ENTITY_ILSOS_AUTOMATION.md so that nobody rebuilds this in two years having forgotten
+ * why it went away.
+ *
+ * `scripts/check-no-sos-scraping.mjs` fails the build if any code in this repo fetches a
+ * Secretary of State host. The rule is encoded rather than remembered, because the previous
+ * version of this file looked entirely reasonable and ran for a month without anyone noticing
+ * it had never once succeeded.
+ *
+ * If ILSOS's commercial bulk-data programme is contracted, THAT becomes the automated route —
+ * purchased, licensed, and nothing like a scraper. Until then the lookup is a person in a
+ * browser, which is both compliant and, for a book this size, entirely sufficient.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * So the shape is: the SYSTEM keeps the cadence and the SYSTEM records the answer, and a person
+ * does the reading in between. `runSosRecheckJob` raises a task instead of making a request;
+ * `recordSosResult` takes what the person read and does everything the old post-fetch code did.
+ * Adverse results still create the restoration task, alert Laura, and (once armed) email the
+ * client their fix steps.
+ */
 
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
+import { isAutomationEnabled } from '../../automations.ts';
 import { notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 
+/**
+ * What a person can report after looking at the state's record.
+ *
+ * `not_found` means somebody searched and the entity genuinely is not on the register — a real,
+ * serious finding about a client. It used to double as the scraper's error return, so a WAF
+ * block, a timeout and a dissolved-and-struck company all wrote the same value. Nothing can
+ * write it from a failure any more, because nothing fails: a human either read the record or
+ * did not finish the task.
+ */
 export type SosStatus = 'good_standing' | 'not_good_standing' | 'not_found';
 
-export interface SosChecker {
-  readonly mode: 'stub' | 'live';
-  check(businessName: string): Promise<{ status: SosStatus }>;
-}
-
-function stubChecker(): SosChecker {
-  return {
-    mode: 'stub',
-    async check(businessName) {
-      const n = businessName.toLowerCase();
-      if (n.includes('dissolved') || n.includes('revoked')) return { status: 'not_good_standing' };
-      if (n.includes('unknown')) return { status: 'not_found' };
-      return { status: 'good_standing' };
-    },
-  };
-}
-
-/*
- * ⚠ THIS DOES NOT WORK AND HAS NEVER WORKED (verified 2026-08-17).
+/**
+ * THE VERIFICATION STEPS, on the task, so the doing happens in the queue.
  *
- * ILSOS sits behind a WAF that refuses us. Every request — from this office and from the Hetzner
- * box, over IPv4 and IPv6 alike — returns HTTP 403 in under a fifth of a second, carrying the
- * Secretary of State's own block page: "Sorry, the page you are looking for is not available.
- * Please email webmaster@ilsos.gov including the Reference ID and Client IP." efile.sunbiz.org
- * answers the same box with a flat 403 too, so this is a general posture toward automated
- * clients rather than something specific to Illinois.
- *
- * CORRECTION 2026-08-22: this comment previously said the box "does not answer at all: TCP
- * connects, HTTP hangs." That was wrong. The hang came from a Node `fetch` in my own diagnostic,
- * not from ILSOS; `curl` from the same box gets the 403 immediately. The distinction matters,
- * because a hang looks like a network problem to chase and a 403 is a decision to appeal — and
- * the 403 carries the Reference ID the appeal needs.
- *
- * Production has run `SOS_MODE=live` throughout and shows it: ZERO `sos.checked` audit rows, and
- * 0 of 619 businesses with `il_sos_checked_at` set. Every call has been failing into the `catch`
- * below, which logs a warning and returns null — a monitor that has never once monitored.
- *
- * NOT ROUTING AROUND IT. Rotating user-agents, proxying through residential IPs or otherwise
- * defeating the block is off the table: it is bot-detection evasion against a state agency, and
- * a CPA firm doing that to its own Secretary of State is a compliance problem, not a feature.
- * The block page names the legitimate route — email the webmaster with the Reference ID and ask
- * for allowlisting.
- *
- * Until that is answered, the honest state is that we have no automated ILSOS lookup. Laura
- * checking by hand in a browser is not a workaround, it is the actual process, and the standing
- * of an entity is a fact somebody must go and read either way.
+ * `laura-sos-verify` has one section per item explaining it, and
+ * scripts/check-sop-task-alignment.mjs fails the build if the two drift apart.
  */
-function liveChecker(): SosChecker {
-  return {
-    mode: 'live',
-    async check(businessName) {
-      // ILSOS corporate/LLC name search (HTML endpoint — no API exists).
-      // Parsing is best-effort: any scrape failure returns not_found and the
-      // record stays reviewable by staff rather than wrongly adverse.
-      const res = await fetch(
-        `https://apps.ilsos.gov/corporatellc/CorporateLlcController?command=doSearch&type=startsWith&searchValue=${encodeURIComponent(businessName)}`,
-        // A timeout, because there was none: undici waits ~300s on headers, and the recheck job
-        // calls this in a serial loop of up to 50. Fifty hangs is a job that never finishes.
-        { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(15_000) }
-      );
-      if (!res.ok) return { status: 'not_found' };
-      const html = (await res.text()).toLowerCase();
-      if (!html.includes(businessName.toLowerCase().slice(0, 20))) return { status: 'not_found' };
-      if (html.includes('dissolved') || html.includes('revoked') || html.includes('not in good standing')) {
-        return { status: 'not_good_standing' };
-      }
-      return { status: 'good_standing' };
-    },
-  };
-}
+export const SOS_VERIFY_STEPS = [
+  'Search the business on the ILSOS website',
+  'Read the standing and the formation date off the record',
+  'Record what you read in SAOS',
+  'If it is not in good standing, stop and bring it to Brian',
+];
 
-export function makeSosChecker(app: FastifyInstance): SosChecker {
-  return app.config.SOS_MODE === 'live' ? liveChecker() : stubChecker();
-}
+/** The restoration steps — unchanged; `laura-sos-restore` explains each one. */
+const SOS_RESTORE_STEPS = [
+  'Confirm the adverse result on the ILSOS site',
+  'Find out why standing was lost',
+  'Total what is owed and tell the client before filing',
+  'File back reports oldest-first, then reinstatement',
+  'Re-check standing and record the confirmation',
+  'Correct the annual-report due date so the next one is caught',
+];
 
-/** Check + stamp a business; adverse → Laura task + client fix-steps email. */
-export async function runSosCheck(app: FastifyInstance, businessId: string): Promise<SosStatus | null> {
+/**
+ * Raise the "go and look" task for one business.
+ *
+ * Deduped by `createTask` on (source_type, source_id), so a business already carrying an open
+ * verification task does not collect a second one each time the job runs.
+ */
+export async function requestSosVerification(
+  app: FastifyInstance,
+  businessId: string,
+  reason: 'recheck' | 'intake' | 'enrolment'
+): Promise<{ created: boolean } | null> {
   const { rows } = await app.db.query<{
-    id: string; name: string; contact_id: string | null;
+    name: string; contact_id: string | null; formation_date: string | null;
+  }>(
+    `SELECT b.name, b.formation_date::text AS formation_date, c.id AS contact_id
+       FROM businesses b
+       LEFT JOIN business_members m ON m.business_id = b.id AND m.is_primary
+       LEFT JOIN contacts c ON c.id = m.contact_id
+      WHERE b.id = $1`,
+    [businessId]
+  );
+  const biz = rows[0];
+  if (!biz) return null;
+
+  /*
+   * ONE TRIP TO THE STATE'S WEBSITE, NOT TWO (Brian's ruling 3, 2026-09-06).
+   *
+   * The formation-date backfill was going to be a parse; it is the same manual lookup instead.
+   * Whoever opens the ILSOS record to read the standing is looking at the formation date on the
+   * same screen, so asking for it in a second task later would be sending someone back to a page
+   * they already had open.
+   */
+  const alsoNeedsFormationDate = biz.formation_date === null;
+
+  const result = await createTask(app, {
+    title: `Verify good standing on ILSOS — ${biz.name}`,
+    description:
+      `Look ${biz.name} up on the Illinois Secretary of State's business search and record what ` +
+      `the state says. This is a manual browser lookup on purpose: ILSOS has told us in writing ` +
+      `that automated querying violates their Terms of Use, so nobody may script it.` +
+      (alsoNeedsFormationDate
+        ? `\n\nWHILE YOU ARE THERE: this business has no formation date on record, and Illinois ` +
+          `derives the annual-report deadline from it. The date is on the same page as the ` +
+          `standing — record both, so nobody has to open this record twice.`
+        : ''),
+    assignedStaffId: await ownerForRole(app.db, 'va_entity'),
+    contactId: biz.contact_id,
+    businessId,
+    priority: 2,
+    source: 'automation',
+    sourceType: 'sos_verify',
+    sourceId: businessId,
+    checklist: SOS_VERIFY_STEPS,
+  });
+  return { created: result.created };
+}
+
+/**
+ * Record what a person read off the state's record.
+ *
+ * This is everything the old `runSosCheck` did AFTER its fetch returned — the stamping, the
+ * audit row, the adverse handling. Only the fetch is gone, and with it the only part that was
+ * ever capable of being wrong about a client's entity without anyone knowing.
+ */
+export async function recordSosResult(
+  app: FastifyInstance,
+  businessId: string,
+  input: { status: SosStatus; formationDate?: string | null },
+  actor: { type: 'staff' | 'system'; id?: string | null; label?: string | null }
+): Promise<SosStatus | null> {
+  const { rows } = await app.db.query<{
+    id: string; name: string; contact_id: string | null; formation_date: string | null;
     first_name: string | null; email: string | null; language: 'en' | 'es' | null;
   }>(
-    `SELECT b.id, b.name, c.id AS contact_id, c.first_name, c.email, c.language
+    `SELECT b.id, b.name, b.formation_date::text AS formation_date,
+            c.id AS contact_id, c.first_name, c.email, c.language
      FROM businesses b
      LEFT JOIN business_members m ON m.business_id = b.id AND m.is_primary
      LEFT JOIN contacts c ON c.id = m.contact_id
@@ -105,49 +154,64 @@ export async function runSosCheck(app: FastifyInstance, businessId: string): Pro
   const biz = rows[0];
   if (!biz) return null;
 
-  const checker = makeSosChecker(app);
-  let status: SosStatus;
-  try {
-    status = (await checker.check(biz.name)).status;
-  } catch (err) {
-    app.log.warn({ err, businessId }, 'sos check failed — status stays unknown');
-    return null;
-  }
-
   await app.db.query(
     `UPDATE businesses SET il_sos_status = $2::il_sos_state, il_sos_checked_at = now() WHERE id = $1`,
-    [businessId, status]
+    [businessId, input.status]
   );
+
+  /*
+   * STAFF_VERIFIED, NOT SOS_REGISTER (Brian's ruling 2, 2026-09-06).
+   *
+   * The date was read off the state's register, so `sos_register` is tempting — and wrong. That
+   * value means the system read the register itself; this is a person transcribing from a screen,
+   * which can be mistyped in ways a machine read cannot. The provenance describes HOW WE CAME TO
+   * HOLD the value, not how authoritative the underlying source is, and the difference is exactly
+   * what someone re-reading a derived deadline later needs to know.
+   *
+   * An existing date is not overwritten. Whatever is there was recorded with its own provenance,
+   * and this call has no way to know it is worse.
+   */
+  let formationDateRecorded = false;
+  if (input.formationDate && !biz.formation_date) {
+    await app.db.query(
+      `UPDATE businesses
+          SET formation_date = $2::date,
+              formation_date_source = 'staff_verified',
+              formation_date_recorded_at = now()
+        WHERE id = $1`,
+      [businessId, input.formationDate]
+    );
+    formationDateRecorded = true;
+  }
+
   await writeAudit(app.db, {
-    actorType: 'system',
+    actorType: actor.type,
+    actorId: actor.id ?? null,
+    actorLabel: actor.label ?? null,
     action: 'sos.checked',
     objectType: 'business',
     objectId: businessId,
     contactId: biz.contact_id,
-    details: { status, mode: checker.mode },
+    details: {
+      status: input.status,
+      method: 'manual_lookup',
+      formation_date_recorded: formationDateRecorded,
+    },
   });
 
-  if (status === 'not_good_standing') {
+  // The "go and look" task is done the moment its answer is recorded.
+  await app.db.query(
+    `UPDATE tasks SET status = 'completed', completed_at = now(), updated_at = now()
+      WHERE source_type = 'sos_verify' AND source_id = $1
+        AND status IN ('not_started', 'in_progress', 'waiting_for_input', 'deferred')`,
+    [businessId]
+  );
+
+  if (input.status === 'not_good_standing') {
     const laura = await ownerForRole(app.db, 'va_entity');
     /*
-     * The restoration steps, in order — on the TASK, so the doing happens in the queue.
-     * `laura-sos-restore` has one section per item explaining it, and
-     * scripts/check-sop-task-alignment.mjs fails the build if the two drift apart.
-     */
-    const restoreSteps = [
-      'Confirm the adverse result on the ILSOS site',
-      'Find out why standing was lost',
-      'Total what is owed and tell the client before filing',
-      'File back reports oldest-first, then reinstatement',
-      'Re-check standing and record the confirmation',
-      'Correct the annual-report due date so the next one is caught',
-    ];
-    /*
-     * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule).
-     *
-     * This one was invisible until the raw INSERT became a `createTask()` call — the guard
-     * watches the function, so routing it through the one door is what exposed the gate. An
-     * entity that has lost its charter and a task nobody was given are the same outcome from
+     * THE TASK IS UNCONDITIONAL; only the ALERT and the CLIENT EMAIL are gated (Brian's rule).
+     * An entity that has lost its charter and a task nobody was given are the same outcome from
      * the client's side.
      */
     await createTask(app, {
@@ -159,7 +223,7 @@ export async function runSosCheck(app: FastifyInstance, businessId: string): Pro
       source: 'automation',
       sourceType: 'sos_check',
       sourceId: businessId,
-      checklist: restoreSteps,
+      checklist: SOS_RESTORE_STEPS,
     });
     if (laura) {
       await notifyOnce(app.db, {
@@ -172,30 +236,54 @@ export async function runSosCheck(app: FastifyInstance, businessId: string): Pro
         relatedObjectId: businessId,
       });
     }
+    /*
+     * GATED, and it was not before (found 2026-09-06).
+     *
+     * This is a client-facing send and it shipped with no `isAutomationEnabled()` check and no
+     * row in the automations table — a build failure by CLAUDE.md's own words. It never reached
+     * anyone only because the lookup that triggers it never once succeeded, which is luck rather
+     * than design. Brian arms `sos_adverse_client_notice` in Admin → Automations when he wants
+     * clients told automatically; until then the task and the alert carry it, and the suppression
+     * is counted rather than silent.
+     */
     if (biz.email && biz.first_name) {
-      await sendTemplatedEmail(app, {
-        to: biz.email,
-        templateKey: 'sos_fix_steps',
-        language: biz.language ?? 'en',
-        contactId: biz.contact_id,
-        vars: { first_name: biz.first_name, business_name: biz.name },
-      });
+      if (await isAutomationEnabled(app, 'sos_adverse_client_notice')) {
+        await sendTemplatedEmail(app, {
+          to: biz.email,
+          templateKey: 'sos_fix_steps',
+          language: biz.language ?? 'en',
+          contactId: biz.contact_id,
+          vars: { first_name: biz.first_name, business_name: biz.name },
+        });
+      } else {
+        app.log.info(
+          { businessId, automation: 'sos_adverse_client_notice' },
+          'sos adverse: client notice suppressed (automation disarmed) — Laura has the task'
+        );
+      }
     }
   }
-  return status;
+  return input.status;
 }
 
-/** Scheduled re-check (daily, date-guarded): active clients, stale checks. */
+/**
+ * Scheduled re-check (daily, date-guarded): active IL clients whose standing is stale.
+ *
+ * The cadence is unchanged. What changed is the output: this used to make up to fifty HTTP
+ * requests to the Secretary of State and now makes none, raising a task per business instead.
+ */
 export async function runSosRecheckJob(
   app: FastifyInstance,
   today: string
-): Promise<{ skipped: boolean; checked: number; candidates: number; failed: number }> {
+): Promise<{ skipped: boolean; candidates: number; tasksCreated: number; alreadyOpen: number }> {
   const ACTION = 'job.sos_recheck';
   const already = await app.db.query(
     `SELECT 1 FROM audit_log WHERE action = $1 AND details->>'run_date' = $2 LIMIT 1`,
     [ACTION, today]
   );
-  if (already.rows.length > 0) return { skipped: true, checked: 0, candidates: 0, failed: 0 };
+  if (already.rows.length > 0) {
+    return { skipped: true, candidates: 0, tasksCreated: 0, alreadyOpen: 0 };
+  }
 
   const setting = await app.db.query<{ value: number }>(
     `SELECT (value)::text::int AS value FROM app_settings WHERE key = 'sos.recheck_days'`
@@ -204,13 +292,10 @@ export async function runSosRecheckJob(
 
   const { rows } = await app.db.query<{ id: string }>(
     /*
-     * The LIFECYCLE field, not the legacy `soto_status` mirror (Brian, 2026-08-17). Same ruling
-     * as the annual-report scope, and the same reason: the mirror retires, and a query written
-     * against it would have to be found again with nothing failing to point at it.
-     *
-     * The scope is deliberately NARROWER than the annual-report one — `active` only, not
-     * `active` + `dormant`. Standing is checked to catch a problem while we are acting for
-     * someone; a dormant client's charter is not ours to watch weekly.
+     * The LIFECYCLE field, not the legacy `soto_status` mirror (Brian, 2026-08-17). The scope is
+     * deliberately NARROWER than the annual-report one — `active` only, not `active` + `dormant`.
+     * Standing is checked to catch a problem while we are acting for someone; a dormant client's
+     * charter is not ours to watch weekly.
      */
     `SELECT DISTINCT b.id
      FROM businesses b
@@ -221,34 +306,27 @@ export async function runSosRecheckJob(
      LIMIT 50`,
     [staleDays]
   );
-  let checked = 0;
-  let failed = 0;
+
+  let tasksCreated = 0;
+  let alreadyOpen = 0;
   for (const b of rows) {
-    if ((await runSosCheck(app, b.id)) !== null) checked++;
-    else failed++;
+    const r = await requestSosVerification(app, b.id, 'recheck');
+    if (r?.created) tasksCreated++;
+    else alreadyOpen++;
   }
+
   /*
-   * `checked` ALONE WAS A LIE OF OMISSION. It returned {skipped:false, checked:0} for three
-   * different situations that a reader cannot tell apart: nobody was due, everybody was due and
-   * every lookup failed, or the candidate query matched nothing because its filter was wrong.
-   * Production has been in the third all along — `soto_status = 'active'` matches no business in
-   * this book — and the run record said the same thing it says on a clean day.
-   *
-   * So the record now carries what it actually did. `candidates` is the number the filter found,
-   * which is the one that exposes a filter matching nothing.
+   * The run record carries the DENOMINATOR, not just the successes. `candidates: 0` is the only
+   * number that could ever have exposed the filter matching nothing, which is the state
+   * production was in for a month while the record looked identical to a clean day.
    */
   await writeAudit(app.db, {
     actorType: 'system',
     action: ACTION,
-    details: { run_date: today, candidates: rows.length, checked, failed, mode: makeSosChecker(app).mode },
+    details: { run_date: today, candidates: rows.length, tasks_created: tasksCreated, already_open: alreadyOpen },
   });
   if (rows.length === 0) {
-    app.log.info({ job: ACTION }, 'sos recheck: no business matched the candidate filter — nothing was checked');
-  } else if (checked === 0) {
-    app.log.warn(
-      { job: ACTION, candidates: rows.length },
-      'sos recheck: every lookup failed — the ILSOS endpoint is refusing us (see the note in sos.ts)'
-    );
+    app.log.info({ job: ACTION }, 'sos recheck: no business matched the candidate filter — no tasks raised');
   }
-  return { skipped: false, checked, candidates: rows.length, failed };
+  return { skipped: false, candidates: rows.length, tasksCreated, alreadyOpen };
 }

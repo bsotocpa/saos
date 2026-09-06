@@ -1239,3 +1239,71 @@ the check measure the thing.
 
 Related: [[the-sabotage-passed-so-the-test-was-wrong]] and
 [[checked-0-meant-three-different-things]].
+
+## "We were refused" is not a fact about the client (2026-09-06)
+
+The ILSOS scraper returned `not_found` on any failure — a 403, a timeout, a parse miss. But
+`not_found` in `il_sos_state` does not mean "we could not look". It means **the Secretary of State
+has no record of this company**, which is a serious finding about a client's entity, the kind that
+starts a conversation with a bank.
+
+For a month, every WAF refusal was one successful-looking parse away from writing that.
+
+**Rule:** when an external source can refuse you, the refusal needs its own representation, and it
+must never share one with a substantive finding. Ask of every status value: *is this about them,
+or about us?* `meetings.status = 'failed'` is about us and is fine. `not_found` is about them.
+Mixing the two is how a system states things it does not know.
+
+The fix was not a new enum value. Once the fetch was gone there was nothing left that could be
+refused — a person either reads the register or does not finish the task, and an unfinished task
+is not a claim about anybody.
+
+## Removing beats disabling, and a guard beats a comment (2026-09-06)
+
+Brian: "not disabled, removed from every code path." The scraper that came out was not
+reckless-looking code — it had a timeout, an adapter interface, a stub for tests, and a careful
+comment about best-effort parsing. It looked like something a sensible person wrote, which is
+exactly why it survived a month of never working.
+
+A `SOS_MODE=stub` flag would have left that shape in the tree for the next person to find and
+re-arm, and the comment explaining why not would have been three scrolls above the code.
+
+So `scripts/check-no-sos-scraping.mjs` fails the build if any code fetches a Secretary-of-State
+host, and it lists thirteen registry hosts rather than the one we tripped over — the next person's
+state will not be Illinois.
+
+**Rule:** when a capability is retired for a NON-technical reason (a licence, a term of use, a
+regulator), delete it and encode the prohibition. A disabled feature is a decision someone can
+reverse without knowing why it was made; a failing build hands them the reason.
+
+## The rewrite is when you find what the old code was hiding (2026-09-06)
+
+Rewriting the adverse-result path surfaced something unrelated to ILSOS: the `sos_fix_steps`
+client email had **no `isAutomationEnabled()` gate and no row in the automations table**. By
+CLAUDE.md's own words that is a build failure, and it had been sitting in the tree for weeks.
+
+It reached nobody only because the lookup that triggers it never once succeeded. Two defects
+cancelling out is not the same as no defect — remove one and the other ships.
+
+**Rule:** when a feature has never actually run, treat everything downstream of it as unverified,
+not as working. And note what is missing: there is no build guard for "client sends are gated",
+which is why this one slipped past seven other guards. That is the next guard to write.
+
+## Verify a negative with a second tool before reporting it (2026-09-06)
+
+Three times today I nearly reported something as broken that was fine:
+
+- `getent hosts portal.sotoaccounting.com` returned nothing on Git Bash for Windows, where getent
+  does not do DNS. `Resolve-DnsName` showed all eight records present and correct. I was one
+  sentence away from telling Brian his DNS was undone.
+- Before that I probed eight hostnames I had **guessed** (`app`, `files`, `pay`) rather than read
+  out of the Caddyfile. All eight "failed", and none of them existed to begin with.
+- And the ILSOS "hang" was a Node `fetch` quirk, not the site — `curl` from the same box answered
+  in 0.18s.
+
+**Rule:** a negative result from a single probe is a hypothesis. Confirm it with a different tool,
+or against the config that defines the thing, before it becomes a finding. Absence of evidence
+from a tool that cannot produce evidence is not evidence of absence.
+
+Related: [[a-pipe-swallowed-the-exit-code]] — same family, one layer out: the check was incapable
+of reporting the thing I was reading it for.

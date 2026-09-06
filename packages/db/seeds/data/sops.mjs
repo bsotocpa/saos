@@ -249,6 +249,83 @@ converted; everything pointing at it still says LLC.
 When all six are ticked, set the conversion to **completed**. If a step turns out not to apply,
 tick it with a note saying why — a skipped step and a done step must not look the same.
 `),
+  sop('laura-sos-verify', 'Verifying good standing on ILSOS', 'va_entity', 'Entity compliance', `
+## Why this is a manual lookup, and must stay one
+
+You are opening a browser and typing a name into the Illinois Secretary of State's website. That
+is not a stopgap until someone automates it — **it is the procedure**, and it is not going to
+change.
+
+We asked. The state's search endpoint refused our requests, its block page invited us to write to
+the webmaster, and we did. The answer came back in writing: **automated querying of their search
+violates their Terms of Use, and they do not whitelist.** So the system keeps the schedule and
+records the answer, and a person does the reading in between.
+
+Do not paste this into a script, and do not use a browser extension that bulk-queries the site on
+your behalf. If someone ever asks you to, send them to \`docs/ENTITY_ILSOS_AUTOMATION.md\`, which
+has the whole exchange.
+
+(Brian is separately asking about the state's paid bulk-data programme. If that is ever contracted
+this changes — but it changes into a licensed data feed, not a scraper, and you will be told.)
+
+## Clock
+There is no statutory deadline on this task. It exists so that a standing problem is found by us
+rather than by a client discovering it at a bank. Work it in the ordinary queue.
+
+### 1. Search the business on the ILSOS website
+Go to the Illinois Secretary of State business search and look the entity up by name, exactly as
+the name appears on the client record.
+
+**Match the entity, not the name.** Illinois has many companies with similar names, and the search
+is a prefix match — "MIDWEST" returns dozens. Before you read anything off a result, confirm it is
+the right company: the file number if we hold one, otherwise the registered agent, the address, or
+the formation date against what we already know. If two results could plausibly be the client,
+**stop** and ask Brian rather than picking.
+
+If the entity genuinely is not there at all, that is a real finding and it is recorded as
+**not found** — but read that as "the state has no record of this company", which is serious.
+Most of the time it means the name on our record is wrong, so check that first.
+
+### 2. Read the standing and the formation date off the record
+The entity's detail page gives you both. Read them; do not infer them.
+
+- **Standing** is what the state says it is. "Good standing", or an adverse state —
+  dissolved, revoked, involuntarily dissolved, delinquent.
+- **Formation date** is the date the state formed the entity. In Illinois this is not trivia: the
+  annual-report deadline is **derived** from it — the first day of the formation month — so a
+  wrong date here becomes a wrong statutory deadline everywhere else.
+
+If the task said this business has no formation date on record, this is the moment to get it. You
+have the page open; nobody should have to come back for it later.
+
+### 3. Record what you read in SAOS
+Put the standing and, where you have it, the formation date onto the business record.
+
+The formation date is saved as **staff verified** — that is you telling us where it came from, and
+it is the honest label even though you read it off the state's own register: a person transcribing
+from a screen can mistype in a way a machine reading cannot. Nobody will treat it as less true;
+they will know it was read by hand, which is a different question from whether it is right.
+
+**An existing formation date is not replaced.** If one is already on the record and it disagrees
+with what you are looking at, do not overwrite it — that disagreement is exactly the situation
+where one of the two dates is driving a deadline. Bring both to Brian.
+
+Recording the result closes this task on its own. You do not need to tick it off separately.
+
+### 4. If it is not in good standing, stop and bring it to Brian
+Recording an adverse result raises the restoration task automatically, with all six steps, and
+alerts you. **Do not start filing anything on the strength of this lookup alone.**
+
+Two reasons to stop first. The state's site sometimes shows an adverse status that a recent
+filing has already cured and not yet cleared — so the first step of restoration is confirming it,
+not fixing it. And the cost of restoring standing is a real number the client has not agreed to
+spend; back reports, penalties and a reinstatement fee add up, and telling them afterwards is not
+a conversation anyone wants to have.
+
+The client is **not** emailed automatically about this. That send exists but ships disarmed, on
+purpose: an adverse standing is a conversation most owners would rather have from a person who
+can answer the next question. If Brian arms it later you will see it in Admin → Automations.
+`),
   sop('laura-sos-restore', 'Restoring IL SOS good standing', 'va_entity', 'Entity', `
 ## Why you have this task
 The Secretary of State search came back adverse for this entity — dissolved, revoked, or not in

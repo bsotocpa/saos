@@ -44,6 +44,12 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   booking_question: { sop: 'rene-question-call' },
   /** Restoring IL Secretary of State good standing: a filing procedure with an order. */
   sos_check: { sop: 'laura-sos-restore' },
+  /**
+   * Going and LOOKING, which is a different job from restoring. Raised by the recheck job, at
+   * intake, and at enrolment; `laura-sos-verify` walks the manual browser search, because
+   * ILSOS told us in writing that scripting it violates their Terms of Use (2026-09-06).
+   */
+  sos_verify: { sop: 'laura-sos-verify' },
   /** Collecting an SSN by phone. PII handling with hard rules, so it gets written rules. */
   ssn_by_phone: { sop: 'rene-ssn-by-phone' },
   /** A client asked for a service and we promised 24 hours. */

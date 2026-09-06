@@ -151,7 +151,17 @@ test('Form 1 full branch: F&B owner, ES, IRS letters, SSN by phone, co-owned ent
     [c.id]
   );
   assert.equal(biz.rows[0].industry, 'food_beverage');
-  assert.equal(biz.rows[0].il_sos_status, 'good_standing', 'SOS checked at intake');
+  /*
+   * INVERTED 2026-09-06. This asserted `good_standing` "SOS checked at intake" — which the stub
+   * checker produced from the company's NAME, standing in for a live scrape. Both halves were
+   * fiction: there is no scrape (ILSOS refused automated querying in writing), and a status
+   * derived from a name was never a check.
+   *
+   * Intake now claims nothing and asks a person to go and look. `unknown` plus a task is a
+   * smaller-sounding assertion and a much bigger one: the system no longer states a fact about a
+   * client's entity that it has not established.
+   */
+  assert.equal(biz.rows[0].il_sos_status, 'unknown', 'intake asserts nothing about the entity');
   const group = await app.db.query(
     `SELECT count(*)::int AS n FROM entity_group_members gm
      JOIN entity_groups g ON g.id = gm.group_id
@@ -393,7 +403,20 @@ test('Module I → PLLC auto-flag: licensed therapist + LLC + IL creates the con
   assert.equal(te.rows[0].complexity_inputs.states, 2);
 });
 
-test('IL SOS adverse result: Laura task + bilingual fix-steps email; recheck job is date-guarded', async () => {
+test('IL SOS: intake raises a MANUAL verification task and asserts nothing about the entity', async () => {
+  /*
+   * INVERTED 2026-09-06. This test used to assert that submitting an intake for
+   * "Dissolved Ventures LLC" left the business at `not_good_standing` — because the stub checker
+   * derived that from the NAME, standing in for a live scrape.
+   *
+   * There is no scrape. The Illinois Secretary of State told us in writing that automated
+   * querying violates their Terms of Use and that they do not whitelist, so Brian retired the
+   * fetch from every code path (docs/ENTITY_ILSOS_AUTOMATION.md).
+   *
+   * The assertion flips rather than disappearing, and it flips to the thing that actually
+   * matters: after intake the system knows it does not know. A status invented from a company's
+   * NAME was always fiction; `unknown` plus a task for a person to go and look is the truth.
+   */
   const { submissionId, resumeToken } = await startForm('soto_intake');
   await app.inject({
     method: 'POST', url: `/public/forms/submissions/${submissionId}/submit`,
@@ -410,24 +433,149 @@ test('IL SOS adverse result: Laura task + bilingual fix-steps email; recheck job
     },
   });
 
-  const biz = await app.db.query(
-    `SELECT b.il_sos_status FROM businesses b JOIN business_members m ON m.business_id = b.id
+  const biz = await app.db.query<{ id: string; il_sos_status: string }>(
+    `SELECT b.id, b.il_sos_status FROM businesses b JOIN business_members m ON m.business_id = b.id
      JOIN contacts c ON c.id = m.contact_id WHERE c.email = 'lapsed@example.test'`
   );
-  assert.equal(biz.rows[0].il_sos_status, 'not_good_standing');
-  const task = await app.db.query(
-    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'sos_check' AND assigned_staff_id = $1`,
-    [laura.id]
-  );
-  assert.equal(task.rows[0].n, 1, 'Laura gets the reinstatement task');
-  assert.ok(
-    sentMail.some((m) => m.to === 'lapsed@example.test' && /needs attention/i.test(m.subject)),
-    'fix-steps email sent'
-  );
+  const businessId = biz.rows[0]!.id;
+  assert.equal(biz.rows[0]!.il_sos_status, 'unknown', 'nothing is claimed about the entity at intake');
 
+  const verify = await app.db.query<{ n: number; title: string; sop_link: string | null }>(
+    `SELECT count(*)::int AS n, max(title) AS title, max(sop_link) AS sop_link
+       FROM tasks WHERE source_type = 'sos_verify' AND source_id = $1`,
+    [businessId]
+  );
+  assert.equal(verify.rows[0]!.n, 1, 'a person is asked to go and look');
+  assert.match(verify.rows[0]!.title, /Verify good standing on ILSOS — Dissolved Ventures LLC/);
+  assert.equal(verify.rows[0]!.sop_link, '/sops/laura-sos-verify', 'with the manual procedure attached');
+
+  // No restoration task yet: nobody has looked, so there is nothing to restore.
+  const premature = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'sos_check' AND source_id = $1`,
+    [businessId]
+  );
+  assert.equal(premature.rows[0]!.n, 0, 'no restoration work is invented before the lookup happens');
+});
+
+test('IL SOS: recording an adverse result raises restoration — and the client email is GATED', async () => {
+  const biz = await app.db.query<{ id: string }>(
+    `SELECT b.id FROM businesses b JOIN business_members m ON m.business_id = b.id
+      JOIN contacts c ON c.id = m.contact_id WHERE c.email = 'lapsed@example.test'`
+  );
+  const businessId = biz.rows[0]!.id;
+
+  /*
+   * DISARMED EXPLICITLY. The test harness arms every automation on seed so behaviour gets
+   * exercised (helpers.ts), and the convention is that a suppression test turns its own one off
+   * — which is what proves the gate rather than the seed default. My first version relied on the
+   * production default and failed here, correctly: it was asserting something the harness had
+   * already overridden.
+   */
+  await app.db.query(`UPDATE automations SET enabled = false WHERE key = 'sos_adverse_client_notice'`);
+  const mailBefore = sentMail.length;
+
+  const res = await app.inject({
+    method: 'POST', url: `/businesses/${businessId}/sos-result`, headers: auth(laura),
+    payload: { status: 'not_good_standing', formationDate: '2019-03-14' },
+  });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(res.json().sosStatus, 'not_good_standing');
+
+  const after = await app.db.query<{ status: string; checked: string | null; fd: string | null; src: string | null }>(
+    `SELECT il_sos_status AS status, il_sos_checked_at::text AS checked,
+            formation_date::text AS fd, formation_date_source AS src
+       FROM businesses WHERE id = $1`,
+    [businessId]
+  );
+  assert.equal(after.rows[0]!.status, 'not_good_standing', 'what the person read is what is stored');
+  assert.ok(after.rows[0]!.checked, 'and stamped when');
+
+  /*
+   * ONE TRIP TO THE STATE'S WEBSITE (Brian's ruling 3): the formation date comes back from the
+   * same lookup, as `staff_verified` — NOT `sos_register`, even though the register is where they
+   * read it. The provenance describes how we came to hold the value, and a person transcribing
+   * from a screen can mistype in ways a machine read cannot.
+   */
+  assert.equal(after.rows[0]!.fd, '2019-03-14', 'the formation date rides along');
+  assert.equal(after.rows[0]!.src, 'staff_verified', 'labelled by how we got it, not by how good the source is');
+
+  const restore = await app.db.query<{ n: number; steps: number }>(
+    `SELECT count(*)::int AS n,
+            COALESCE(max((SELECT count(*)::int FROM task_checklist_items i WHERE i.task_id = t.id)), 0) AS steps
+       FROM tasks t WHERE t.source_type = 'sos_check' AND t.source_id = $1`,
+    [businessId]
+  );
+  assert.equal(restore.rows[0]!.n, 1, 'Laura gets the restoration task');
+  assert.equal(restore.rows[0]!.steps, 6, 'with all six steps');
+
+  // The "go and look" task is finished the moment its answer is recorded.
+  const closed = await app.db.query<{ status: string }>(
+    `SELECT status FROM tasks WHERE source_type = 'sos_verify' AND source_id = $1`,
+    [businessId]
+  );
+  assert.equal(closed.rows[0]!.status, 'completed', 'recording the answer closes the lookup task');
+
+  /*
+   * THE GATE. This send shipped with no `isAutomationEnabled()` check and no row in the
+   * automations table — a build failure by CLAUDE.md's own words, which reached nobody only
+   * because the lookup that triggers it never once succeeded.
+   */
+  /*
+   * Matched on the FIX-STEPS SUBJECT, not on "any mail to this address". The first version
+   * asserted the latter and failed: intake sends this same client a portal invitation
+   * asynchronously, and it landed mid-test. The assertion was true about the mailbox and false
+   * about the thing under test — so it now names the email it means.
+   */
+  assert.ok(
+    !sentMail.slice(mailBefore).some((m) => /needs attention/i.test(m.subject)),
+    'fix-steps email SUPPRESSED while sos_adverse_client_notice is disarmed'
+  );
+});
+
+test('IL SOS: arming the automation lets the same path email the client', async () => {
+  // The other half of the gate — a suppression that can never lift is a broken feature, not a gate.
+  await app.db.query(`UPDATE automations SET enabled = true WHERE key = 'sos_adverse_client_notice'`);
+  try {
+    const c = await app.db.query<{ id: string }>(
+      `INSERT INTO contacts (first_name, last_name, email, language, contact_status)
+       VALUES ('Synthetic', 'Armed', 'armed-sos@example.test', 'en', 'active') RETURNING id`
+    );
+    const b = await app.db.query<{ id: string }>(
+      `INSERT INTO businesses (name, state) VALUES ('Synthetic Armed LLC', 'IL') RETURNING id`
+    );
+    await app.db.query(
+      `INSERT INTO business_members (business_id, contact_id, member_role, is_primary) VALUES ($1, $2, 'owner', true)`,
+      [b.rows[0]!.id, c.rows[0]!.id]
+    );
+
+    const res = await app.inject({
+      method: 'POST', url: `/businesses/${b.rows[0]!.id}/sos-result`, headers: auth(laura),
+      payload: { status: 'not_good_standing' },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.ok(
+      sentMail.some((m) => m.to === 'armed-sos@example.test' && /needs attention/i.test(m.subject)),
+      'armed: the fix-steps email goes out'
+    );
+  } finally {
+    await app.db.query(`UPDATE automations SET enabled = false WHERE key = 'sos_adverse_client_notice'`);
+  }
+});
+
+test('IL SOS: the recheck job raises tasks instead of making requests, and is date-guarded', async () => {
   const run = await app.inject({ method: 'POST', url: '/jobs/sos-recheck?asOf=2026-08-01', headers: auth(brian) });
   assert.equal(run.statusCode, 200, run.body);
-  assert.equal(run.json().skipped, false);
+  const body = run.json() as { skipped: boolean; candidates: number; tasksCreated: number; alreadyOpen: number };
+  assert.equal(body.skipped, false);
+
+  /*
+   * The run record carries the DENOMINATOR. `candidates` is the number the filter found, and it
+   * is the only figure that could ever have exposed the month production spent reporting
+   * `checked: 0` from a filter that matched nothing.
+   */
+  assert.equal(typeof body.candidates, 'number', 'the job reports what its filter found');
+  assert.equal(body.candidates, body.tasksCreated + body.alreadyOpen, 'every candidate is accounted for');
+
   const rerun = await app.inject({ method: 'POST', url: '/jobs/sos-recheck?asOf=2026-08-01', headers: auth(brian) });
   assert.equal(rerun.json().skipped, true);
 });

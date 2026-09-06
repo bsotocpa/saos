@@ -42,8 +42,16 @@ const PAIRINGS = [
   {
     label: 'IL SOS restoration',
     source: 'apps/api/src/modules/entity/sos.ts',
-    stepsVar: 'restoreSteps',
+    stepsVar: 'SOS_RESTORE_STEPS',
     sopSlug: 'laura-sos-restore',
+  },
+  {
+    // The MANUAL lookup (2026-09-06). ILSOS refused automated querying in writing, so the
+    // procedure is a person in a browser and the SOP has to actually walk it.
+    label: 'IL SOS verification (manual)',
+    source: 'apps/api/src/modules/entity/sos.ts',
+    stepsVar: 'SOS_VERIFY_STEPS',
+    sopSlug: 'laura-sos-verify',
   },
   {
     label: 'Annual report filing',

@@ -281,7 +281,15 @@ test('a Whisper-seeded SOP is a labelled DRAFT, never auto-published', async () 
 
   // Invisible to a searching colleague until someone approves it.
   const search = await app.inject({ method: 'GET', url: '/sops?q=bank+feed', headers: auth(ana) });
-  assert.equal(search.json().sops.length, 0);
+  /*
+   * The RULE is "a draft is invisible to a searching colleague". This asserted an EMPTY result
+   * set, which was a proxy that held only while no published SOP happened to match — and stopped
+   * holding the day `laura-sos-verify` shipped saying an adverse standing is better found by us
+   * "than by a client discovering it at a bank". A published page matching a search is correct
+   * behaviour; the draft appearing would not be.
+   */
+  const slugs = (search.json().sops as Array<{ slug: string }>).map((x) => x.slug);
+  assert.ok(!slugs.includes('synthetic-from-transcript'), 'the DRAFT stays invisible');
 
   // A recording with nothing transcribed yet cannot seed anything.
   const empty = await app.db.query<{ id: string }>(

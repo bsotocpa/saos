@@ -6,6 +6,7 @@ import { AppError } from '../../types.ts';
 import { ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { todayChicago } from '../tax/deadlines.ts';
+import { recordSosResult, requestSosVerification } from './sos.ts';
 import {
   ANNUAL_REPORT_CLIENT_STATUSES,
   RESEARCHED_ANNUAL_REPORT_STATES,
@@ -23,6 +24,17 @@ const CreateComplianceBody = z.object({
 });
 
 const FiledBody = z.object({ filedDate: z.iso.date() });
+
+/*
+ * What a person can report from the ILSOS record. No 'blocked' and no error state: a human
+ * either read the register or did not finish the task, and an unfinished task is not a fact about
+ * the client's entity. That distinction is the whole reason the scraper had to go — it wrote
+ * 'not_found' when it was refused, which reads as "the state has no record of this company".
+ */
+const SosResultBody = z.object({
+  status: z.enum(['good_standing', 'not_good_standing', 'not_found']),
+  formationDate: z.iso.date().optional(),
+});
 
 const CreatePllcBody = z.object({
   contactId: z.uuid(),
@@ -102,22 +114,37 @@ export function registerEntityRoutes(app: FastifyInstance): void {
      * later, the moment the date is finally known.
      */
     if (due === null) {
-      const owner = b.assignedStaffId ?? (await ownerForRole(app.db, 'va_entity'));
-      await createTask(app, {
-        title: `Find the formation date — ${business.name} (${state})`,
-        description:
-          `${business.name} is enrolled in annual-report tracking with no due date, because ` +
-          `${state}'s rule derives the deadline from the formation date and we do not have one. ` +
-          `Until it is recorded, NO reminder will fire for this business — not T-60 to staff, not ` +
-          `T-30 to the client. Get the formation date from the Secretary of State's record and ` +
-          `save it on the compliance row; the due date derives itself from there.`,
-        assignedStaffId: owner,
-        ...(b.businessId ? { businessId: b.businessId } : {}),
-        priority: 1,
-        source: 'automation',
-        sourceType: 'annual_report_setup',
-        sourceId: complianceId,
-      });
+      /*
+       * ILLINOIS GOES TO THE ILSOS TASK, NOT A SECOND ONE (Brian's ruling 3, 2026-09-06).
+       *
+       * "Illinois formation-date backfill becomes part of the same manual task at enrolment, not
+       * a parse." Whoever verifies standing has the formation date on the same screen, so an IL
+       * business with no date raises the verification task — which says explicitly that both are
+       * wanted — instead of a separate errand to the same website.
+       *
+       * Every other state still gets its own task: there is no ILSOS trip to piggyback on, and
+       * the date has to come from that state's register or the client's own paperwork.
+       */
+      if (state === 'IL') {
+        await requestSosVerification(app, b.businessId, 'enrolment');
+      } else {
+        const owner = b.assignedStaffId ?? (await ownerForRole(app.db, 'va_entity'));
+        await createTask(app, {
+          title: `Find the formation date — ${business.name} (${state})`,
+          description:
+            `${business.name} is enrolled in annual-report tracking with no due date, because ` +
+            `${state}'s rule derives the deadline from the formation date and we do not have one. ` +
+            `Until it is recorded, NO reminder will fire for this business — not T-60 to staff, not ` +
+            `T-30 to the client. Get the formation date from ${state}'s Secretary of State record ` +
+            `and save it on the business with its source; the due date derives itself from there.`,
+          assignedStaffId: owner,
+          ...(b.businessId ? { businessId: b.businessId } : {}),
+          priority: 1,
+          source: 'automation',
+          sourceType: 'annual_report_setup',
+          sourceId: complianceId,
+        });
+      }
     }
     return reply.code(201).send({ id: complianceId, annualReportDueDate: due });
   });
@@ -183,6 +210,32 @@ export function registerEntityRoutes(app: FastifyInstance): void {
         'worse than missing one. Client scope is active or inactive ("dormant"); leads and former ' +
         'clients are listed but marked, because they are not ours to file for.',
     };
+  });
+
+  /*
+   * RECORDING WHAT A PERSON READ ON THE ILSOS SITE (Brian's ruling 2, 2026-09-06).
+   *
+   * This is the other half of the manual lookup: the system raised the task, a human did the
+   * reading, and this is where the answer comes back in. It does everything the old scraper's
+   * post-fetch code did — stamps the business, audits, closes the verification task, and raises
+   * the restoration task on an adverse result.
+   *
+   * The formation date rides along because the person is already looking at it (ruling 3): the
+   * Illinois backfill is this task, not a parse.
+   */
+  app.post<{ Params: { id: string } }>('/businesses/:id/sos-result', manage, async (request) => {
+    const businessId = z.uuid().parse(request.params.id);
+    const b = SosResultBody.parse(request.body);
+    const actor = request.staff!;
+
+    const status = await recordSosResult(
+      app,
+      businessId,
+      { status: b.status, formationDate: b.formationDate ?? null },
+      { type: 'staff', id: actor.id, label: actor.email }
+    );
+    if (status === null) throw new AppError(404, 'not_found', 'Business not found.');
+    return { status: 'ok', sosStatus: status };
   });
 
   // Filed → history row + roll the due date to the next period.

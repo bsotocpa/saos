@@ -12,7 +12,7 @@ import { ensurePortalUser, issueMagicLink } from '../portal-auth/service.ts';
 import { refreshEnrichmentGaps } from '../crm/service.ts';
 import { createEnvelope, templateKeyFor } from '../signatures/service.ts';
 import { createPllcConversion } from '../entity/service.ts';
-import { runSosCheck } from '../entity/sos.ts';
+import { requestSosVerification } from '../entity/sos.ts';
 import { currentTaxYear } from '../tax/resolution.ts';
 
 type Answers = Record<string, unknown>;
@@ -238,19 +238,18 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
       /*
        * FINDING #25 — do NOT make the client wait on the Secretary of State.
        *
-       * This was `await runSosCheck(app, businessId)`, a live lookup to the Illinois SOS
-       * inside the submit request. In Brian's rehearsal it hung for ~70 seconds and
-       * timed out; his browser gave up and showed "Request failed" while the submission
-       * had actually succeeded. He resubmitted, as any client would. The work was done
-       * and the person was told it had failed — the worst combination.
+       * This was once `await runSosCheck(app, businessId)`, a live lookup inside the submit
+       * request. In Brian's rehearsal it hung for ~70 seconds; his browser gave up and showed
+       * "Request failed" while the submission had actually succeeded, so he resubmitted, as any
+       * client would. The work was done and the person was told it had failed.
        *
-       * Fire and forget: a failed lookup leaves sos_status 'unknown', which is exactly
-       * what runSosRecheckJob exists to pick up. An external registry being slow is
-       * never a reason to fail a client's intake.
+       * That whole class of problem is gone: there is no request to make. ILSOS told us in
+       * writing that automated querying violates their Terms of Use, so intake now raises the
+       * same manual-verification task the recheck job raises, and nothing external sits between
+       * a client pressing submit and being told it worked. It is awaited because it is a local
+       * INSERT — the reason for fire-and-forget was the network call that no longer exists.
        */
-      void runSosCheck(app, businessId).catch((err) =>
-        app.log.warn({ err, businessId }, 'sos check failed at intake — recheck job will retry')
-      );
+      await requestSosVerification(app, businessId, 'intake');
     }
     // Entity group (v4.2 #2): other co-owned businesses.
     const others = Array.isArray(a.other_businesses_list) ? (a.other_businesses_list as Array<{ name?: string; role?: string }>) : [];

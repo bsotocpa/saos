@@ -76,7 +76,6 @@ const schema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   // IL SOS good-standing checker: 'stub' (dev/test) or 'live' (self-hosted
   // scraper against ilsos.gov — no third-party service).
-  SOS_MODE: z.enum(['stub', 'live']).default('stub'),
   // Meeting intelligence (M17). Transcription stays on owned infrastructure;
   // the API summarizer fallback receives CLEANED TEXT ONLY (MP stack rule).
   TRANSCRIBER_MODE: z.enum(['stub', 'whisper']).default('stub'),

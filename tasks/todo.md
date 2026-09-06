@@ -2282,16 +2282,50 @@ as an automatic consequence of entity work, (c) Laura's page ships with staff ac
       · **`fetch()` had no timeout.** Undici waits ~300s on headers and the job loops serially
         over 50 — fifty hangs is a job that never finishes. Now 15s.
 
-- [ ] **DECISION FOR BRIAN — how ILSOS data actually arrives.** Three routes, and this one is
-      yours because two of them touch the vendor rule:
-      1. **Email `webmaster@ilsos.gov`** with the Reference ID and ask for allowlisting. Free,
-         legitimate, and may simply work. No code changes until they answer.
-      2. **Laura looks it up in a browser**, which is the current real process. Not a workaround —
-         standing and formation date are facts somebody reads either way, and this needs only her
-         page and a place to type the answer, both of which now exist.
-      3. **A paid data vendor.** Would need your approval under the approved-vendor rule
-         (CLAUDE.md lists Stripe, Twilio, SES, KBA only), and sends client entity names to a third
-         party. Not proposing it — noting it so the option is on the record rather than rediscovered.
+- [x] **ANSWERED 2026-09-06 — the state said no, in writing.** Brian asked; ILSOS replied that
+      automated querying of their search **violates their Terms of Use** and that they **do not
+      whitelist**. Route 1 is closed, route 3 (a paid vendor) was never proposed, and route 2 —
+      a person in a browser — is now the procedure rather than the fallback.
+
+      Five rulings, all shipped:
+
+      1. **The fetch is GONE, not disabled.** `liveChecker`, `SosChecker`, `makeSosChecker` and
+         `SOS_MODE` are deleted. `scripts/check-no-sos-scraping.mjs` (wired into `npm test`)
+         fails the build if any code fetches a Secretary-of-State host — thirteen registry hosts,
+         not just Illinois, because the next person's state will not be Illinois.
+      2. **The monitor generates tasks.** `runSosRecheckJob` keeps the same cadence and the same
+         candidate filter, and raises `sos_verify` — *"Verify good standing on ILSOS — <name>"* —
+         instead of making requests. `laura-sos-verify` walks the manual search, including how to
+         confirm you are looking at the right company on a prefix-matching site.
+         `recordSosResult` takes what the person read: it stamps the business, audits with
+         `method: manual_lookup`, closes the lookup task, and raises restoration on an adverse
+         result. `POST /businesses/:id/sos-result` is the door.
+      3. **The Illinois formation-date backfill IS that task.** An IL business enrolling without a
+         formation date raises the verification task, which says explicitly that both the standing
+         and the date are wanted — one trip to the site, not two. Every other state still gets its
+         own `annual_report_setup` task; there is no ILSOS page to piggyback on.
+      4. **The exchange is recorded** in `docs/ENTITY_ILSOS_AUTOMATION.md`: the block, both
+         Reference IDs, the refusal, and what would change it. If the state's commercial bulk-data
+         programme is ever contracted, the guard is updated deliberately — with a contract to
+         point at, not because a build failed.
+      5. **A refusal can no longer read as an entity problem.** The old code wrote `not_found` on
+         any failure, and `not_found` does not mean "we could not look" — it means the state has
+         no record of this company. Audited every other outbound call for the same shape:
+         `meetings.status = 'failed'` describes our processing (fine), `attachments 'discarded'`
+         is a staff action (fine). Nothing else turns an external refusal into a fact about a
+         client. Production data was clean too — all 619 businesses sat at `unknown`, so no false
+         `not_found` had ever been written.
+
+- [x] **Found while rewriting it: an UNGATED client send.** The `sos_fix_steps` adverse-standing
+      email had no `isAutomationEnabled()` check and no row in the automations table — a build
+      failure by CLAUDE.md's own words, shipped weeks ago. It reached nobody only because the
+      lookup that triggers it never once succeeded; two defects cancelling out is not the same as
+      no defect. Now registered as `sos_adverse_client_notice`, seeded **disarmed**, with the
+      suppression logged and tests covering both the gated and armed paths.
+
+- [ ] **NEXT GUARD TO WRITE: "every client-facing send is gated."** Seven guards did not catch the
+      above, because none of them looks for it. This is the class, not the instance — the same
+      argument that produced the role-resolver guard and the no-scraping guard.
 
 - [x] **(2)'s buildable half SHIPPED — `businesses.formation_date` with its provenance
       (migration 0078).** Needed whichever route the data eventually takes.

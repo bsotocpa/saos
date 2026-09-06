@@ -6,6 +6,80 @@ it is probably fine.
 
 ---
 
+## OPEN GATES — snapshot 2026-09-06
+
+Measured against production, not remembered. Ownership is stated because most of what is
+left is not code.
+
+### ⛔ BLOCKING CLIENT #1
+
+**G-A. Five engagement letters still say PLACEHOLDER.** — **BRIAN**
+
+    engagement_letter_tax          engagement_letter_bookkeeping
+    engagement_letter_advisory     engagement_letter_coo
+    engagement_letter_entity
+
+The placeholder gate is enforced in code and must never be removed, so **no engagement letter
+can be sent to a production client today**. That stops the flow at the step right after a quote
+is accepted. §7216 consent is already real — these five are the only templates left.
+
+This is legal copy, not software. Nothing I can do moves it.
+
+**G-B. Stripe is running on TEST keys.** — **BRIAN**
+
+`STRIPE_MODE=live` means the real adapter rather than the stub, but the secret is `sk_test_`.
+A 4242 card charges; a client's real card cannot. Deposits and invoices are both affected.
+
+`scripts/install-stripe-test.sh` deliberately REFUSES a live key, so switching over needs a
+companion installer with the same safety properties (never echoes the key, never writes it to
+history, verifies before and after). **Mine to write, once you say go** — and worth doing
+deliberately rather than by editing `.env` on the box.
+
+### ⚠ BLOCKING SOME PATHS, NOT ALL
+
+**G-C. KBA is in sandbox; no vendor, no key.** — **BRIAN** (account) then **ME** (wiring)
+
+`KBA_MODE=sandbox`, `KBA_VENDOR` and `KBA_API_KEY` empty. Per CLAUDE.md the remote 8879 path
+requires the KBA step before the Docuseal envelope, so **remote e-file signature is unavailable**.
+In-person wet signature is a documented, compliant alternative and is unaffected — so this blocks
+a remote-signing client, not every client.
+
+**G-D. One staff account exists: yours.** — **BRIAN**
+
+No Laura, Rene, Ana-Maria, Jackson or Marian. Every role-routed task resolves through the CEO
+fallback and lands on you — which is the fallback working, not a bug, but it means the queue is
+one person's. This is also what gates **(3c) Laura's entity page**: she is the operator, and it
+ships when she can log in.
+
+**G-E. Twilio has credentials but no sending number.** — **BRIAN**
+
+`TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` are set, `TWILIO_FROM` is empty. No SMS can send.
+Affects the D7 nudge rung and any text-based flow. Client #1 can be served entirely without SMS.
+
+### ✅ CLEARED, verified in production today
+
+- **DNS** — all eight hostnames (api, book, ntfy, ops, portal, sign, status, vault) resolve to the
+  box; `portal`, `api/health` and `ops` all answer **200** over HTTPS from outside. The ⛔ in
+  todo.md asking you to create these is stale; they exist.
+- **Email** — SES SMTP configured and **125 messages actually sent**. Not theoretical.
+- **Backups** — nightly restic → B2 at 02:15, last snapshot succeeded, four buckets covered.
+- **Price book** — 84 items on the active version, **0** flagged `needs_confirmation`.
+- **Client-acting automations** — 11 of 13 disarmed, which is the designed state. You arm them as
+  clients arrive.
+
+---
+
+## Not gates — worth knowing
+
+- **`entity_compliance` holds 0 rows.** The annual-report module tracks nothing yet, by sequence
+  rather than by defect: enrolment now happens automatically on entity work, and the four
+  Florida businesses need entity types typed before they enrol. Not blocking client #1.
+- **No guard enforces "every client-facing send is gated."** The ungated `sos_fix_steps` email
+  found on 2026-09-06 got past seven guards because none of them looks for that class. Next
+  guard to write.
+
+---
+
 ## GATE 1 — CLEARED 2026-08-15 (finding #19 fixed)
 
 **Was:** no non-tax quote (bookkeeping, formation, entity, payroll) could be SENT,

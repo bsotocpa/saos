@@ -85,6 +85,12 @@ export const automations = [
     description:
       'Confirms a booked discovery call and says plainly that there is nothing to pay now — the deposit comes with the engagement quote. Cal.com already sends its own calendar confirmation, so this one exists to set the money expectation. OFF: the booking is still recorded, the contact is still created or linked, the discovery call still lands in the team\'s queue, and the suppression is counted in the audit record. Arm this when real clients start booking. Registered 2026-08-14, when the booking-time deposit charge was retired — that flow used to email a checkout link, so this is what replaced it.',
   },
+  {
+    key: 'sos_adverse_client_notice',
+    name: 'IL SOS adverse-standing notice to the client',
+    description:
+      'Emails the client their bilingual fix-steps when a manual ILSOS lookup finds their entity is NOT in good standing. OFF: Laura still gets the restoration task with all six steps, still gets the alert, and the suppression is logged — only the client-facing email waits. Registered 2026-09-06 as a FIX: this send had shipped with no toggle and no gate at all, which is a build failure by the rule at the top of this file. It reached nobody only because the automated lookup that triggered it never once succeeded. Arm it when you want clients told without you seeing the wording first — an adverse standing is a conversation most owners would rather have from a person.',
+  },
 ];
 
 export async function seedAutomations(client) {
