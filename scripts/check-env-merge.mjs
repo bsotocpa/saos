@@ -160,4 +160,4 @@ if (failures > 0) {
   console.error(`\ncheck:env-merge FAILED (${failures}) — the deploy could destroy a server-set secret.`);
   process.exit(1);
 }
-console.log('check:env-merge: server-set secrets and runtime modes survive a deploy (${cases} cases)');
+console.log(`check:env-merge: server-set secrets and runtime modes survive a deploy (${cases} cases)`);
