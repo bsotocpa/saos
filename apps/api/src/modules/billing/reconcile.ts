@@ -24,10 +24,59 @@ import { writeAudit } from '../../audit.ts';
 import { markInvoicePaid } from './service.ts';
 
 export interface ReconcileResult {
-  status: 'paid' | 'not_paid_yet' | 'no_session' | 'already_paid';
+  status: 'paid' | 'not_paid_yet' | 'no_session' | 'already_paid' | 'stale_session';
   invoiceNumber: string;
   /** True when THIS call is what settled it — i.e. the webhook never arrived. */
   settledByReconcile: boolean;
+}
+
+/** Which Stripe world a checkout session id belongs to, from its prefix. */
+export function checkoutSessionMode(sessionId: string): 'test' | 'live' | null {
+  if (sessionId.startsWith('cs_test_')) return 'test';
+  if (sessionId.startsWith('cs_live_')) return 'live';
+  return null;
+}
+
+/** Stripe's "that object does not exist for this key" — a session from the other world. */
+function isResourceMissing(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: unknown; statusCode?: unknown };
+  return e.code === 'resource_missing' || e.statusCode === 404;
+}
+
+/**
+ * A stored session that Stripe cannot see is not a payment in flight — it is a session
+ * minted under a different key (test vs live), and no amount of asking will change the
+ * answer. Retire it: clear it from the invoice so the sweep stops asking, and write down
+ * why. The invoice stays unpaid; the client's next Pay mints a fresh session.
+ *
+ * 2026-09-09: two sessions created under the test key sat on open invoices when the live
+ * key was installed. The sweep asked Stripe about them every tick, got 404, and logged an
+ * error each time — and the portal, asked to confirm a payment on return, hit the same
+ * 404 and told a client whose invoice was already Paid that there was no confirmation.
+ */
+async function retireStaleSession(
+  app: FastifyInstance,
+  inv: { id: string; invoice_number: string; contact_id: string; stripe_checkout_session_id: string },
+  reason: string
+): Promise<void> {
+  await app.db.query(
+    `UPDATE invoices SET stripe_checkout_session_id = NULL WHERE id = $1 AND status <> 'paid'`,
+    [inv.id]
+  );
+  await writeAudit(app.db, {
+    actorType: 'system',
+    actorLabel: 'payment reconcile',
+    action: 'invoice.checkout_session_stale',
+    objectType: 'invoice',
+    objectId: inv.id,
+    contactId: inv.contact_id,
+    details: { session: inv.stripe_checkout_session_id, reason },
+  });
+  app.log.warn(
+    { invoice: inv.invoice_number, session: inv.stripe_checkout_session_id, reason },
+    'stale checkout session retired — the client can pay again'
+  );
 }
 
 /**
@@ -64,7 +113,32 @@ export async function reconcileInvoice(
     return { status: 'no_session', invoiceNumber: inv.invoice_number, settledByReconcile: false };
   }
 
-  const session = await app.stripe.retrieveCheckoutSession(inv.stripe_checkout_session_id);
+  // A session from the other Stripe world cannot be paid under this key. Recognise it
+  // by prefix and do not even ask — the question has one answer, and it is a 404.
+  const sessionId = inv.stripe_checkout_session_id;
+  const sessionMode = checkoutSessionMode(sessionId);
+  const keyMode = app.stripe.keyMode;
+  if (sessionMode !== null && keyMode !== null && sessionMode !== keyMode) {
+    await retireStaleSession(
+      app,
+      { ...inv, stripe_checkout_session_id: sessionId },
+      `session is ${sessionMode}-mode, the configured key is ${keyMode}-mode`
+    );
+    return { status: 'stale_session', invoiceNumber: inv.invoice_number, settledByReconcile: false };
+  }
+
+  let session: Awaited<ReturnType<typeof app.stripe.retrieveCheckoutSession>>;
+  try {
+    session = await app.stripe.retrieveCheckoutSession(sessionId);
+  } catch (err) {
+    if (!isResourceMissing(err)) throw err;
+    await retireStaleSession(
+      app,
+      { ...inv, stripe_checkout_session_id: sessionId },
+      'Stripe has no such session for this key (resource_missing)'
+    );
+    return { status: 'stale_session', invoiceNumber: inv.invoice_number, settledByReconcile: false };
+  }
 
   if (session.paymentStatus !== 'paid') {
     // Worth recording even when nothing happens: "the client came back but Stripe said
@@ -114,6 +188,8 @@ export interface ReconcileSweep {
   checked: number;
   settled: number;
   stillUnpaid: number;
+  /** Sessions retired as stale (other Stripe world / not found) — each one audited. */
+  retired: number;
   errors: number;
 }
 
@@ -131,7 +207,7 @@ export async function runPaymentReconcileJob(
 ): Promise<ReconcileSweep> {
   const grace = opts.graceMinutes ?? 10;
   const limit = opts.limit ?? 50;
-  const out: ReconcileSweep = { checked: 0, settled: 0, stillUnpaid: 0, errors: 0 };
+  const out: ReconcileSweep = { checked: 0, settled: 0, stillUnpaid: 0, retired: 0, errors: 0 };
 
   const { rows } = await app.db.query<{ id: string }>(
     `SELECT id FROM invoices
@@ -148,6 +224,7 @@ export async function runPaymentReconcileJob(
     try {
       const res = await reconcileInvoice(app, r.id);
       if (res.settledByReconcile) out.settled += 1;
+      else if (res.status === 'stale_session') out.retired += 1;
       else if (res.status !== 'paid' && res.status !== 'already_paid') out.stillUnpaid += 1;
     } catch (err) {
       // One unreachable session must not stop the sweep for everyone else.

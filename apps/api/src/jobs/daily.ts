@@ -167,7 +167,7 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
    */
   const { runPaymentReconcileJob } = await import('../modules/billing/reconcile.ts');
   const recon = await runPaymentReconcileJob(app);
-  if (recon.settled > 0 || recon.errors > 0) {
+  if (recon.settled > 0 || recon.retired > 0 || recon.errors > 0) {
     app.log.warn({ job: 'payment_reconcile', ...recon }, 'settled payments the webhook never delivered');
   }
 }

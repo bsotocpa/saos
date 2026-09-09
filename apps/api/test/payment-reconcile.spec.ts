@@ -40,15 +40,33 @@ const capturingMailer: Mailer = {
  * asked rather than assuming.
  */
 const paid = new Set<string>();
+/** Session ids Stripe answers "No such checkout.session" for — the other world's objects. */
+const missing = new Set<string>();
 const asked: string[] = [];
+/** The last checkout created, so a test can read the return URL Stripe was given. */
+let lastCheckout: { successUrl: string; cancelUrl: string } | null = null;
+// Read through a typed function: inside a test, TS narrows the let to the null it was
+// just assigned and cannot see the fake assign it during the request.
+function lastCheckoutSeen(): { successUrl: string; cancelUrl: string } | null { return lastCheckout; }
 const fakeStripe: StripeAdapter = {
   mode: 'stub',
+  // This fake holds a LIVE key: sessions it mints are cs_fake_ (mode unknown, so the
+  // prefix rule stays out of the way), and a cs_test_ session stored on an invoice is
+  // from the other world.
+  keyMode: 'live',
   async createCheckoutSession(input) {
     const sessionId = `cs_fake_${input.invoiceId}`;
+    lastCheckout = { successUrl: input.successUrl, cancelUrl: input.cancelUrl };
     return { sessionId, url: `https://checkout.stripe.example/${sessionId}` };
   },
   async retrieveCheckoutSession(sessionId) {
     asked.push(sessionId);
+    if (missing.has(sessionId)) {
+      // Shaped like Stripe's own error: code + statusCode are what the code reads.
+      throw Object.assign(new Error(`No such checkout.session: ${sessionId}`), {
+        code: 'resource_missing', statusCode: 404, type: 'StripeInvalidRequestError',
+      });
+    }
     return paid.has(sessionId)
       ? { status: 'complete', paymentStatus: 'paid', paymentIntentId: `pi_fake_${sessionId}` }
       : { status: 'open', paymentStatus: 'unpaid' };
@@ -295,4 +313,95 @@ test('one unreachable session does not stop the sweep for everyone else', async 
   const settled = await app.db.query<{ status: string }>(
     `SELECT status::text AS status FROM invoices WHERE id = $1`, [good]);
   assert.equal(settled.rows[0]!.status, 'paid');
+});
+
+
+// ── STALE SESSIONS (2026-09-09) ────────────────────────────────────────────
+
+/*
+ * When the live key was installed, two open invoices still carried sessions minted under
+ * the test key. Stripe test and live are separate worlds: the live key gets 404 for a test
+ * session, forever. The sweep logged that as an error every fifteen minutes, and the portal,
+ * asked on return to confirm a payment, hit the same 404 and told a client whose invoice was
+ * already Paid that there was no confirmation. A session from the other world is stale:
+ * retire it once, audited, and let the client's next Pay mint a fresh one.
+ */
+
+test('a session from the other Stripe world is retired by prefix, without asking Stripe', async () => {
+  const client = await makeClient('Staleprefix', 'stale-prefix@example.test');
+  const invoiceId = await sendInvoice(client.contactId, 20000);
+  // Minted under a test key, before the live key was installed.
+  await app.db.query(`UPDATE invoices SET stripe_checkout_session_id = 'cs_test_synthetic_other_world' WHERE id = $1`, [invoiceId]);
+  asked.length = 0;
+
+  const res = await reconcileInvoice(app, invoiceId);
+  assert.equal(res.status, 'stale_session');
+  assert.equal(res.settledByReconcile, false);
+  assert.ok(!asked.includes('cs_test_synthetic_other_world'), 'the prefix answered it — Stripe was not asked');
+
+  const row = await app.db.query<{ status: string; session: string | null }>(
+    `SELECT status::text AS status, stripe_checkout_session_id AS session FROM invoices WHERE id = $1`, [invoiceId]);
+  assert.equal(row.rows[0]!.status, 'sent', 'still unpaid — retiring a session is not a payment');
+  assert.equal(row.rows[0]!.session, null, 'the stale session is cleared so the sweep stops asking');
+
+  const audit = await app.db.query<{ details: { session: string; reason: string } }>(
+    `SELECT details FROM audit_log WHERE object_id = $1 AND action = 'invoice.checkout_session_stale'`, [invoiceId]);
+  assert.equal(audit.rows.length, 1, 'retired once, on the record');
+  assert.equal(audit.rows[0]!.details.session, 'cs_test_synthetic_other_world');
+  assert.match(audit.rows[0]!.details.reason, /test-mode/);
+});
+
+test('a session Stripe says does not exist is retired the same way, and the sweep counts it instead of erroring', async () => {
+  const client = await makeClient('Stalemissing', 'stale-missing@example.test');
+  const invoiceId = await sendInvoice(client.contactId, 20000);
+  const checkout = await app.inject({
+    method: 'POST', url: `/portal/invoices/${invoiceId}/checkout`,
+    headers: { authorization: `Bearer ${client.token}` },
+  });
+  assert.equal(checkout.statusCode, 200, checkout.body);
+  const sessionId = `cs_fake_${invoiceId}`;
+  missing.add(sessionId); // Stripe has never heard of it under this key
+  // Age it past the sweep's grace window.
+  await app.db.query(`UPDATE invoices SET updated_at = now() - interval '1 hour' WHERE id = $1`, [invoiceId]);
+
+  const sweep = await runPaymentReconcileJob(app, { graceMinutes: 0 });
+  assert.equal(sweep.errors, 0, 'a stale session is a known condition, not an error');
+  assert.ok(sweep.retired >= 1, 'the sweep counts what it retired');
+  assert.ok(asked.includes(sessionId), 'it did ask — the prefix could not decide this one');
+
+  const row = await app.db.query<{ status: string; session: string | null }>(
+    `SELECT status::text AS status, stripe_checkout_session_id AS session FROM invoices WHERE id = $1`, [invoiceId]);
+  assert.equal(row.rows[0]!.status, 'sent');
+  assert.equal(row.rows[0]!.session, null);
+
+  // Second sweep: nothing left to ask about this invoice.
+  asked.length = 0;
+  await runPaymentReconcileJob(app, { graceMinutes: 0 });
+  assert.ok(!asked.includes(sessionId), 'retired means retired — not asked again');
+});
+
+test('the return from Stripe names the invoice that was just paid', async () => {
+  const client = await makeClient('Returnurl', 'return-url@example.test');
+  const invoiceId = await sendInvoice(client.contactId, 20000);
+  lastCheckout = null;
+  const res = await app.inject({
+    method: 'POST', url: `/portal/invoices/${invoiceId}/checkout`,
+    headers: { authorization: `Bearer ${client.token}` },
+  });
+  assert.equal(res.statusCode, 200, res.body);
+  const created = lastCheckoutSeen();
+  assert.ok(created, 'a checkout was created');
+  const url = new URL(created.successUrl);
+  assert.equal(url.searchParams.get('paid'), '1');
+  assert.equal(url.searchParams.get('invoice'), invoiceId, 'the portal is told WHICH invoice to confirm');
+});
+
+test('the live adapter reads its key mode from the key; the stub has none', async () => {
+  const { makeStripeAdapter } = await import('../src/modules/billing/stripe.ts');
+  const live = (key: string) =>
+    makeStripeAdapter({ ...config, STRIPE_MODE: 'live', STRIPE_SECRET_KEY: key, STRIPE_WEBHOOK_SECRET: 'whsec_synthetic' });
+  assert.equal(live('sk_test_synthetic').keyMode, 'test');
+  assert.equal(live('sk_live_synthetic').keyMode, 'live');
+  assert.equal(live('rk_live_synthetic').keyMode, 'live');
+  assert.equal(makeStripeAdapter({ ...config, STRIPE_MODE: 'stub' }).keyMode, null);
 });

@@ -195,7 +195,11 @@ export function registerBillingRoutes(app: FastifyInstance): void {
         amountCents: inv.total_cents,
         description: `Soto Accounting — Invoice ${inv.invoice_number}`,
         customerEmail: client.email,
-        successUrl: `${app.config.PORTAL_BASE_URL}/invoices?paid=1`,
+        // The return names THIS invoice, so the portal confirms the one that was just paid
+        // instead of guessing across every open invoice (2026-09-09: the guess hit a stale
+        // test-mode session, 404'd, and told a client whose invoice was already Paid that
+        // there was no confirmation yet).
+        successUrl: `${app.config.PORTAL_BASE_URL}/invoices?paid=1&invoice=${inv.id}`,
         cancelUrl: `${app.config.PORTAL_BASE_URL}/invoices`,
       });
       await app.db.query(`UPDATE invoices SET stripe_checkout_session_id = $2 WHERE id = $1`, [

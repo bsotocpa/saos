@@ -34,6 +34,28 @@ left is not code.
 **Nothing.** As of 2026-09-08 evening, no hard gate stands between the system and its first real
 client. What remains (below) blocks specific paths, not the front door.
 
+### ✅ G-B CLEARED AGAIN 2026-09-09 06:25 UTC — real card, live key, webhook, invoice paid
+
+Brian re-ran the live installer at 06:24 (keys now server-managed), clicked Pay on
+SA-2026-0003, and the record reads: session `cs_live_`, `invoice.paid` by the webhook at
+06:25:56, payment intent stored, `dependency_health.stripe_live_key` reachable since 06:24:26.
+That is the end-to-end proof that did not exist before tonight. The $20 is his to refund in
+the Stripe dashboard.
+
+**Two things this surfaced, both fixed the same night:** (1) the every-tick reconcile asked the
+live key about the two `cs_test_` sessions and logged a 404 every fifteen minutes — a session
+from the other Stripe world is now retired once, audited, and the client can pay again;
+(2) the portal's return page put "no confirmation yet" over an invoice that was already Paid,
+because the webhook had settled it before the client landed — the return now names the
+invoice and the page confirms that one.
+
+**Known gap, nice-to-have:** the live webhook subscribes to `checkout.session.completed` and
+`payment_intent.payment_failed` only. A refund issued in the Stripe dashboard does not reach
+SAOS; the invoice stays Paid. Fine for a test client; before a real refund is ever issued,
+subscribe `charge.refunded` and record it on the invoice.
+
+<details><summary>The reopening, kept as the record</summary>
+
 ### ❌ G-B REOPENED 2026-09-09 05:50 UTC — the deploy erased the live key. Owner: Brian (re-paste), after me (fix shipped)
 
 Brian's $20 real-card test landed on a Stripe **sandbox** checkout: "request was in test
@@ -66,6 +88,8 @@ The installer now also registers `STRIPE_MODE`, `STRIPE_SECRET_KEY` and
 `STRIPE_WEBHOOK_SECRET` in `/opt/saos/.env.server-managed`, and the API's dependency probe
 will show `stripe_live_key` reachable within a tick. Until then the probe alerts — that
 alert is the current state, not a false alarm.
+
+</details>
 
 <details><summary>The original clearance, kept as the record</summary>
 

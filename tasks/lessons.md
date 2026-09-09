@@ -1734,3 +1734,32 @@ character of any secret leaving its file.
 **Tooling note:** in this Bash tool, `\` inside a heredoc collapses to `\`; JS edit scripts
 that embed `\n`/`\t` in template literals get real newlines/tabs. Build such characters with
 String.fromCharCode, and verify an edit landed (git diff --stat) before running anything on it.
+
+## 2026-09-09 — Confirm the thing that just happened; retire what the other world owns
+
+Brian's real-card payment settled (webhook, 06:25:56) and the portal put "We do not have
+confirmation from the payment processor yet" over a row that already said Paid. Two causes,
+both mine to own:
+
+1. **The return page guessed.** It reconciled every OPEN invoice and hoped the one just paid
+   was among them. In the healthy case — webhook lands before the client does — the paid
+   invoice is no longer open, so it was never asked about; the only open invoice left carried
+   a session from before the key changed, which 404'd. Fix: Stripe's return URL names the
+   invoice; the page asks about that one, and "already paid" is the good answer. Rule: when
+   confirming an event, confirm the object the event was about, not the neighbourhood.
+
+2. **Two Stripe worlds.** Test and live are separate accounts' worth of objects. Two open
+   invoices carried `cs_test_` sessions when the live key arrived; the every-tick sweep asked
+   the live key about them and logged a 404 as an error every fifteen minutes, forever. Rule:
+   a session whose mode (from its prefix) does not match the key's mode is stale, not a
+   payment in flight — retire it once, audited, and let the client pay again. The adapter
+   now knows its key's mode; nothing else should have to guess.
+
+**What made it findable:** the log said `No such checkout.session: cs_test_…` under
+`x-stripe-routing-context-priority-tier: livemode`. The error named the world mismatch
+exactly; I only had to read it as a rule rather than a one-off.
+
+**Walk note:** the return page was walked locally in production's order — stub webhook first,
+then the return URL — and read "Payment received." The Pay click itself did not register in
+the hidden browser pane (no checkout request in the log); the route is covered by the test
+and by tonight's two real checkouts, but the local walk did not exercise it.

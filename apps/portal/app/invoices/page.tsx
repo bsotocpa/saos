@@ -62,19 +62,29 @@ export default function InvoicesPage() {
       const params = new URLSearchParams(window.location.search);
       if (params.get('paid') !== '1') return;
       setPaidNotice('confirming');
-      // The list is newest-first and the invoice just paid is effectively always the
-      // newest, so a handful covers it. Bounded because a client with twenty open
-      // invoices should not fire twenty Stripe lookups on a page load; the every-tick
-      // sweep picks up anything this misses.
-      const unpaid = list.filter((i) => i.status !== 'paid').slice(0, 5);
+      /*
+       * 2026-09-09. The return from Stripe now names the invoice (?invoice=<id>), so ask
+       * about THAT one. The old way — reconcile every open invoice and hope — put a "no
+       * confirmation yet" banner over an invoice that already said Paid: the webhook had
+       * settled it before the client landed (the healthy case), so it was not in the
+       * "open" list at all, and the only open invoice left carried a stale session that
+       * 404'd. One precise question, and "already paid" is the good answer.
+       *
+       * Older links without the id fall back to the bounded guess.
+       */
+      const isSettled = (status: string) => status === 'paid' || status === 'already_paid';
+      const ask = (id: string) =>
+        api<{ status: string }>(`/portal/invoices/${id}/reconcile`, { method: 'POST' })
+          .catch(() => ({ status: 'error' }));
       try {
-        const results = await Promise.all(
-          unpaid.map((i) =>
-            api<{ status: string }>(`/portal/invoices/${i.id}/reconcile`, { method: 'POST' })
-              .catch(() => ({ status: 'error' }))
-          )
-        );
-        const settled = results.some((r) => r.status === 'paid' || r.status === 'already_paid');
+        let settled = false;
+        if (focus && list.some((i) => i.id === focus)) {
+          settled = isSettled((await ask(focus)).status);
+        } else {
+          const unpaid = list.filter((i) => i.status !== 'paid').slice(0, 5);
+          const results = await Promise.all(unpaid.map((i) => ask(i.id)));
+          settled = results.some((r) => isSettled(r.status));
+        }
         setPaidNotice(settled ? 'paid' : 'pending');
         if (settled) await load();
       } catch {

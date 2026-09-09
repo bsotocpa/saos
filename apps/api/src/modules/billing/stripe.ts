@@ -29,6 +29,15 @@ export interface PaymentEvent {
 
 export interface StripeAdapter {
   readonly mode: 'stub' | 'live';
+  /**
+   * Which Stripe WORLD the key opens: 'test' (sk_test_/rk_test_) or 'live'. Null for the
+   * stub, which has no key. Stripe test and live are two separate accounts' worth of
+   * objects — a checkout session minted under one does not exist under the other.
+   * Reconcile uses this to recognise a stale session before asking Stripe about it
+   * (2026-09-09: the every-tick sweep asked the live key about two test sessions and
+   * logged a 404 as an error every fifteen minutes).
+   */
+  readonly keyMode: 'test' | 'live' | null;
   createCheckoutSession(input: CheckoutInput): Promise<{ sessionId: string; url: string }>;
   /**
    * Ask Stripe the state of a checkout session (finding #24).
@@ -49,6 +58,7 @@ export interface StripeAdapter {
 function stubAdapter(): StripeAdapter {
   return {
     mode: 'stub',
+    keyMode: null,
     async createCheckoutSession(input) {
       const sessionId = `cs_stub_${input.invoiceId}`;
       return { sessionId, url: `https://checkout.stripe.example/${sessionId}` };
@@ -83,8 +93,14 @@ function stubAdapter(): StripeAdapter {
 function liveAdapter(config: Config): StripeAdapter {
   // No explicit apiVersion: the SDK pins the API version it ships with.
   const stripe = new Stripe(config.STRIPE_SECRET_KEY ?? '');
+  const key = config.STRIPE_SECRET_KEY ?? '';
+  const keyMode: 'test' | 'live' | null =
+    key.startsWith('sk_test_') || key.startsWith('rk_test_') ? 'test'
+    : key.startsWith('sk_live_') || key.startsWith('rk_live_') ? 'live'
+    : null;
   return {
     mode: 'live',
+    keyMode,
     async createCheckoutSession(input) {
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
