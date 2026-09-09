@@ -10,8 +10,9 @@
  *   · Issued when an invoice is first sent; every later reminder carries the SAME link (the
  *     token is stored encrypted so it can be re-read — rotating it would kill the link in
  *     the email the client already has).
- *   · Dies on paid, on void, or after 90 days. A dead token gets a plain "no longer payable"
- *     page with no invoice data on it.
+ *   · Dies on paid or on void only (Brian's ruling, 2026-09-09 overnight: the 90-day expiry
+ *     is gone — an unpaid invoice stays payable from the link the client has). A dead token
+ *     gets a plain "no longer payable" page with no invoice data on it.
  *   · The portal invite (a magic link to the client's account) is a separate onboarding event
  *     and is untouched.
  */
@@ -21,7 +22,8 @@ import { writeAudit } from '../../audit.ts';
 import { decryptSecret, encryptSecret, generateToken, hashToken } from '../../crypto.ts';
 import { AppError } from '../../types.ts';
 
-export const PAY_TOKEN_DAYS = 90;
+/** Retired 2026-09-09: the link dies on paid or void only. Kept so old audit rows still read. */
+export const PAY_TOKEN_DAYS: number | null = null;
 
 /**
  * The URL to put in an email for this invoice. Reuses the live token; issues a fresh one
@@ -38,11 +40,8 @@ export async function payLinkFor(app: FastifyInstance, invoiceId: string): Promi
   const inv = rows[0];
   if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
 
-  const live =
-    inv.pay_token_enc !== null &&
-    inv.pay_token_revoked_at === null &&
-    inv.pay_token_expires_at !== null &&
-    inv.pay_token_expires_at.getTime() > Date.now();
+  // Live = issued and not revoked. Age is not a reason (dies on paid or void only).
+  const live = inv.pay_token_enc !== null && inv.pay_token_revoked_at === null;
 
   let token: string;
   if (live) {
@@ -53,9 +52,9 @@ export async function payLinkFor(app: FastifyInstance, invoiceId: string): Promi
     await app.db.query(
       `UPDATE invoices
           SET pay_token_hash = $2, pay_token_enc = $3,
-              pay_token_expires_at = now() + make_interval(days => $4), pay_token_revoked_at = NULL
+              pay_token_expires_at = NULL, pay_token_revoked_at = NULL
         WHERE id = $1`,
-      [invoiceId, fresh.hash, encryptSecret(token, app.config.APP_ENCRYPTION_KEY), PAY_TOKEN_DAYS]
+      [invoiceId, fresh.hash, encryptSecret(token, app.config.APP_ENCRYPTION_KEY)]
     );
     await writeAudit(app.db, {
       actorType: 'system',
@@ -63,7 +62,7 @@ export async function payLinkFor(app: FastifyInstance, invoiceId: string): Promi
       action: 'invoice.pay_link_issued',
       objectType: 'invoice',
       objectId: invoiceId,
-      details: { expires_in_days: PAY_TOKEN_DAYS },
+      details: { expires: 'never — dies on paid or void only' },
     });
   }
   return `${app.config.PORTAL_BASE_URL}/pay/${token}`;
@@ -108,8 +107,8 @@ export async function invoiceByPayToken(
   // at the return page. Everything else — void, refunded, expired, revoked — says nothing.
   if (inv.status === 'paid') return { view: { state: 'paid', invoiceNumber: inv.invoice_number, language: inv.language }, invoice: inv };
 
-  const expired = inv.pay_token_expires_at === null || inv.pay_token_expires_at.getTime() <= Date.now();
-  if (inv.pay_token_revoked_at !== null || expired) return { view: { state: 'unavailable' }, invoice: null };
+  // Revoked (paid or void) is the only death; age is not one (2026-09-09 overnight ruling).
+  if (inv.pay_token_revoked_at !== null) return { view: { state: 'unavailable' }, invoice: null };
   if (inv.status !== 'sent' && inv.status !== 'overdue') return { view: { state: 'unavailable' }, invoice: null };
 
   return {

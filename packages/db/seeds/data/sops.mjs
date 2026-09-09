@@ -88,20 +88,59 @@ Something arrived from a number or address we cannot match to a client.
 `),
   sop('rene-stripe-dispute', 'Card dispute (chargeback)', 'comms_billing', 'Billing', `
 ## Why you have this task
-A client's bank opened a dispute on a card payment. Stripe has already taken the
-money back pending the outcome; the invoice reads **Under review** and the card
-network's evidence deadline is this task's due date. Miss it and the dispute is lost.
+A client's bank opened a dispute on a card payment. Stripe has already taken the money back
+pending the outcome; the invoice reads **Under review** and the card network's evidence
+deadline is this task's **due date**. Miss it and the dispute is lost by default.
 
-1. Open Stripe → Payments → Disputes and find the dispute named in this task.
-2. Gather what shows the work was agreed and delivered: the accepted quote, the
-   signed engagement letter, the invoice, portal activity, and any messages. Facts,
-   dated — not argument.
-3. Submit the evidence in Stripe **before the deadline**. One submission; you
-   cannot add to it later.
-4. Do **not** message the client about the dispute from SAOS. They opened it; the
-   bank and the network decide. If they call, listen and note it on the contact.
-5. When Stripe closes it, SAOS updates the invoice itself: won → Paid again;
-   lost → treated as refunded. This task closes on its own at that point.
+---
+
+### 1. Confirm the dispute is the one on this task
+Open Stripe → Payments → Disputes. Match the dispute id and the amount named in this task to
+the row in Stripe, and both to the invoice on the client's page in Ops.
+
+**If the amounts disagree, or the dispute is for a payment SAOS has no invoice for: STOP and
+bring it to Brian.** Do not gather evidence for a payment you cannot tie to work. A dispute on
+money nobody can place is a reconciliation problem first, and a dispute second.
+
+### 2. Gather what shows the work was agreed and delivered
+Facts, dated, from the record — not argument:
+1. The accepted quote (the client's own acceptance, with its timestamp).
+2. The signed engagement letter and the schedule it carries.
+3. The invoice and the pay-link email that carried it.
+4. Portal activity: sign-ins, documents uploaded, returns delivered.
+5. Messages between us and the client about this work.
+
+**STOP and bring it to Brian if any of 1–3 is missing.** A dispute we cannot document with an
+acceptance, a letter and an invoice is not one you submit evidence on alone; it is one Brian
+decides whether to contest at all. Submitting weak evidence is worse than conceding: it is
+one submission, and it burns the only chance.
+
+### 3. Submit before the deadline
+Submit the evidence in Stripe **before the due date on this task**. One submission; you
+cannot add to it later. Note the submission time on the task.
+
+**STOP and bring it to Brian if the dispute reason is 'fraudulent' and the client is one
+we have met, spoken to, or delivered work to.** That reason means the cardholder says they
+did not make the charge. If we know they did, Brian decides how to respond — it may involve
+the client directly, which is his call, not a template.
+
+### 4. Say nothing to the client from SAOS
+Do **not** message the client about the dispute from SAOS. They opened it; the bank and the
+network decide. If they call, listen, and note the call on the contact. Do not promise an
+outcome and do not ask them to withdraw it.
+
+### 5. Let the system close it
+When Stripe closes the dispute, SAOS updates the invoice itself — **won → Paid again; lost →
+treated as refunded** — and this task closes on its own. If the task is still open a day
+after Stripe shows the dispute closed, that is a defect: tell Brian, do not close it by hand.
+
+---
+
+### Alignment guard — read before you act
+This procedure was written by SAOS from the payment code, not from a dispute anyone here has
+worked. It is **unreviewed**. If Stripe's screen, the network's rules, or Brian's instruction
+disagree with a step above: **the step is wrong, not the screen.** Stop, follow the screen as
+far as it is obviously safe, and bring the disagreement to Brian so this page gets corrected.
 `),
   sop('rene-invoice-on-filed', 'Invoice a filed return', 'comms_billing', 'Billing', `
 ## Why you have this task

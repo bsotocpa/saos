@@ -140,6 +140,18 @@ export async function reconcileInvoice(
     return { status: 'stale_session', invoiceNumber: inv.invoice_number, settledByReconcile: false };
   }
 
+  if (session.status === 'expired') {
+    // An abandoned checkout (Stripe expires a session after 24h). Not a payment in flight and
+    // not worth asking about every tick: retire it, audited once. The client's next Pay mints
+    // a fresh session — payability never depended on this row (2026-09-09 overnight ruling).
+    await retireStaleSession(
+      app,
+      { ...inv, stripe_checkout_session_id: sessionId },
+      'checkout session expired at Stripe (abandoned)'
+    );
+    return { status: 'stale_session', invoiceNumber: inv.invoice_number, settledByReconcile: false };
+  }
+
   if (session.paymentStatus !== 'paid') {
     // Worth recording even when nothing happens: "the client came back but Stripe said
     // unpaid" is the trace you want when someone insists they paid.

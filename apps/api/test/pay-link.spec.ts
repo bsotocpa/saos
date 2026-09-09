@@ -161,15 +161,16 @@ test('void kills the token: a plain "no longer payable" with no data at all', as
   assert.equal(co.statusCode, 409);
 });
 
-test('90 days kills the token, and a re-send after that gets a fresh one', async () => {
+test('age is not a death: an old link still opens an unpaid invoice, and a re-send carries the same one', async () => {
+  // Brian's ruling (2026-09-09 overnight): the 90-day expiry is gone. Valid while the invoice is
+  // sent/overdue; dies on paid or void only.
   const inv = await sentInvoice();
-  await app.db.query(`UPDATE invoices SET pay_token_expires_at = now() - interval '1 day' WHERE id = $1`, [inv.id]);
-  assert.deepEqual((await view(inv.token)).json(), { state: 'unavailable' });
-  const fresh = await payLinkFor(app, inv.id);
-  assert.ok(!fresh.endsWith(`/pay/${inv.token}`), 'a new token, not the dead one');
-  const newToken = fresh.split('/pay/')[1]!;
-  assert.equal((await view(newToken)).json().state, 'payable');
-  assert.deepEqual((await view(inv.token)).json(), { state: 'unavailable' }, 'the old link stays dead');
+  await app.db.query(`UPDATE invoices SET pay_token_expires_at = now() - interval '400 days' WHERE id = $1`, [inv.id]);
+  assert.equal((await view(inv.token)).json().state, 'payable', 'a year-old link still pays an unpaid invoice');
+  const again = await payLinkFor(app, inv.id);
+  assert.ok(again.endsWith(`/pay/${inv.token}`), 'and a reminder carries the SAME link, not a new one');
+  await app.db.query(`UPDATE invoices SET status = 'overdue' WHERE id = $1`, [inv.id]);
+  assert.equal((await view(inv.token)).json().state, 'payable', 'overdue is still payable');
 });
 
 test('a token nobody issued is simply unavailable', async () => {

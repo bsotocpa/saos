@@ -49,6 +49,19 @@ from the other Stripe world is now retired once, audited, and the client can pay
 because the webhook had settled it before the client landed — the return now names the
 invoice and the page confirms that one.
 
+**Overnight batch 2026-09-09 (after the first resend 401'd).** The real charge.refunded was
+re-delivered through Stripe's retry API and landed at 09:07:57: SA-2026-0003 refunded, latch row
+`evt_3UDexCIT…`, refund row `re_…h2l52cr`, deposit credit 0, receipt delivered 09:08:55 — twice,
+which exposed the outbox double-claim (fixed: the claim is a lease). SA-2026-0002 voided by
+Brian from the phone 08:56, notice delivered 08:56:55. The newer $430 engagement (6adbbab4) was
+withdrawn through closeEngagement ("duplicate accept — rehearsal 2026-09-09"). Shipped tonight:
+one flash slot, notices that read queued/delivered from the send log, one active engagement
+per (contact, line, period) held by the database with change orders, the Ops card saying void
+reason/actor/date and refund amount/date, one date helper per app with a guard, no 90-day
+pay-link expiry, expired sessions retired, dashboard revenue net of refunds, the dispute SOP
+with stop-points. DECISION-PENDING: legacy engagements without a period (4 rows, none on the
+protected names); the default tax period (prior calendar year).
+
 **Gap CLOSED 2026-09-09 (commit 84c0da0).** Brian refunded the $20 and SAOS kept the invoice at
 Paid — proven against Stripe with SAOS's own key before fixing. The live endpoint
 `we_1UDevjIT…` now subscribes to `charge.refunded`, `charge.dispute.created` and

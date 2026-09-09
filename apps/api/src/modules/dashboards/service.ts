@@ -24,9 +24,13 @@ export async function executiveDashboard(app: FastifyInstance) {
                         te.stage::text))`
     ),
     app.db.query<{ mtd_cents: string; ytd_cents: string }>(
-      `SELECT COALESCE(sum(amount_paid_cents) FILTER (WHERE paid_at >= date_trunc('month', now())), 0)::bigint AS mtd_cents,
-              COALESCE(sum(amount_paid_cents) FILTER (WHERE paid_at >= date_trunc('year', now())), 0)::bigint AS ytd_cents
-       FROM invoices i JOIN contacts c ON c.id = i.contact_id WHERE NOT c.is_test AND i.status = 'paid'`
+      // Net of refunds (2026-09-09): money that went back was not collected. A partially
+      // refunded invoice still collected the rest; a fully refunded one collected nothing
+      // and is not 'paid' any more.
+      `SELECT COALESCE(sum(amount_paid_cents - amount_refunded_cents) FILTER (WHERE paid_at >= date_trunc('month', now())), 0)::bigint AS mtd_cents,
+              COALESCE(sum(amount_paid_cents - amount_refunded_cents) FILTER (WHERE paid_at >= date_trunc('year', now())), 0)::bigint AS ytd_cents
+       FROM invoices i JOIN contacts c ON c.id = i.contact_id
+       WHERE NOT c.is_test AND i.status IN ('paid', 'partially_refunded')`
     ),
     app.db.query(
       `SELECT CASE

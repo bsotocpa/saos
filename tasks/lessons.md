@@ -1794,3 +1794,39 @@ creditable against the invoice that followed. It reads paid minus refunded now.
 **Proof before the fix, not after.** The first thing I did was ask Stripe, read-only, with
 the key the API already holds — and printed ids and amounts, never the key. "Prove SAOS is
 currently wrong" is the right first instruction and the right first tool call.
+
+## 2026-09-09 overnight — Checks that lie: a refund silently ignored is Paid forever
+
+Brian refunded the first real card payment in Stripe. SAOS kept the invoice at Paid: it was
+subscribed to two webhook events and a refund was neither. Nothing in the system could ever
+have noticed — the receipt had been sent, the deposit credit was still applicable to the next
+invoice, revenue counted it. A status column nobody can move is not a status; it is a claim.
+
+**The class.** A check that lies is worse than no check: it converts an unknown into a
+confident wrong answer, and every downstream number inherits the confidence. Tonight's
+batch found four of them, all the same shape — the record was true when written and
+nothing kept it true:
+- Paid, after a refund (no subscription to charge.refunded).
+- "The client has been told," over an outbox row that delivered 41 seconds later.
+- "Three active tax engagements," because #48 guarded one quote and nothing guarded one
+  service line.
+- The Ops card reading Paid — which was TRUE (the resend had 401'd and never latched);
+  the lie was upstream, and the honest diagnostic was to prove the DB state before
+  touching the display.
+
+**The rule.** For every fact the system asserts about the outside world (paid, told,
+agreed, subscribed), name the event that would make it false and either subscribe to that
+event or ask the source of truth on a schedule. If neither exists, the field is a claim and
+must read as one. Refunds now arrive (charge.refunded, latched on the event id); notices
+read queued/delivered from the send log; engagements are unique per line and period in the
+database; and the every-tick probe watches the Stripe key mode.
+
+**Found while fixing, on production:** the 60-second outbox lane and the 15-minute tick
+both performed the same refund receipt (attempts=2, two audit rows, two emails). The claim
+bumped attempts but left the row selectable until the handler finished. A claim must be a
+lease — push next_attempt_at forward at claim time — or two workers are one worker with a
+race. The test holds a send open and runs two drains: one email.
+
+**Diagnostic that worked again:** when a screen contradicts a database, prove the database
+first (0003 was still paid; the dashboard resend had answered 401), then ask which is
+lying. The display was innocent.
