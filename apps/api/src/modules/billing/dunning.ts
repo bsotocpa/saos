@@ -142,7 +142,7 @@ export async function runDunningJob(
             first_name: inv.first_name,
             invoice_number: inv.invoice_number,
             amount: formatUsd(balance),
-            portal_link: app.config.PORTAL_BASE_URL,
+            portal_link: await (await import('./pay-link.ts')).payLinkFor(app, inv.id),
           },
         });
         reminders++;

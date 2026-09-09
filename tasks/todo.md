@@ -26,8 +26,9 @@ ignored = Paid forever" under checks-that-lie · launch-readiness.md updated · 
 - [x] Explicitly NOT set on Jackson F., Josean I. (3 records), Joseph B. (2 records) — verified on the box 2026-09-09: all is_test = false. Test contacts on the box: 2.
 
 ## 4. Invoice pay link (ruled)
-- [ ] Signed tokenized URL scoped to one invoice, no portal login; Stripe Checkout is the auth.
-- [ ] Token dies on paid, void, or 90 days; revoked → plain "no longer payable" page, no data.
-- [ ] Portal invite stays a separate onboarding event. Close the runbook item.
+- [x] Signed tokenized URL scoped to one invoice, no portal login; Stripe Checkout is the auth. /pay/<token>; token stored hashed for lookup + encrypted for reuse, so every reminder carries the SAME link.
+- [x] Token dies on paid, void, or 90 days; revoked → plain "no longer payable" page, no data. Sabotage (expiry ignored): exactly the 90-day test fails.
+- [x] Portal invite stays a separate onboarding event (unchanged: staff-initiated after acceptance). Runbook item closed with the ruling.
 
 ## Q (answer only): does the sweep retire expired live sessions?
+Answered in the report: an abandoned session never makes an invoice unpayable — every Pay click mints a fresh session — but the sweep does not retire an expired one; it re-asks Stripe every tick until the client pays again (noise, not a block). checkout.session.expired is not subscribed and is not needed for payability.

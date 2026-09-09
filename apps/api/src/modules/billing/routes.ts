@@ -90,7 +90,7 @@ export function registerBillingRoutes(app: FastifyInstance): void {
         amount: formatUsd(inv.total_cents),
         // The SAME deep link the dunning job and invoice_sent use. A reminder that names
         // an invoice and then points at the portal home makes the client hunt for it.
-        portal_link: `${app.config.PORTAL_BASE_URL}/invoices?invoice=${inv.id}`,
+        portal_link: await (await import('./pay-link.ts')).payLinkFor(app, inv.id),
       },
     });
 
@@ -223,6 +223,49 @@ export function registerBillingRoutes(app: FastifyInstance): void {
       return { url: session.url };
     }
   );
+
+  // ── The pay link (2026-09-09): PUBLIC by design. The token is the credential, scoped to
+  //    one invoice; the page learns the number and the amount and nothing else, and a dead
+  //    token learns nothing at all. Stripe Checkout is the authentication.
+  app.get<{ Params: { token: string } }>('/public/pay/:token', async (request) => {
+    const token = z.string().min(20).max(200).parse(request.params.token);
+    const { invoiceByPayToken } = await import('./pay-link.ts');
+    return (await invoiceByPayToken(app, token)).view;
+  });
+
+  app.post<{ Params: { token: string } }>('/public/pay/:token/checkout', async (request) => {
+    const token = z.string().min(20).max(200).parse(request.params.token);
+    const { invoiceByPayToken } = await import('./pay-link.ts');
+    const { view, invoice } = await invoiceByPayToken(app, token);
+    if (view.state !== 'payable' || !invoice) {
+      throw new AppError(409, 'not_payable', 'This invoice is no longer payable.');
+    }
+    if (app.config.NODE_ENV === 'production' && stripe.mode === 'stub') {
+      throw new AppError(503, 'stripe_not_configured', 'Payments are not configured (STRIPE_MODE=stub in production).');
+    }
+    const session = await stripe.createCheckoutSession({
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoice_number,
+      amountCents: invoice.total_cents,
+      description: `Soto Accounting — Invoice ${invoice.invoice_number}`,
+      customerEmail: invoice.email ?? '',
+      // Back to the SAME token page: it confirms this one invoice, no login involved.
+      successUrl: `${app.config.PORTAL_BASE_URL}/pay/${token}?paid=1`,
+      cancelUrl: `${app.config.PORTAL_BASE_URL}/pay/${token}`,
+    });
+    await app.db.query(`UPDATE invoices SET stripe_checkout_session_id = $2 WHERE id = $1`, [invoice.id, session.sessionId]);
+    return { url: session.url };
+  });
+
+  app.post<{ Params: { token: string } }>('/public/pay/:token/reconcile', async (request) => {
+    const token = z.string().min(20).max(200).parse(request.params.token);
+    const { invoiceByPayToken } = await import('./pay-link.ts');
+    const { view, invoice } = await invoiceByPayToken(app, token);
+    if (view.state === 'unavailable') throw new AppError(404, 'not_found', 'Invoice not found.');
+    if (view.state === 'paid') return { status: 'already_paid' };
+    const { reconcileInvoice } = await import('./reconcile.ts');
+    return reconcileInvoice(app, invoice!.id);
+  });
 
   // ── Stripe webhook — needs the RAW body for signature verification, so it
   //    lives in an encapsulated scope with a buffer content-type parser.

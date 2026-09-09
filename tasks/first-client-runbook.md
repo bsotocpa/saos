@@ -238,14 +238,13 @@ What happens after **Accept**, in order, with the clock that governs each step:
    reconcile settles it → the deposit becomes a credit on the invoice that follows
    (`deposit-credit.ts`).
 
-**Open question for Brian (not blocking the rehearsal):** `ensurePortalUser` is called
-by intake and by staff, never by acceptance. A genuinely new lead who accepts a quote gets
-a deposit-invoice email whose link leads to a sign-in they cannot complete until staff run
-onboarding. The spec says a quote converts to a deposit checkout "without re-entry." My
-recommendation: acceptance ensures the portal user inside its transaction (a sent quote
-always has an email), so the invoice link works the moment it arrives. It changes one
-door — the portal account would exist before the onboarding task is worked — so it is
-your call, not mine.
+**RULED 2026-09-09 — the invoice link (closed).** The pay link is a signed, tokenized URL
+scoped to one invoice, no portal login required; Stripe Checkout is the authentication.
+The token dies on paid, on void, or after 90 days; a dead token shows a plain "this
+invoice is no longer payable" page with no invoice data. Every reminder carries the SAME
+link (stored encrypted, reused while live), so a client never holds two. The portal invite
+remains a separate onboarding event after acceptance — the pay link is not a sign-in.
+Step 4 above is therefore: **click the link, pay** — no magic link in the way.
 
 ### A5. Intake + questionnaire — MINE to send, YOURS to fill (~10 min)
 

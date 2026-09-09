@@ -16,6 +16,7 @@ import {
 import { notifyOnce, ownerForRole } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
+import { payLinkFor } from './pay-link.ts';
 import { currentPriceBookVersion } from '../pricing/service.ts';
 
 export interface InvoiceLineInput {
@@ -225,10 +226,9 @@ export async function createInvoice(
         first_name: c.first_name,
         invoice_number: invoiceNumber,
         amount: formatUsd(total),
-        // DEEP LINK to this invoice, not the portal home. "Your invoice is ready in your
-        // portal" followed by a link to a dashboard makes the client go find it, which is
-        // the opposite of what the sentence promises.
-        portal_link: `${app.config.PORTAL_BASE_URL}/invoices?invoice=${id}`,
+        // The tokenized pay link (2026-09-09): one invoice, no login, Stripe is the auth.
+        // Deep — "your invoice is ready" lands ON the invoice, never on a dashboard.
+        portal_link: await payLinkFor(app, id),
       },
     });
   }
@@ -282,7 +282,7 @@ export async function sendInvoiceNow(
       first_name: inv.first_name,
       invoice_number: inv.invoice_number,
       amount: formatUsd(inv.total_cents),
-      portal_link: `${app.config.PORTAL_BASE_URL}/invoices?invoice=${invoiceId}`,
+      portal_link: await payLinkFor(app, invoiceId),
     },
   });
 
@@ -445,6 +445,7 @@ export async function markInvoicePaid(
   await app.db.query(
     `UPDATE invoices
      SET status = 'paid', amount_paid_cents = total_cents, paid_at = now(),
+         pay_token_revoked_at = now(),
          stripe_payment_intent_id = COALESCE($2, stripe_payment_intent_id),
          stripe_checkout_session_id = COALESCE($3, stripe_checkout_session_id)
      WHERE id = $1`,
@@ -540,10 +541,10 @@ export async function runInvoiceOverdueJob(
           first_name: inv.first_name,
           invoice_number: inv.invoice_number,
           amount: formatUsd(inv.total_cents),
-          // Same deep link as invoice_sent. A reminder naming an invoice and pointing at
-          // the portal home is the defect Brian's audit found, and it matters more here:
-          // this one is chasing someone, so making them hunt for it is worse.
-          portal_link: `${app.config.PORTAL_BASE_URL}/invoices?invoice=${inv.id}`,
+          // The SAME pay link the invoice email carried (reused while live), so the client
+          // never holds two links. A reminder that points at a dashboard is the defect
+          // Brian's audit found; a reminder that points at a dead link would be worse.
+          portal_link: await payLinkFor(app, inv.id),
         },
       });
     }

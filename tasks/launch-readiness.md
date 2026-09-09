@@ -60,7 +60,9 @@ latched on the Stripe event id. **Pending:** Brian resends the real `charge.refu
 gets the refund receipt. Void path shipped (5fe9afb; Brian voids SA-2026-0002 from the phone). Test-client audit
 shipped: is_test verified on the box (Rehearsal C. flagged; Jackson F., Josean I., Joseph B. not),
 two reports that leaked fixed, one behavioural test guards every report and the executive
-dashboard. The tokenized pay link is the last of the four.
+dashboard. The tokenized pay link shipped: invoice, reminder and dunning emails carry /pay/<token>
+(no portal login; dies on paid, void, or 90 days; reused while live). The new-lead
+portal-access question is closed by it — the invite stays a separate onboarding event.
 
 <details><summary>The reopening, kept as the record</summary>
 

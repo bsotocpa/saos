@@ -393,6 +393,31 @@ const dict = {
   inv_partially_refunded: ['Partly refunded', 'Parcialmente reembolsada'],
   inv_disputed: ['Under review', 'En revisi\u00f3n'],
   inv_void: ['Cancelled', 'Anulada'],
+
+  // The pay page (2026-09-09): one invoice, no login. The reader is paying, not being sold to.
+  pay_title: ['Pay your invoice', 'Pague su factura'],
+  pay_invoice: ['Invoice', 'Factura'],
+  pay_due: ['Due', 'Vence'],
+  pay_button: ['Pay now', 'Pagar ahora'],
+  pay_secure: [
+    'You will pay on a secure Stripe page. We never see your card.',
+    'Pagar\u00e1 en una p\u00e1gina segura de Stripe. Nunca vemos su tarjeta.',
+  ],
+  pay_confirming: ['Confirming your payment\u2026', 'Confirmando su pago\u2026'],
+  pay_paid_title: ['Payment received \u2014 thank you', 'Pago recibido \u2014 gracias'],
+  pay_paid_body: [
+    'Your receipt is on its way by email. Nothing further is needed from you.',
+    'Su recibo va en camino por correo. No se necesita nada m\u00e1s de usted.',
+  ],
+  pay_pending: [
+    'We do not have confirmation from the payment processor yet. If you completed the payment it will show here shortly.',
+    'A\u00fan no tenemos confirmaci\u00f3n del procesador de pagos. Si complet\u00f3 el pago, aparecer\u00e1 aqu\u00ed en breve.',
+  ],
+  pay_unavailable_title: ['This invoice is no longer payable', 'Esta factura ya no se puede pagar'],
+  pay_unavailable_body: [
+    'The link may have expired, or the invoice may have been paid or cancelled. If you believe you still owe something, reply to our email and we will send a current link.',
+    'El enlace puede haber vencido, o la factura puede haber sido pagada o anulada. Si cree que a\u00fan debe algo, responda a nuestro correo y le enviamos un enlace vigente.',
+  ],
   quote_title: ['Your proposal', 'Su propuesta'],
   quote_intro: [
     'Here is exactly what we would do and what it costs. Nothing is charged until you accept.',

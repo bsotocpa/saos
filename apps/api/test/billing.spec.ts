@@ -620,9 +620,16 @@ test('the invoice email deep-links to THAT invoice, and no longer promises one c
   // Plain substring, not a RegExp: the URL contains '?' and the id contains hyphens, and
   // escaping those through a template literal is how this assertion silently passed for
   // the wrong reason the first time.
+  // 2026-09-09 (Brian's ruling): the deep link is the TOKENIZED pay page — one invoice, no
+  // portal login — not the portal's invoices screen. The token must resolve to this invoice.
+  const link = new RegExp('/pay/([A-Za-z0-9_-]{20,})').exec(mail.text);
+  assert.ok(link, `the link is a pay link naming this invoice, not the portal root — got: ${mail.text.slice(0, 200)}`);
+  const opened = await app.inject({ method: 'GET', url: `/public/pay/${link![1]}` });
+  assert.equal(opened.json().state, 'payable');
+  assert.equal(opened.json().invoiceNumber, (await app.db.query<{ n: string }>(`SELECT invoice_number AS n FROM invoices WHERE id = $1`, [invoiceId])).rows[0]!.n, 'the token opens THIS invoice');
   assert.ok(
-    mail.text.includes(`/invoices?invoice=${invoiceId}`),
-    `the link names this invoice, not the portal root — got: ${mail.text.slice(0, 200)}`
+    !mail.text.includes(`/invoices?invoice=`),
+    `no login-gated link remains in the email — got: ${mail.text.slice(0, 200)}`
   );
   assert.doesNotMatch(mail.text, /one click/i, 'and no longer claims a click count it cannot deliver');
   // A client who is signed out used to hit a dead end here — the same failure as #21.
