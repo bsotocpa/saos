@@ -361,3 +361,34 @@ test('an override cannot invent a deposit where the quote has none', async () =>
   assert.equal(res.statusCode, 400, res.body);
   assert.equal(res.json().error, 'no_deposit_on_quote');
 });
+
+test('the STAFF view of a quote carries the server-resolved deposit, so the builder cannot display a belief', async () => {
+  /*
+   * 2026-09-09. Brian reduced a deposit in the builder; the control failed off-screen and
+   * nothing reached the API. The builder went on showing what it had asked for, and the client
+   * was invoiced the standard amount. From now on the builder reads THIS — the same resolution
+   * acceptance uses — after every attempt, so a failed override reads as "standard", because
+   * that is what it is.
+   */
+  const { quoteId } = await quoteWithDeposit('Staffview');
+  const standard = await standardDeposit();
+
+  const before = await app.inject({ method: 'GET', url: `/quotes/${quoteId}`, headers: auth(brian) });
+  assert.equal(before.statusCode, 200, before.body);
+  assert.equal(before.json().deposit.treatment, 'standard', 'nothing overridden yet: the truth is the standard');
+  assert.equal(before.json().deposit.chargeCents, standard);
+  assert.equal(before.json().deposit.reason, null);
+
+  const reducedTo = Math.round(standard / 10);
+  const r = await app.inject({
+    method: 'POST', url: `/quotes/${quoteId}/deposit-override`, headers: auth(brian),
+    payload: { amountCents: reducedTo, reason: 'Rehearsal — keep the real-card charge small.' },
+  });
+  assert.equal(r.statusCode, 200, r.body);
+
+  const after = await app.inject({ method: 'GET', url: `/quotes/${quoteId}`, headers: auth(brian) });
+  assert.equal(after.json().deposit.treatment, 'reduced');
+  assert.equal(after.json().deposit.chargeCents, reducedTo, 'the staff view shows what the client will be invoiced');
+  assert.equal(after.json().deposit.standardCents, standard, 'and still knows the standard it was reduced from');
+  assert.equal(after.json().deposit.reason, 'Rehearsal — keep the real-card charge small.', 'staff see the reason; it is theirs');
+});

@@ -1661,3 +1661,42 @@ now), the drainer (who calls it, on what interval), the env (`JOBS_ENABLED` defa
 health_refresh at boot proves the scheduler is alive), history (a deposit invoice was sent
 and paid on 08-13, so SMTP and the path work). Then the answer was arithmetic. The wrong move
 would have been to say "it will arrive in 15 minutes" and stop: true, and still a defect.
+
+## 2026-09-09 — A control's outcome must be shown where the decision was made, from the server
+
+Brian: "I reduced the deposit amount down to $20 when I sent the quote but didn't see any
+reflection of it anywhere on client side." Production: `deposit_override_cents` NULL on
+every quote that night, no override in the audit log since 08-10, invoice went out at the
+standard amount. His role holds `deposits.override` explicitly, so the API would have
+accepted — the request never completed from the browser.
+
+**The mechanism.** The control was two `window.prompt()` dialogs. Every failure path —
+cancel, a reason under 10 characters, an API refusal — either returned silently or wrote
+its error into the banner at the TOP of the page, ~350 lines above the button, and "Send
+to client" then cleared that banner. The panel under the button kept its local belief
+("Standard deposit applies." or the local response), and nothing on the send path
+restated the deposit. He sent, believing.
+
+**Two rules:**
+
+1. *Errors render next to the control that caused them.* A banner at the top of a long
+   page is off-screen for the person at the bottom. The inline form's error sits under
+   the Apply button it belongs to.
+2. *What a screen displays about persisted state comes from the server, re-read after
+   every attempt.* The panel now GETs the quote's server-resolved deposit after each
+   override — success and failure both read true, because a failed override reads
+   "standard", which is what it is. The send button states the consequence ("Send to
+   client — deposit $20.00 (reduced from $300.00)") and the sent modal repeats it. The
+   builder no longer holds an opinion about the deposit; it holds a fetch.
+
+**Diagnosis notes.** The API container's log died with my own deploy (compose logs are
+per-container) — check what you destroyed before you go looking for it. Caddy does not
+access-log; "0 requests in 4h" was a statement about the logger, not the traffic. Absence
+is not the same as false, again. The audit row + the columns are written in the same
+function: their joint absence WAS the proof.
+
+**Walk-the-flow paid again.** Walking this fix locally found nothing wrong with it — but
+the walk itself was blocked twice by browser-pane artefacts (a stale session cookie
+bouncing /login; a hidden pane not delivering clicks). Distinguish "the product is
+broken" from "the instrument is broken" before fixing either: the accept endpoint
+returned 200 the moment the click actually reached the button.

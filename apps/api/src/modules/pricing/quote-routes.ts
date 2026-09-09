@@ -160,22 +160,48 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
     return sendQuote(app, id, request.staff!, { duplicateIntent: body.duplicateIntent });
   });
 
-  /** Staff view of a quote (by id) — the same body the client sees, plus internals. */
+  /**
+   * Staff view of a quote (by id) — the same body the client sees, plus internals.
+   *
+   * `deposit` is the SERVER's resolution — summed line deposits, then any override — the
+   * same call acceptance makes. The builder shows this, not its own memory of what it asked
+   * for. 2026-09-09: Brian reduced a deposit to a small amount in the builder, nothing reached
+   * the API (a prompt-based control that failed off-screen), the builder kept displaying its
+   * local belief, and the client was invoiced the standard amount. What the builder displays
+   * about a deposit must come from here, so a failed override cannot look like a successful one.
+   */
   app.get<{ Params: { id: string } }>('/quotes/:id', read, async (request) => {
     const id = z.uuid().parse(request.params.id);
-    const { rows } = await app.db.query(
+    const { rows } = await app.db.query<{
+      deposit_item_code: string | null; deposit_override_cents: number | null;
+      deposit_override_reason: string | null; deposit_override_at: Date | null;
+    }>(
       `SELECT q.*, c.first_name, c.last_name, c.email
        FROM quotes q JOIN contacts c ON c.id = q.contact_id WHERE q.id = $1`,
       [id]
     );
-    if (rows.length === 0) return { quote: null, lines: [] };
+    const quote = rows[0];
+    if (!quote) return { quote: null, lines: [], deposit: null };
     const lines = await app.db.query(
       `SELECT item_code, description_en, description_es, quantity, unit_cents, line_cents,
               min_cents, max_cents, is_optional, chosen, is_pass_through
        FROM quote_line_items WHERE quote_id = $1 ORDER BY sort_order`,
       [id]
     );
-    return { quote: rows[0], lines: lines.rows };
+    const { resolveDeposit } = await import('./quotes.ts');
+    const resolved = await resolveDeposit(app, quote.deposit_item_code, quote.deposit_override_cents, id);
+    return {
+      quote,
+      lines: lines.rows,
+      deposit: {
+        standardCents: resolved.standardCents,
+        chargeCents: resolved.chargeCents,
+        treatment: resolved.treatment,
+        // Staff see the reason; it is theirs. The public view never ships it.
+        reason: quote.deposit_override_reason,
+        overriddenAt: quote.deposit_override_at,
+      },
+    };
   });
 
   /** Quotes for one contact (client-detail tab). */

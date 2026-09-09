@@ -71,6 +71,14 @@ const STAGE_LABEL: Record<string, string> = {
   lost: 'Lost',
 };
 
+/** The deposit as the API resolves it for a quote — what acceptance will invoice. */
+interface ServerDeposit {
+  standardCents: number | null;
+  chargeCents: number | null;
+  treatment: 'standard' | 'reduced' | 'waived' | null;
+  reason: string | null;
+}
+
 const money = (cents: number | null) =>
   cents === null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 
@@ -124,7 +132,7 @@ export default function PipelinePage() {
    * not a confirmation.
    */
   const [sentConfirm, setSentConfirm] = useState<
-    { url: string; name: string; totalCents: number | null } | null
+    { url: string; name: string; totalCents: number | null; depositLabel: string } | null
   >(null);
   /** Open (sent, undecided) quotes for the selected client — the duplicate guard. */
   const [openQuotes, setOpenQuotes] = useState<
@@ -133,9 +141,16 @@ export default function PipelinePage() {
   const [dupAcknowledged, setDupAcknowledged] = useState(false);
   // A saved draft awaiting a deliberate deposit decision, then sending.
   const [draftQuoteId, setDraftQuoteId] = useState('');
-  const [depositOverride, setDepositOverride] = useState<
-    { standardCents: number; chargeCents: number; treatment: string } | null
-  >(null);
+  /**
+   * The deposit on the saved draft AS THE SERVER RESOLVES IT — re-read after every attempt to
+   * change it. Never this panel's memory of what it asked for. 2026-09-09: Brian reduced a
+   * deposit here; the prompt-based control failed off-screen and nothing reached the API; the
+   * panel kept showing what he had entered; the client was invoiced the standard amount.
+   */
+  const [draftDeposit, setDraftDeposit] = useState<ServerDeposit | null>(null);
+  /** The inline reduce/waive form. Its errors render inside it, next to the button that opened it. */
+  const [overrideForm, setOverrideForm] = useState<{ waive: boolean; amount: string; reason: string } | null>(null);
+  const [overrideError, setOverrideError] = useState('');
   const [canOverrideDeposit, setCanOverrideDeposit] = useState(false);
 
   const load = useCallback(async () => {
@@ -237,46 +252,64 @@ export default function PipelinePage() {
    * that choice needs a confirm step and a reason. Only visible to staff who hold
    * `deposits.override` — and the API refuses it regardless of what the UI shows.
    */
-  const overrideDeposit = async (quoteId: string, waive: boolean) => {
-    // The real standard — the summed line deposits — not the dead dropdown's selection, which
-    // was always empty and made this prompt say the standard was zero over a quote that carried a real deposit.
-    const standard = pickedDepositCents ?? 0;
+  /** Re-read the draft's deposit from the server — the only thing this panel displays about it. */
+  const refreshDraftDeposit = async (quoteId: string) => {
+    try {
+      const r = await api<{ deposit: ServerDeposit | null }>(`/quotes/${quoteId}`);
+      setDraftDeposit(r.deposit);
+    } catch (err) {
+      setOverrideError((err as Error).message);
+    }
+  };
+
+  /** "deposit <amount>" / "deposit waived" / "no deposit" — the words the send button and the sent modal use. */
+  const depositWords = (d: ServerDeposit | null | undefined, fallbackCents: number | null) => {
+    if (!d) return fallbackCents === null ? 'no deposit' : `deposit ${money(fallbackCents)}`;
+    if (d.chargeCents === null) return 'no deposit';
+    if (d.chargeCents === 0) return 'deposit waived';
+    return d.treatment === 'reduced'
+      ? `deposit ${money(d.chargeCents)} (reduced from ${money(d.standardCents)})`
+      : `deposit ${money(d.chargeCents)}`;
+  };
+
+  /** The deposit as the server holds it at the moment of sending — for the confirmation the sender reads. */
+  const depositWordsFor = async (quoteId: string, fallbackCents: number | null) => {
+    try {
+      const r = await api<{ deposit: ServerDeposit | null }>(`/quotes/${quoteId}`);
+      return depositWords(r.deposit, fallbackCents);
+    } catch {
+      return depositWords(null, fallbackCents);
+    }
+  };
+
+  const applyOverride = async () => {
+    if (!overrideForm || !draftQuoteId) return;
+    setOverrideError('');
     let amountCents = 0;
-    if (!waive) {
-      const entered = window.prompt(
-        `Reduced deposit in dollars (standard is ${money(standard)}). Enter 0 to waive entirely.`,
-        ''
-      );
-      if (entered === null) return;
-      const parsed = Number(entered.replace(/[^0-9.]/g, ''));
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        setError('Enter a dollar amount of 0 or more.');
+    if (!overrideForm.waive) {
+      const parsed = Number(overrideForm.amount.replace(/[^0-9.]/g, ''));
+      if (overrideForm.amount.trim() === '' || !Number.isFinite(parsed) || parsed < 0) {
+        setOverrideError('Enter a dollar amount of 0 or more.');
         return;
       }
       amountCents = Math.round(parsed * 100);
     }
-    const reason = window.prompt(
-      waive
-        ? 'Why is this deposit being waived? (recorded against the engagement, min 10 characters)'
-        : 'Why is this deposit being reduced? (recorded against the engagement, min 10 characters)',
-      ''
-    );
-    if (reason === null) return;
-    if (reason.trim().length < 10) {
-      setError('The reason is the record — please write at least a few words.');
+    if (overrideForm.reason.trim().length < 10) {
+      setOverrideError('The reason is the record — please write at least a few words (10+ characters).');
       return;
     }
     setBusy(true);
-    setError('');
     try {
-      const r = await api<{ standardCents: number; chargeCents: number; treatment: string }>(
-        `/quotes/${quoteId}/deposit-override`,
-        { method: 'POST', body: { amountCents, reason: reason.trim() } }
-      );
-      setDepositOverride(r);
+      await api<{ treatment: string }>(`/quotes/${draftQuoteId}/deposit-override`, {
+        method: 'POST',
+        body: { amountCents, reason: overrideForm.reason.trim() },
+      });
+      setOverrideForm(null);
     } catch (err) {
-      setError((err as Error).message);
+      setOverrideError((err as Error).message);
     } finally {
+      // Whatever happened, show what the server now holds — success and failure both read true.
+      await refreshDraftDeposit(draftQuoteId);
       setBusy(false);
     }
   };
@@ -284,7 +317,7 @@ export default function PipelinePage() {
   const resetBuilder = () => {
     setContact(null); setSearch(''); setBundleSlug(''); setPicked([]);
     setNotes(''); setSentLink(''); setItemFilter('');
-    setDraftQuoteId(''); setDepositOverride(null);
+    setDraftQuoteId(''); setDraftDeposit(null); setOverrideForm(null); setOverrideError('');
   };
 
   /**
@@ -299,6 +332,7 @@ export default function PipelinePage() {
       // The refused quote is a real draft. Keep hold of it so the decision below — or a later
       // "send draft" — acts on THIS quote instead of leaving it orphaned in the pipeline.
       setDraftQuoteId(quoteId);
+      void refreshDraftDeposit(quoteId);
     } else {
       setError(e.message);
     }
@@ -310,8 +344,17 @@ export default function PipelinePage() {
     setError('');
     setCoverageBlock(null);
     try {
+      const words = await depositWordsFor(draftQuoteId, pickedDepositCents);
       const r = await api<{ url: string }>(`/quotes/${draftQuoteId}/send`, { method: 'POST' });
       setSentLink(r.url);
+      setSentConfirm({
+        url: r.url,
+        name: contact ? `${contact.first_name} ${contact.last_name}` : 'the client',
+        totalCents: null,
+        depositLabel: words,
+      });
+      setOpen(false);
+      resetBuilder();
       await load();
     } catch (err) {
       routeSendFailure(err, draftQuoteId);
@@ -326,13 +369,14 @@ export default function PipelinePage() {
     setBusy(true);
     setError('');
     try {
+      const words = await depositWordsFor(coverageBlock.quoteId, pickedDepositCents);
       const r = await api<{ url: string }>(`/quotes/${coverageBlock.quoteId}/send`, {
         method: 'POST',
         body: { duplicateIntent },
       });
       setCoverageBlock(null);
       setSentLink(r.url);
-      setSentConfirm({ url: r.url, name: `${contact.first_name} ${contact.last_name}`, totalCents: null });
+      setSentConfirm({ url: r.url, name: `${contact.first_name} ${contact.last_name}`, totalCents: null, depositLabel: words });
       setOpen(false);
       resetBuilder();
       await load();
@@ -367,12 +411,14 @@ export default function PipelinePage() {
       });
       createdId = created.id;
       if (send) {
+        const words = await depositWordsFor(created.id, pickedDepositCents);
         const r = await api<{ url: string }>(`/quotes/${created.id}/send`, { method: 'POST' });
         setSentLink(r.url);
         setSentConfirm({
           url: r.url,
           name: `${contact.first_name} ${contact.last_name}`,
           totalCents: null,
+          depositLabel: words,
         });
         setOpen(false);
         resetBuilder();
@@ -380,7 +426,7 @@ export default function PipelinePage() {
         // Saving a draft keeps the composer open so the deposit can be adjusted
         // deliberately before the client ever sees the quote.
         setDraftQuoteId(created.id);
-        setDepositOverride(null);
+        await refreshDraftDeposit(created.id);
       }
       await load();
     } catch (err) {
@@ -443,6 +489,10 @@ export default function PipelinePage() {
             <h2>Quote sent to {sentConfirm.name}</h2>
             <p className="alert ok" style={{ marginBottom: 8 }}>
               The proposal email is on its way, and the quote is now open awaiting their decision.
+            </p>
+            <p>
+              <strong>{sentConfirm.depositLabel.charAt(0).toUpperCase() + sentConfirm.depositLabel.slice(1)}</strong>
+              {' '}— this is what the proposal shows and what acceptance will invoice.
             </p>
             <p className="small muted">Their link (also emailed):</p>
             <p>
@@ -730,34 +780,82 @@ export default function PipelinePage() {
               {draftQuoteId ? (
                 <div className="alert info" style={{ marginTop: 4 }}>
                   <strong>Draft saved.</strong>{' '}
-                  {pickedDepositCents !== null ? (
-                    depositOverride ? (
-                      <>
-                        Deposit is{' '}
-                        <strong>
-                          {depositOverride.treatment === 'waived'
-                            ? 'WAIVED'
-                            : `${money(depositOverride.chargeCents)} (standard ${money(depositOverride.standardCents)})`}
-                        </strong>{' '}
-                        — recorded against the engagement for A/R.
-                      </>
-                    ) : (
-                      <>Standard deposit applies.</>
-                    )
+                  {/* What the SERVER will invoice — re-read after every change, never this panel's memory. */}
+                  {draftDeposit === null ? (
+                    <>Reading the deposit…</>
+                  ) : draftDeposit.chargeCents === null ? (
+                    <>No deposit on this quote — none of its lines carry one.</>
+                  ) : draftDeposit.treatment === 'waived' ? (
+                    <>
+                      Deposit is <strong>WAIVED</strong> (standard {money(draftDeposit.standardCents)})
+                      {draftDeposit.reason ? <> — “{draftDeposit.reason}”</> : null}. Recorded against the engagement for A/R.
+                    </>
+                  ) : draftDeposit.treatment === 'reduced' ? (
+                    <>
+                      Deposit is <strong>{money(draftDeposit.chargeCents)}</strong>, reduced from {money(draftDeposit.standardCents)}
+                      {draftDeposit.reason ? <> — “{draftDeposit.reason}”</> : null}. Recorded against the engagement for A/R.
+                    </>
                   ) : (
-                    <>No deposit on this quote.</>
+                    <>
+                      Deposit the client will be asked for: <strong>{money(draftDeposit.chargeCents)}</strong> (standard).
+                    </>
                   )}
+                  {overrideForm ? (
+                    <div className="alert warn" style={{ marginTop: 8, marginBottom: 0 }}>
+                      <strong>{overrideForm.waive ? 'Waive the deposit' : 'Reduce the deposit'}</strong>
+                      {!overrideForm.waive ? (
+                        <label className="field" style={{ marginTop: 6 }}>
+                          New deposit, in dollars (standard is {money(draftDeposit?.standardCents ?? null)}; 0 waives it)
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={overrideForm.amount}
+                            onChange={(e) => setOverrideForm({ ...overrideForm, amount: e.target.value })}
+                          />
+                        </label>
+                      ) : null}
+                      <label className="field" style={{ marginTop: 6 }}>
+                        Why? Recorded against the engagement with your name (at least 10 characters)
+                        <textarea
+                          rows={2}
+                          value={overrideForm.reason}
+                          onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })}
+                        />
+                      </label>
+                      {overrideError ? <div className="alert error" style={{ marginBottom: 6 }}>{overrideError}</div> : null}
+                      <div className="chipbar" style={{ marginBottom: 0 }}>
+                        <button type="button" className="btn accent" disabled={busy} onClick={() => void applyOverride()}>
+                          {overrideForm.waive ? 'Waive deposit' : 'Apply reduced deposit'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          disabled={busy}
+                          onClick={() => { setOverrideForm(null); setOverrideError(''); }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : overrideError ? (
+                    <div className="alert error" style={{ marginTop: 8, marginBottom: 0 }}>{overrideError}</div>
+                  ) : null}
                   <div className="chipbar" style={{ marginTop: 8, marginBottom: 0 }}>
-                    <button type="button" className="btn accent" disabled={busy} onClick={() => void sendDraft()}>
-                      Send to client
+                    <button
+                      type="button"
+                      className="btn accent"
+                      disabled={busy || draftDeposit === null}
+                      onClick={() => void sendDraft()}
+                    >
+                      Send to client — {depositWords(draftDeposit, pickedDepositCents)}
                     </button>
-                    {canOverrideDeposit && pickedDepositCents !== null ? (
+                    {canOverrideDeposit && draftDeposit && draftDeposit.standardCents !== null && !overrideForm ? (
                       <>
                         <button
                           type="button"
                           className="chip"
                           disabled={busy}
-                          onClick={() => void overrideDeposit(draftQuoteId, false)}
+                          onClick={() => { setOverrideError(''); setOverrideForm({ waive: false, amount: '', reason: '' }); }}
                         >
                           Reduce deposit…
                         </button>
@@ -765,17 +863,17 @@ export default function PipelinePage() {
                           type="button"
                           className="chip"
                           disabled={busy}
-                          onClick={() => void overrideDeposit(draftQuoteId, true)}
+                          onClick={() => { setOverrideError(''); setOverrideForm({ waive: true, amount: '0', reason: '' }); }}
                         >
                           Waive deposit…
                         </button>
                       </>
                     ) : null}
                   </div>
-                  {canOverrideDeposit && pickedDepositCents !== null ? (
+                  {canOverrideDeposit && draftDeposit && draftDeposit.standardCents !== null ? (
                     <p className="muted small" style={{ marginBottom: 0 }}>
-                      Reducing or waiving requires a reason and is logged with your name. The engagement is
-                      stamped so A/R can see how it was set up to pay.
+                      Reducing or waiving requires a reason and is logged with your name. The figure on the send
+                      button is what the client will be asked for — read back from the server after every change.
                     </p>
                   ) : null}
                 </div>

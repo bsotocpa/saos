@@ -196,8 +196,18 @@ Two paths. Pick one:
 explicit-only — the `'*'` wildcard does not confer it, precisely so that "Brian
 only" is expressible. If I applied the override using your identity, the audit row
 would name you for a decision you did not make, and the control would be
-decorative. It is also deliberately not an inline field: in `/pipeline`, on the
-draft quote, use **Waive deposit** and type a reason.
+decorative. In `/pipeline`: **Save as draft**, then on the "Draft saved" panel use
+**Reduce deposit…** or **Waive deposit…** — an inline form (amount, reason of 10+
+characters, **Apply**). The panel then shows the deposit *as the server holds it*, the
+send button reads "Send to client — deposit $X (reduced from $Y)", and the sent
+confirmation repeats it. If you do not see the reduced figure on the send button, it
+did not take — the error is in the panel, next to the button.
+
+*(2026-09-09: the previous control was two browser prompts whose errors rendered at the
+top of the page. Brian reduced a deposit to a small amount, the reason was too short or
+the prompt was cancelled, the panel kept saying what he had entered, and the client was
+invoiced the standard amount. Nothing about a deposit on this screen is the builder's
+memory any more; it is all read back from the API.)*
 
 The reason string matters — it is stored and it is what AR reporting reads later.
 Something like `Dress rehearsal — no payment collected` is honest and useful.
