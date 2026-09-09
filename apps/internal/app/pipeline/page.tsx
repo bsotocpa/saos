@@ -837,9 +837,7 @@ export default function PipelinePage() {
                         </button>
                       </div>
                     </div>
-                  ) : overrideError ? (
-                    <div className="alert error" style={{ marginTop: 8, marginBottom: 0 }}>{overrideError}</div>
-                  ) : null}
+                  ) : null /* the override error renders inside the panel only */}
                   <div className="chipbar" style={{ marginTop: 8, marginBottom: 0 }}>
                     <button
                       type="button"

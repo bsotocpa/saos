@@ -15,7 +15,7 @@
     "migrate": "npm run migrate --workspace=@saos/db",
     "migrate:down": "npm run migrate:down --workspace=@saos/db",
     "seed": "npm run seed --workspace=@saos/db",
-    "test": "npm run check:prices && npm run check:sops && npm run check:env-merge && npm run check:role-tasks && npm run check:css-classes && npm run check:form-conditionals && npm run check:sop-steps && npm run check:no-sos-scraping && npm run check:client-sends && npm run test --workspaces --if-present",
+    "test": "npm run check:prices && npm run check:sops && npm run check:env-merge && npm run check:role-tasks && npm run check:css-classes && npm run check:form-conditionals && npm run check:sop-steps && npm run check:no-sos-scraping && npm run check:client-sends && npm run check:flash-once && npm run test --workspaces --if-present",
     "test:db": "npm run test:db --workspace=@saos/db",
     "check:prices": "node scripts/check-no-hardcoded-prices.mjs",
     "staging:up": "docker compose -p saos-staging -f docker-compose.yml -f docker-compose.staging.yml up -d",
@@ -28,7 +28,8 @@
     "check:form-conditionals": "node scripts/check-form-conditionals.mjs",
     "check:sop-steps": "node scripts/check-sop-task-alignment.mjs",
     "check:no-sos-scraping": "node scripts/check-no-sos-scraping.mjs",
-    "check:client-sends": "node scripts/check-client-send-gates.mjs"
+    "check:client-sends": "node scripts/check-client-send-gates.mjs",
+    "check:flash-once": "node scripts/check-flash-once.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

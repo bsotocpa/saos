@@ -241,10 +241,11 @@ export default function QuestionnairePage() {
 
   if (state === 'loading') return <p className="muted">{t('loading')}</p>;
 
+  const errorNotice = error ? <div className="alert error">{error}</div> : null;
   if (state === 'error') {
     return (
       <section className="card">
-        <div className="alert error">{error}</div>
+        {errorNotice}
         <Link className="btn ghost" href="/">{t('back_home')}</Link>
       </section>
     );
@@ -280,7 +281,7 @@ export default function QuestionnairePage() {
       {reviewing ? <div className="alert">{t('quest_review_intro')}</div> : null}
       {saved ? <div className="alert ok">{t('quest_saved')}</div> : null}
       {resumed && !reviewing ? <div className="alert">{t('quest_resumed')}</div> : null}
-      {error ? <div className="alert error">{error}</div> : null}
+      {errorNotice}
 
       <section className="card">
         {onDetails ? (

@@ -182,8 +182,6 @@ export default function ClientPacketPage() {
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [packets, setPackets] = useState<PacketRow[]>([]);
   const [preview, setPreview] = useState<PacketPreview | null>(null);
-  const [packetMsg, setPacketMsg] = useState('');
-  const [packetErr, setPacketErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   // VOID (2026-09-09): the reason is typed where the decision is made, and the outcome is
@@ -239,10 +237,10 @@ export default function ClientPacketPage() {
         // without an Addendum, text not final). Its message IS the explanation, so
         // it is shown rather than swallowed.
         api<PacketPreview>(`/contacts/${params.id}/packet/preview`, { method: 'POST', body: {} })
-          .then((r) => { setPreview(r); setPacketErr(''); })
+          .then((r) => { setPreview(r); setActionErr(''); })
           .catch((err: unknown) => {
             setPreview(null);
-            setPacketErr(err instanceof Error ? err.message : 'Could not work out the packet.');
+            setActionErr(err instanceof Error ? err.message : 'Could not work out the packet.');
           }),
       ]);
     } catch (err) {
@@ -301,6 +299,14 @@ export default function ClientPacketPage() {
       <h1>
         {c.first_name} {c.last_name}
       </h1>
+      {/*
+        ONE FLASH SLOT (2026-09-09, Brian's ruling). The post-action notice used to be pasted
+        into four cards — Brian voided an invoice from his phone and read the result four
+        times. It renders here, once, above the first card, and the next action replaces it.
+        scripts/check-flash-once.mjs refuses a second render of the same notice on any page.
+      */}
+      {actionMsg ? <p className="alert ok" role="status" aria-live="polite">{actionMsg}</p> : null}
+      {actionErr ? <p className="alert warn" role="alert">{actionErr}</p> : null}
       {/*
         #42. This read "lead · from native" for a client with a signed Master, an answered
         §7216, a paid invoice and a live portal session — two unrelated facts wearing one
@@ -365,8 +371,6 @@ export default function ClientPacketPage() {
               {editing ? 'Cancel' : 'Edit'}
             </button>
           </h2>
-          {actionMsg ? <p className="alert ok">{actionMsg}</p> : null}
-          {actionErr ? <p className="alert warn">{actionErr}</p> : null}
           {editing ? (
             <div>
               {(
@@ -594,10 +598,9 @@ export default function ClientPacketPage() {
           was no way to paper a client from the UI at all. */}
       <section className="card span" style={{ marginTop: 12 }}>
         <h2>Engagement packet</h2>
-        {packetMsg ? <p className="alert ok">{packetMsg}</p> : null}
-        {packetErr ? (
+        {actionErr ? (
           <>
-            <p className="alert warn">{packetErr}</p>
+            {/* the error itself renders once, in the page-level slot above */}
             <p className="muted small">
               Nothing is papered yet. Fix the reason above and reload — the packet is assembled from
               the client&apos;s active services, so it needs at least one.
@@ -646,13 +649,13 @@ export default function ClientPacketPage() {
                           'Grant portal access? The client is emailed a secure sign-in link.'
                         )) return;
                         setBusy(true);
-                        setPacketErr('');
+                        setActionErr('');
                         try {
                           await api('/portal-users', { method: 'POST', body: { contactId: params.id } });
-                          setPacketMsg('Portal access granted — the client was emailed a sign-in link. You can send the packet now.');
+                          setActionMsg('Portal access granted — the client was emailed a sign-in link. You can send the packet now.');
                           await load();
                         } catch (err) {
-                          setPacketErr(err instanceof Error ? err.message : 'Could not grant portal access.');
+                          setActionErr(err instanceof Error ? err.message : 'Could not grant portal access.');
                         } finally {
                           setBusy(false);
                         }
@@ -670,19 +673,19 @@ export default function ClientPacketPage() {
                           'Send this packet for signature? The client receives it immediately.'
                         )) return;
                         setBusy(true);
-                        setPacketErr('');
+                        setActionErr('');
                         try {
                           const res = await api<{ sections: Array<{ code: string | null }>; submissionId?: string }>(
                             `/packets/${p.id}/send`, { method: 'POST', body: {} }
                           );
-                          setPacketMsg(
+                          setActionMsg(
                             `Sent for signature. The client was emailed the Master plus ${
                               res.sections.filter((s) => s.code).map((s) => s.code).join(' · ')
                             }.`
                           );
                           await load();
                         } catch (err) {
-                          setPacketErr(err instanceof Error ? err.message : 'Could not send the packet.');
+                          setActionErr(err instanceof Error ? err.message : 'Could not send the packet.');
                         } finally {
                           setBusy(false);
                         }
@@ -727,17 +730,17 @@ export default function ClientPacketPage() {
                 disabled={busy || preview.codes.length === 0}
                 onClick={async () => {
                   setBusy(true);
-                  setPacketErr('');
+                  setActionErr('');
                   try {
                     const res = await api<{ packetId: string; scheduleCodes: string[] }>(
                       `/contacts/${params.id}/packet`, { method: 'POST', body: {} }
                     );
-                    setPacketMsg(
+                    setActionMsg(
                       `Packet created with ${res.scheduleCodes.join(' · ')}. Review the document, then send it for signature.`
                     );
                     await load();
                   } catch (err) {
-                    setPacketErr(err instanceof Error ? err.message : 'Could not create the packet.');
+                    setActionErr(err instanceof Error ? err.message : 'Could not create the packet.');
                   } finally {
                     setBusy(false);
                   }
@@ -747,7 +750,7 @@ export default function ClientPacketPage() {
               </button>
             </p>
           </>
-        ) : packetErr ? null : (
+        ) : actionErr ? null : (
           <p className="muted small">Working out what this client needs…</p>
         )}
       </section>
@@ -767,8 +770,6 @@ export default function ClientPacketPage() {
           <h2>Engagements</h2>
           {/* The result reports HERE, beside the button that caused it — #40's lesson:
               a message at the far end of the page reads as nothing having happened. */}
-          {actionMsg ? <p className="alert ok">{actionMsg}</p> : null}
-          {actionErr ? <p className="alert warn">{actionErr}</p> : null}
           {engagements.map((e) => (
             <div className="quote-line" key={e.id}>
               <span className="name">
@@ -979,7 +980,7 @@ export default function ClientPacketPage() {
                     className="btn ghost"
                     onClick={() => {
                       void api(`/meetings/${s.id}/reprocess`, { method: 'POST' })
-                        .then(() => setPacketMsg('Session re-queued for processing.'))
+                        .then(() => setActionMsg('Session re-queued for processing.'))
                         .catch((err: unknown) =>
                           setTranscriptErr(err instanceof Error ? err.message : 'Could not re-queue.')
                         );
@@ -1023,8 +1024,6 @@ export default function ClientPacketPage() {
       */}
       <section className="card" style={{ marginTop: 12 }}>
         <h2>Invoices ({invoices.length})</h2>
-        {actionMsg ? <p className="alert ok">{actionMsg}</p> : null}
-        {actionErr ? <p className="alert warn">{actionErr}</p> : null}
         {invoices.length === 0 ? (
           <p className="muted small">Nothing invoiced yet.</p>
         ) : (
@@ -1137,8 +1136,6 @@ export default function ClientPacketPage() {
       */}
       <section className="card" style={{ marginTop: 12 }}>
         <h2>Meetings</h2>
-        {actionMsg ? <p className="alert ok">{actionMsg}</p> : null}
-        {actionErr ? <p className="alert warn">{actionErr}</p> : null}
         {nextSession ? (
           <p className="small">
             <span className="badge ok">scheduled</span>{' '}

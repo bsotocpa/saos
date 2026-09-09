@@ -77,7 +77,9 @@ export default function PricingAdminPage() {
     void load().catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not load the price book.'));
   }, []);
 
-  if (error && !book) return <p className="alert error">{error}</p>;
+  // One notice element, used by the early return and the main render alike.
+  const errorNotice = error ? <p className="alert error">{error}</p> : null;
+  if (error && !book) return errorNotice;
   if (!book) return <p className="muted">Loading…</p>;
 
   /*
@@ -169,7 +171,7 @@ export default function PricingAdminPage() {
         </span>
       </h1>
       {message ? <p className="alert info">{message}</p> : null}
-      {error ? <p className="alert error">{error}</p> : null}
+      {errorNotice}
 
       {/* ── The confirmation queue ─────────────────────────────────────────── */}
       {groups.length > 0 ? (
