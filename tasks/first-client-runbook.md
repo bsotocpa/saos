@@ -207,6 +207,36 @@ verify: engagement created, `deposit_treatment` stamped as waived, onboarding ta
 raised, pipeline moved to `onboarding`, and the override row carrying amount,
 approver, reason, and timestamp.
 
+### A4b. The payment leg — as it actually runs (proven 2026-09-09 02:57 UTC)
+
+What happens after **Accept**, in order, with the clock that governs each step:
+
+1. **Acceptance commits** — engagement(s), the deposit invoice (draft), the "Start
+   onboarding" task, and an outbox row saying "email this invoice", all in one
+   transaction. The screen says the invoice arrives "within a few minutes."
+2. **The outbox fast lane** performs it within **60 seconds** (`OUTBOX_SWEEP_MS`, frozen
+   by a test). Until 2026-09-09 this ran only on the 15-minute tick — the rehearsal
+   acceptance landed eleven seconds after a tick and waited the full quarter hour.
+3. **The email** is `invoice_sent`: "Invoice SA-2026-NNNN — $X" with a link to
+   `portal/invoices?invoice=<id>`. The invoice flips to `sent` only when the message
+   actually went.
+4. **The link needs a portal session.** Signed out, it lands on `/login` (the query is
+   dropped) — request the magic link, sign in, click **Invoices**, the deposit is there.
+   The rehearsal contact already has portal access; **a brand-new lead does not** —
+   see the open question below.
+5. **Pay** → Stripe Checkout (live keys since tonight) → webhook or the every-tick
+   reconcile settles it → the deposit becomes a credit on the invoice that follows
+   (`deposit-credit.ts`).
+
+**Open question for Brian (not blocking the rehearsal):** `ensurePortalUser` is called
+by intake and by staff, never by acceptance. A genuinely new lead who accepts a quote gets
+a deposit-invoice email whose link leads to a sign-in they cannot complete until staff run
+onboarding. The spec says a quote converts to a deposit checkout "without re-entry." My
+recommendation: acceptance ensures the portal user inside its transaction (a sent quote
+always has an email), so the invoice link works the moment it arrives. It changes one
+door — the portal account would exist before the onboarding task is worked — so it is
+your call, not mine.
+
 ### A5. Intake + questionnaire — MINE to send, YOURS to fill (~10 min)
 
 1. I send you the intake link (`/intake/soto_intake`).
