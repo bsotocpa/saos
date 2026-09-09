@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../../lib/api';
+import { describeNotice, type NoticeState } from '../../../lib/notices';
 
 interface Contact {
   id: string; first_name: string; last_name: string; email: string | null;
@@ -76,7 +77,10 @@ interface Invoice {
   id: string; invoice_number: string; status: string;
   total_cents: number; amount_paid_cents: number;
   sent_at: string | null; paid_at: string | null;
+  /** Every client-facing notice about this invoice, in its real state (queued / delivered…). */
+  notices: NoticeState[];
 }
+interface SendLogRow { source: 'outbox' | 'audit'; id: string; what: string; state: string; at: string; detail: string | null }
 interface NextSession { id: string; starts_at: string; is_recurring: boolean }
 interface PacketRow {
   id: string; status: string; schedule_codes: string[];
@@ -187,6 +191,8 @@ export default function ClientPacketPage() {
   // VOID (2026-09-09): the reason is typed where the decision is made, and the outcome is
   // re-read from the server — the same rule as the deposit override, learned the same night.
   const [voidingId, setVoidingId] = useState<string | null>(null);
+  // The send log under an invoice, loaded when someone opens it.
+  const [sendLogs, setSendLogs] = useState<Record<string, SendLogRow[]>>({});
   const [voidReason, setVoidReason] = useState('');
   const [voidErr, setVoidErr] = useState('');
   const [nextSession, setNextSession] = useState<NextSession | null>(null);
@@ -652,7 +658,7 @@ export default function ClientPacketPage() {
                         setActionErr('');
                         try {
                           await api('/portal-users', { method: 'POST', body: { contactId: params.id } });
-                          setActionMsg('Portal access granted — the client was emailed a sign-in link. You can send the packet now.');
+                          setActionMsg(`Portal access granted — sign-in link delivered ${new Date().toLocaleTimeString()} (sent inline; audited as magic_link.issued). You can send the packet now.`);
                           await load();
                         } catch (err) {
                           setActionErr(err instanceof Error ? err.message : 'Could not grant portal access.');
@@ -1040,6 +1046,39 @@ export default function ClientPacketPage() {
                     {inv.status}
                   </span>
                   {inv.sent_at ? <span className="muted small"> sent {new Date(inv.sent_at).toLocaleDateString()}</span> : null}
+                  {/* What actually happened to each client message — from the record, never rounded up. */}
+                  {(inv.notices ?? []).map((n) => (
+                    <span key={n.outboxId ?? n.auditId ?? n.kind} className="muted small">
+                      <br />
+                      {describeNotice(n, (iso) => new Date(iso).toLocaleTimeString())}
+                    </span>
+                  ))}
+                  {(inv.notices ?? []).length > 0 ? (
+                    <details
+                      id={`invoice-${inv.id}-sends`}
+                      className="small"
+                      onToggle={(e) => {
+                        if (!(e.currentTarget as HTMLDetailsElement).open || sendLogs[inv.id]) return;
+                        void api<{ rows: SendLogRow[] }>(`/invoices/${inv.id}/sends`)
+                          .then((r) => setSendLogs((s) => ({ ...s, [inv.id]: r.rows })))
+                          .catch(() => setSendLogs((s) => ({ ...s, [inv.id]: [] })));
+                      }}
+                    >
+                      <summary className="muted small">send log</summary>
+                      {sendLogs[inv.id] ? (
+                        <ul className="list small">
+                          {sendLogs[inv.id]!.map((row) => (
+                            <li key={`${row.source}-${row.id}`}>
+                              <span className="muted">{new Date(row.at).toLocaleString()}</span> · {row.what} · {row.state}
+                              {row.detail ? <span className="muted"> · {row.detail}</span> : null}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="muted small">Loading…</p>
+                      )}
+                    </details>
+                  ) : null}
                 </span>
                 {/* Only an invoice that can still be paid gets a reminder and a pay link. */}
                 {(['sent', 'overdue', 'draft'] as const satisfies readonly string[]).includes(inv.status as never) ? (
@@ -1103,8 +1142,16 @@ export default function ClientPacketPage() {
                                 setBusy(true);
                                 setVoidErr('');
                                 try {
-                                  await api(`/invoices/${inv.id}/void`, { method: 'POST', body: { reason: voidReason.trim() } });
-                                  setActionMsg(`${inv.invoice_number} is void. The client has been told.`);
+                                  const r = await api<{ notice: NoticeState | null }>(`/invoices/${inv.id}/void`, {
+                                    method: 'POST', body: { reason: voidReason.trim() },
+                                  });
+                                  // The notice's REAL state, from the record: "queued" until the send log says
+                                  // delivered. "The client has been told" was a claim, not a fact (2026-09-09).
+                                  setActionMsg(
+                                    `${inv.invoice_number} is void. ${
+                                      r.notice ? describeNotice(r.notice, (iso) => new Date(iso).toLocaleTimeString()) : 'No cancellation notice was queued (no email on file)'
+                                    } — see the send log under the invoice.`
+                                  );
                                   setVoidingId(null);
                                   await load();
                                 } catch (e) {

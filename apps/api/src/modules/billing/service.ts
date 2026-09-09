@@ -469,6 +469,16 @@ export async function markInvoicePaid(
         amount: formatUsd(inv.total_cents),
       },
     });
+    // The send log for this invoice (notices.ts): the receipt is delivered, and when.
+    await writeAudit(app.db, {
+      actorType: 'system',
+      actorLabel: 'payment receipt',
+      action: 'invoice.payment_receipt_sent',
+      objectType: 'invoice',
+      objectId: invoiceId,
+      contactId: inv.contact_id,
+      details: { invoice_number: inv.invoice_number, amount_cents: inv.total_cents },
+    });
   }
   // M25: payment closes the collection work items automatically.
   await closeTasksForSource(app, 'invoice_overdue', invoiceId, 'invoice paid');

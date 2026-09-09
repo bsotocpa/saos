@@ -23,6 +23,7 @@ import { withTransaction } from '../../db.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { formatUsd } from './service.ts';
+import { noticesForInvoices, type NoticeState } from './notices.ts';
 
 export const VOIDABLE_STATUSES = ['sent', 'overdue'] as const;
 
@@ -31,6 +32,11 @@ export interface VoidResult {
   invoiceNumber: string;
   /** The Stripe session that was open on it, if any — expired after commit. */
   expiredSession: string | null;
+  /**
+   * The cancellation notice, as it actually stands when this returns: queued (an outbox
+   * row, not yet delivered) — never "the client has been told" (2026-09-09).
+   */
+  notice: NoticeState | null;
 }
 
 export async function voidInvoice(
@@ -139,7 +145,8 @@ export async function voidInvoice(
     }
   }
 
-  return { invoiceId: voided.id, invoiceNumber: voided.invoice_number, expiredSession };
+  const notice = (await noticesForInvoices(app, [voided.id]))[voided.id]?.find((n) => n.kind === 'void_notice') ?? null;
+  return { invoiceId: voided.id, invoiceNumber: voided.invoice_number, expiredSession, notice };
 }
 
 /** The outbox handler for `invoice.void_notice`: the pay link in their inbox is dead; say so. */

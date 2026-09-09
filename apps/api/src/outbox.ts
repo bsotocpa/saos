@@ -221,7 +221,16 @@ export async function drainOutbox(app: FastifyInstance, limit = 25): Promise<Dra
       id: string; effect: string; payload: Record<string, unknown>;
       attempts: number; contact_id: string | null; object_type: string | null; object_id: string | null;
     }>(
-      `UPDATE outbox SET attempts = attempts + 1
+      /*
+       * THE CLAIM IS A LEASE (2026-09-09). Bumping attempts alone left the row 'pending' with
+       * next_attempt_at in the past for as long as the handler ran, and the fast lane and the
+       * tick overlapped on exactly that window: both claimed the same refund receipt and the
+       * client got it twice. Pushing next_attempt_at forward at claim time means a row in
+       * flight matches no other drain's WHERE. Success sets 'sent'; failure sets its own
+       * backoff; a crash mid-handler surfaces again after the lease, which is a retry, not a
+       * loss.
+       */
+      `UPDATE outbox SET attempts = attempts + 1, next_attempt_at = now() + interval '10 minutes'
         WHERE id = (
           SELECT id FROM outbox
            WHERE status IN ('pending', 'failed') AND next_attempt_at <= now()

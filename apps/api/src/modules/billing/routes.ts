@@ -131,7 +131,17 @@ export function registerBillingRoutes(app: FastifyInstance): void {
        ORDER BY i.created_at DESC LIMIT 200`,
       params
     );
-    return { invoices: rows };
+    // Every client-facing notice about each invoice, in its real state (2026-09-09).
+    const { noticesForInvoices } = await import('./notices.ts');
+    const notices = await noticesForInvoices(app, rows.map((r) => r.id as string));
+    return { invoices: rows.map((r) => ({ ...r, notices: notices[r.id as string] ?? [] })) };
+  });
+
+  /** The send log for one invoice — what the "send log" control under an invoice opens. */
+  app.get<{ Params: { id: string } }>('/invoices/:id/sends', billing, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const { sendLogForInvoice } = await import('./notices.ts');
+    return { rows: await sendLogForInvoice(app, id) };
   });
 
   // ── Client portal (Invoices & Payments — Pay Now) ─────────────────────────
