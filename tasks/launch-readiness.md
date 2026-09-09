@@ -31,42 +31,42 @@ left is not code.
 
 ### ⛔ BLOCKING CLIENT #1
 
-**G-B. Stripe is running on TEST keys.** — **BRIAN** (the installer is ready)
+**Nothing.** As of 2026-09-08 evening, no hard gate stands between the system and its first real
+client. What remains (below) blocks specific paths, not the front door.
 
-`STRIPE_MODE=live` selects the real adapter rather than the stub; the SECRET is what decides test
-versus production, and it is `sk_test_`. A 4242 card charges; a client's real card cannot.
+### ✅ G-B CLEARED 2026-09-08 — live Stripe keys installed and verified
 
-`scripts/install-stripe-live.sh` is written, deployed and syntax-checked on the box. Run it from
-a PowerShell window that has `$saos` set (see **Connecting to the server** above):
+Brian ran `install-stripe-live.sh`. Every check passed, and the state was then confirmed from the
+box independently of the script's own report:
 
-```powershell
-ssh -i ~/.ssh/saos_hetzner_ed25519 "root@$saos" -t 'bash /opt/saos/scripts/install-stripe-live.sh'
-```
+| | |
+|---|---|
+| `STRIPE_SECRET_KEY` on disk and in the running container | `sk_live_…` |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_…`, captured from Stripe's own response |
+| `saos-api-1` | healthy; `api/health` **200** over HTTPS |
+| Stripe | `livemode = true`, `charges_enabled = true`, `payouts_enabled = true`, USD |
+| webhook | correctly signed event ACCEPTED, forged signature REFUSED, live HTTPS endpoint 200 |
+| prior `.env` | preserved at `/opt/saos/.env.bak.20260909012541` — rollback is `STRIPE_MODE=stub` |
 
-Same handling as the test installer — silent read, `HISTFILE=/dev/null`, curl auth via stdin
-`--config` so the key never appears in `ps`, only the last four characters echoed, `.env` backed
-up and `chmod 600`. Three deliberate differences:
+**No charge was created to prove any of this.** `verify-stripe-live.mjs` asks the account whether
+it can take money rather than taking some.
 
-1. **It refuses `sk_test_`**, the mirror of the other script's refusal on a live key. A test key
-   here would look installed and decline every real card.
-2. **It requires the phrase `ARM LIVE PAYMENTS` typed** before anything is written. The test
-   installer needs no such thing; its worst case is a rehearsal charge on a fake card.
-3. **It never creates a charge.** `verify-stripe.mjs` proves the payment path by confirming a
-   PaymentIntent on Stripe's 4242 card — with a live key that is a real charge on a real account.
-   `verify-stripe-live.mjs` asks the account whether it CAN take money (`charges_enabled`), which
-   is what the 4242 charge was actually testing, plus livemode, the webhook signature
-   accept/forge-reject, and the same check through the live HTTPS endpoint.
+**One false start, recorded because it was mine.** The installer's first run refused with
+"charges_enabled is NOT true — onboarding or verification is incomplete". It had called
+`GET /v1/accounts` (plural, the Connect list endpoint, which returns an empty list for an ordinary
+account) instead of `GET /v1/account`. Nothing was written; the message was simply wrong about
+whose fault it was. Fixed to the singular endpoint, with the check made three-way so "field
+absent" (a script problem) and "field false" (a real answer) no longer share a message.
 
-It stops before writing anything if `charges_enabled` is false — a live key on an account with
-incomplete onboarding looks perfectly configured and declines the first real client.
+**Observation, not a concern:** the test-mode account was `acct_1TqNvL…` and the live account is
+`acct_1FGeK9…` — the rehearsal ran on a separate Stripe sandbox. Expected with Stripe Sandboxes;
+it means the test-mode webhook endpoint lives on that other account and does not touch production.
 
-**One thing the script cannot do for you:** after it passes, take one real card payment yourself
-for a small amount and refund it in the Stripe dashboard, and confirm it lands on the invoice in
-SAOS rather than only in Stripe. That is the only end-to-end proof that does not exist until a
-real card is used.
-
-Rollback: `STRIPE_MODE=stub` restores the previous behaviour, and the prior file is at
-`/opt/saos/.env.bak.*`.
+- [ ] **The one proof only a real card can give** — **BRIAN**, tonight if possible
+      Take one real card payment for a small amount and refund it in the Stripe dashboard, then
+      tell me — I will confirm from the database that it landed on the invoice in SAOS and not
+      only in Stripe. Until a real card has been used end to end, that path is verified in every
+      part and never as a whole.
 
 ### ✅ G-A WITHDRAWN 2026-09-06 — the engagement letters were never blocked
 
