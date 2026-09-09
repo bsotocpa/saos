@@ -108,6 +108,14 @@ export default function PipelinePage() {
    * as the two choices the API is actually asking for.
    */
   const [coverageBlock, setCoverageBlock] = useState<{ quoteId: string; message: string } | null>(null);
+  /*
+   * ONE ACTIVE ENGAGEMENT PER LINE AND PERIOD (2026-09-09). A 409 change_order_required lands
+   * here with the engagements the quote could replace, and renders one button each.
+   */
+  const [changeOrderBlock, setChangeOrderBlock] = useState<{
+    quoteId: string; message: string;
+    engagements: Array<{ id: string; title: string | null; serviceLine: string; periodKey: string }>;
+  } | null>(null);
 
   // Builder state
   const [open, setOpen] = useState(false);
@@ -327,7 +335,12 @@ export default function PipelinePage() {
    */
   const routeSendFailure = (err: unknown, quoteId: string) => {
     const e = err as Error & { code?: string };
-    if (e.code === 'schedule_already_covered') {
+    if (e.code === 'change_order_required') {
+      const issues = (e as { payload?: { issues?: Array<{ id: string; title: string | null; serviceLine: string; periodKey: string }> } }).payload?.issues ?? [];
+      setChangeOrderBlock({ quoteId, message: e.message, engagements: issues });
+      setDraftQuoteId(quoteId);
+      void refreshDraftDeposit(quoteId);
+    } else if (e.code === 'schedule_already_covered') {
       setCoverageBlock({ quoteId, message: e.message });
       // The refused quote is a real draft. Keep hold of it so the decision below — or a later
       // "send draft" — acts on THIS quote instead of leaving it orphaned in the pipeline.
@@ -387,11 +400,35 @@ export default function PipelinePage() {
     }
   };
 
+  const sendChangeOrder = async (engagementId: string) => {
+    if (!changeOrderBlock || !contact) return;
+    setBusy(true);
+    setError('');
+    try {
+      const words = await depositWordsFor(changeOrderBlock.quoteId, pickedDepositCents);
+      const r = await api<{ url: string }>(`/quotes/${changeOrderBlock.quoteId}/send`, {
+        method: 'POST',
+        body: { changeOrderOf: engagementId },
+      });
+      setChangeOrderBlock(null);
+      setSentLink(r.url);
+      setSentConfirm({ url: r.url, name: `${contact.first_name} ${contact.last_name}`, totalCents: null, depositLabel: words });
+      setOpen(false);
+      resetBuilder();
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const buildAndSend = async (send: boolean) => {
     if (!contact) return;
     setBusy(true);
     setError('');
     setCoverageBlock(null);
+    setChangeOrderBlock(null);
     // Hoisted out of the try: the quote is CREATED before the send can be refused, and the
     // catch needs its id to keep it as the draft instead of losing it. Three orphaned drafts
     // in two minutes is how this line earned its place.
@@ -449,6 +486,27 @@ export default function PipelinePage() {
       {/* The coverage QUESTION — the API's two answers, as two buttons. The first sentence of
           the API's message names the schedule, which is the useful part; the rest was an
           instruction this screen could not follow, so it is replaced by the controls that can. */}
+      {changeOrderBlock ? (
+        <div className="alert warn">
+          <p>
+            <strong>This client already has active work on this line for this period.</strong>{' '}
+            A second agreement for the same work is a change order: it replaces the engagement you
+            name, carries any unapplied deposit credit across, and is recorded as a supersession.
+          </p>
+          <p>
+            {changeOrderBlock.engagements.map((e) => (
+              <span key={e.id}>
+                <button type="button" className="btn" disabled={busy} onClick={() => void sendChangeOrder(e.id)}>
+                  Change order replacing “{e.title ?? e.serviceLine}” ({e.periodKey})
+                </button>{' '}
+              </span>
+            ))}
+            <button type="button" className="btn ghost small" disabled={busy} onClick={() => setChangeOrderBlock(null)}>
+              Not now — keep it as a draft
+            </button>
+          </p>
+        </div>
+      ) : null}
       {coverageBlock ? (
         <div className="alert warn">
           <p>

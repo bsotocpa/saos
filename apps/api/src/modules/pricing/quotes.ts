@@ -20,6 +20,10 @@ import { sendTemplatedEmail } from '../templates/service.ts';
 import { createEngagement } from '../engagements/service.ts';
 import { createInvoice } from '../billing/service.ts';
 import { addDays, todayChicago } from '../tax/deadlines.ts';
+import { periodKeyFor } from '../engagements/period.ts';
+import {
+  assertChangeOrderIfActive, finishSupersession, quoteTaxYear, withdrawForChangeOrder,
+} from '../engagements/change-order.ts';
 import { composeBundle } from './bundles.ts';
 import {
   assertEveryLineCreatesWork,
@@ -260,7 +264,7 @@ export async function sendQuote(
   app: FastifyInstance,
   quoteId: string,
   actor: AuthedStaff,
-  opts: { duplicateIntent?: DuplicateIntent | undefined } = {}
+  opts: { duplicateIntent?: DuplicateIntent | undefined; changeOrderOf?: string | undefined } = {}
 ): Promise<{ token: string; url: string }> {
   const q = await app.db.query<{
     status: string; contact_id: string; language: 'en' | 'es'; total_cents: number;
@@ -286,11 +290,18 @@ export async function sendQuote(
   // still runs first — "this cannot be quoted at all" outranks "is this a duplicate?".
   await assertEveryLineCreatesWork(app, quoteId);
 
+  /*
+   * ONE ACTIVE ENGAGEMENT PER LINE AND PERIOD (2026-09-09, Brian's ruling). A plain quote for
+   * a line the client already has active work on cannot be sent; it must be a change order
+   * naming the engagement it replaces. The refusal carries the candidates.
+   */
+  const changeOrder = await assertChangeOrderIfActive(app, quoteId, quote.contact_id, opts.changeOrderOf);
   const coverage = await assertSendableOverCoverage(
     app,
     quoteId,
     quote.contact_id,
-    opts.duplicateIntent
+    // A change order replaces the agreement it names; the schedule gate is told so.
+    opts.duplicateIntent ?? (changeOrder ? 'replaces_existing' : undefined)
   );
 
   const token = randomBytes(32).toString('base64url');
@@ -299,13 +310,15 @@ export async function sendQuote(
     `UPDATE quotes
      SET status = 'sent', sent_at = now(), public_token_hash = $2,
          duplicate_intent = $3::quote_duplicate_intent,
-         duplicate_intent_schedules = $4::text[]
+         duplicate_intent_schedules = $4::text[],
+         change_order_of_engagement_id = $5
      WHERE id = $1`,
     [
       quoteId,
       hash,
       coverage.intent,
       coverage.overlapping.length > 0 ? coverage.overlapping : null,
+      changeOrder?.engagementId ?? null,
     ]
   );
   const url = `${app.config.PORTAL_BASE_URL}/quote/${token}`;
@@ -755,12 +768,13 @@ async function convertAcceptedQuote(
     deposit_override_cents: number | null; deposit_override_reason: string | null;
     deposit_override_by_staff_id: string | null;
     price_book_version_id: string;
+    change_order_of_engagement_id: string | null;
   }>(
     // `price_book_version_id` is read here rather than on the client-facing quote object:
     // #47 pins it onto the engagement's scope, and the portal has no business knowing it.
     `SELECT discount_cents, contact_id, business_id, deposit_item_code, bundle_slug,
             deposit_override_cents, deposit_override_reason, deposit_override_by_staff_id,
-            price_book_version_id
+            price_book_version_id, change_order_of_engagement_id
      FROM quotes WHERE id = $1`,
     [quote.id]
   );
@@ -802,6 +816,16 @@ async function convertAcceptedQuote(
   }
 
   const { captureEngagementScope, warnIfScopeless } = await import('../engagements/scope.ts');
+  /*
+   * CHANGE ORDER, step one (2026-09-09): withdraw the engagement this quote replaces BEFORE the
+   * new one is created, in this same transaction, so the one-active-per-line-period index
+   * lets the new row in. If anything below fails, the withdrawal rolls back with the rest.
+   */
+  const changeOrder = row.change_order_of_engagement_id
+    ? await withdrawForChangeOrder(app, row.change_order_of_engagement_id, quote.id)
+    : null;
+  const taxYear = await quoteTaxYear(app, quote.id);
+  const todayIso = todayChicago();
   const engagements: Array<{ id: string; serviceLine: string; title: string }> = [];
   for (const line of quotedLines) {
     const title = engagementTitle(line);
@@ -814,6 +838,10 @@ async function convertAcceptedQuote(
         serviceLine: line.serviceLine,
         title,
         status: 'active',
+        // The period puts this row under the unique index; a second plain acceptance for
+        // the same line and period is refused by the database and rolls this whole
+        // acceptance back (engagement_exists).
+        periodKey: periodKeyFor(line.serviceLine, { taxYear, todayIso }),
       },
       {}
     );
@@ -855,6 +883,11 @@ async function convertAcceptedQuote(
     }
 
     engagements.push({ id: created.id, serviceLine: line.serviceLine, title });
+    // Change order, step two: the successor is named, unapplied deposit credit follows it,
+    // one audit row.
+    if (changeOrder && changeOrder.serviceLine === line.serviceLine) {
+      await finishSupersession(app, changeOrder.engagementId, created.id, quote.id, row.contact_id);
+    }
   }
   /*
    * The deposit invoice, the quote's converted_engagement_id and the lead-stage move all

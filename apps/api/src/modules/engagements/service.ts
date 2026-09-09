@@ -5,6 +5,7 @@
 // Cristian's attest work stays walled from firm-prepared books.
 
 import type { FastifyInstance } from 'fastify';
+import { isOneActivePerPeriodViolation } from './period.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import type { AuthedStaff } from '../../types.ts';
@@ -16,6 +17,12 @@ const INDEPENDENCE_CONFLICT_LINES = ['bookkeeping', 'payroll', 'sales_tax', 'coo
 
 export interface CreateEngagementInput {
   contactId: string;
+  /**
+   * The period this engagement covers (engagements/period.ts): the tax year, 'ongoing', or
+   * null for per-matter lines and legacy rows. Non-null puts it under the one-active-per-line-
+   * period unique index (migration 0083).
+   */
+  periodKey?: string | null | undefined;
   businessId?: string | undefined;
   serviceLine:
     | 'tax'
@@ -91,12 +98,16 @@ export async function createEngagement(
   }
 
   const versionId = await currentPriceBookVersionId(app);
-  const { rows } = await app.db.query<{ id: string }>(
+  let rows: Array<{ id: string }>;
+  try {
+    rows = (await app.db.query<{ id: string }>(
     `INSERT INTO engagements (contact_id, business_id, service_line, status, title, lead_staff_id,
                               price_book_version_id,
-                              independence_override_by_id, independence_override_note, independence_override_at)
+                              independence_override_by_id, independence_override_note, independence_override_at,
+                              period_key)
      VALUES ($1, $2, $3::service_line, $4::engagement_status, $5, $6, $7,
-             $8, $9, CASE WHEN $9::text IS NULL THEN NULL ELSE now() END)
+             $8, $9, CASE WHEN $9::text IS NULL THEN NULL ELSE now() END,
+             $10)
      RETURNING id`,
     [
       input.contactId,
@@ -108,8 +119,21 @@ export async function createEngagement(
       versionId,
       independenceOverridden ? actor.id : null,
       independenceOverridden ? input.independenceOverrideNote : null,
+      input.periodKey ?? null,
     ]
-  );
+    )).rows;
+  } catch (err) {
+    // THE RULE, said in words (2026-09-09): one active engagement per line and period.
+    if (isOneActivePerPeriodViolation(err)) {
+      throw new AppError(
+        409,
+        'engagement_exists',
+        `This client already has an active ${input.serviceLine} engagement for this period (${input.periodKey}). ` +
+          'A second agreement for the same work is a change order that replaces the first, not a new engagement.'
+      );
+    }
+    throw err;
+  }
   const id = rows[0]!.id;
 
   await writeAudit(app.db, {

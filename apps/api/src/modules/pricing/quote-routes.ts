@@ -155,9 +155,14 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
   app.post<{ Params: { id: string } }>('/quotes/:id/send', manage, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const body = z
-      .object({ duplicateIntent: z.enum(['additional_work', 'replaces_existing']).optional() })
+      .object({
+        duplicateIntent: z.enum(['additional_work', 'replaces_existing']).optional(),
+        // The engagement this quote replaces (2026-09-09): required when the client already
+        // has active work on the line for the period.
+        changeOrderOf: z.uuid().optional(),
+      })
       .parse(request.body ?? {});
-    return sendQuote(app, id, request.staff!, { duplicateIntent: body.duplicateIntent });
+    return sendQuote(app, id, request.staff!, { duplicateIntent: body.duplicateIntent, changeOrderOf: body.changeOrderOf });
   });
 
   /**
