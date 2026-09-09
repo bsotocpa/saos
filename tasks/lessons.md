@@ -1600,3 +1600,34 @@ that gave an impossible instruction is replaced by the controls that make it pos
 
 Brian's reaction — "this doesn't give me confidence in the workflow" — was the correct one, and
 the finding is that the workflow was fine and the *conversation* with it was broken.
+
+## 2026-09-09 — Walk the flow you sent him into, not the diff you made
+
+Brian, building the first real quote: the deposit dropdown offered only "— no deposit —" over a
+quote carrying a real deposit. "Are you reviewing your work? Can you be more thorough when
+you're building and testing." Second instruction-the-screen-can't-follow in one night (the
+coverage 409 was the first).
+
+**What happened.** Price book v4 (2026-08-14) retired the one-deposit-item model for per-line
+`deposit_cents`; the server (`summedLineDeposits`) followed, the builder did not — it kept a
+`<select>` over `service_line === 'deposit'`, empty forever after. Every test passed the whole
+time, because no test looked at what the builder *offered*; they looked at what the server
+*resolved*. Nine weeks nobody built a quote, so nobody saw it.
+
+**Then, fixing it, the same mistake almost again.** I fixed the builder, wrote the test, ran the
+suite, and was about to deploy. Instead I logged into the local builder as a synthetic staffer
+and clicked through exactly what Brian would do: pick lines, pick a client, send, open the
+client link. The builder said $550. The API said 55000. The client's proposal said **nothing** —
+"Nothing is charged until you accept", accept, and only *then* "your deposit invoice is on its
+way." My own new builder copy ("exactly as the client will see it on the proposal") was false
+until I fixed the portal too. A code review of the diff would never have found that; the diff
+was correct. Only the walk found it.
+
+**The rule.** When a fix responds to "this screen didn't work," verification is *walking the
+screen* — as the user, in a browser, on a build, through to the next screen and the one after
+that. Typecheck, tests, and sabotage prove the code; they do not prove the workflow. Both are
+required; the second one is the one I skip when tired. A model retirement (v4 here) is a
+standing trigger to grep the UIs for the retired concept, not just the server.
+
+**Also:** `check:prices` caught dollar figures in my own comments — the guard does its job even
+on prose. Keep comments free of literal amounts; say "a real deposit," not the number.

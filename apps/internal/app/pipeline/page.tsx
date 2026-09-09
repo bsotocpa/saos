@@ -22,6 +22,8 @@ interface CatalogItem {
   unit: string | null;
   is_pass_through: boolean;
   needs_confirmation: boolean;
+  /** Per-line deposit from the price book. The quote's deposit is the SUM of these. */
+  deposit_cents: number | null;
 }
 interface CatalogBundle { slug: string; name_en: string; component_count: number }
 interface Contact { id: string; first_name: string; last_name: string; email: string | null }
@@ -108,7 +110,8 @@ export default function PipelinePage() {
   const [bundleSlug, setBundleSlug] = useState('');
   const [picked, setPicked] = useState<Array<{ itemCode: string; quantity: number; isOptional: boolean }>>([]);
   const [itemFilter, setItemFilter] = useState('');
-  const [depositItemCode, setDepositItemCode] = useState('');
+  // `depositItemCode` state used to live here — the one-deposit-item model retired in price
+  // book v4. Deposits are per line now and the quote's deposit is their sum; see pickedDepositCents.
   const [asRange, setAsRange] = useState(true);
   const [expiresInDays, setExpiresInDays] = useState(30);
   const [notes, setNotes] = useState('');
@@ -192,7 +195,22 @@ export default function PipelinePage() {
     }
   }, []);
 
-  const deposits = useMemo(() => catalog.filter((i) => i.service_line === 'deposit'), [catalog]);
+  /**
+   * THE DEPOSIT THE CLIENT WILL ACTUALLY BE ASKED FOR — a mirror of the server's
+   * `summedLineDeposits`, computed here so the builder shows the same number acceptance will
+   * charge. Mirrored EXACTLY, including the two things worth knowing about it: it is not
+   * quantity-weighted, and it counts optional lines whether or not the client ticks them.
+   * Showing a "corrected" figure here would just be a new lie in the other direction; the
+   * server is the place to change the rule, and the builder must agree with it.
+   *
+   * `null` means no chosen line carries a deposit — which is different from a deposit of zero.
+   */
+  const pickedDepositCents = useMemo(() => {
+    const perLine = picked
+      .map((p) => catalog.find((i) => i.item_code === p.itemCode)?.deposit_cents ?? null)
+      .filter((d): d is number => d !== null);
+    return perLine.length === 0 ? null : perLine.reduce((a, b) => a + b, 0);
+  }, [picked, catalog]);
   const filtered = useMemo(() => {
     const q = itemFilter.trim().toLowerCase();
     const base = catalog.filter((i) => i.service_line !== 'deposit');
@@ -220,7 +238,9 @@ export default function PipelinePage() {
    * `deposits.override` — and the API refuses it regardless of what the UI shows.
    */
   const overrideDeposit = async (quoteId: string, waive: boolean) => {
-    const standard = deposits.find((d) => d.item_code === depositItemCode)?.amount_cents ?? 0;
+    // The real standard — the summed line deposits — not the dead dropdown's selection, which
+    // was always empty and made this prompt say the standard was zero over a quote that carried a real deposit.
+    const standard = pickedDepositCents ?? 0;
     let amountCents = 0;
     if (!waive) {
       const entered = window.prompt(
@@ -263,7 +283,7 @@ export default function PipelinePage() {
 
   const resetBuilder = () => {
     setContact(null); setSearch(''); setBundleSlug(''); setPicked([]);
-    setDepositItemCode(''); setNotes(''); setSentLink(''); setItemFilter('');
+    setNotes(''); setSentLink(''); setItemFilter('');
     setDraftQuoteId(''); setDepositOverride(null);
   };
 
@@ -340,7 +360,6 @@ export default function PipelinePage() {
           language,
           ...(bundleSlug ? { bundleSlug } : { lines: picked }),
           ...(bundleSlug ? { includeOptional: picked.filter((p) => p.isOptional).map((p) => p.itemCode) } : {}),
-          ...(depositItemCode ? { depositItemCode } : {}),
           asRange,
           expiresInDays,
           ...(notes.trim() ? { notes: notes.trim() } : {}),
@@ -567,15 +586,19 @@ export default function PipelinePage() {
                     ))}
                   </select>
                 </label>
-                <label className="field">
-                  Deposit item
-                  <select value={depositItemCode} onChange={(e) => setDepositItemCode(e.target.value)}>
-                    <option value="">— no deposit —</option>
-                    {deposits.map((d) => (
-                      <option key={d.item_code} value={d.item_code}>{d.name_en} · {money(d.amount_cents)}</option>
-                    ))}
-                  </select>
-                </label>
+                {/* Read-only on purpose: the deposit is a property of the lines, not a choice
+                    made here. This replaces a dropdown from the retired one-deposit-item model
+                    that read "— no deposit —" over a quote carrying a real deposit. If the figure is
+                    wrong, the place to change it is the price book, and the place to reduce or
+                    waive it for one client is the deposit override after saving a draft. */}
+                <div className="field">
+                  Deposit the client will be asked for
+                  <p className="muted small">
+                    {pickedDepositCents === null
+                      ? 'None — no chosen line carries a deposit in the price book in force.'
+                      : `${money(pickedDepositCents)} — summed from the lines' price-book deposits, exactly as the client will see it on the proposal.`}
+                  </p>
+                </div>
                 <label className="field">
                   Good for (days)
                   <input
@@ -707,7 +730,7 @@ export default function PipelinePage() {
               {draftQuoteId ? (
                 <div className="alert info" style={{ marginTop: 4 }}>
                   <strong>Draft saved.</strong>{' '}
-                  {depositItemCode ? (
+                  {pickedDepositCents !== null ? (
                     depositOverride ? (
                       <>
                         Deposit is{' '}
@@ -728,7 +751,7 @@ export default function PipelinePage() {
                     <button type="button" className="btn accent" disabled={busy} onClick={() => void sendDraft()}>
                       Send to client
                     </button>
-                    {canOverrideDeposit && depositItemCode ? (
+                    {canOverrideDeposit && pickedDepositCents !== null ? (
                       <>
                         <button
                           type="button"
@@ -749,7 +772,7 @@ export default function PipelinePage() {
                       </>
                     ) : null}
                   </div>
-                  {canOverrideDeposit && depositItemCode ? (
+                  {canOverrideDeposit && pickedDepositCents !== null ? (
                     <p className="muted small" style={{ marginBottom: 0 }}>
                       Reducing or waiving requires a reason and is logged with your name. The engagement is
                       stamped so A/R can see how it was set up to pay.

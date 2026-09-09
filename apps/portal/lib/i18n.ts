@@ -408,6 +408,15 @@ const dict = {
     'El trabajo puntual se cotiza como un rango. La factura final queda dentro del rango, o hablamos antes.',
   ],
   quote_expires: ['This proposal is good through', 'Esta propuesta es válida hasta'],
+  // The deposit, on the proposal itself — not discovered after accepting. "Applied" is
+  // literal: billing/deposit-credit.ts credits a paid deposit against the invoice that follows.
+  quote_deposit: ['Deposit to start the work', 'Depósito para iniciar el trabajo'],
+  quote_deposit_note: [
+    'Invoiced by email when you accept, and applied to your final invoice. Nothing is charged before you accept.',
+    'Se factura por correo cuando usted acepta y se aplica a su factura final. No se cobra nada antes de que acepte.',
+  ],
+  quote_deposit_waived: ['Waived — no deposit is asked for', 'Exonerado — no se pide depósito'],
+  quote_deposit_reduced_from: ['reduced from', 'reducido de'],
   quote_accept: ['Accept and start the work', 'Aceptar y comenzar el trabajo'],
   quote_decline: ['This is not right for me', 'Esto no me conviene'],
   quote_decline_prompt: [

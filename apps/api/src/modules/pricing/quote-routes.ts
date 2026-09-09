@@ -91,8 +91,14 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
       // display_on_quote = false items are derivation components (prep/session
       // splits, the late-fee rate). They are not offered here at all, so the
       // builder never shows a staffer a line a client must not see.
+      // deposit_cents is returned so the builder can show the SAME deposit the server will
+      // resolve at acceptance (summedLineDeposits). Without it the builder had nothing to show
+      // and kept a dropdown from the retired one-deposit-item model, which read "— no deposit —"
+      // over a quote that carried a real deposit. Nine weeks nobody built a quote; the first person who
+      // did was told there was no deposit while the client would have been asked for one.
       `SELECT item_code, service_line::text AS service_line, name_en, name_es, amount_cents,
-              price_min_cents, price_max_cents, unit, is_pass_through, needs_confirmation
+              price_min_cents, price_max_cents, unit, is_pass_through, needs_confirmation,
+              deposit_cents
        FROM price_book_items
        WHERE version_id = $1 AND is_active AND display_on_quote
        ORDER BY service_line, sort_order`,

@@ -145,21 +145,35 @@ leave it — your call.
 
 ### A3. Quote → the client link — YOURS to click, ~2 min (I pre-flighted it)
 
-Pre-flight against the live price book, read-only, so there are no surprises:
+Pre-flight against the live price book (v5, in force since 2026-08-16), read-only,
+re-checked 2026-09-09 so there are no surprises:
 
-| Line | Price | Confirmed? |
-|---|---|---|
-| `IND_BASE_MFJ` | $200.00 | ✅ |
-| `IND_BASE_SINGLE` | $150.00 | ✅ |
-| `IND_SCH_C` | $180.00 / form | ✅ |
-| `DEPOSIT_1040` | $250.00 | ✅ |
+| Line | Price | Deposit carried | Confirmed? |
+|---|---|---|---|
+| `IND_BASE_MFJ` | $250.00 | $200.00 | ✅ |
+| `IND_BASE_SINGLE` | $200.00 | $200.00 | ✅ |
+| `IND_SCH_C` | $180.00 / form | none | ✅ |
+
+So an MFJ + Schedule C quote asks the client for a **$200.00 deposit** — the MFJ
+line's — and the builder will show exactly that.
 
 **A 1040 + Schedule C quote touches zero unconfirmed prices** — so none of your 13
-open confirmations block client #1. (`DEPOSIT_BUSINESS_TAX` at $300 is still ⚠,
-but that only binds if client #1 is a business.)
+open confirmations block client #1.
+
+**The deposit is not a line you attach.** Since price book v4 (2026-08-14) each
+item carries its own deposit; the quote's deposit is the sum, and the builder shows
+it read-only under **"Deposit the client will be asked for"** as you add lines. The
+figure there is what the proposal shows the client and what acceptance invoices —
+one number, three places. (The old `DEPOSIT_1040` / `DEPOSIT_BUSINESS_TAX` items
+are retired; a dropdown that offered only "— no deposit —" was their ghost, fixed
+2026-09-09.)
 
 The clicks: `/pipeline` → **New quote** → search `Rehearsal Client` → add
-`IND_BASE_MFJ` + `IND_SCH_C` → attach deposit `DEPOSIT_1040` → **Send**.
+`IND_BASE_MFJ` + `IND_SCH_C` → read the deposit line → **Create and send**.
+
+*If the client already has an accepted quote on the same schedule, the send stops
+and asks whether this **adds to** or **replaces** the existing agreement. Pick one
+— the answer is stored on the quote. For the rehearsal, "adds to" is right.*
 
 **You then get a real email** at your personal inbox with the proposal link. Open
 it on your phone: is the total readable, does the optional line make sense, does
@@ -348,7 +362,9 @@ banner before you send anything.
 
 ### B5. Quote → send (~3 min)
 
-Build from the price book. Attach the deposit. Send.
+Build from the price book. The deposit sums itself from the lines — read it under
+"Deposit the client will be asked for" before you send; that is the figure the
+client sees on the proposal and is invoiced for at acceptance. Send.
 
 *If any line shows ⚠ awaiting confirmation, that price is still unconfirmed — stop
 and confirm it in Admin → Pricing first.*

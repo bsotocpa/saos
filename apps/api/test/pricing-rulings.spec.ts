@@ -287,3 +287,45 @@ test('RULING 4: utilization entitlement reads sessions_per_year as configured', 
   assert.equal(row.held, 3);
   assert.equal(row.utilization, '25%');
 });
+
+test('the builder catalog carries deposit_cents, and it is the number acceptance will charge', async () => {
+  /*
+   * 2026-09-09. Brian, building a rehearsal quote, saw a "Deposit item" dropdown whose only
+   * option was "— no deposit —", over a quote that carried $200. The dropdown was from the
+   * one-deposit-item model retired in price book v4; deposits are per line now and the quote's
+   * deposit is their sum (summedLineDeposits). The catalog did not return deposit_cents, so the
+   * builder had nothing true to show and kept showing the dead control instead.
+   *
+   * Two assertions, and the second is the one that matters: the field must be PRESENT on every
+   * item (null is an answer; absent is a missing wire), and for a line that carries one, the
+   * builder's number must equal the server's. A builder that shows a different deposit from the
+   * one the client is asked for is a new lie replacing the old one.
+   */
+  const catalog = await app.inject({ method: 'GET', url: '/quotes/catalog', headers: auth(brian) });
+  assert.equal(catalog.statusCode, 200, catalog.body);
+  const items = catalog.json().items as Array<{ item_code: string; deposit_cents: number | null }>;
+  assert.ok(items.length > 0, 'the catalog in force has items');
+  for (const i of items) {
+    assert.ok('deposit_cents' in i, `${i.item_code}: deposit_cents must be present (null is fine, absent is not)`);
+  }
+  const withDeposit = items.filter((i) => typeof i.deposit_cents === 'number' && i.deposit_cents > 0);
+  assert.ok(
+    withDeposit.length > 0,
+    'at least one quotable line carries a deposit — otherwise no client can ever be asked to pay one, and nothing would say so'
+  );
+
+  const { createQuote, resolveDeposit } = await import('../src/modules/pricing/quotes.ts');
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Depositline', email: 'depositline-pr@example.test' });
+  const line = withDeposit[0]!;
+  const quote = await createQuote(
+    app,
+    { contactId: c.id, lines: [{ itemCode: line.item_code }] },
+    { id: brian.id, email: brian.email, fullName: 'Synthetic ceo', roleKey: 'ceo' as const, permissions: ['*'], sessionId: 'test' }
+  );
+  const resolved = await resolveDeposit(app, null, null, quote.id);
+  assert.equal(
+    resolved.standardCents,
+    line.deposit_cents,
+    'what the builder shows from the catalog is exactly what acceptance resolves for the quote'
+  );
+});

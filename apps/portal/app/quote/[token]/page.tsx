@@ -29,6 +29,23 @@ interface Line {
   is_pass_through: boolean;
 }
 
+/**
+ * The deposit the client will be asked for, resolved server-side from the lines' price-book
+ * deposits (v4: per line, summed) and any override. Shown BEFORE acceptance.
+ *
+ * 2026-09-09. Walking the builder end to end: the builder now showed the deposit, the API
+ * returned it, and this page rendered nothing — the client read "Nothing is charged until you
+ * accept", accepted, and only THEN learned a deposit invoice was on its way. The builder's
+ * new copy promised the client would see the same figure on the proposal; this makes that true.
+ */
+interface Deposit {
+  standardCents: number | null;
+  dueCents: number | null;
+  treatment: 'standard' | 'reduced' | 'waived' | null;
+  waived: boolean;
+  reduced: boolean;
+}
+
 interface Quote {
   id: string;
   status: string;
@@ -51,6 +68,7 @@ export default function QuotePage() {
 
   const [quote, setQuote] = useState<Quote | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
+  const [deposit, setDeposit] = useState<Deposit | null>(null);
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [state, setState] = useState<'loading' | 'ready' | 'accepted' | 'declined' | 'invalid'>('loading');
   const [hasDeposit, setHasDeposit] = useState(false);
@@ -61,9 +79,10 @@ export default function QuotePage() {
 
   const load = useCallback(async () => {
     try {
-      const r = await api<{ quote: Quote; lines: Line[] }>(`/public/quote/${token}`);
+      const r = await api<{ quote: Quote; lines: Line[]; deposit: Deposit }>(`/public/quote/${token}`);
       setQuote(r.quote);
       setLines(r.lines);
+      setDeposit(r.deposit);
       // Meet the client in the language the quote was written in.
       if (r.quote.language !== lang) setLang(r.quote.language);
       if (r.quote.status === 'accepted') setState('accepted');
@@ -267,6 +286,32 @@ export default function QuotePage() {
               </strong>
             </span>
           </li>
+          {deposit && deposit.standardCents !== null ? (
+            <li>
+              <span className="quote-desc">
+                {t('quote_deposit')}
+                <br />
+                <span className="muted small">{t('quote_deposit_note')}</span>
+              </span>
+              <span className="quote-amount">
+                {deposit.waived ? (
+                  <>
+                    <s className="muted">{formatMoney(deposit.standardCents)}</s> {t('quote_deposit_waived')}
+                  </>
+                ) : deposit.reduced && deposit.dueCents !== null ? (
+                  <>
+                    {formatMoney(deposit.dueCents)}
+                    <br />
+                    <span className="muted small">
+                      {t('quote_deposit_reduced_from')} {formatMoney(deposit.standardCents)}
+                    </span>
+                  </>
+                ) : (
+                  formatMoney(deposit.dueCents ?? deposit.standardCents)
+                )}
+              </span>
+            </li>
+          ) : null}
         </ul>
         {isRange ? <p className="muted small">{t('quote_estimate_note')}</p> : null}
         {quote!.expires_at ? (
