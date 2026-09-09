@@ -77,6 +77,7 @@ const fakeStripe: StripeAdapter = {
   async listRefunds() {
     return [];
   },
+  async expireCheckoutSession() {},
 };
 
 const auth = (t: { token: string }) => ({ authorization: `Bearer ${t.token}` });

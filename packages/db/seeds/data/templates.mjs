@@ -823,6 +823,25 @@ export const templates = [
       'Su historial de facturas en el portal ya lo muestra.\n\n\u2014 Soto Accounting',
   },
   {
+    key: 'invoice_voided',
+    name: 'Invoice voided (pay link no longer valid)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'invoice_number', 'amount'],
+    subjectEn: 'Invoice {{invoice_number}} has been cancelled — please do not pay it',
+    subjectEs: 'La factura {{invoice_number}} fue anulada — por favor no la pague',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Invoice {{invoice_number}} ({{amount}}) has been cancelled on our side and is no longer payable. ' +
+      'If you have a payment link for it, it will not work. If a replacement invoice applies, it arrives separately. ' +
+      'Nothing is owed on this one.\n\n\u2014 Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'La factura {{invoice_number}} ({{amount}}) fue anulada de nuestro lado y ya no se puede pagar. ' +
+      'Si tiene un enlace de pago para ella, no funcionar\u00e1. Si corresponde una factura de reemplazo, le llegar\u00e1 por separado. ' +
+      'No se debe nada por esta.\n\n\u2014 Soto Accounting',
+  },
+  {
     key: 'invoice_reminder',
     name: 'Invoice unpaid reminder (automation 17)',
     channel: 'email',

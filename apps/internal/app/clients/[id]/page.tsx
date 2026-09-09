@@ -186,6 +186,11 @@ export default function ClientPacketPage() {
   const [packetErr, setPacketErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  // VOID (2026-09-09): the reason is typed where the decision is made, and the outcome is
+  // re-read from the server — the same rule as the deposit override, learned the same night.
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const [voidErr, setVoidErr] = useState('');
   const [nextSession, setNextSession] = useState<NextSession | null>(null);
   const [scheduleEngagementId, setScheduleEngagementId] = useState('');
   // Feedback for the actions further down the page — the packet card's message is far
@@ -1065,6 +1070,57 @@ export default function ClientPacketPage() {
                     <span className="muted small" style={{ overflowWrap: 'anywhere' }}>
                       {packet.portalBaseUrl}/invoices?invoice={inv.id}
                     </span>
+                    {inv.status !== 'draft' ? (
+                      <>
+                        {' '}
+                        <button
+                          className="btn ghost"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setVoidingId(voidingId === inv.id ? null : inv.id);
+                            setVoidReason('');
+                            setVoidErr('');
+                          }}
+                        >
+                          {voidingId === inv.id ? 'Cancel' : 'Void…'}
+                        </button>
+                        {voidingId === inv.id ? (
+                          <div className="card" style={{ marginTop: 8 }}>
+                            <p className="small">
+                              <strong>Void {inv.invoice_number}</strong> — it keeps its number, leaves A/R, and the client is
+                              told their pay link no longer works. A paid invoice cannot be voided; refund it instead.
+                            </p>
+                            <label className="field">
+                              <span>Why (this is the record)</span>
+                              <textarea rows={2} value={voidReason} onChange={(e) => setVoidReason(e.target.value)} />
+                            </label>
+                            {voidErr ? <p className="alert warn">{voidErr}</p> : null}
+                            <button
+                              className="btn"
+                              type="button"
+                              disabled={busy || voidReason.trim().length < 5}
+                              onClick={async () => {
+                                setBusy(true);
+                                setVoidErr('');
+                                try {
+                                  await api(`/invoices/${inv.id}/void`, { method: 'POST', body: { reason: voidReason.trim() } });
+                                  setActionMsg(`${inv.invoice_number} is void. The client has been told.`);
+                                  setVoidingId(null);
+                                  await load();
+                                } catch (e) {
+                                  setVoidErr(e instanceof Error ? e.message : 'Could not void the invoice.');
+                                } finally {
+                                  setBusy(false);
+                                }
+                              }}
+                            >
+                              Void invoice
+                            </button>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
                   </>
                 ) : null}
               </li>

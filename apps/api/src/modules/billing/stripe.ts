@@ -187,6 +187,12 @@ export interface StripeAdapter {
    * has told it, and nothing otherwise.
    */
   listRefunds(chargeId: string): Promise<StripeRefund[]>;
+  /**
+   * Expire an OPEN Checkout session so the link in a client's inbox stops working at
+   * Stripe's end (a voided invoice, 2026-09-09). Already-complete or expired sessions are
+   * left alone — Stripe refuses to expire those, and there is nothing to protect.
+   */
+  expireCheckoutSession(sessionId: string): Promise<void>;
 }
 
 function stubAdapter(): StripeAdapter {
@@ -213,6 +219,9 @@ function stubAdapter(): StripeAdapter {
     },
     async listRefunds() {
       return [];
+    },
+    async expireCheckoutSession() {
+      // Nothing to expire: the stub never minted a session Stripe knows about.
     },
   };
 }
@@ -274,6 +283,11 @@ function liveAdapter(config: Config): StripeAdapter {
         throw new AppError(401, 'unauthorized', 'Stripe signature verification failed.');
       }
       return mapStripeEvent(event as unknown as RawStripeEvent);
+    },
+    async expireCheckoutSession(sessionId) {
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      if (session.status !== 'open') return;
+      await stripe.checkout.sessions.expire(sessionId);
     },
     async listRefunds(chargeId) {
       const page = await stripe.refunds.list({ charge: chargeId, limit: 100 });

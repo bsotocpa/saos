@@ -141,6 +141,39 @@ async function raiseUnmatched(
   return { status: 'unmatched' };
 }
 
+/**
+ * A payment landed on a VOID invoice (2026-09-09). Void is terminal, so the invoice does not
+ * flip; the money is real and a person must decide — refund it, or apply it by hand.
+ */
+export async function paymentOnVoidInvoice(
+  app: FastifyInstance,
+  p: { id: string; invoiceNumber: string; contactId: string; amountCents: number; checkoutSessionId?: string | undefined; paymentIntentId?: string | undefined }
+): Promise<void> {
+  const owner = await ownerForRole(app.db, 'comms_billing');
+  await createTask(app, {
+    title: `Payment of ${formatUsd(p.amountCents)} arrived on VOID invoice ${p.invoiceNumber}`,
+    description:
+      `Stripe reports a completed payment (${p.paymentIntentId ?? p.checkoutSessionId ?? 'no id'}) on ${p.invoiceNumber}, ` +
+      'which was voided before it was paid. The invoice stays void. Decide: refund the client in Stripe, or apply the ' +
+      'money to the replacement invoice by hand. Either way, tell them.',
+    ...(owner ? { assignedStaffId: owner } : {}),
+    contactId: p.contactId,
+    priority: 1,
+    source: 'automation',
+    sourceType: 'stripe_unmatched',
+    sourceId: p.paymentIntentId ?? p.checkoutSessionId ?? p.id,
+  });
+  await writeAudit(app.db, {
+    actorType: 'system',
+    actorLabel: 'stripe webhook',
+    action: 'invoice.payment_on_void',
+    objectType: 'invoice',
+    objectId: p.id,
+    contactId: p.contactId,
+    details: { invoice_number: p.invoiceNumber, amount_cents: p.amountCents, payment_intent: p.paymentIntentId ?? null, session: p.checkoutSessionId ?? null },
+  });
+}
+
 /** Reverse the engagement's payment mark to match what is actually still paid. */
 async function reverseEngagementPayment(app: FastifyInstance, inv: InvoiceRow, full: boolean): Promise<void> {
   if (!inv.tax_engagement_id) return;

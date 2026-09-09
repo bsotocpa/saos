@@ -16,10 +16,10 @@ ignored = Paid forever" under checks-that-lie · launch-readiness.md updated · 
 - [ ] Tell Brian the Stripe resend path and what SA-2026-0003 should show on his phone.
 
 ## 2. Void path
-- [ ] Status `void`; reason required; actor recorded; roles billing + CEO.
-- [ ] Only sent/open/overdue can be voided — enforced in the DATABASE (trigger), paid never.
-- [ ] On void: expire open Stripe session, out of AR aging, ledger reversal, audit, client void notice via the client-send gate.
-- [ ] Invoice number retained. Brian voids SA-2026-0002 from the iPhone UI — not by script.
+- [x] Status `void`; reason required; actor recorded; roles billing + CEO.
+- [x] Only sent/open/overdue can be voided — enforced in the DATABASE (trigger), paid never.
+- [x] On void: expire open Stripe session, out of AR aging, ledger reversal, audit, client void notice via the client-send gate.
+- [x] Invoice number retained (sequence, never reissued). PENDING: Brian voids SA-2026-0002 from the iPhone UI — not by script. Sabotage (trigger unattached): exactly the 4 database-level tests fail. Proven on the dev server via API: paid → 409 "refunded, not voided"; blank reason → 400; sent → void with reason + actor, notice queued. The button itself was not clicked locally (stale-cookie fight in the test browser); Brian's first use is the walk.
 
 ## 3. Test client flag
 - [ ] contacts.is_test set on the test client; excluded from AR aging, dashboards, month-end packet, client counts.

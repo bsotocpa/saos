@@ -148,9 +148,9 @@ export default function InvoicesPage() {
                 <br />
                 <span className="muted small">{i.lines.map((l) => l.description).join(' · ')}</span>
               </span>
-              {i.status === 'refunded' || i.status === 'partially_refunded' || i.status === 'disputed' ? (
+              {i.status === 'refunded' || i.status === 'partially_refunded' || i.status === 'disputed' || i.status === 'void' ? (
                 <span className="badge">
-                  {t(i.status === 'refunded' ? 'inv_refunded' : i.status === 'partially_refunded' ? 'inv_partially_refunded' : 'inv_disputed')}
+                  {t(i.status === 'refunded' ? 'inv_refunded' : i.status === 'partially_refunded' ? 'inv_partially_refunded' : i.status === 'void' ? 'inv_void' : 'inv_disputed')}
                 </span>
               ) : i.status === 'paid' ? (
                 <span className="badge ok">{t('inv_paid')}</span>

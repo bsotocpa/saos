@@ -103,6 +103,20 @@ export function registerBillingRoutes(app: FastifyInstance): void {
     return { status: 'sent', to: inv.email };
   });
 
+  /**
+   * VOID (2026-09-09, Brian's ruling). Reason required; actor recorded; only a sent or
+   * overdue invoice — and the DATABASE enforces that, not this handler (migration 0081).
+   * A paid invoice is refunded, never voided. The number is retained.
+   */
+  app.post<{ Params: { id: string } }>('/invoices/:id/void', billing, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const body = z
+      .object({ reason: z.string().trim().min(5, 'Say why in at least a few words — this is the record.').max(1000) })
+      .parse(request.body);
+    const { voidInvoice } = await import('./void.ts');
+    return voidInvoice(app, id, body, request.staff!);
+  });
+
   app.get('/invoices', billing, async (request) => {
     const q = z.object({ status: z.string().optional(), contactId: z.uuid().optional() }).parse(request.query);
     const clauses: string[] = ['true'];
@@ -234,7 +248,13 @@ export function registerBillingRoutes(app: FastifyInstance): void {
           checkoutSessionId: event.checkoutSessionId,
           paymentIntentId: event.paymentIntentId,
         });
-        return reply.send({ status: 'ok', alreadyPaid: result.alreadyPaid });
+        return reply.send({
+          status: 'ok',
+          alreadyPaid: result.alreadyPaid,
+          // A payment on a VOID invoice is acknowledged (200, so Stripe stops retrying) and
+          // named, so the delivery log says what happened to the money.
+          ...(result.refused ? { refused: result.refused } : {}),
+        });
       }
       if (event.type === 'ignored') {
         return { status: 'ignored', type: event.stripeType ?? null };

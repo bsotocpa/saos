@@ -392,6 +392,7 @@ const dict = {
   inv_refunded: ['Refunded', 'Reembolsada'],
   inv_partially_refunded: ['Partly refunded', 'Parcialmente reembolsada'],
   inv_disputed: ['Under review', 'En revisi\u00f3n'],
+  inv_void: ['Cancelled', 'Anulada'],
   quote_title: ['Your proposal', 'Su propuesta'],
   quote_intro: [
     'Here is exactly what we would do and what it costs. Nothing is charged until you accept.',

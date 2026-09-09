@@ -37,6 +37,8 @@ export const OUTBOX_EFFECTS = [
   'packet.send_signature_link',
   /** Email the client that money went back to their card (2026-09-09). */
   'invoice.refund_receipt',
+  /** Email the client that an invoice they hold a pay link for no longer exists (2026-09-09). */
+  'invoice.void_notice',
 ] as const;
 export type OutboxEffect = (typeof OUTBOX_EFFECTS)[number];
 
@@ -156,6 +158,15 @@ async function performEffect(
       const result = await sendRefundReceipt(app, invoiceId, refundId);
       if (result.sent) return { sent: true };
       if (result.reason === 'already_sent') return { sent: false, skip: 'receipt already sent' };
+      return { sent: false, retry: humanReason(result.reason) };
+    }
+    case 'invoice.void_notice': {
+      const invoiceId = String(row.payload.invoiceId ?? '');
+      if (!invoiceId) return { sent: false, skip: 'no invoiceId in the payload' };
+      const { sendVoidNotice } = await import('./modules/billing/void.ts');
+      const result = await sendVoidNotice(app, invoiceId);
+      if (result.sent) return { sent: true };
+      if (result.reason === 'already_sent') return { sent: false, skip: 'void notice already sent' };
       return { sent: false, retry: humanReason(result.reason) };
     }
     case 'packet.send_signature_link': {

@@ -419,7 +419,7 @@ export async function markInvoicePaid(
   app: FastifyInstance,
   invoiceId: string,
   refs: { checkoutSessionId?: string | undefined; paymentIntentId?: string | undefined }
-): Promise<{ alreadyPaid: boolean }> {
+): Promise<{ alreadyPaid: boolean; refused?: 'void' }> {
   const { rows } = await app.db.query<{
     id: string; status: string; total_cents: number; invoice_number: string;
     contact_id: string; tax_engagement_id: string | null;
@@ -434,6 +434,13 @@ export async function markInvoicePaid(
   const inv = rows[0];
   if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
   if (inv.status === 'paid') return { alreadyPaid: true };
+  if (inv.status === 'void') {
+    // 2026-09-09. The client paid a link to an invoice that had been voided (the session
+    // expiry after void is best effort). Void is terminal; the money needs a person.
+    const { paymentOnVoidInvoice } = await import('./refunds.ts');
+    await paymentOnVoidInvoice(app, { id: inv.id, invoiceNumber: inv.invoice_number, contactId: inv.contact_id, amountCents: inv.total_cents, ...refs });
+    return { alreadyPaid: false, refused: 'void' };
+  }
 
   await app.db.query(
     `UPDATE invoices
