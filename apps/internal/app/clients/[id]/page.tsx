@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../../lib/api';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
+import { badgeToneFor, invoiceStatusLine } from '../../../lib/invoice-display';
 
 interface Contact {
   id: string; first_name: string; last_name: string; email: string | null;
@@ -77,6 +78,9 @@ interface Invoice {
   id: string; invoice_number: string; status: string;
   total_cents: number; amount_paid_cents: number;
   sent_at: string | null; paid_at: string | null;
+  amount_refunded_cents?: number | null;
+  void_reason?: string | null; voided_by?: string | null; voided_at?: string | null;
+  refunded_at?: string | null;
   /** Every client-facing notice about this invoice, in its real state (queued / delivered…). */
   notices: NoticeState[];
 }
@@ -1042,9 +1046,13 @@ export default function ClientPacketPage() {
                     <span className="muted"> · {formatMoney(inv.amount_paid_cents)} paid</span>
                   ) : null}
                   <br />
-                  <span className={`badge ${inv.status === 'paid' ? 'ok' : inv.status === 'overdue' ? 'warn' : ''}`}>
-                    {inv.status}
-                  </span>
+                  <span className={`badge ${badgeToneFor(inv.status)}`}>{inv.status}</span>
+                  {inv.status === 'void' || inv.status === 'refunded' || inv.status === 'partially_refunded' ? (
+                    <span className="muted small">
+                      {' '}
+                      {invoiceStatusLine(inv, { money: formatMoney, date: (iso) => new Date(iso).toLocaleDateString() })}
+                    </span>
+                  ) : null}
                   {inv.sent_at ? <span className="muted small"> sent {new Date(inv.sent_at).toLocaleDateString()}</span> : null}
                   {/* What actually happened to each client message — from the record, never rounded up. */}
                   {(inv.notices ?? []).map((n) => (

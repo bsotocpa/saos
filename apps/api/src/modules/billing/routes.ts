@@ -124,9 +124,14 @@ export function registerBillingRoutes(app: FastifyInstance): void {
     if (q.status) { params.push(q.status); clauses.push(`i.status = $${params.length}::invoice_status`); }
     if (q.contactId) { params.push(q.contactId); clauses.push(`i.contact_id = $${params.length}`); }
     const { rows } = await app.db.query(
+      // The card reads the SAME status column the portal reads, plus what a void or a refund
+      // must say inline: reason, actor and date; amount and date (2026-09-09).
       `SELECT i.id, i.invoice_number, i.status, i.total_cents, i.amount_paid_cents, i.sent_at, i.paid_at,
-              i.qb_exported_at, c.id AS contact_id, c.first_name, c.last_name
+              i.qb_exported_at, c.id AS contact_id, c.first_name, c.last_name,
+              i.amount_refunded_cents, i.void_reason, i.voided_at, vs.email AS voided_by,
+              (SELECT max(r.created_at) FROM invoice_refunds r WHERE r.invoice_id = i.id) AS refunded_at
        FROM invoices i JOIN contacts c ON c.id = i.contact_id
+       LEFT JOIN staff vs ON vs.id = i.voided_by_staff_id
        WHERE ${clauses.join(' AND ')}
        ORDER BY i.created_at DESC LIMIT 200`,
       params
