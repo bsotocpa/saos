@@ -20,18 +20,24 @@ const script = resolve(here, 'merge-env.sh');
 
 const dir = mkdtempSync(join(tmpdir(), 'saos-envmerge-'));
 let failures = 0;
+let cases = 0;
 const check = (label, actual, expected) => {
+  cases++;
   if (actual !== expected) {
     console.error(`  ✖ ${label}\n      expected: ${expected}\n      actual:   ${actual}`);
     failures++;
   }
 };
 
-function run(incoming, existing) {
+function run(incoming, existing, managed = null) {
   const inPath = join(dir, 'incoming.env');
   const target = join(dir, 'target.env');
   writeFileSync(inPath, incoming);
   writeFileSync(target, existing);
+  // The server-managed list lives beside the target, as it does on the box.
+  const managedPath = target + '.server-managed';
+  if (managed === null) rmSync(managedPath, { force: true });
+  else writeFileSync(managedPath, managed);
   execFileSync('sh', [script, inPath, target], { stdio: ['ignore', 'ignore', 'ignore'] });
   const out = readFileSync(target, 'utf8');
   const map = new Map();
@@ -59,6 +65,35 @@ try {
   {
     const { map } = run('A=1\n', 'A=1\nSERVER_ONLY=keepme\n');
     check('a key only on the server is preserved', map.get('SERVER_ONLY'), 'keepme');
+  }
+
+  /*
+   * SERVER-MANAGED KEYS (2026-09-09). The hole in "non-blank local wins": a STALE local
+   * value looks exactly like a rotation. Brian installed the live Stripe key on the
+   * server; the laptop's .env.production still held the August test key; the next three
+   * deploys each "rotated" it back. A key named in <target>.server-managed belongs to
+   * the server — the shipped value is ignored whenever the server has one.
+   */
+  {
+    const { map } = run(
+      'STRIPE_SECRET_KEY=sk_test_stale_from_laptop\n',
+      'STRIPE_SECRET_KEY=sk_live_installed_on_server\n',
+      'STRIPE_SECRET_KEY\n'
+    );
+    check('a server-managed key keeps the SERVER value even over a non-blank local one', map.get('STRIPE_SECRET_KEY'), 'sk_live_installed_on_server');
+  }
+  {
+    const { map } = run('STRIPE_SECRET_KEY=sk_test_first_install\n', 'STRIPE_SECRET_KEY=\n', 'STRIPE_SECRET_KEY\n');
+    check('a server-managed key with NO server value still takes the shipped one (nothing to protect)', map.get('STRIPE_SECRET_KEY'), 'sk_test_first_install');
+  }
+  {
+    const { map } = run(
+      'STRIPE_SECRET_KEY=sk_test_stale\nDOCUSEAL_API_TOKEN=rotated\n',
+      'STRIPE_SECRET_KEY=sk_live_real\nDOCUSEAL_API_TOKEN=old\n',
+      '# keys the server owns\n\nSTRIPE_SECRET_KEY\n'
+    );
+    check('the list tolerates comments and blank lines', map.get('STRIPE_SECRET_KEY'), 'sk_live_real');
+    check('and an UNLISTED non-blank local value still rotates', map.get('DOCUSEAL_API_TOKEN'), 'rotated');
   }
 
   // Blank on both stays blank (not "undefined", not dropped).
@@ -100,13 +135,16 @@ try {
   {
     const envProd = resolve(here, '..', '.env.production');
     if (existsSync(envProd)) {
-      const MODE_KEYS = ['STRIPE_MODE'];
+      // 2026-09-09: the SECRETS join the mode. They are installed on the server by
+      // scripts/install-stripe-*.sh and registered as server-managed there; a value here
+      // is a stale copy that would have overwritten the live key on every deploy — and did.
+      const MODE_KEYS = ['STRIPE_MODE', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'];
       const text = readFileSync(envProd, 'utf8');
       for (const key of MODE_KEYS) {
         const m = new RegExp(`^${key}=(.*)$`, 'm').exec(text);
         if (m && m[1].trim() !== '') {
           console.error(
-            `  ✖ ${key} is set to "${m[1].trim()}" in .env.production — it must be BLANK.\n` +
+            `  ✖ ${key} is set to ${key === 'STRIPE_MODE' ? `"${m[1].trim()}"` : 'a value'} in .env.production — it must be BLANK.\n` +
             `      A literal beats the server's value on every deploy. Set ${key} on the server.`
           );
           failures++;
@@ -122,4 +160,4 @@ if (failures > 0) {
   console.error(`\ncheck:env-merge FAILED (${failures}) — the deploy could destroy a server-set secret.`);
   process.exit(1);
 }
-console.log('check:env-merge: server-set secrets and runtime modes survive a deploy (7 cases)');
+console.log('check:env-merge: server-set secrets and runtime modes survive a deploy (${cases} cases)');

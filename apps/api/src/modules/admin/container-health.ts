@@ -46,7 +46,37 @@ const COMPLIANCE_CRITICAL: Record<string, string> = {
   clamav: 'Attachment virus scanning is down — inbound client documents cannot be scanned.',
   postgres: 'The database is down.',
   minio: 'Document storage is down — uploads and signed-copy retention cannot complete.',
+  stripe_live_key:
+    'Production is not on a LIVE Stripe key — every client checkout is a sandbox or a 503, ' +
+    'and no real payment can succeed. Re-run scripts/install-stripe-live.sh on the server.',
 };
+
+/**
+ * Is production actually able to take a real payment? Null when yes; the reason when no.
+ *
+ * 2026-09-09. The live key was installed on the server at 01:25 and verified; a deploy at
+ * 02:29 merged the laptop's stale TEST key back over it. Nothing noticed for three hours,
+ * until Brian's real card was declined by a Stripe sandbox. The installer's verification
+ * was true when it ran; nothing kept checking. This does, every tick, and it is a pure
+ * function of config so the rule is testable without a server.
+ *
+ * Outside production it is nobody's business what key is loaded — dev and test run the
+ * stub or a sandbox on purpose — so the answer there is always "fine".
+ */
+export function stripeKeyModeProblem(c: {
+  NODE_ENV: string;
+  STRIPE_MODE: string;
+  STRIPE_SECRET_KEY?: string | undefined;
+}): string | null {
+  if (c.NODE_ENV !== 'production') return null;
+  if (c.STRIPE_MODE !== 'live') return 'STRIPE_MODE is not live in production — Pay returns 503';
+  const key = c.STRIPE_SECRET_KEY ?? '';
+  if (key.startsWith('sk_live_') || key.startsWith('rk_live_')) return null;
+  if (key.startsWith('sk_test_') || key.startsWith('rk_test_')) {
+    return 'STRIPE_MODE=live on a TEST key — every checkout is a Stripe sandbox';
+  }
+  return 'STRIPE_SECRET_KEY is not a recognisable Stripe secret key';
+}
 
 function severityFor(name: string): 'critical' | 'warning' {
   return Object.keys(COMPLIANCE_CRITICAL).some((k) => name.includes(k)) ? 'critical' : 'warning';
@@ -172,6 +202,15 @@ export async function probeDependencies(
     reachable.postgres = true;
   } catch {
     reachable.postgres = false;
+  }
+
+  // Can production take a real payment right now? (See stripeKeyModeProblem.) Recorded as
+  // a dependency so it gets the same since/duration bookkeeping and the same nagging alert
+  // as a dead scanner — a payments config that silently reverted IS an outage.
+  if (app.config.NODE_ENV === 'production') {
+    const problem = stripeKeyModeProblem(app.config);
+    reachable.stripe_live_key = problem === null;
+    if (problem !== null) app.log.error({ problem }, 'production cannot take a real payment');
   }
 
   /*

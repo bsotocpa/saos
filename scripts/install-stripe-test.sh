@@ -166,6 +166,17 @@ set_env STRIPE_SECRET_KEY "$STRIPE_KEY"
 set_env STRIPE_WEBHOOK_SECRET "$WHSEC"
 chmod 600 "$ENV_FILE"
 pass "STRIPE_MODE=live, STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET written (values not shown)"
+
+# 2026-09-09: register these as SERVER-MANAGED so a deploy can never merge a stale laptop
+# value over them again. That is exactly what happened to the first live key: installed
+# here at 01:25, verified, and overwritten by the 02:29 deploy from .env.production.
+# scripts/merge-env.sh keeps the server's value for every key named in this file.
+MANAGED="$ENV_FILE.server-managed"
+touch "$MANAGED" && chmod 600 "$MANAGED"
+for k in STRIPE_MODE STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
+  grep -qx "$k" "$MANAGED" || echo "$k" >> "$MANAGED"
+done
+pass "registered as server-managed in $MANAGED — deploys keep the server's value from now on"
 info "STRIPE_MODE=live with sk_test_ keys is correct: 'live' selects the real Stripe"
 info "adapter, and the test key points it at Stripe's test environment."
 

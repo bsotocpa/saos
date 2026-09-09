@@ -34,7 +34,42 @@ left is not code.
 **Nothing.** As of 2026-09-08 evening, no hard gate stands between the system and its first real
 client. What remains (below) blocks specific paths, not the front door.
 
-### ✅ G-B CLEARED 2026-09-08 — live Stripe keys installed and verified
+### ❌ G-B REOPENED 2026-09-09 05:50 UTC — the deploy erased the live key. Owner: Brian (re-paste), after me (fix shipped)
+
+Brian's $20 real-card test landed on a Stripe **sandbox** checkout: "request was in test
+mode, but used a non test card." The box's `.env` held `sk_test_…` and both checkout
+sessions were `cs_test_`.
+
+**Cause — mine.** `deploy.sh` ships this laptop's `.env.production` and `merge-env.sh`
+lets a *non-blank* local value win. The laptop file still carried the August test key.
+The live installer wrote the live key at 01:25 and verified it truthfully; my deploy at
+02:29 merged the test key back over it, and the 03:41 deploy did it again. No backup
+captured the live key — it is gone from the box and must be pasted once more.
+
+**Fix shipped (same class as Docuseal ×2 and STRIPE_MODE ×3 in August):**
+`<env>.server-managed` lists keys the server owns; `merge-env.sh` keeps the server's
+value for those even over a non-blank local one; both Stripe installers register their
+three keys there; `check:env-merge` proves it and now fails the build if
+`STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` are non-blank in `.env.production` (they
+are blank now). The API's every-tick dependency probe alerts if production runs
+`STRIPE_MODE=live` on an `sk_test_` key, so a future clobber is a P1 within 15 minutes,
+not a discovery at checkout.
+
+**To clear again:** Brian re-runs the live installer; then a checkout session on the box
+reads `cs_live_`, not `cs_test_`. PowerShell, with `$saos` set as in the preamble at the top:
+
+```powershell
+ssh -i ~/.ssh/saos_hetzner_ed25519 "root@$saos" -t 'bash /opt/saos/scripts/install-stripe-live.sh'
+```
+
+The installer now also registers `STRIPE_MODE`, `STRIPE_SECRET_KEY` and
+`STRIPE_WEBHOOK_SECRET` in `/opt/saos/.env.server-managed`, and the API's dependency probe
+will show `stripe_live_key` reachable within a tick. Until then the probe alerts — that
+alert is the current state, not a false alarm.
+
+<details><summary>The original clearance, kept as the record</summary>
+
+### ✅ G-B CLEARED 2026-09-08 — live Stripe keys installed and verified (superseded above)
 
 Brian ran `install-stripe-live.sh`. Every check passed, and the state was then confirmed from the
 box independently of the script's own report:
@@ -67,6 +102,9 @@ it means the test-mode webhook endpoint lives on that other account and does not
       tell me — I will confirm from the database that it landed on the invoice in SAOS and not
       only in Stripe. Until a real card has been used end to end, that path is verified in every
       part and never as a whole.
+
+
+</details>
 
 ### ✅ G-A WITHDRAWN 2026-09-06 — the engagement letters were never blocked
 

@@ -1700,3 +1700,37 @@ the walk itself was blocked twice by browser-pane artefacts (a stale session coo
 bouncing /login; a hidden pane not delivering clicks). Distinguish "the product is
 broken" from "the instrument is broken" before fixing either: the accept endpoint
 returned 200 the moment the click actually reached the button.
+
+## 2026-09-09 — A secret that lives in two places is set in neither
+
+Brian's $20 real-card test hit a Stripe sandbox. The box's .env held the TEST key. The live
+installer had written the live key at 01:25 and verified it — truthfully. My deploy at
+02:29 shipped the laptop's .env.production, whose STRIPE_SECRET_KEY was still the August
+test key, and merge-env.sh let the non-blank laptop value win. Two more deploys did the
+same. No backup captured the live key; Brian has to paste it again.
+
+**This was the FOURTH time this class fired** — and the mechanism's own header says so:
+Docuseal token wiped by deploy, twice (08-10); STRIPE_MODE=stub shipped over live, three
+times (08-12, 08-13). Each fix was scoped to the value that had just been lost — protect
+blank values, then blank the mode locally — and left the next value exposed. I read that
+header tonight for the first time as a warning rather than a history.
+
+**The rule, finally in its general form:** a value pasted on the server is server-managed,
+by name, in a list beside the env file; the merge never lets the laptop override a listed
+key that the server has; installers register what they write. The laptop file ships no
+secrets (the guard now fails the build if the Stripe keys are non-blank there). Rotation
+has one door: re-run the installer on the server.
+
+**And the half I would have skipped:** the installer's verification was correct at the
+moment it ran. Nothing kept checking. The every-tick dependency probe now treats "production
+in live mode on a test key" as an unreachable dependency — same nagging alert as a dead
+scanner, because a payments config that silently reverted IS an outage. Verified-once is
+not armed; monitored is armed.
+
+**Diagnostic that worked:** hashes, not values. sha256 of the key line on the box, in every
+backup, and on the laptop — all equal — proved where the test key came from without a single
+character of any secret leaving its file.
+
+**Tooling note:** in this Bash tool, `\` inside a heredoc collapses to `\`; JS edit scripts
+that embed `\n`/`\t` in template literals get real newlines/tabs. Build such characters with
+String.fromCharCode, and verify an edit landed (git diff --stat) before running anything on it.
