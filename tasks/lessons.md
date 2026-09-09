@@ -1631,3 +1631,33 @@ standing trigger to grep the UIs for the retired concept, not just the server.
 
 **Also:** `check:prices` caught dollar figures in my own comments — the guard does its job even
 on prose. Keep comments free of literal amounts; say "a real deposit," not the number.
+
+## 2026-09-09 — The latency of a promise is part of the promise
+
+Brian accepted the rehearsal quote and read "Your deposit invoice is on its way by email."
+Three minutes later: "nothing triggered after this. again another roadblock?" It was not
+broken. The outbox drain ran only inside the 15-minute scheduler tick; my deploy had
+restarted the API at 02:29:51, so the tick fired at 02:44:51, and he accepted at 02:45:02 —
+eleven seconds after it. The email was fifteen minutes away. From where he sat, nothing had
+happened, and the screen had told him something would.
+
+**Two rules, and the second is the one I would have missed:**
+
+1. *Copy that promises timing must be backed by a mechanism that meets it.* "On its way" over
+   a 15-minute interval is a lie one time in fifteen. The fix is a rule, not a nudge for this
+   caller: the outbox gets a 60-second fast lane (same pattern as the push sweep), so every
+   effect anyone enqueues — now or in a module that does not exist yet — leaves within a
+   minute. The constant is frozen by a test; the copy now says "within a few minutes" and
+   means it.
+
+2. *A deploy resets every interval's phase.* Four deploys tonight moved the tick four times.
+   Anything scheduled on a long interval is, right after a deploy, at a random point in that
+   interval — and the person testing right after a deploy is exactly the person who hits the
+   worst case. Short intervals for anything a client waits on; long intervals only for work
+   nobody is watching.
+
+**Diagnostic order that worked:** before saying anything — the row (pending, 0 attempts, due
+now), the drainer (who calls it, on what interval), the env (`JOBS_ENABLED` defaults true;
+health_refresh at boot proves the scheduler is alive), history (a deposit invoice was sent
+and paid on 08-13, so SMTP and the path work). Then the answer was arithmetic. The wrong move
+would have been to say "it will arrive in 15 minutes" and stop: true, and still a defect.

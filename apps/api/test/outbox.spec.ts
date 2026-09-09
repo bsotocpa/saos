@@ -463,3 +463,43 @@ test('closing the owning task is only legal once the clock is cleared', async ()
   );
   assert.equal(after.rows[0]!.deadline, null);
 });
+
+// ── THE FAST LANE (2026-09-09) ─────────────────────────────────────────────
+
+test('the outbox fast lane runs at least once a minute — the number that makes the portal copy true', async () => {
+  /*
+   * Brian accepted a rehearsal quote eleven seconds after the 15-minute tick (a deploy had just
+   * moved its phase) and read "your deposit invoice is on its way by email." It was fifteen
+   * minutes away. The portal now says "within a few minutes"; this is the constant that backs
+   * the sentence. A frozen number, on purpose — loosen it and the copy is a lie again.
+   */
+  const { OUTBOX_SWEEP_MS } = await import('../src/jobs/daily.ts');
+  assert.ok(OUTBOX_SWEEP_MS <= 60_000, `outbox sweep every ${OUTBOX_SWEEP_MS}ms is slower than the minute the copy promises`);
+  assert.ok(OUTBOX_SWEEP_MS >= 10_000, 'and not so hot it hammers the database when idle');
+});
+
+test('one pass of the fast lane performs a queued deposit email, without the rest of the tick', async () => {
+  sent = [];
+  const c = await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: 'Fastlane', email: 'fastlane@example.test',
+  });
+  const quote = await createQuote(
+    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+  );
+  const s = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  sent = [];
+  const accepted = await acceptQuote(app, s.url.split('/').pop()!, {});
+  assert.ok(accepted.depositInvoiceId, 'the fixture carries a deposit');
+  assert.equal(sent.length, 0, 'acceptance itself sent nothing');
+
+  const { runOutboxSweep } = await import('../src/jobs/daily.ts');
+  const swept = await runOutboxSweep(app);
+  assert.equal(swept.sent, 1, 'the sweep performed the queued effect');
+  assert.equal(sent.length, 1, 'and the client got exactly one email');
+  assert.equal(sent[0]!.to, 'fastlane@example.test');
+
+  const row = await app.db.query<{ status: string }>(
+    `SELECT status::text AS status FROM outbox WHERE object_id = $1`, [accepted.depositInvoiceId]
+  );
+  assert.equal(row.rows[0]!.status, 'sent');
+});

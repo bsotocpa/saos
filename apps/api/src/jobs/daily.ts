@@ -26,6 +26,24 @@ import { makePusher, runPushSweep } from '../notify/push.ts';
 
 const TICK_MS = 15 * 60 * 1000;
 const PUSH_SWEEP_MS = 60 * 1000; // alerts reach iPhones within a minute
+/**
+ * THE OUTBOX FAST LANE (2026-09-09).
+ *
+ * The outbox drain also runs inside the 15-minute tick, and that was the only place it ran.
+ * Brian accepted a rehearsal quote eleven seconds after a tick — a deploy had just restarted
+ * the API, so the tick's phase was wherever the restart put it — and the screen he had just
+ * read said "your deposit invoice is on its way by email." It was: fifteen minutes away. He
+ * reported nothing had triggered, and from where he sat nothing had.
+ *
+ * A client who has just accepted is at the moment of highest intent; the payment link has to
+ * arrive while they are still holding the phone. So the drain gets the same fast lane the
+ * push sweep has: every minute, cheap when empty (one indexed query that returns nothing).
+ * The tick keeps its drain too — overlap is safe, each row is claimed FOR UPDATE SKIP LOCKED.
+ *
+ * Frozen at 60s deliberately: the portal copy promises "within a few minutes", and this is
+ * the number that makes the copy true. Raise it and the copy is a lie again.
+ */
+export const OUTBOX_SWEEP_MS = 60 * 1000;
 
 export async function runDailyJobs(app: FastifyInstance, today: string): Promise<void> {
   const decision = await runExtensionDecisionListJob(app, today);
@@ -181,5 +199,25 @@ export function startScheduler(app: FastifyInstance): NodeJS.Timeout {
     runPushSweep(app, pusher).catch((err) => app.log.warn({ err }, 'push sweep failed'));
   }, PUSH_SWEEP_MS);
   pushHandle.unref();
+
+  // Fast lane: client-facing effects (payment links, signing links) leave within a minute.
+  const outboxHandle = setInterval(() => {
+    runOutboxSweep(app).catch((err) => app.log.warn({ err }, 'outbox sweep failed'));
+  }, OUTBOX_SWEEP_MS);
+  outboxHandle.unref();
   return handle;
+}
+
+/**
+ * One pass of the outbox fast lane. Separate from the tick so it can run every minute without
+ * dragging the escalation, rescan and reconcile work along with it; logs only when it did
+ * something, so an idle minute is silent.
+ */
+export async function runOutboxSweep(app: FastifyInstance): Promise<import('../outbox.ts').DrainResult> {
+  const { drainOutbox } = await import('../outbox.ts');
+  const outbox = await drainOutbox(app);
+  if (outbox.considered > 0) {
+    app.log.info({ job: 'outbox_sweep', ...outbox }, 'outbox effects performed');
+  }
+  return outbox;
 }

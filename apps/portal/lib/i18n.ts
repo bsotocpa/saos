@@ -429,9 +429,11 @@ const dict = {
     'The work is open on our side. Watch your email for your portal sign-in link and the engagement letter.',
     'El trabajo ya está abierto de nuestro lado. Revise su correo para el enlace de acceso al portal y la carta de compromiso.',
   ],
+  // "Within a few minutes" is backed by OUTBOX_SWEEP_MS (60s) in the API — the number that
+  // makes this sentence true. It used to say "on its way" over a fifteen-minute tick.
   quote_accepted_deposit: [
-    'Your deposit invoice is on its way by email. The work is already queued.',
-    'Su factura de depósito va en camino por correo. El trabajo ya está en cola.',
+    'Your deposit invoice arrives by email within a few minutes. The work is already queued.',
+    'Su factura de depósito le llega por correo en unos minutos. El trabajo ya está en cola.',
   ],
   quote_declined_title: ['Thank you for telling us', 'Gracias por decírnoslo'],
   quote_declined_body: [

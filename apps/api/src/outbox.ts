@@ -170,8 +170,10 @@ export interface DrainResult {
 }
 
 /**
- * Perform every due effect. Runs every tick, not daily — a client waiting on a payment link
- * or a signature should wait minutes, not until tomorrow.
+ * Perform every due effect. Runs on the 60-second fast lane (jobs/daily.ts, OUTBOX_SWEEP_MS)
+ * AND inside the 15-minute tick — a client waiting on a payment link or a signature should
+ * wait about a minute, not until the next tick and not until tomorrow. The tick alone was the
+ * whole schedule until 2026-09-09, when an acceptance landed eleven seconds after one.
  *
  * ONE ROW AT A TIME, each claimed with `FOR UPDATE SKIP LOCKED`, so two ticks overlapping (or
  * two API containers, if there is ever a second) cannot both perform the same effect. That is
