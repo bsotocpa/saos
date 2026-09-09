@@ -6,6 +6,24 @@ it is probably fine.
 
 ---
 
+## Connecting to the server — PowerShell, which is the shell you actually use
+
+Every SSH snippet below reads the host out of `.env.production` rather than hard-coding it. The
+**bash** way to do that (`"root@$(sed -n 's/^SERVER_IPV4=//p' .env.production)"`) is what these
+docs used to show, and it fails silently in PowerShell: there is no `sed`, the substitution
+produces an empty string, and ssh reports `connect to host port 22: Connection refused` — which
+reads like the server is down when nothing is wrong with it.
+
+Run this **once per PowerShell window**, from anywhere:
+
+```powershell
+$saos = (Select-String -Path "C:\Users\brian\Dropbox\AI AGENT\saos\.env.production" -Pattern '^SERVER_IPV4=(.+)$').Matches[0].Groups[1].Value.Trim()
+```
+
+`$saos` then holds the host for the rest of that window, and every command below uses it.
+
+---
+
 ## OPEN GATES — snapshot 2026-09-06
 
 Measured against production, not remembered. Ownership is stated because most of what is
@@ -13,17 +31,42 @@ left is not code.
 
 ### ⛔ BLOCKING CLIENT #1
 
-**G-B. Stripe is running on TEST keys.** — **BRIAN**
+**G-B. Stripe is running on TEST keys.** — **BRIAN** (the installer is ready)
 
-`STRIPE_MODE=live` means the real adapter rather than the stub, but the secret is `sk_test_`.
-A 4242 card charges; a client's real card cannot. Deposits and invoices are both affected.
+`STRIPE_MODE=live` selects the real adapter rather than the stub; the SECRET is what decides test
+versus production, and it is `sk_test_`. A 4242 card charges; a client's real card cannot.
 
-`scripts/install-stripe-test.sh` deliberately REFUSES a live key, so switching over needs a
-companion installer with the same safety properties (never echoes the key, never writes it to
-history, verifies before and after). **Mine to write, once you say go** — and worth doing
-deliberately rather than by editing `.env` on the box.
+`scripts/install-stripe-live.sh` is written, deployed and syntax-checked on the box. Run it from
+a PowerShell window that has `$saos` set (see **Connecting to the server** above):
 
-**This is now the only thing in this section.** See below.
+```powershell
+ssh -i ~/.ssh/saos_hetzner_ed25519 "root@$saos" -t 'bash /opt/saos/scripts/install-stripe-live.sh'
+```
+
+Same handling as the test installer — silent read, `HISTFILE=/dev/null`, curl auth via stdin
+`--config` so the key never appears in `ps`, only the last four characters echoed, `.env` backed
+up and `chmod 600`. Three deliberate differences:
+
+1. **It refuses `sk_test_`**, the mirror of the other script's refusal on a live key. A test key
+   here would look installed and decline every real card.
+2. **It requires the phrase `ARM LIVE PAYMENTS` typed** before anything is written. The test
+   installer needs no such thing; its worst case is a rehearsal charge on a fake card.
+3. **It never creates a charge.** `verify-stripe.mjs` proves the payment path by confirming a
+   PaymentIntent on Stripe's 4242 card — with a live key that is a real charge on a real account.
+   `verify-stripe-live.mjs` asks the account whether it CAN take money (`charges_enabled`), which
+   is what the 4242 charge was actually testing, plus livemode, the webhook signature
+   accept/forge-reject, and the same check through the live HTTPS endpoint.
+
+It stops before writing anything if `charges_enabled` is false — a live key on an account with
+incomplete onboarding looks perfectly configured and declines the first real client.
+
+**One thing the script cannot do for you:** after it passes, take one real card payment yourself
+for a small amount and refund it in the Stripe dashboard, and confirm it lands on the invoice in
+SAOS rather than only in Stripe. That is the only end-to-end proof that does not exist until a
+real card is used.
+
+Rollback: `STRIPE_MODE=stub` restores the previous behaviour, and the prior file is at
+`/opt/saos/.env.bak.*`.
 
 ### ✅ G-A WITHDRAWN 2026-09-06 — the engagement letters were never blocked
 
@@ -258,9 +301,12 @@ Developers → API keys → Secret key (starts `sk_test_`). That is the ONLY val
 — the webhook signing secret is created and captured by the script from Stripe's own
 API response, because Stripe reveals it once, at creation.
 
-```bash
-ssh -i ~/.ssh/saos_hetzner_ed25519 "root@$(sed -n 's/^SERVER_IPV4=//p' .env.production)" -t 'bash /opt/saos/scripts/install-stripe-test.sh'
+```powershell
+ssh -i ~/.ssh/saos_hetzner_ed25519 "root@$saos" -t 'bash /opt/saos/scripts/install-stripe-test.sh'
 ```
+
+(`$saos` comes from **Connecting to the server** at the top of this file. The bash form this used
+to show fails silently in PowerShell — empty host, then "Connection refused".)
 
 It then: validates the key and REFUSES a live one outright; confirms Stripe reports
 livemode=false; deletes and recreates the webhook endpoint so a fresh signing secret can

@@ -104,9 +104,12 @@ So the container is up and reachable and the app is in real `http` mode — it j
 has no credential. In Docuseal: **Settings → API**, copy the token. Then on the
 server:
 
-```bash
-ssh -i ~/.ssh/saos_hetzner_ed25519 "root@$(sed -n 's/^SERVER_IPV4=//p' .env.production)"
+```powershell
+ssh -i ~/.ssh/saos_hetzner_ed25519 "root@$saos"
 ```
+
+(`$saos` is set by the one-liner in tasks/launch-readiness.md → **Connecting to the server**.
+The bash `$(sed …)` form fails silently in PowerShell and looks like the server is refusing you.)
 
 Edit `/opt/saos/.env`, set `DOCUSEAL_API_TOKEN=<the token>`, then:
 

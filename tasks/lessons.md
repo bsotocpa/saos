@@ -1467,3 +1467,49 @@ never opened it.
 about it. A green test is a claim the codebase is making continuously; contradicting one should
 require explaining why the test is wrong. I had grepped the database and never asked what the
 suite believed.
+
+## I handed Brian a bash command and he runs PowerShell (2026-09-08)
+
+The Stripe installer command I gave him was:
+
+    ssh -i ~/.ssh/saos_hetzner_ed25519 "root@$(sed -n 's/^SERVER_IPV4=//p' .env.production)" -t '…'
+
+He pasted it into PowerShell, which has no `sed` and does not do `$(…)` command substitution the
+same way. The host resolved to an empty string and ssh reported **"connect to host port 22:
+Connection refused"** — which reads exactly like the server being down. He could reasonably have
+spent an hour on the server before suspecting the command.
+
+The idiom came from this repo's own docs, and it was MINE: on 2026-08-22 I replaced a hard-coded
+IP in `first-client-runbook.md` and `launch-readiness.md` with that bash form, in files whose only
+reader runs PowerShell. I fixed one leak and introduced another.
+
+**Rule:** a command handed to a person is written for THEIR shell, not the one I happen to be
+thinking in. My environment notes say PowerShell is primary; the Bash tool being available to me
+says nothing about what is on their clipboard. When a doc holds a command for a human, name the
+shell in the fence — ```powershell — and set the variable once at the top rather than repeating a
+substitution that has to be right in two languages.
+
+Worth noticing the shape of the failure: the wrong command did not error as a bad command. It
+produced a *plausible infrastructure symptom*. Shell mismatches degrade into lies about the
+system.
+
+## The `String.replace` dollar trap, for the second time in one project (2026-09-08)
+
+Inserting a PowerShell snippet into a markdown file with
+
+    text.replace(anchor, header + rest)
+
+silently destroyed the file from the insertion point on. The snippet contains `'^SERVER_IPV4=(.+)$'`
+— and in a replacement STRING, `$'` means "everything after the match". So the tail of the file was
+substituted into the middle of my snippet and the real tail was dropped. 311 lines became a stump,
+and nothing errored.
+
+This is already in this file, from 2026-08-17, when the same trap ate the middle of a guard script.
+I hit it again because the payload changed shape — last time a backtick, this time a dollar — and I
+had filed the lesson under the payload rather than the mechanism.
+
+**Rule:** never pass a computed string as the replacement argument. Always
+`replace(anchor, () => text)`. A replacer function receives the text verbatim and has no special
+sequences at all. There is no case where the string form is worth the risk, so make it
+unconditional rather than something to remember when the content looks dangerous — the content
+looked harmless both times.
