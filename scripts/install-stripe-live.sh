@@ -106,12 +106,29 @@ fi
 
 # Can this account actually take money? A live key on an account that has not finished
 # onboarding looks completely configured and declines the first real client.
-ACCT="$(stripe_api GET /accounts || true)"
+#
+# /v1/account — SINGULAR. The first version called /v1/accounts, which is the Connect endpoint
+# that LISTS connected accounts; for a normal account it returns an empty list with no
+# charges_enabled field anywhere in it. The grep below then failed for every account on earth,
+# and the script told Brian his Stripe onboarding was incomplete when the truth was that it had
+# asked the wrong question. Read-only either way, so nothing was harmed — but a check that cannot
+# tell "the field is false" from "the field is not there" reports the same thing for a broken
+# account and a broken script. Now it distinguishes them.
+ACCT="$(stripe_api GET /account || true)"
+if ! printf '%s' "$ACCT" | grep -q '"charges_enabled"'; then
+  fail "the account response did not contain charges_enabled at all — that is a SCRIPT or API problem, not your account"
+  printf '%s' "$ACCT" | head -c 300
+  echo
+  info "nothing has been written — your .env is untouched"
+  exit 1
+fi
 if printf '%s' "$ACCT" | grep -q '"charges_enabled"[[:space:]]*:[[:space:]]*true'; then
   pass "the account is able to accept charges (charges_enabled=true)"
 else
-  fail "charges_enabled is NOT true — Stripe has the key but this account cannot take a payment"
-  info "usually onboarding or verification is incomplete; check the Stripe dashboard home page"
+  fail "charges_enabled=false — Stripe has the key but this account cannot take a payment yet"
+  info "this is a real answer from Stripe about the LIVE account, not a script error:"
+  info "onboarding or identity/bank verification is incomplete. The Stripe dashboard home"
+  info "page will say exactly what is outstanding."
   info "nothing has been written — your .env is untouched"
   exit 1
 fi

@@ -1513,3 +1513,50 @@ had filed the lesson under the payload rather than the mechanism.
 sequences at all. There is no case where the string form is worth the risk, so make it
 unconditional rather than something to remember when the content looks dangerous — the content
 looked harmless both times.
+
+## The installer refused Brian for a reason that was mine, not his (2026-09-08)
+
+The live Stripe installer stopped at check 2:
+
+    FAIL  charges_enabled is NOT true — Stripe has the key but this account cannot take a payment
+          usually onboarding or verification is incomplete; check the Stripe dashboard home page
+
+It called `GET /v1/accounts` — PLURAL — which is the Connect endpoint that LISTS connected
+accounts. For an ordinary account that returns `{"object":"list","data":[]}`: no
+`charges_enabled` field anywhere in it. The grep for `"charges_enabled": true` then failed for
+every Stripe account in existence, and the message sent Brian to go and fix onboarding that may
+be perfectly complete. `GET /v1/account` — singular — is the one that returns his own account.
+
+Two things went wrong and the second is the one worth keeping:
+
+1. The wrong endpoint. Verified afterwards against the test key: plural returns the empty list,
+   singular returns the account with the field present. The Node verifier was already right —
+   `stripe.accounts.retrieve()` with no id calls the singular URL — so only the bash pre-check
+   was broken.
+2. **The check could not tell "false" from "absent".** `grep -q '"charges_enabled": true'`
+   fails identically when the field says false and when the field is not there. So a broken
+   script and a broken account produced the same FAIL with the same advice. The fix is a
+   three-way check: field missing → "this is a SCRIPT or API problem, not your account"; field
+   false → "this is a real answer from Stripe about your live account"; field true → pass.
+
+The guard-before-write design did its job: nothing was written, the key never reached disk, and
+the worst outcome was a wrong sentence. But "the script fails closed" is not the same as "the
+script tells the truth about why".
+
+**Rule:** any check that greps for `"field": value` must first assert the field EXISTS in the
+response, and give the two failures different messages. Absence is a fact about the request;
+false is a fact about the thing. Same lesson as the audit rows, the SOS `not_found`, and the
+`checked: 0` job record — a failure representation that means two things means neither.
+
+## Deploy ships HEAD, not the working tree (2026-09-08)
+
+Fixed the installer, ran `bash scripts/deploy.sh`, grepped the box: the old script was still
+there. `deploy.sh` ships with `git archive HEAD` — tracked, COMMITTED files. An uncommitted edit
+does not deploy, and the deploy reports success because it did exactly what it does.
+
+Every previous deploy this month happened to follow a commit, so the dependency was never
+exercised and I had it wrong in my head as "ships the working tree".
+
+**Rule:** commit before deploy, always — and after any deploy, verify the change on the box by
+grepping for the changed line, not by reading the deploy's exit code. The deploy succeeding tells
+you the shipping worked; only the box tells you what was shipped.
