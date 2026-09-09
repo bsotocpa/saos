@@ -22,27 +22,44 @@ export function localeFor(lang: PortalLang): string {
   return browser.toLowerCase().startsWith('en') ? browser : 'en-US';
 }
 
-/** "Aug 16, 2026" / "16 ago 2026" — a date-only value is a calendar day, never zone-shifted. */
-export function formatDate(v: DateInput, lang: PortalLang): string {
+/*
+ * TYPED INPUT (2026-09-09, Brian's ruling). A DATE column is a calendar day — 'YYYY-MM-DD',
+ * no zone, never shifted: formatDate. A TIMESTAMPTZ is an instant in the reader's zone:
+ * formatDateTime/formatTime, or dayOf for the day it fell on. An instant handed to formatDate
+ * renders the right day with a visible ⚠ marker (WRONG_HELPER); the build guard refuses the
+ * static cases.
+ */
+export type CalendarDate = `${number}-${number}-${number}`;
+export type Instant = string;
+export const WRONG_HELPER = '⚠';
+
+/** The reader's calendar day an instant fell on — "received Aug 16, 2026". */
+export function dayOf(v: Instant | Date | null | undefined, lang: PortalLang): string {
+  const d = toDate(v);
+  return d ? new Intl.DateTimeFormat(localeFor(lang), { month: 'short', day: 'numeric', year: 'numeric' }).format(d) : '—';
+}
+
+/** "Aug 16, 2026" / "16 ago 2026" — a CALENDAR DAY (DATE column), never zone-shifted. For an instant, use dayOf. */
+export function formatDate(v: CalendarDate | string | null | undefined, lang: PortalLang): string {
   if (isDateOnly(v)) {
     const [y, m, d] = v.split('-').map(Number);
     return new Intl.DateTimeFormat(localeFor(lang), { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
       .format(new Date(Date.UTC(y!, m! - 1, d!)));
   }
-  const d = toDate(v);
-  return d ? new Intl.DateTimeFormat(localeFor(lang), { month: 'short', day: 'numeric', year: 'numeric' }).format(d) : '—';
+  if (!toDate(v)) return '—';
+  return `${WRONG_HELPER} ${dayOf(v, lang)}`;
 }
 
-/** Date and time in the reader's zone. */
-export function formatDateTime(v: DateInput, lang: PortalLang): string {
+/** Date and time in the reader's zone — an INSTANT (timestamptz). */
+export function formatDateTime(v: Instant | Date | null | undefined, lang: PortalLang): string {
   const d = toDate(v);
   return d
     ? new Intl.DateTimeFormat(localeFor(lang), { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(d)
     : '—';
 }
 
-/** Time of day in the reader's zone. */
-export function formatTime(v: DateInput, lang: PortalLang): string {
+/** Time of day in the reader's zone — an INSTANT (timestamptz). */
+export function formatTime(v: Instant | Date | null | undefined, lang: PortalLang): string {
   const d = toDate(v);
   return d ? new Intl.DateTimeFormat(localeFor(lang), { hour: 'numeric', minute: '2-digit' }).format(d) : '—';
 }

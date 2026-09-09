@@ -11,7 +11,7 @@
 // The panel states whether the send is armed BEFORE the approve button, so the tap
 // never silently does nothing.
 
-import { formatDate, formatDateTime, formatTime } from '../../lib/dates';
+import { dayOf, formatDate, formatDateTime, formatTime } from '../../lib/dates';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
@@ -115,7 +115,7 @@ export default function ApprovalsPage() {
           </h2>
           <p className="muted small">
             {r.title ?? 'untitled session'}
-            {r.started_at ? ` · ${formatDate(r.started_at)}` : ''}
+            {r.started_at ? ` · ${dayOf(r.started_at)}` : ''}
             {r.approved_by ? ` · approved by ${r.approved_by}` : ''}
           </p>
           {r.recap_send_suppressed_reason ? (

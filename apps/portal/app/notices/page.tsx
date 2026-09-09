@@ -9,7 +9,7 @@
 // that we are handling it — and never shows the internal machinery (who owns the
 // ticket, what escalation rung it is on, the service tier).
 
-import { formatDate, formatDateTime, formatTime } from '../../lib/dates';
+import { dayOf, formatDate, formatDateTime, formatTime } from '../../lib/dates';
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/session';
@@ -70,7 +70,7 @@ export default function NoticesPage() {
           ) : null}
           {n.receivedAt ? (
             <p className="muted small">
-              {t('notice_received')} {formatDate(n.receivedAt, lang)}
+              {t('notice_received')} {dayOf(n.receivedAt, lang)}
             </p>
           ) : null}
         </section>

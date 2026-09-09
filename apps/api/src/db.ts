@@ -43,6 +43,15 @@ export interface Db {
  */
 const txStore = new AsyncLocalStorage<pg.PoolClient>();
 
+/*
+ * DATE columns are calendar days (2026-09-09, Brian's ruling after "started Sep 9 · ended
+ * Sep 8"). pg's default parser turns a DATE into a JS Date at the SERVER's local midnight,
+ * which serialises as "2026-09-09T00:00:00.000Z" — and a formatter that treats that as an
+ * instant renders the previous evening in Chicago. A day has no zone. OID 1082 is returned
+ * as the text it was stored as; timestamptz (1184) keeps its instant semantics.
+ */
+pg.types.setTypeParser(1082, (value: string) => value);
+
 export function createPool(databaseUrl: string): Db {
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 10 });
 

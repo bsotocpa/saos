@@ -6,7 +6,7 @@
 // column chooser, and bulk operations; kanban groups by any picklist with
 // column counts; create/edit form renders from the tasks.layout setting.
 
-import { formatDate, formatDateTime, formatMonth, formatTime } from '../../lib/dates';
+import { dayOf, formatDate, formatDateTime, formatMonth, formatTime } from '../../lib/dates';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -722,7 +722,7 @@ function ListView(props: {
                 </td>
               ) : null}
               {cols.includes('checklist') ? <td>{t.checklist_total > 0 ? `${t.checklist_done}/${t.checklist_total}` : '—'}</td> : null}
-              {cols.includes('created_at') ? <td className="muted">{formatDate(t.created_at)}</td> : null}
+              {cols.includes('created_at') ? <td className="muted">{dayOf(t.created_at)}</td> : null}
               <td style={{ whiteSpace: 'nowrap' }}>
                 {props.canManage ? (
                   <>

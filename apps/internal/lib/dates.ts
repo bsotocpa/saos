@@ -17,19 +17,23 @@ function isDateOnly(v: DateInput): v is string {
   return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
 
-/** "Aug 16, 2026" */
-export function formatDate(v: DateInput): string {
+/** The visible marker formatDate prints when it is handed an instant. Tests look for it. */
+export const WRONG_HELPER = '⚠';
+
+/** "Aug 16, 2026" — a CALENDAR DAY ('YYYY-MM-DD' from a DATE column). For an instant, use dayOf. */
+export function formatDate(v: CalendarDate | string | null | undefined): string {
   if (isDateOnly(v)) {
     const [y, m, d] = v.split('-').map(Number);
     return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
       .format(new Date(Date.UTC(y!, m! - 1, d!)));
   }
-  const d = toDate(v);
-  return d ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: OPS_TIME_ZONE }).format(d) : '—';
+  if (!toDate(v)) return '—';
+  // An instant reached the calendar-day formatter: render the Chicago day it fell on, marked.
+  return `${WRONG_HELPER} ${dayOf(v)}`;
 }
 
-/** "Aug 16, 2026, 3:04 PM CT" */
-export function formatDateTime(v: DateInput): string {
+/** "Aug 16, 2026, 3:04 PM CT" — an INSTANT (timestamptz), in Chicago. */
+export function formatDateTime(v: Instant | Date | null | undefined): string {
   const d = toDate(v);
   if (!d) return '—';
   return `${new Intl.DateTimeFormat('en-US', {
@@ -37,8 +41,8 @@ export function formatDateTime(v: DateInput): string {
   }).format(d)} CT`;
 }
 
-/** "3:04 PM CT" */
-export function formatTime(v: DateInput): string {
+/** "3:04 PM CT" — an INSTANT (timestamptz), in Chicago. */
+export function formatTime(v: Instant | Date | null | undefined): string {
   const d = toDate(v);
   if (!d) return '—';
   return `${new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: OPS_TIME_ZONE }).format(d)} CT`;
@@ -49,6 +53,29 @@ export function formatMonth(yyyyMm: string): string {
   const [y, m] = yyyyMm.split('-').map(Number);
   if (!y || !m) return yyyyMm;
   return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, 1)));
+}
+
+/**
+ * TYPED INPUT (2026-09-09, Brian's ruling). A DATE column is a calendar day — 'YYYY-MM-DD',
+ * no zone, never shifted. A TIMESTAMPTZ is an instant, rendered in Chicago. formatDate takes
+ * the first; formatDateTime/formatTime take the second; dayOf takes an instant and gives the
+ * Chicago calendar day it fell on. Handing an instant to formatDate renders the right day
+ * with a visible ⚠ marker (WRONG_HELPER) rather than a silently wrong one; the build guard
+ * (check:date-rendering) refuses the static cases: a *_at field into formatDate, a *_on or
+ * *_date field into dayOf/formatDateTime/formatTime.
+ */
+export type CalendarDate = `${number}-${number}-${number}`;
+export type Instant = string;
+
+export function isCalendarDate(v: unknown): v is CalendarDate {
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+}
+
+/** The Chicago calendar day an instant fell on — for "paid on", "sent on" from timestamps. */
+export function dayOf(v: Instant | Date | null | undefined): string {
+  const d = toDate(v);
+  if (!d) return '—';
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: OPS_TIME_ZONE }).format(d);
 }
 
 /** The ISO-with-T shape a raw timestamp leaks as. The guard and the tests look for this. */

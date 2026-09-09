@@ -1841,3 +1841,24 @@ race. The test holds a send open and runs two drains: one email.
 **Diagnostic that worked again:** when a screen contradicts a database, prove the database
 first (0003 was still paid; the dashboard resend had answered 401), then ask which is
 lying. The display was innocent.
+
+## 2026-09-09 — A calendar day has no zone; a formatter that takes "anything" will shift it
+
+**What happened.** The Ops client page read "started Sep 9 · ended Sep 8" on an engagement
+started and ended the same day. `started_on`/`ended_on` are DATE columns. node-postgres parses
+DATE into a JS Date at the *server's* midnight, JSON prints it as `2026-09-09T00:00:00.000Z`,
+and a helper that treats every string as an instant rendered the previous evening in Chicago.
+38 DATE columns were leaving the API that way. The same family: `pausedDays` compared
+`Date.now()` on the API host with `work_paused_at` stamped by Postgres `now()` — two clocks,
+and a sub-second skew floored six days to five.
+
+**The rule.** A DATE column is a calendar day and leaves the driver as `'YYYY-MM-DD'` text
+(type parser on OID 1082). The helper has typed input: `formatDate` takes a calendar day,
+`dayOf`/`formatDateTime`/`formatTime` take an instant. Handing an instant to `formatDate`
+renders the right day with a visible ⚠, and the build guard refuses the static cases
+(`*_at` into formatDate; `*_on`/`*_date` into an instant formatter). A duration is measured on
+the clock that wrote its start — in SQL, against `now()`.
+
+**How to apply.** When a date is wrong by exactly one day, look for a DATE column that became
+an instant, not for a bug in the formatter. When a duration is off by one at a boundary, look
+for two clocks.

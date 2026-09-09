@@ -2,11 +2,14 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatDate, formatDateTime, formatTime, RAW_TIMESTAMP } from '../lib/dates.ts';
+import { formatDate, formatDateTime, formatTime, dayOf, RAW_TIMESTAMP, WRONG_HELPER } from '../lib/dates.ts';
 
 test('a timestamp renders as a Chicago date, never as ISO-T', () => {
-  // 2026-08-16T00:00:00Z is 7 PM on Aug 15 in Chicago (CDT).
-  assert.equal(formatDate('2026-08-16T00:00:00.000Z'), 'Aug 15, 2026');
+  // 2026-08-16T00:00:00Z is 7 PM on Aug 15 in Chicago (CDT). An instant's day comes from dayOf;
+  // the premise that formatDate takes an instant was inverted on 2026-09-09 (typed input):
+  // it still renders the right Chicago day, but marked, because the caller used the wrong helper.
+  assert.equal(dayOf('2026-08-16T00:00:00.000Z'), 'Aug 15, 2026');
+  assert.equal(formatDate('2026-08-16T00:00:00.000Z'), `${WRONG_HELPER} Aug 15, 2026`);
   assert.equal(formatDateTime('2026-08-16T00:00:00.000Z'), 'Aug 15, 2026, 7:00 PM CT');
   assert.equal(formatTime('2026-08-16T00:00:00.000Z'), '7:00 PM CT');
   for (const out of [formatDate('2026-08-16T00:00:00.000Z'), formatDateTime('2026-08-16T00:00:00.000Z')]) {

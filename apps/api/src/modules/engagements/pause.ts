@@ -147,8 +147,18 @@ export async function resumeEngagement(
     );
   }
 
-  const pausedMs = Date.now() - eng.work_paused_at.getTime();
-  const pausedDays = Math.max(0, Math.floor(pausedMs / 86_400_000));
+  /*
+   * ONE CLOCK (2026-09-09). work_paused_at was stamped by Postgres's now(); measuring the
+   * pause with the API host's Date.now() compared two clocks, and a sub-second skew between
+   * them floored six days to five in the suite. The duration is asked of the same clock that
+   * wrote the start. Whole days, floored — a pause of 6 days and 20 hours refunds 6 days.
+   */
+  const measured = await app.db.query<{ days: number }>(
+    `SELECT floor(EXTRACT(EPOCH FROM (now() - work_paused_at)) / 86400)::int AS days
+       FROM engagements WHERE id = $1`,
+    [engagementId]
+  );
+  const pausedDays = Math.max(0, measured.rows[0]?.days ?? 0);
 
   /*
    * THE CLOCK IS HELD, in the only two places a clock actually runs.

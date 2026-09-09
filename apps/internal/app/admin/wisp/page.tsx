@@ -4,7 +4,7 @@
 // backup + restore-drill recency — exportable as markdown for the written
 // WISP whenever the IRS checklist or an insurer asks.
 
-import { formatDate, formatDateTime, formatTime } from '../../../lib/dates';
+import { dayOf, formatDate, formatDateTime, formatTime } from '../../../lib/dates';
 import { useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 
@@ -93,7 +93,7 @@ export default function WispPage() {
                   <td>{m.full_name}{m.is_active ? '' : ' (inactive)'}</td>
                   <td className="muted small">{m.role}</td>
                   <td>{m.totp_enabled ? <span className="badge ok">on</span> : <span className="badge warn">pending</span>}</td>
-                  <td className="muted small">{m.last_login_at ? formatDate(m.last_login_at) : '—'}</td>
+                  <td className="muted small">{m.last_login_at ? dayOf(m.last_login_at) : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -109,7 +109,7 @@ export default function WispPage() {
           <p className="muted small">
             Document access (30d): {s.audit.document_access_30d} · Permission changes (30d): {s.audit.permission_changes_30d}
             <br />
-            Coverage: {formatDate(s.audit.oldest_event_at) ?? '—'} → {formatDate(s.audit.newest_event_at) ?? '—'}
+            Coverage: {dayOf(s.audit.oldest_event_at) ?? '—'} → {dayOf(s.audit.newest_event_at) ?? '—'}
           </p>
         </section>
 
@@ -126,7 +126,7 @@ export default function WispPage() {
             <p className="alert info">No backup recorded on this machine — scripts/backup.sh has not run here (see RUNBOOK_OPS.md).</p>
           )}
           <p className="small">
-            Restore drill: {drill.last_passed_at ? `last passed ${formatDate(drill.last_passed_at)}` : 'NEVER RUN'}{' '}
+            Restore drill: {drill.last_passed_at ? `last passed ${dayOf(drill.last_passed_at)}` : 'NEVER RUN'}{' '}
             {drill.overdue ? <span className="badge danger">overdue</span> : <span className="badge ok">on cadence</span>}
             <span className="muted"> (every {drill.interval_days} days; record passes in Settings → ops.last_restore_drill_at)</span>
           </p>

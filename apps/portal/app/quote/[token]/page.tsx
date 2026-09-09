@@ -8,7 +8,7 @@
 // Every price on this page was copied from the price book when the quote was
 // built, so what the client sees is what the engagement will charge.
 
-import { formatDate, formatDateTime, formatTime } from '../../../lib/dates';
+import { dayOf, formatDate, formatDateTime, formatTime } from '../../../lib/dates';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { api, ApiError, formatMoney } from '../../../lib/api';
@@ -317,7 +317,7 @@ export default function QuotePage() {
         {isRange ? <p className="muted small">{t('quote_estimate_note')}</p> : null}
         {quote!.expires_at ? (
           <p className="muted small">
-            {t('quote_expires')} {formatDate(quote!.expires_at, lang)}
+            {t('quote_expires')} {dayOf(quote!.expires_at, lang)}
           </p>
         ) : null}
         {quote!.notes ? <p className="small">{quote!.notes}</p> : null}

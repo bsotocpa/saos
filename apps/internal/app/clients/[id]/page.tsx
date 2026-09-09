@@ -11,7 +11,7 @@
 // Reading this record is an audited PII access (the API writes contact.viewed).
 // That is deliberate and worth knowing: opening a client's packet leaves a trail.
 
-import { formatDate, formatDateTime, formatTime } from '../../../lib/dates';
+import { dayOf, formatDate, formatDateTime, formatTime } from '../../../lib/dates';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../../lib/api';
@@ -489,7 +489,7 @@ export default function ClientPacketPage() {
             <span className={`badge ${portalBadge(c.portal_state)}`}>{PORTAL_LABEL[c.portal_state] ?? c.portal_state}</span>{' '}
             Portal access
             {c.portal_state === 'active' && c.portal_last_login_at ? (
-              <span className="muted"> · last signed in {formatDate(c.portal_last_login_at)}</span>
+              <span className="muted"> · last signed in {dayOf(c.portal_last_login_at)}</span>
             ) : null}
             {c.portal_state === 'invited' && c.portal_link_sent_at ? (
               <span className="muted">
@@ -577,7 +577,7 @@ export default function ClientPacketPage() {
             docs.slice(0, 12).map((d) => (
               <p key={d.id} className="small" style={{ margin: '3px 0', overflowWrap: 'anywhere' }}>
                 <span className="badge">{d.category.replaceAll('_', ' ')}</span> {d.original_filename}
-                <span className="muted"> · {formatDate(d.created_at)}</span>
+                <span className="muted"> · {dayOf(d.created_at)}</span>
               </p>
             ))
           )}
@@ -597,7 +597,7 @@ export default function ClientPacketPage() {
                 {q.range_min_cents !== null && q.range_max_cents !== null
                   ? `${formatMoney(q.range_min_cents)}–${formatMoney(q.range_max_cents)}`
                   : formatMoney(q.total_cents)}
-                <span className="muted"> · {formatDate(q.created_at)}</span>
+                <span className="muted"> · {dayOf(q.created_at)}</span>
               </p>
             ))
           )}
@@ -630,9 +630,9 @@ export default function ClientPacketPage() {
                   </span>
                 </span>
                 <span className="muted small" style={{ flex: '1 1 100%' }}>
-                  created {formatDate(p.created_at)}
-                  {p.sent_at ? ` · sent ${formatDate(p.sent_at)}` : ''}
-                  {p.signed_at ? ` · signed ${formatDate(p.signed_at)}` : ''}
+                  created {dayOf(p.created_at)}
+                  {p.sent_at ? ` · sent ${dayOf(p.sent_at)}` : ''}
+                  {p.signed_at ? ` · signed ${dayOf(p.signed_at)}` : ''}
                 </span>
                 {/* THE PROMISED ACTIONS, made clickable. The banner told Brian to
                     "review the document, then send it for signature" and the row had
@@ -801,7 +801,7 @@ export default function ClientPacketPage() {
                     'Scope not recorded — created before scope was captured at acceptance.'}
               </span>
               <span className="muted small" style={{ flex: '1 1 100%' }}>
-                started {formatDate(e.created_at)}
+                started {dayOf(e.created_at)}
                 {e.ended_on ? ` · ended ${formatDate(e.ended_on)}` : ''}
                 {e.close_reason ? ` · ${e.close_reason}` : ''}
               </span>
@@ -1051,10 +1051,10 @@ export default function ClientPacketPage() {
                   {inv.status === 'void' || inv.status === 'refunded' || inv.status === 'partially_refunded' ? (
                     <span className="muted small">
                       {' '}
-                      {invoiceStatusLine(inv, { money: formatMoney, date: (iso) => formatDate(iso) })}
+                      {invoiceStatusLine(inv, { money: formatMoney, date: (iso) => dayOf(iso) })}
                     </span>
                   ) : null}
-                  {inv.sent_at ? <span className="muted small"> sent {formatDate(inv.sent_at)}</span> : null}
+                  {inv.sent_at ? <span className="muted small"> sent {dayOf(inv.sent_at)}</span> : null}
                   {/* What actually happened to each client message — from the record, never rounded up. */}
                   {(inv.notices ?? []).map((n) => (
                     <span key={n.outboxId ?? n.auditId ?? n.kind} className="muted small">
