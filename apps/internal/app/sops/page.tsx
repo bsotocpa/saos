@@ -7,6 +7,7 @@
 // registry tab is the honest coverage view — how many task types actually have a
 // procedure written, not how many have a mapping.
 
+import { formatDate, formatDateTime, formatTime } from '../../lib/dates';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
@@ -187,7 +188,7 @@ function SopsBrowser() {
                   <h2 style={{ marginTop: 14 }}>History</h2>
                   {history.map((h) => (
                     <p key={h.version} className="muted small" style={{ margin: '2px 0' }}>
-                      v{h.version} · {h.created_at.slice(0, 10)}
+                      v{h.version} · {formatDate(h.created_at)}
                       {h.changed_by ? ` · ${h.changed_by}` : ''}
                       {h.note ? ` — ${h.note}` : ''}
                     </p>

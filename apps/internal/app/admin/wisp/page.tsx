@@ -4,6 +4,7 @@
 // backup + restore-drill recency — exportable as markdown for the written
 // WISP whenever the IRS checklist or an insurer asks.
 
+import { formatDate, formatDateTime, formatTime } from '../../../lib/dates';
 import { useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 
@@ -61,7 +62,7 @@ export default function WispPage() {
         WISP security summary <span className="badge">{s.environment}</span>
       </h1>
       <p className="muted small">
-        Live posture as of {s.generated_at}.{' '}
+        Live posture as of {formatDateTime(s.generated_at)}.{' '}
         <button className="btn ghost" type="button" onClick={() => void download()}>
           Download for the WISP binder (.md)
         </button>
@@ -92,7 +93,7 @@ export default function WispPage() {
                   <td>{m.full_name}{m.is_active ? '' : ' (inactive)'}</td>
                   <td className="muted small">{m.role}</td>
                   <td>{m.totp_enabled ? <span className="badge ok">on</span> : <span className="badge warn">pending</span>}</td>
-                  <td className="muted small">{m.last_login_at ? m.last_login_at.slice(0, 10) : '—'}</td>
+                  <td className="muted small">{m.last_login_at ? formatDate(m.last_login_at) : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -108,7 +109,7 @@ export default function WispPage() {
           <p className="muted small">
             Document access (30d): {s.audit.document_access_30d} · Permission changes (30d): {s.audit.permission_changes_30d}
             <br />
-            Coverage: {s.audit.oldest_event_at?.slice(0, 10) ?? '—'} → {s.audit.newest_event_at?.slice(0, 10) ?? '—'}
+            Coverage: {formatDate(s.audit.oldest_event_at) ?? '—'} → {formatDate(s.audit.newest_event_at) ?? '—'}
           </p>
         </section>
 
@@ -116,7 +117,7 @@ export default function WispPage() {
           <h2>Backups &amp; recovery</h2>
           {s.backups.configured ? (
             <p className="small">
-              Last snapshot <strong>{s.backups.snapshot_id?.slice(0, 8)}</strong> at {s.backups.last_backup_at}{' '}
+              Last snapshot <strong>{s.backups.snapshot_id?.slice(0, 8)}</strong> at {formatDateTime(s.backups.last_backup_at)}{' '}
               ({s.backups.repository_kind}) {s.backups.stale ? <span className="badge danger">STALE &gt;26h</span> : <span className="badge ok">fresh</span>}
               <br />
               <span className="muted">Retention: {s.backups.retention}</span>
@@ -125,7 +126,7 @@ export default function WispPage() {
             <p className="alert info">No backup recorded on this machine — scripts/backup.sh has not run here (see RUNBOOK_OPS.md).</p>
           )}
           <p className="small">
-            Restore drill: {drill.last_passed_at ? `last passed ${drill.last_passed_at.slice(0, 10)}` : 'NEVER RUN'}{' '}
+            Restore drill: {drill.last_passed_at ? `last passed ${formatDate(drill.last_passed_at)}` : 'NEVER RUN'}{' '}
             {drill.overdue ? <span className="badge danger">overdue</span> : <span className="badge ok">on cadence</span>}
             <span className="muted"> (every {drill.interval_days} days; record passes in Settings → ops.last_restore_drill_at)</span>
           </p>

@@ -5,6 +5,7 @@
 // optional SMS opt-in last. Reordered by Brian after running the journey himself.
 
 import Link from 'next/link';
+import { formatDateTime } from '../lib/dates';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../lib/api';
@@ -418,7 +419,7 @@ export default function Dashboard() {
                     <strong>{b.title ?? b.event_slug}</strong>
                     <br />
                     <span className="muted small">
-                      {b.starts_at ? new Date(b.starts_at).toLocaleString(lang === 'es' ? 'es-US' : 'en-US') : t('sched_time_tbd')}
+                      {b.starts_at ? formatDateTime(b.starts_at, lang) : t('sched_time_tbd')}
                       {b.location ? ` · ${b.location}` : ''}
                     </span>
                   </span>

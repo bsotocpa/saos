@@ -7,6 +7,7 @@
 // version, so a price change tomorrow never re-prices a proposal a client is
 // reading today.
 
+import { formatDate, formatDateTime, formatTime } from '../../lib/dates';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -609,7 +610,7 @@ export default function PipelinePage() {
               </strong>
               {openQuotes.map((q) => (
                 <p key={q.id} className="small" style={{ margin: '6px 0' }}>
-                  {money(q.total_cents)} · sent {q.created_at.slice(0, 10)} · awaiting their decision
+                  {money(q.total_cents)} · sent {formatDate(q.created_at)} · awaiting their decision
                 </p>
               ))}
               <p className="muted small">
@@ -998,7 +999,7 @@ export default function PipelinePage() {
                     {r.expires_at && r.quote_status === 'sent' ? (
                       <>
                         <br />
-                        <span className="muted small">expires {r.expires_at.slice(0, 10)}</span>
+                        <span className="muted small">expires {formatDate(r.expires_at)}</span>
                       </>
                     ) : null}
                   </Link>

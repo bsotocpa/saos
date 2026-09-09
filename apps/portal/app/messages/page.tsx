@@ -12,6 +12,7 @@
 // refiled the sentence survives and the link degrades to plain text, so the
 // conversation never develops a hole.
 
+import { formatDate, formatDateTime, formatTime } from '../../lib/dates';
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useSession } from '../../lib/session';
@@ -36,7 +37,7 @@ const CATEGORIES = [
 ] as const;
 
 export default function MessagesPage() {
-  const { t } = useSession();
+  const { t, lang } = useSession();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [body, setBody] = useState('');
   const [subject, setSubject] = useState('');
@@ -108,7 +109,7 @@ export default function MessagesPage() {
                     </a>
                   </div>
                 ) : null}
-                <div className="muted small">{new Date(m.sentAt).toLocaleString()}</div>
+                <div className="muted small">{formatDateTime(m.sentAt, lang)}</div>
               </div>
             ))}
           </div>

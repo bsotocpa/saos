@@ -11,6 +11,7 @@
 // Reading this record is an audited PII access (the API writes contact.viewed).
 // That is deliberate and worth knowing: opening a client's packet leaves a trail.
 
+import { formatDate, formatDateTime, formatTime } from '../../../lib/dates';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../../lib/api';
@@ -488,11 +489,11 @@ export default function ClientPacketPage() {
             <span className={`badge ${portalBadge(c.portal_state)}`}>{PORTAL_LABEL[c.portal_state] ?? c.portal_state}</span>{' '}
             Portal access
             {c.portal_state === 'active' && c.portal_last_login_at ? (
-              <span className="muted"> · last signed in {new Date(c.portal_last_login_at).toLocaleDateString()}</span>
+              <span className="muted"> · last signed in {formatDate(c.portal_last_login_at)}</span>
             ) : null}
             {c.portal_state === 'invited' && c.portal_link_sent_at ? (
               <span className="muted">
-                {' · link sent '}{new Date(c.portal_link_sent_at).toLocaleString()}
+                {' · link sent '}{formatDateTime(c.portal_link_sent_at)}
                 {linkExpired(c.portal_link_sent_at, packet.magicLinkTtlMinutes)
                   ? ' — expired, send another'
                   : ' — still valid'}
@@ -576,7 +577,7 @@ export default function ClientPacketPage() {
             docs.slice(0, 12).map((d) => (
               <p key={d.id} className="small" style={{ margin: '3px 0', overflowWrap: 'anywhere' }}>
                 <span className="badge">{d.category.replaceAll('_', ' ')}</span> {d.original_filename}
-                <span className="muted"> · {d.created_at.slice(0, 10)}</span>
+                <span className="muted"> · {formatDate(d.created_at)}</span>
               </p>
             ))
           )}
@@ -596,7 +597,7 @@ export default function ClientPacketPage() {
                 {q.range_min_cents !== null && q.range_max_cents !== null
                   ? `${formatMoney(q.range_min_cents)}–${formatMoney(q.range_max_cents)}`
                   : formatMoney(q.total_cents)}
-                <span className="muted"> · {q.created_at.slice(0, 10)}</span>
+                <span className="muted"> · {formatDate(q.created_at)}</span>
               </p>
             ))
           )}
@@ -629,9 +630,9 @@ export default function ClientPacketPage() {
                   </span>
                 </span>
                 <span className="muted small" style={{ flex: '1 1 100%' }}>
-                  created {p.created_at.slice(0, 10)}
-                  {p.sent_at ? ` · sent ${p.sent_at.slice(0, 10)}` : ''}
-                  {p.signed_at ? ` · signed ${p.signed_at.slice(0, 10)}` : ''}
+                  created {formatDate(p.created_at)}
+                  {p.sent_at ? ` · sent ${formatDate(p.sent_at)}` : ''}
+                  {p.signed_at ? ` · signed ${formatDate(p.signed_at)}` : ''}
                 </span>
                 {/* THE PROMISED ACTIONS, made clickable. The banner told Brian to
                     "review the document, then send it for signature" and the row had
@@ -662,7 +663,7 @@ export default function ClientPacketPage() {
                         setActionErr('');
                         try {
                           await api('/portal-users', { method: 'POST', body: { contactId: params.id } });
-                          setActionMsg(`Portal access granted — sign-in link delivered ${new Date().toLocaleTimeString()} (sent inline; audited as magic_link.issued). You can send the packet now.`);
+                          setActionMsg(`Portal access granted — sign-in link delivered ${formatTime(new Date())} (sent inline; audited as magic_link.issued). You can send the packet now.`);
                           await load();
                         } catch (err) {
                           setActionErr(err instanceof Error ? err.message : 'Could not grant portal access.');
@@ -800,8 +801,8 @@ export default function ClientPacketPage() {
                     'Scope not recorded — created before scope was captured at acceptance.'}
               </span>
               <span className="muted small" style={{ flex: '1 1 100%' }}>
-                started {e.created_at.slice(0, 10)}
-                {e.ended_on ? ` · ended ${e.ended_on}` : ''}
+                started {formatDate(e.created_at)}
+                {e.ended_on ? ` · ended ${formatDate(e.ended_on)}` : ''}
                 {e.close_reason ? ` · ${e.close_reason}` : ''}
               </span>
               <span className="amt">
@@ -1050,15 +1051,15 @@ export default function ClientPacketPage() {
                   {inv.status === 'void' || inv.status === 'refunded' || inv.status === 'partially_refunded' ? (
                     <span className="muted small">
                       {' '}
-                      {invoiceStatusLine(inv, { money: formatMoney, date: (iso) => new Date(iso).toLocaleDateString() })}
+                      {invoiceStatusLine(inv, { money: formatMoney, date: (iso) => formatDate(iso) })}
                     </span>
                   ) : null}
-                  {inv.sent_at ? <span className="muted small"> sent {new Date(inv.sent_at).toLocaleDateString()}</span> : null}
+                  {inv.sent_at ? <span className="muted small"> sent {formatDate(inv.sent_at)}</span> : null}
                   {/* What actually happened to each client message — from the record, never rounded up. */}
                   {(inv.notices ?? []).map((n) => (
                     <span key={n.outboxId ?? n.auditId ?? n.kind} className="muted small">
                       <br />
-                      {describeNotice(n, (iso) => new Date(iso).toLocaleTimeString())}
+                      {describeNotice(n, (iso) => formatTime(iso))}
                     </span>
                   ))}
                   {(inv.notices ?? []).length > 0 ? (
@@ -1077,7 +1078,7 @@ export default function ClientPacketPage() {
                         <ul className="list small">
                           {sendLogs[inv.id]!.map((row) => (
                             <li key={`${row.source}-${row.id}`}>
-                              <span className="muted">{new Date(row.at).toLocaleString()}</span> · {row.what} · {row.state}
+                              <span className="muted">{formatDateTime(row.at)}</span> · {row.what} · {row.state}
                               {row.detail ? <span className="muted"> · {row.detail}</span> : null}
                             </li>
                           ))}
@@ -1157,7 +1158,7 @@ export default function ClientPacketPage() {
                                   // delivered. "The client has been told" was a claim, not a fact (2026-09-09).
                                   setActionMsg(
                                     `${inv.invoice_number} is void. ${
-                                      r.notice ? describeNotice(r.notice, (iso) => new Date(iso).toLocaleTimeString()) : 'No cancellation notice was queued (no email on file)'
+                                      r.notice ? describeNotice(r.notice, (iso) => formatTime(iso)) : 'No cancellation notice was queued (no email on file)'
                                     } — see the send log under the invoice.`
                                   );
                                   setVoidingId(null);
@@ -1194,7 +1195,7 @@ export default function ClientPacketPage() {
         {nextSession ? (
           <p className="small">
             <span className="badge ok">scheduled</span>{' '}
-            Next session {new Date(nextSession.starts_at).toLocaleString()}
+            Next session {formatDateTime(nextSession.starts_at)}
             {nextSession.is_recurring ? <span className="muted"> · recurring</span> : null}
             <br />
             <span className="muted small">Attach work to this session rather than booking a second one.</span>

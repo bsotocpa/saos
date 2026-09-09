@@ -9,6 +9,7 @@
 // that we are handling it — and never shows the internal machinery (who owns the
 // ticket, what escalation rung it is on, the service tier).
 
+import { formatDate, formatDateTime, formatTime } from '../../lib/dates';
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/session';
@@ -30,7 +31,7 @@ const STATE_KEY: Record<Notice['clientState'], DictKey> = {
 };
 
 export default function NoticesPage() {
-  const { t } = useSession();
+  const { t, lang } = useSession();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -69,7 +70,7 @@ export default function NoticesPage() {
           ) : null}
           {n.receivedAt ? (
             <p className="muted small">
-              {t('notice_received')} {n.receivedAt.slice(0, 10)}
+              {t('notice_received')} {formatDate(n.receivedAt, lang)}
             </p>
           ) : null}
         </section>

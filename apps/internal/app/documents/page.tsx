@@ -15,6 +15,7 @@
 //
 // Mobile-first for real: cards at 390px, table only when there is width for one.
 
+import { formatDate, formatDateTime, formatTime } from '../../lib/dates';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -182,7 +183,7 @@ export default function DocumentsPage() {
                 </div>
                 <div className="muted small">
                   {d.category.replaceAll('_', ' ')} · {formatBytes(d.size_bytes)} ·{' '}
-                  {new Date(d.created_at).toLocaleDateString()}
+                  {formatDate(d.created_at)}
                 </div>
                 <div>
                   <span className={`badge ${SCAN_TONE[d.scan_status] ?? ''}`}>
@@ -227,7 +228,7 @@ export default function DocumentsPage() {
                       {d.filing_deferred ? <div className="muted small">filing on hold</div> : null}
                       {d.scan_detail ? <div className="muted small">{d.scan_detail}</div> : null}
                     </td>
-                    <td>{new Date(d.created_at).toLocaleDateString()}</td>
+                    <td>{formatDate(d.created_at)}</td>
                   </tr>
                 ))}
               </tbody>

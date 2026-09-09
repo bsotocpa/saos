@@ -6,6 +6,7 @@
 // column chooser, and bulk operations; kanban groups by any picklist with
 // column counts; create/edit form renders from the tasks.layout setting.
 
+import { formatDate, formatDateTime, formatMonth, formatTime } from '../../lib/dates';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -721,7 +722,7 @@ function ListView(props: {
                 </td>
               ) : null}
               {cols.includes('checklist') ? <td>{t.checklist_total > 0 ? `${t.checklist_done}/${t.checklist_total}` : '—'}</td> : null}
-              {cols.includes('created_at') ? <td className="muted">{t.created_at.slice(0, 10)}</td> : null}
+              {cols.includes('created_at') ? <td className="muted">{formatDate(t.created_at)}</td> : null}
               <td style={{ whiteSpace: 'nowrap' }}>
                 {props.canManage ? (
                   <>
@@ -865,7 +866,7 @@ function CalendarView(props: { tasks: Task[]; onEdit: (t: Task) => void }) {
     <section className="card">
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
         <button className="chip" type="button" onClick={() => shift(-1)}>←</button>
-        <strong>{new Date(`${month}-01T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</strong>
+        <strong>{formatMonth(month)}</strong>
         <button className="chip" type="button" onClick={() => shift(1)}>→</button>
         <span className="muted small">tasks by due date — undated tasks don&apos;t appear here</span>
       </div>

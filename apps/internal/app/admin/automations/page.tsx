@@ -6,6 +6,7 @@
 // the outbound client message is suppressed (and counted in the job's run
 // record so you can see what would have gone out).
 
+import { formatDate, formatDateTime, formatTime } from '../../../lib/dates';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../../lib/api';
@@ -86,7 +87,7 @@ export default function AutomationsPage() {
               <br />
               <span className="muted small">
                 <code>{a.key}</code>
-                {a.updated_by ? ` · last changed by ${a.updated_by} ${a.updated_at.slice(0, 10)}` : ' · never changed'}
+                {a.updated_by ? ` · last changed by ${a.updated_by} ${formatDate(a.updated_at)}` : ' · never changed'}
               </span>
             </span>
             <button
