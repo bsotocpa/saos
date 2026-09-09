@@ -49,10 +49,16 @@ from the other Stripe world is now retired once, audited, and the client can pay
 because the webhook had settled it before the client landed — the return now names the
 invoice and the page confirms that one.
 
-**Known gap, nice-to-have:** the live webhook subscribes to `checkout.session.completed` and
-`payment_intent.payment_failed` only. A refund issued in the Stripe dashboard does not reach
-SAOS; the invoice stays Paid. Fine for a test client; before a real refund is ever issued,
-subscribe `charge.refunded` and record it on the invoice.
+**Gap CLOSED 2026-09-09 (commit 84c0da0).** Brian refunded the $20 and SAOS kept the invoice at
+Paid — proven against Stripe with SAOS's own key before fixing. The live endpoint
+`we_1UDevjIT…` now subscribes to `charge.refunded`, `charge.dispute.created` and
+`charge.dispute.closed` (updated via API, read back to verify); handlers record refunds
+(gross), reverse deposit credit and the engagement's payment mark, set refunded /
+partially_refunded / disputed, raise the dispute task on the network's deadline, and are
+latched on the Stripe event id. **Pending:** Brian resends the real `charge.refunded` for
+`ch_3UDexCIT…` from the dashboard; SA-2026-0003 then reads Refunded and the rehearsal inbox
+gets the refund receipt. Void path (SA-2026-0002), test-client audit, and the tokenized pay
+link are the next three commits.
 
 <details><summary>The reopening, kept as the record</summary>
 

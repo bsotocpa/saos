@@ -7,7 +7,7 @@ ignored = Paid forever" under checks-that-lie · launch-readiness.md updated · 
 - [x] SA-2026-0003: SAOS says `paid`; Stripe (asked with SAOS's own key) says refunded. PROVEN 07:4x UTC: charge refunded:true amount_refunded:2000, refund re_…h2l52cr requested_by_customer.
 
 ## 1. Refund + dispute webhooks
-- [ ] Subscribe charge.refunded, charge.dispute.created, charge.dispute.closed on the LIVE endpoint via API; verify the list on the box.
+- [x] Subscribe charge.refunded, charge.dispute.created, charge.dispute.closed on the LIVE endpoint via API; verify the list on the box. DONE: we_1UDevjIT… subscribes to all five, read back.
 - [x] charge.refunded → refund row (amount, stripe refund id, reason), ledger reversal, status refunded / partially_refunded, audit, outbox effect (refund receipt to client — registered transactional send).
 - [x] charge.dispute.created → status disputed; staff task via the one door, billing role (CEO fallback), due = evidence_due_by from the payload; no client send.
 - [x] charge.dispute.closed → won: paid; lost: as refunded.
