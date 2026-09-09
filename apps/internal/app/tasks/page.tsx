@@ -415,7 +415,7 @@ function ListCards(props: {
           <div className="tmeta">
             {t.client_name ? `${t.client_name} · ` : ''}
             {t.business_name ? `${t.business_name} · ` : ''}
-            {t.due_date ? `due ${t.due_date} · ` : ''}
+            {t.due_date ? `due ${formatDate(t.due_date)} · ` : ''}
             {t.assignee_name ?? 'unassigned'}
             {t.tags.length ? ` · ${t.tags.join(', ')}` : ''}
           </div>
@@ -803,7 +803,7 @@ function KanbanView(props: {
                 <strong>{t.title}</strong>
                 <div className="muted" style={{ margin: '2px 0' }}>
                   {t.client_name ? `${t.client_name} · ` : ''}
-                  {t.due_date ? `due ${t.due_date}` : 'no due date'}
+                  {t.due_date ? `due ${formatDate(t.due_date)}` : 'no due date'}
                   {isOverdue(t) ? <span className="badge danger" style={{ marginLeft: 4 }}>overdue</span> : null}
                 </div>
                 {t.open_blockers > 0 ? <span className="badge warn" style={{ marginRight: 4 }}>⛔ blocked</span> : null}
@@ -949,7 +949,7 @@ function TimelineView(props: { tasks: Task[]; onEdit: (t: Task) => void }) {
                   key={t.id} type="button"
                   className={`tl-dot ${isOverdue(t) ? 'overdue' : ''}`}
                   style={{ left: `${(idx / TIMELINE_DAYS) * 100}%`, maxWidth: `${(3 / TIMELINE_DAYS) * 100}%` }}
-                  title={`${t.title} — due ${t.due_date}`}
+                  title={`${t.title} — due ${formatDate(t.due_date)}`}
                   onClick={() => props.onEdit(t)}
                 >
                   {t.title}

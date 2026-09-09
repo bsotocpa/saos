@@ -4,6 +4,7 @@
 // value, revenue MTD/YTD, A/R aging, health distribution, staff capacity,
 // deadline countdown. Exception-based: the point is what needs attention.
 
+import { formatDate } from '../lib/dates';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -182,7 +183,7 @@ export default function ExecutivePage() {
                 <li key={m.id}>
                   <span className="grow small">
                     {m.title}
-                    {m.due_date ? <span className="muted"> · due {m.due_date}</span> : null}
+                    {m.due_date ? <span className="muted"> · due {formatDate(m.due_date)}</span> : null}
                   </span>
                 </li>
               ))}

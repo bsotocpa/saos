@@ -4,6 +4,7 @@
 // Brian's personal board. Move controls per card (wireframe pass may add
 // drag); columns are custom per board.
 
+import { formatDate } from '../../../lib/dates';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../../lib/api';
@@ -111,7 +112,7 @@ export default function BoardsPage() {
                     <br />
                     <span className="muted small">
                       {c.assignee_name ?? 'unassigned'}
-                      {c.due_date ? ` · due ${c.due_date}` : ''}
+                      {c.due_date ? ` · due ${formatDate(c.due_date)}` : ''}
                     </span>
                     <br />
                     <select

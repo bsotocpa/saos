@@ -899,7 +899,7 @@ export default function ClientPacketPage() {
                 {t.extension_filed ? <span className="badge warn">extended</span> : null}
               </span>
               <span className="muted small" style={{ flex: '1 1 100%' }}>
-                {t.filed_date ? `filed ${t.filed_date}` : 'not filed'}
+                {t.filed_date ? `filed ${formatDate(t.filed_date)}` : 'not filed'}
               </span>
               <span className="amt">
                 {t.final_fee_cents !== null

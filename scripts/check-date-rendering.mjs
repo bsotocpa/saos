@@ -5,7 +5,8 @@
 // now (apps/internal/lib/dates.ts in Chicago time, apps/portal/lib/dates.ts in the client's
 // locale) and every page goes through it. This guard reads every page and fails the build on:
 //
-//   1. a timestamp field interpolated raw: {x.created_at} / `${x.ended_on}` — the exact defect;
+//   1. a timestamp or date field interpolated raw: {x.created_at} / `${x.ended_on}` /
+//      {view.dueDate} — the exact defect (the walk caught dueDate after the first sweep);
 //   2. a timestamp field truncated by hand: x.created_at.slice(0, 10);
 //   3. Date formatting done inline: new Date(...).toLocaleDateString / toLocaleString /
 //      toLocaleTimeString — the ad-hoc formatting the helper replaces.
@@ -32,8 +33,8 @@ function* tsxFiles(dir) {
 }
 
 const RULES = [
-  { name: 'raw timestamp interpolated', re: /(\{|\$\{)\s*[A-Za-z_$][\w$.?!]*\.(?:[a-z_]+_(?:at|on)|[a-z]+At)\s*\}/g },
-  { name: 'timestamp truncated by hand', re: /\.(?:[a-z_]+_(?:at|on)|[a-z]+At)\??\.slice\(0,\s*10\)/g },
+  { name: 'raw timestamp interpolated', re: /(\{|\$\{)\s*[A-Za-z_$][\w$.?!]*\.(?:[a-z_]+_(?:at|on|date)|[a-z]+(?:At|On|Date))\s*\}/g },
+  { name: 'timestamp truncated by hand', re: /\.(?:[a-z_]+_(?:at|on|date)|[a-z]+(?:At|On|Date))\??\.slice\(0,\s*10\)/g },
   { name: 'inline Date formatting', re: /new Date\([^)]*\)\.toLocale(?:Date|Time)?String\(/g },
 ];
 

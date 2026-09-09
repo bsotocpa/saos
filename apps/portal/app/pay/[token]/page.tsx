@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { api, ApiError, formatMoney } from '../../../lib/api';
 import { useSession } from '../../../lib/session';
+import { formatDate } from '../../../lib/dates';
 
 type View =
   | { state: 'payable'; invoiceNumber: string; amountCents: number; dueDate: string | null; language: 'en' | 'es' }
@@ -114,7 +115,7 @@ export default function PayPage() {
                 <>
                   <br />
                   <span className="muted small">
-                    {t('pay_due')} {view.dueDate}
+                    {t('pay_due')} {formatDate(view.dueDate, lang)}
                   </span>
                 </>
               ) : null}
