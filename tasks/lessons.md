@@ -1560,3 +1560,43 @@ exercised and I had it wrong in my head as "ships the working tree".
 **Rule:** commit before deploy, always — and after any deploy, verify the change on the box by
 grepping for the changed line, not by reading the deploy's exit code. The deploy succeeding tells
 you the shipping worked; only the box tells you what was shipped.
+
+## An error that tells you to do something the screen cannot do is a dead end, not a message (2026-09-09)
+
+Brian, trying to send a rehearsal quote, got:
+
+    This client already has an active Schedule A … Send again with intent "additional_work" …
+    or "replaces_existing" … The answer is recorded on the quote.
+
+The guard behind it is RIGHT — the client had a signed Schedule A from 13 August, and a second
+individual-tax quote genuinely needs the sender to say whether it adds work or replaces the
+agreement. The API message is right FOR AN API CALLER: it names the parameter. But the pipeline
+builder had no control for that parameter. The instruction was addressed to someone who was not in
+the room.
+
+He tried three times in two minutes. Each attempt CREATED the quote before the send was refused,
+and the builder only remembered the draft on the save path — so all three drafts were orphaned in
+the pipeline with the builder showing an empty composer and a red sentence. From his side: a
+workflow that errors on step two, unhelpfully, three times. From the code's side: a correct guard,
+a message written for the wrong reader, and a state variable set on one branch of two.
+
+Fixed in the UI only; the API needed nothing. `api()` already attached the error CODE to the
+thrown Error, so the builder now catches `schedule_already_covered` specifically, keeps the
+refused quote as the draft, and renders the two answers as two buttons — plus "not now, keep it as
+a draft". The first sentence of the API message (which names the schedule) is kept; the sentence
+that gave an impossible instruction is replaced by the controls that make it possible.
+
+**Rules:**
+
+- **A refusal that has correct next actions must render them.** If the API asks a question, the
+  UI shows the choices, not the transcript of the question. Grep every `setError((err as
+  Error).message)` and ask: does this message ever contain an instruction? If so, which control
+  carries it out?
+- **Anything created before a failure is state the failure handler must keep.** `createdId`
+  hoisted above the `try` is one line; three orphaned drafts is what its absence costs.
+- **A guard's own test passing tells you nothing about whether a human can pass the guard.**
+  "declaring the intent lets it through, and the answer is RECORDED" was green throughout. It
+  tested the API. Nobody had tried the button, because there was no button.
+
+Brian's reaction — "this doesn't give me confidence in the workflow" — was the correct one, and
+the finding is that the workflow was fine and the *conversation* with it was broken.

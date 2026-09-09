@@ -80,6 +80,24 @@ export default function PipelinePage() {
   const [bundles, setBundles] = useState<CatalogBundle[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  /**
+   * THE COVERAGE QUESTION, as a decision rather than an error (2026-09-09).
+   *
+   * The API refuses to send a quote whose schedules the client has already accepted unless
+   * the sender declares whether it ADDS work under the existing agreement or REPLACES it —
+   * deliberately not a yes/no override, because the two mean different things downstream and
+   * the answer is recorded on the quote. That design is right.
+   *
+   * What was wrong: the refusal came back as text — "Send again with intent additional_work" —
+   * and this screen had no way to do that. Brian hit it three times in two minutes on
+   * Rehearsal Client 2, and each attempt also created a draft quote the builder then lost
+   * track of. An instruction the screen cannot follow is not an error message; it is a dead end
+   * wearing one.
+   *
+   * So a 409 `schedule_already_covered` lands HERE, holding the quote it refused, and renders
+   * as the two choices the API is actually asking for.
+   */
+  const [coverageBlock, setCoverageBlock] = useState<{ quoteId: string; message: string } | null>(null);
 
   // Builder state
   const [open, setOpen] = useState(false);
@@ -249,13 +267,54 @@ export default function PipelinePage() {
     setDraftQuoteId(''); setDepositOverride(null);
   };
 
+  /**
+   * A refused send is EITHER the coverage question or an ordinary error, and they must not
+   * share a banner: one has two correct answers and the other has none. `api()` attaches the
+   * API's error code to the thrown Error, which is what makes the split possible.
+   */
+  const routeSendFailure = (err: unknown, quoteId: string) => {
+    const e = err as Error & { code?: string };
+    if (e.code === 'schedule_already_covered') {
+      setCoverageBlock({ quoteId, message: e.message });
+      // The refused quote is a real draft. Keep hold of it so the decision below — or a later
+      // "send draft" — acts on THIS quote instead of leaving it orphaned in the pipeline.
+      setDraftQuoteId(quoteId);
+    } else {
+      setError(e.message);
+    }
+  };
+
   const sendDraft = async () => {
     if (!draftQuoteId) return;
     setBusy(true);
     setError('');
+    setCoverageBlock(null);
     try {
       const r = await api<{ url: string }>(`/quotes/${draftQuoteId}/send`, { method: 'POST' });
       setSentLink(r.url);
+      await load();
+    } catch (err) {
+      routeSendFailure(err, draftQuoteId);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Answer the coverage question. The intent goes on the quote; the API records it. */
+  const sendWithIntent = async (duplicateIntent: 'additional_work' | 'replaces_existing') => {
+    if (!coverageBlock || !contact) return;
+    setBusy(true);
+    setError('');
+    try {
+      const r = await api<{ url: string }>(`/quotes/${coverageBlock.quoteId}/send`, {
+        method: 'POST',
+        body: { duplicateIntent },
+      });
+      setCoverageBlock(null);
+      setSentLink(r.url);
+      setSentConfirm({ url: r.url, name: `${contact.first_name} ${contact.last_name}`, totalCents: null });
+      setOpen(false);
+      resetBuilder();
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -268,6 +327,11 @@ export default function PipelinePage() {
     if (!contact) return;
     setBusy(true);
     setError('');
+    setCoverageBlock(null);
+    // Hoisted out of the try: the quote is CREATED before the send can be refused, and the
+    // catch needs its id to keep it as the draft instead of losing it. Three orphaned drafts
+    // in two minutes is how this line earned its place.
+    let createdId = '';
     try {
       const created = await api<{ id: string }>('/quotes', {
         method: 'POST',
@@ -282,6 +346,7 @@ export default function PipelinePage() {
           ...(notes.trim() ? { notes: notes.trim() } : {}),
         },
       });
+      createdId = created.id;
       if (send) {
         const r = await api<{ url: string }>(`/quotes/${created.id}/send`, { method: 'POST' });
         setSentLink(r.url);
@@ -300,7 +365,10 @@ export default function PipelinePage() {
       }
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      // Once the quote exists, a refusal is about THAT quote — hand it over rather than dropping
+      // it. Before it exists there is nothing to hand over and the error is just an error.
+      if (createdId) routeSendFailure(err, createdId);
+      else setError((err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -312,6 +380,30 @@ export default function PipelinePage() {
     <>
       <h1>Pipeline</h1>
       {error ? <div className="alert error">{error}</div> : null}
+
+      {/* The coverage QUESTION — the API's two answers, as two buttons. The first sentence of
+          the API's message names the schedule, which is the useful part; the rest was an
+          instruction this screen could not follow, so it is replaced by the controls that can. */}
+      {coverageBlock ? (
+        <div className="alert warn">
+          <p>
+            <strong>{coverageBlock.message.split('. ')[0]}.</strong>{' '}
+            Is this quote adding work under that agreement, or replacing it? Your answer is recorded
+            on the quote, so it can be read back later with the reason that justified it.
+          </p>
+          <p>
+            <button type="button" className="btn" disabled={busy} onClick={() => void sendWithIntent('additional_work')}>
+              Adds to the existing agreement
+            </button>{' '}
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => void sendWithIntent('replaces_existing')}>
+              Replaces the existing agreement
+            </button>{' '}
+            <button type="button" className="btn ghost small" disabled={busy} onClick={() => setCoverageBlock(null)}>
+              Not now — keep it as a draft
+            </button>
+          </p>
+        </div>
+      ) : null}
 
       {/* THE SEND CONFIRMATION. Its own modal, outside the builder, dismissed only
           by an explicit click — the previous version lived inside the composer and
