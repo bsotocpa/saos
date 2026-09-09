@@ -388,6 +388,10 @@ const dict = {
   trans_invalid: ['This link is invalid, expired, or already used.', 'Este enlace es inválido, venció o ya fue usado.'],
 
   // Quote (M27). The reader is deciding on a proposal, not being sold to.
+  // 2026-09-09: money that went back is shown as such — a refunded invoice never reads Paid.
+  inv_refunded: ['Refunded', 'Reembolsada'],
+  inv_partially_refunded: ['Partly refunded', 'Parcialmente reembolsada'],
+  inv_disputed: ['Under review', 'En revisi\u00f3n'],
   quote_title: ['Your proposal', 'Su propuesta'],
   quote_intro: [
     'Here is exactly what we would do and what it costs. Nothing is charged until you accept.',

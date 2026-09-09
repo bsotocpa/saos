@@ -1,0 +1,38 @@
+{
+  "id": "evt_test_charge_refunded_0001",
+  "object": "event",
+  "api_version": "2026-06-24.dahlia",
+  "livemode": false,
+  "type": "charge.refunded",
+  "data": {
+    "object": {
+      "id": "ch_test_synthetic_0001",
+      "object": "charge",
+      "amount": 2000,
+      "amount_refunded": 2000,
+      "currency": "usd",
+      "paid": true,
+      "refunded": true,
+      "disputed": false,
+      "payment_intent": "pi_test_synthetic_0001",
+      "metadata": {},
+      "refunds": {
+        "object": "list",
+        "data": [
+          {
+            "id": "re_test_synthetic_0001",
+            "object": "refund",
+            "amount": 2000,
+            "charge": "ch_test_synthetic_0001",
+            "created": 1788939000,
+            "currency": "usd",
+            "payment_intent": "pi_test_synthetic_0001",
+            "reason": "requested_by_customer",
+            "status": "succeeded"
+          }
+        ],
+        "has_more": false
+      }
+    }
+  }
+}

@@ -1763,3 +1763,34 @@ exactly; I only had to read it as a rule rather than a one-off.
 then the return URL — and read "Payment received." The Pay click itself did not register in
 the hidden browser pane (no checkout request in the log); the route is covered by the test
 and by tonight's two real checkouts, but the local walk did not exercise it.
+
+## 2026-09-09 — checks-that-lie: a refund silently ignored is Paid forever
+
+Brian refunded the first real card payment in the Stripe dashboard. SAOS's invoice said
+Paid. Asked with SAOS's own live key, Stripe said `refunded: true, amount_refunded: 2000`.
+Nothing in SAOS could ever have noticed: the webhook was subscribed to "paid" and "failed",
+and a refund is neither. The receipt had gone out, the deposit credit was available to apply
+to the next invoice, the revenue report counted it. Every check was green and every one of
+them was lying, because the fact that contradicted them had no way in.
+
+**The rule.** A status that the world can change must have a path by which the world's
+change reaches it. For every money state SAOS holds — paid, credited, collected — ask: what
+event in Stripe would make this false, and are we subscribed to it? If not, the status is not
+a status; it is a lie with a timestamp. Tonight: charge.refunded, charge.dispute.created,
+charge.dispute.closed. The list lives in one place (scripts/stripe-webhook-events.mjs) and a
+test refuses an installer that subscribes fewer.
+
+**Second half — idempotent by construction.** Stripe redelivers. A refund handler that ran
+twice would refund the books twice. The latch is the #48 shape: INSERT the event id ON
+CONFLICT DO NOTHING inside the same transaction as the work; the claim is the statement.
+Sabotage: with the latch blinded, the replay test fails — and so do three others, because
+every refund row carries a foreign key to the latch row. The latch is not a check bolted on
+beside the work; the work cannot be written without it. That is the coupling you want.
+
+**No ledger.** SAOS has none; "reversal" had to be defined in terms of the facts the system
+actually holds money in. The dangerous one was deposit credit: a refunded deposit was still
+creditable against the invoice that followed. It reads paid minus refunded now.
+
+**Proof before the fix, not after.** The first thing I did was ask Stripe, read-only, with
+the key the API already holds — and printed ids and amounts, never the key. "Prove SAOS is
+currently wrong" is the right first instruction and the right first tool call.

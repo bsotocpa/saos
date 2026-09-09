@@ -20,11 +20,139 @@ export interface CheckoutInput {
   cancelUrl: string;
 }
 
-export interface PaymentEvent {
-  type: 'payment_completed' | 'ignored';
+export interface PaidEvent {
+  type: 'payment_completed';
+  eventId: string;
   invoiceId?: string | undefined;
   checkoutSessionId?: string | undefined;
   paymentIntentId?: string | undefined;
+}
+
+export interface StripeRefund {
+  id: string;
+  amountCents: number;
+  reason: string | null;
+  createdAt: string;
+}
+
+/**
+ * charge.refunded (2026-09-09). Stripe sends the CHARGE with the cumulative amount
+ * refunded; the individual refund objects ride along when the endpoint's API version
+ * includes them, and are fetched by id otherwise (listRefunds). Amounts are gross —
+ * Stripe's retained fee is a bookkeeping matter, not SAOS's.
+ */
+export interface RefundEvent {
+  type: 'refund';
+  eventId: string;
+  chargeId: string;
+  paymentIntentId?: string | undefined;
+  chargeAmountCents: number;
+  amountRefundedCents: number;
+  refunds: StripeRefund[];
+}
+
+export interface DisputeOpenedEvent {
+  type: 'dispute_opened';
+  eventId: string;
+  disputeId: string;
+  chargeId: string;
+  paymentIntentId?: string | undefined;
+  amountCents: number;
+  reason: string | null;
+  status: string;
+  /** ISO timestamp, from evidence_details.due_by. The task's due date. */
+  evidenceDueBy: string | null;
+}
+
+export interface DisputeClosedEvent {
+  type: 'dispute_closed';
+  eventId: string;
+  disputeId: string;
+  chargeId: string;
+  paymentIntentId?: string | undefined;
+  amountCents: number;
+  /** Stripe's terminal status: won | lost | warning_closed | … */
+  status: string;
+}
+
+export interface IgnoredEvent {
+  type: 'ignored';
+  eventId?: string | undefined;
+  stripeType?: string | undefined;
+}
+
+export type PaymentEvent = PaidEvent | RefundEvent | DisputeOpenedEvent | DisputeClosedEvent | IgnoredEvent;
+
+/** The loosest shape of a Stripe event body that the mapping needs. */
+interface RawStripeEvent {
+  id?: string;
+  type?: string;
+  data?: { object?: Record<string, unknown> };
+}
+
+const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
+
+/**
+ * Stripe event → the event SAOS acts on. Shared by the stub (after its shared-secret
+ * check) and the live adapter (after signature verification), so the two paths cannot
+ * drift: a fixture the tests replay is parsed by exactly the code production runs.
+ */
+export function mapStripeEvent(raw: RawStripeEvent): PaymentEvent {
+  const eventId = str(raw.id) ?? '';
+  const obj = raw.data?.object ?? {};
+  switch (raw.type) {
+    case 'checkout.session.completed': {
+      const metadata = obj.metadata as { invoice_id?: string } | undefined;
+      return {
+        type: 'payment_completed',
+        eventId,
+        invoiceId: metadata?.invoice_id,
+        checkoutSessionId: str(obj.id),
+        paymentIntentId: str(obj.payment_intent),
+      };
+    }
+    case 'charge.refunded': {
+      const list = (obj.refunds as { data?: Array<Record<string, unknown>> } | undefined)?.data ?? [];
+      return {
+        type: 'refund',
+        eventId,
+        chargeId: str(obj.id) ?? '',
+        paymentIntentId: str(obj.payment_intent),
+        chargeAmountCents: num(obj.amount),
+        amountRefundedCents: num(obj.amount_refunded),
+        refunds: list.map((r) => ({
+          id: str(r.id) ?? '',
+          amountCents: num(r.amount),
+          reason: str(r.reason) ?? null,
+          createdAt: new Date(num(r.created) * 1000).toISOString(),
+        })).filter((r) => r.id !== ''),
+      };
+    }
+    case 'charge.dispute.created':
+    case 'charge.dispute.closed': {
+      const evidence = obj.evidence_details as { due_by?: number } | undefined;
+      const base = {
+        eventId,
+        disputeId: str(obj.id) ?? '',
+        chargeId: str(obj.charge) ?? '',
+        paymentIntentId: str(obj.payment_intent),
+        amountCents: num(obj.amount),
+        status: str(obj.status) ?? 'unknown',
+      };
+      if (raw.type === 'charge.dispute.created') {
+        return {
+          type: 'dispute_opened',
+          ...base,
+          reason: str(obj.reason) ?? null,
+          evidenceDueBy: evidence?.due_by ? new Date(evidence.due_by * 1000).toISOString() : null,
+        };
+      }
+      return { type: 'dispute_closed', ...base };
+    }
+    default:
+      return { type: 'ignored', eventId, stripeType: raw.type };
+  }
 }
 
 export interface StripeAdapter {
@@ -53,6 +181,12 @@ export interface StripeAdapter {
   }>;
   /** Verify + parse a webhook. `rawBody` is the unparsed request body. */
   parseWebhookEvent(headers: Record<string, string | string[] | undefined>, rawBody: Buffer, sharedSecret: string): PaymentEvent;
+  /**
+   * The refunds on a charge, by Stripe's ids. Used when charge.refunded arrives without
+   * its refund objects (newer API versions omit them). The stub answers from what a test
+   * has told it, and nothing otherwise.
+   */
+  listRefunds(chargeId: string): Promise<StripeRefund[]>;
 }
 
 function stubAdapter(): StripeAdapter {
@@ -75,17 +209,10 @@ function stubAdapter(): StripeAdapter {
       if (secret !== sharedSecret) {
         throw new AppError(401, 'unauthorized', 'Bad webhook secret.');
       }
-      const body = JSON.parse(rawBody.toString('utf8')) as {
-        type?: string;
-        data?: { object?: { id?: string; payment_intent?: string; metadata?: { invoice_id?: string } } };
-      };
-      if (body.type !== 'checkout.session.completed') return { type: 'ignored' };
-      return {
-        type: 'payment_completed',
-        invoiceId: body.data?.object?.metadata?.invoice_id,
-        checkoutSessionId: body.data?.object?.id,
-        paymentIntentId: body.data?.object?.payment_intent,
-      };
+      return mapStripeEvent(JSON.parse(rawBody.toString('utf8')) as RawStripeEvent);
+    },
+    async listRefunds() {
+      return [];
     },
   };
 }
@@ -146,14 +273,16 @@ function liveAdapter(config: Config): StripeAdapter {
       } catch {
         throw new AppError(401, 'unauthorized', 'Stripe signature verification failed.');
       }
-      if (event.type !== 'checkout.session.completed') return { type: 'ignored' };
-      const session = event.data.object as Stripe.Checkout.Session;
-      return {
-        type: 'payment_completed',
-        invoiceId: session.metadata?.invoice_id,
-        checkoutSessionId: session.id,
-        paymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : undefined,
-      };
+      return mapStripeEvent(event as unknown as RawStripeEvent);
+    },
+    async listRefunds(chargeId) {
+      const page = await stripe.refunds.list({ charge: chargeId, limit: 100 });
+      return page.data.map((r) => ({
+        id: r.id,
+        amountCents: r.amount,
+        reason: r.reason ?? null,
+        createdAt: new Date(r.created * 1000).toISOString(),
+      }));
     },
   };
 }

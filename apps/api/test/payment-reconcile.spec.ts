@@ -74,6 +74,9 @@ const fakeStripe: StripeAdapter = {
   parseWebhookEvent() {
     return { type: 'ignored' };
   },
+  async listRefunds() {
+    return [];
+  },
 };
 
 const auth = (t: { token: string }) => ({ authorization: `Bearer ${t.token}` });

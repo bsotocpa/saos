@@ -1037,7 +1037,8 @@ export default function ClientPacketPage() {
                   </span>
                   {inv.sent_at ? <span className="muted small"> sent {new Date(inv.sent_at).toLocaleDateString()}</span> : null}
                 </span>
-                {inv.status !== 'paid' && inv.status !== 'void' ? (
+                {/* Only an invoice that can still be paid gets a reminder and a pay link. */}
+                {(['sent', 'overdue', 'draft'] as const satisfies readonly string[]).includes(inv.status as never) ? (
                   <>
                     <button
                       className="btn ghost"

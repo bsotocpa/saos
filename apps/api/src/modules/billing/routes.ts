@@ -221,14 +221,28 @@ export function registerBillingRoutes(app: FastifyInstance): void {
         request.body as Buffer,
         app.config.WEBHOOK_SECRET
       );
-      if (event.type !== 'payment_completed' || !event.invoiceId) {
-        return { status: 'ignored' };
+      /*
+       * 2026-09-09. Until tonight this handler knew one event. Brian refunded the first
+       * real payment in the Stripe dashboard and the invoice stayed Paid — nothing here
+       * could ever have noticed. Refunds and disputes now have handlers of their own
+       * (billing/refunds.ts), each latched on the Stripe event id so redelivery is a
+       * no-op. payment_completed keeps its path: markInvoicePaid is already idempotent.
+       */
+      if (event.type === 'payment_completed') {
+        if (!event.invoiceId) return { status: 'ignored' };
+        const result = await markInvoicePaid(app, event.invoiceId, {
+          checkoutSessionId: event.checkoutSessionId,
+          paymentIntentId: event.paymentIntentId,
+        });
+        return reply.send({ status: 'ok', alreadyPaid: result.alreadyPaid });
       }
-      const result = await markInvoicePaid(app, event.invoiceId, {
-        checkoutSessionId: event.checkoutSessionId,
-        paymentIntentId: event.paymentIntentId,
-      });
-      return reply.send({ status: 'ok', alreadyPaid: result.alreadyPaid });
+      if (event.type === 'ignored') {
+        return { status: 'ignored', type: event.stripeType ?? null };
+      }
+      const { handleStripeEvent } = await import('./refunds.ts');
+      const outcome = await handleStripeEvent(app, event);
+      // The outcome IS the status (refunded, disputed, duplicate, …) — no wrapper to bury it under.
+      return reply.send(outcome);
     });
   });
 

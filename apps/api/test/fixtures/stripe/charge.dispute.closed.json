@@ -1,0 +1,26 @@
+{
+  "id": "evt_test_dispute_closed_0001",
+  "object": "event",
+  "api_version": "2026-06-24.dahlia",
+  "livemode": false,
+  "type": "charge.dispute.closed",
+  "data": {
+    "object": {
+      "id": "dp_test_synthetic_0001",
+      "object": "dispute",
+      "amount": 2000,
+      "charge": "ch_test_synthetic_0001",
+      "currency": "usd",
+      "payment_intent": "pi_test_synthetic_0001",
+      "reason": "fraudulent",
+      "status": "won",
+      "created": 1788939600,
+      "evidence_details": {
+        "due_by": 1789800000,
+        "has_evidence": true,
+        "past_due": false,
+        "submission_count": 1
+      }
+    }
+  }
+}

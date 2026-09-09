@@ -804,6 +804,25 @@ export const templates = [
       'Su recibo y el historial de facturas están siempre disponibles en su portal.\n\n— Soto Accounting',
   },
   {
+    key: 'refund_processed',
+    name: 'Refund processed (receipt)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'invoice_number', 'amount'],
+    subjectEn: 'Refund of {{amount}} on invoice {{invoice_number}}',
+    subjectEs: 'Reembolso de {{amount}} en la factura {{invoice_number}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'We have refunded {{amount}} on invoice {{invoice_number}} to the card you paid with. ' +
+      'Depending on your bank it can take 5\u201310 business days to appear. ' +
+      'Your invoice history in the portal reflects it now.\n\n\u2014 Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Hemos reembolsado {{amount}} de la factura {{invoice_number}} a la tarjeta con la que pag\u00f3. ' +
+      'Seg\u00fan su banco, puede tardar de 5 a 10 d\u00edas h\u00e1biles en reflejarse. ' +
+      'Su historial de facturas en el portal ya lo muestra.\n\n\u2014 Soto Accounting',
+  },
+  {
     key: 'invoice_reminder',
     name: 'Invoice unpaid reminder (automation 17)',
     channel: 'email',

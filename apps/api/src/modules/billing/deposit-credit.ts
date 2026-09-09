@@ -41,15 +41,17 @@ export async function availableDepositCredit(
     id: string; invoice_number: string; available: number;
   }>(
     `SELECT i.id, i.invoice_number,
-            (i.total_cents - i.deposit_applied_cents) AS available
+            (i.amount_paid_cents - i.amount_refunded_cents - i.deposit_applied_cents) AS available
        FROM invoices i
       WHERE i.engagement_id = $1
         -- Stripe-confirmed only. 'paid' is set by markInvoicePaid alone, which the
-        -- webhook and the reconcile backstop are the only routes into.
-        AND i.status = 'paid'
+        -- webhook and the reconcile backstop are the only routes into. A partial refund
+        -- (2026-09-09) leaves the un-refunded part as credit; a full refund leaves none,
+        -- and its status is no longer one of these.
+        AND i.status IN ('paid', 'partially_refunded')
         -- A deposit invoice is one that CARRIED a deposit, not one that consumed one.
         AND i.deposit_credit_from_invoice_id IS NULL
-        AND i.total_cents > i.deposit_applied_cents
+        AND (i.amount_paid_cents - i.amount_refunded_cents) > i.deposit_applied_cents
         AND EXISTS (
           SELECT 1 FROM quotes q WHERE q.deposit_invoice_id = i.id
         )
@@ -89,7 +91,7 @@ export async function consumeDepositCredit(
    */
   const { rows } = await app.db.query<{ applied: number }>(
     `WITH before AS (
-       SELECT id, (total_cents - deposit_applied_cents) AS avail
+       SELECT id, (amount_paid_cents - amount_refunded_cents - deposit_applied_cents) AS avail
          FROM invoices WHERE id = $1 FOR UPDATE
      )
      UPDATE invoices i

@@ -70,7 +70,8 @@ const revenueByLineMonth: ReportDef = {
       `SELECT to_char(date_trunc('month', i.paid_at), 'YYYY-MM') AS month,
               COALESCE(e.service_line::text, e2.service_line::text, 'unattributed') AS service_line,
               count(*)::int AS invoices,
-              COALESCE(sum(i.amount_paid_cents), 0)::int AS collected_cents
+              -- Net of refunds (2026-09-09): money that went back was not collected.
+              COALESCE(sum(i.amount_paid_cents - i.amount_refunded_cents), 0)::int AS collected_cents
        FROM invoices i
        JOIN contacts c ON c.id = i.contact_id
        LEFT JOIN engagements e ON e.id = i.engagement_id
@@ -78,7 +79,7 @@ const revenueByLineMonth: ReportDef = {
        LEFT JOIN engagements e2 ON e2.id = te.engagement_id
        -- A rehearsal deposit is not revenue.
        WHERE NOT c.is_test
-         AND i.status = 'paid' AND i.paid_at IS NOT NULL
+         AND i.status IN ('paid', 'partially_refunded') AND i.paid_at IS NOT NULL
          AND i.paid_at >= $1::date AND i.paid_at < ($2::date + 1)
        GROUP BY 1, 2
        ORDER BY 1 DESC, 4 DESC`,

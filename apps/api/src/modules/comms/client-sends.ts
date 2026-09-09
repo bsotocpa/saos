@@ -39,6 +39,10 @@ export const UNGATED_CLIENT_SENDS: Record<string, UngatedClientSend> = {
     reason:
       'The client just clicked "send me a sign-in link" and is looking at the screen. A toggle here is a kill switch on the front door: flip it and every client is locked out of the portal with no error anyone would connect to a setting. The controls that belong on this are rate limiting (3 per window, already enforced) and link expiry, not arming.',
   },
+  'modules/billing/refunds.ts:sendRefundReceipt': {
+    reason:
+      'The mirror image of the payment receipt: money went BACK to the client\u2019s card, and they must be told so, by us, in writing. Suppressing it would mean refunding and going quiet — the client sees a credit appear with no explanation and calls the bank.',
+  },
   'modules/billing/service.ts:markInvoicePaid': {
     reason:
       'The receipt for a payment the client made a moment ago, triggered by the Stripe webhook for their own card. Suppressing it would mean taking money and going quiet, which is worse than any risk arming protects against.',

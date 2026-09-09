@@ -35,6 +35,8 @@ export const OUTBOX_EFFECTS = [
   'invoice.send',
   /** Email the client the link to sign their engagement packet. */
   'packet.send_signature_link',
+  /** Email the client that money went back to their card (2026-09-09). */
+  'invoice.refund_receipt',
 ] as const;
 export type OutboxEffect = (typeof OUTBOX_EFFECTS)[number];
 
@@ -144,6 +146,16 @@ async function performEffect(
        * it goes to the dead letter and a person is told.
        */
       if (result.reason === 'already_sent') return { sent: false, skip: 'already sent by hand' };
+      return { sent: false, retry: humanReason(result.reason) };
+    }
+    case 'invoice.refund_receipt': {
+      const invoiceId = String(row.payload.invoiceId ?? '');
+      const refundId = String(row.payload.refundId ?? '');
+      if (!invoiceId || !refundId) return { sent: false, skip: 'no invoiceId/refundId in the payload' };
+      const { sendRefundReceipt } = await import('./modules/billing/refunds.ts');
+      const result = await sendRefundReceipt(app, invoiceId, refundId);
+      if (result.sent) return { sent: true };
+      if (result.reason === 'already_sent') return { sent: false, skip: 'receipt already sent' };
       return { sent: false, retry: humanReason(result.reason) };
     }
     case 'packet.send_signature_link': {

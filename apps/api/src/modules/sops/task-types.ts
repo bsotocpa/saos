@@ -32,6 +32,16 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   invoice_overdue: { sop: 'rene-dunning-call' },
   invoice_needed: { sop: 'rene-invoice-on-filed' },
   quote_accepted: { sop: 'rene-quote-accepted-onboarding' },
+  // 2026-09-09. A card dispute has a deadline set by the card network, carried on the
+  // task as its due date; the procedure is how to assemble evidence and where to submit.
+  stripe_dispute: { sop: 'rene-stripe-dispute' },
+  // A refund or dispute arrived for a payment SAOS has no invoice for. The title names
+  // the Stripe ids; the work is to find where the money belongs. No procedure exists yet
+  // because it has never happened — the task itself is the record that it did.
+  stripe_unmatched: {
+    sop: null,
+    reason: 'Never happened yet; the task names the Stripe ids and the work is reconciliation by hand.',
+  },
   /*
    * ── The eight types that were invisible until 2026-08-17 ──
    *

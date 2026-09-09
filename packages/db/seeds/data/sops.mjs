@@ -86,6 +86,23 @@ Something arrived from a number or address we cannot match to a client.
 3. Sensitive document types from unknown senders get no auto-suggestions on
    purpose. Identify the person first.
 `),
+  sop('rene-stripe-dispute', 'Card dispute (chargeback)', 'comms_billing', 'Billing', `
+## Why you have this task
+A client's bank opened a dispute on a card payment. Stripe has already taken the
+money back pending the outcome; the invoice reads **Under review** and the card
+network's evidence deadline is this task's due date. Miss it and the dispute is lost.
+
+1. Open Stripe → Payments → Disputes and find the dispute named in this task.
+2. Gather what shows the work was agreed and delivered: the accepted quote, the
+   signed engagement letter, the invoice, portal activity, and any messages. Facts,
+   dated — not argument.
+3. Submit the evidence in Stripe **before the deadline**. One submission; you
+   cannot add to it later.
+4. Do **not** message the client about the dispute from SAOS. They opened it; the
+   bank and the network decide. If they call, listen and note it on the contact.
+5. When Stripe closes it, SAOS updates the invoice itself: won → Paid again;
+   lost → treated as refunded. This task closes on its own at that point.
+`),
   sop('rene-invoice-on-filed', 'Invoice a filed return', 'comms_billing', 'Billing', `
 ## Why you have this task
 A return reached Filed. If it had a final fee the invoice generated itself; if it

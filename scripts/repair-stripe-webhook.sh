@@ -44,6 +44,9 @@ RESP=$(curl -s https://api.stripe.com/v1/webhook_endpoints -u "$SK:" \
   -d "url=$URL" \
   -d "enabled_events[]=checkout.session.completed" \
   -d "enabled_events[]=payment_intent.payment_failed" \
+  -d "enabled_events[]=charge.refunded" \
+  -d "enabled_events[]=charge.dispute.created" \
+  -d "enabled_events[]=charge.dispute.closed" \
   -d "description=SAOS deposit + invoice payments (test)")
 
 EP_ID=$(printf '%s' "$RESP" | grep -o '"id": *"we_[^"]*"' | head -1 | sed 's/.*"we_/we_/; s/"$//')

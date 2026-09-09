@@ -180,6 +180,9 @@ CREATED="$(stripe_api POST /webhook_endpoints \
   "url=$WEBHOOK_URL" \
   "enabled_events[]=checkout.session.completed" \
   "enabled_events[]=payment_intent.payment_failed" \
+  "enabled_events[]=charge.refunded" \
+  "enabled_events[]=charge.dispute.created" \
+  "enabled_events[]=charge.dispute.closed" \
   "description=SAOS deposit checkout (installed by install-stripe-live.sh)")"
 
 read -r WEBHOOK_ID WHSEC < <(printf '%s' "$CREATED" | python3 -c '
