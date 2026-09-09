@@ -38,6 +38,7 @@ function lastCheckoutSeen(): { successUrl: string; cancelUrl: string; customerEm
 const fakeStripe: StripeAdapter = {
   mode: 'stub',
   keyMode: null,
+  async retrieveCharge() { return null; },
   async createCheckoutSession(input) {
     lastCheckout = { successUrl: input.successUrl, cancelUrl: input.cancelUrl, customerEmail: input.customerEmail };
     const sessionId = `cs_fake_${input.invoiceId}`;

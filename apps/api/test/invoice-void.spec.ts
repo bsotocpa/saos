@@ -38,6 +38,7 @@ const expired: string[] = [];
 const fakeStripe: StripeAdapter = {
   mode: 'stub',
   keyMode: null,
+  async retrieveCharge() { return null; },
   async createCheckoutSession(input) {
     const sessionId = `cs_fake_${input.invoiceId}`;
     return { sessionId, url: `https://checkout.stripe.example/${sessionId}` };

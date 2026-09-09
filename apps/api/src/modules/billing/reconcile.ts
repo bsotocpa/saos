@@ -24,7 +24,7 @@ import { writeAudit } from '../../audit.ts';
 import { markInvoicePaid } from './service.ts';
 
 export interface ReconcileResult {
-  status: 'paid' | 'not_paid_yet' | 'no_session' | 'already_paid' | 'stale_session';
+  status: 'paid' | 'not_paid_yet' | 'no_session' | 'already_paid' | 'stale_session' | 'not_reconcilable';
   invoiceNumber: string;
   /** True when THIS call is what settled it — i.e. the webhook never arrived. */
   settledByReconcile: boolean;
@@ -108,6 +108,15 @@ export async function reconcileInvoice(
   }
   if (inv.status === 'paid') {
     return { status: 'already_paid', invoiceNumber: inv.invoice_number, settledByReconcile: false };
+  }
+  /*
+   * 2026-09-09. A Checkout Session's payment_status stays "paid" after the charge is
+   * refunded. Asking it about a refunded, disputed or void invoice and believing the answer
+   * is exactly how SA-2026-0003 read Paid twice. Only an invoice that can still be paid is
+   * reconciled; everything else is answered by the charge (drift check), never the session.
+   */
+  if (inv.status !== 'draft' && inv.status !== 'sent' && inv.status !== 'overdue') {
+    return { status: 'not_reconcilable', invoiceNumber: inv.invoice_number, settledByReconcile: false };
   }
   if (!inv.stripe_checkout_session_id) {
     return { status: 'no_session', invoiceNumber: inv.invoice_number, settledByReconcile: false };
@@ -224,7 +233,9 @@ export async function runPaymentReconcileJob(
   const { rows } = await app.db.query<{ id: string }>(
     `SELECT id FROM invoices
       WHERE stripe_checkout_session_id IS NOT NULL
-        AND status <> 'paid'
+        -- Only what can still be paid (2026-09-09): a refunded invoice's session still says
+        -- "paid", and the sweep once believed it.
+        AND status IN ('sent', 'overdue')
         AND updated_at < now() - ($1 || ' minutes')::interval
       ORDER BY updated_at
       LIMIT $2`,

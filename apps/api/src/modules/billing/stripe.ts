@@ -41,6 +41,16 @@ export interface StripeRefund {
  * includes them, and are fetched by id otherwise (listRefunds). Amounts are gross —
  * Stripe's retained fee is a bookkeeping matter, not SAOS's.
  */
+/** What Stripe says about a charge today — the source of truth a nightly check compares against. */
+export interface StripeChargeState {
+  chargeId: string;
+  amountCents: number;
+  amountRefundedCents: number;
+  refunded: boolean;
+  disputed: boolean;
+  refunds: StripeRefund[];
+}
+
 export interface RefundEvent {
   type: 'refund';
   eventId: string;
@@ -193,6 +203,12 @@ export interface StripeAdapter {
    * left alone — Stripe refuses to expire those, and there is nothing to protect.
    */
   expireCheckoutSession(sessionId: string): Promise<void>;
+  /**
+   * The charge behind a payment intent, as Stripe holds it now (2026-09-09). A Checkout
+   * Session's payment_status stays "paid" after a refund — the CHARGE is what knows about
+   * refunds and disputes. Null when Stripe has no charge for it (or in the stub).
+   */
+  retrieveCharge(paymentIntentId: string): Promise<StripeChargeState | null>;
 }
 
 function stubAdapter(): StripeAdapter {
@@ -222,6 +238,9 @@ function stubAdapter(): StripeAdapter {
     },
     async expireCheckoutSession() {
       // Nothing to expire: the stub never minted a session Stripe knows about.
+    },
+    async retrieveCharge() {
+      return null; // the stub holds no charges; tests inject what Stripe "says"
     },
   };
 }
@@ -288,6 +307,22 @@ function liveAdapter(config: Config): StripeAdapter {
       const session = await stripe.checkout.sessions.retrieve(sessionId);
       if (session.status !== 'open') return;
       await stripe.checkout.sessions.expire(sessionId);
+    },
+    async retrieveCharge(paymentIntentId) {
+      const intent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+      const charge = typeof intent.latest_charge === 'string'
+        ? await stripe.charges.retrieve(intent.latest_charge)
+        : intent.latest_charge;
+      if (!charge) return null;
+      const refunds = await this.listRefunds(charge.id);
+      return {
+        chargeId: charge.id,
+        amountCents: charge.amount,
+        amountRefundedCents: charge.amount_refunded,
+        refunded: charge.refunded,
+        disputed: charge.disputed,
+        refunds,
+      };
     },
     async listRefunds(chargeId) {
       const page = await stripe.refunds.list({ charge: chargeId, limit: 100 });

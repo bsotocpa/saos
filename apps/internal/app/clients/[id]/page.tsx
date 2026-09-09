@@ -1089,6 +1089,28 @@ export default function ClientPacketPage() {
                     </details>
                   ) : null}
                 </span>
+                {['paid', 'refunded', 'partially_refunded', 'disputed'].includes(inv.status) ? (
+                  <button
+                    className="btn ghost"
+                    type="button"
+                    disabled={busy}
+                    title="Pull this charge's refunds from Stripe onto the invoice, through the same path the webhook uses"
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        const r = await api<{ status: string; recorded: number }>(`/invoices/${inv.id}/resync-stripe`, { method: 'POST' });
+                        setActionMsg(`${inv.invoice_number} re-synced from Stripe: ${r.status}, ${r.recorded} refund(s) newly recorded.`);
+                        await load();
+                      } catch (e) {
+                        setActionErr(e instanceof Error ? e.message : 'Could not re-sync from Stripe.');
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Re-sync from Stripe
+                  </button>
+                ) : null}
                 {/* Only an invoice that can still be paid gets a reminder and a pay link. */}
                 {(['sent', 'overdue', 'draft'] as const satisfies readonly string[]).includes(inv.status as never) ? (
                   <>

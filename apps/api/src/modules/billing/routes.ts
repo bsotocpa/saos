@@ -142,6 +142,16 @@ export function registerBillingRoutes(app: FastifyInstance): void {
     return { invoices: rows.map((r) => ({ ...r, notices: notices[r.id as string] ?? [] })) };
   });
 
+  /**
+   * Re-sync from Stripe (2026-09-09): pull the charge's refunds onto the invoice through the
+   * webhook's own recording path. The deliberate correction the nightly drift task asks for.
+   */
+  app.post<{ Params: { id: string } }>('/invoices/:id/resync-stripe', billing, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const { resyncRefundsFromStripe } = await import('./drift.ts');
+    return resyncRefundsFromStripe(app, id, { type: 'staff', id: request.staff!.id, label: request.staff!.email });
+  });
+
   /** The send log for one invoice — what the "send log" control under an invoice opens. */
   app.get<{ Params: { id: string } }>('/invoices/:id/sends', billing, async (request) => {
     const id = z.uuid().parse(request.params.id);

@@ -38,6 +38,12 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   // A refund or dispute arrived for a payment SAOS has no invoice for. The title names
   // the Stripe ids; the work is to find where the money belongs. No procedure exists yet
   // because it has never happened — the task itself is the record that it did.
+  // Stripe and SAOS disagree about money on one invoice. The task names both sides and the
+  // one control that corrects the record (Re-sync from Stripe); no procedure beyond that.
+  stripe_drift: {
+    sop: null,
+    reason: 'The task names both figures and the re-sync control; the decision is which side is right, and that is a person.',
+  },
   stripe_unmatched: {
     sop: null,
     reason: 'Never happened yet; the task names the Stripe ids and the work is reconciliation by hand.',

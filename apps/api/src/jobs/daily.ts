@@ -19,6 +19,7 @@ import { runPerfectionClockJob } from '../modules/tax/pipeline.ts';
 import { runAutoExtensionBatchJob } from '../modules/tax/extension-batch.ts';
 import { runVoucherReminderJob } from '../modules/grants/vouchers.ts';
 import { runQuoteExpiryJob } from '../modules/pricing/quotes.ts';
+import { runStripeDriftCheckJob } from '../modules/billing/drift.ts';
 import { runReviewRequestJob } from '../modules/comms/review-requests.ts';
 import { runEventReminderJob } from '../modules/events/service.ts';
 import { runOnboardingRescueJob } from '../modules/portal-auth/onboarding-rescue.ts';
@@ -84,6 +85,9 @@ export async function runDailyJobs(app: FastifyInstance, today: string): Promise
   // M27: expire quotes past their date, back to the pipeline with a reason.
   const quoteExpiry = await runQuoteExpiryJob(app, today);
   if (!quoteExpiry.skipped) app.log.info({ job: 'quote_expiry', ...quoteExpiry }, 'daily job ran');
+  // 2026-09-09: does Stripe still agree with what SAOS says about every paid invoice?
+  const drift = await runStripeDriftCheckJob(app, today);
+  if (!drift.skipped) app.log.info({ job: 'stripe_drift', ...drift }, 'daily job ran');
   // M27: review asks off accepted returns / completed onboardings. Client-acting,
   // so gated by the review_requests kill switch; every skip is recorded.
   const reviews = await runReviewRequestJob(app, today);

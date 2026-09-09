@@ -43,6 +43,7 @@ const capturingMailer: Mailer = {
 const fakeStripe: StripeAdapter = {
   mode: 'stub',
   keyMode: null,
+  async retrieveCharge() { return null; },
   async createCheckoutSession(input) {
     return { sessionId: `cs_fake_${input.invoiceId}`, url: 'https://checkout.stripe.example/x' };
   },

@@ -55,13 +55,14 @@ test('paid, void, refunded and partially refunded all come back with what the ca
   const voidId = await ins('SL-2026-0002', 'sent', 20000, 0);
   const v = await app.inject({ method: 'POST', url: `/invoices/${voidId}/void`, headers: auth(rene), payload: { reason: 'testing testing testing' } });
   assert.equal(v.statusCode, 200, v.body);
-  // Refunded and partially refunded: rows as the webhook leaves them.
+  // Refunded and partially refunded: rows as the webhook leaves them — the refund ROW first,
+  // then the status. The state machine (0084) refuses the other order: refunds are recorded, never asserted.
   const refundedId = await ins('SL-2026-0003', 'paid', 2000, 2000);
-  await app.db.query(`UPDATE invoices SET status = 'refunded', amount_refunded_cents = 2000 WHERE id = $1`, [refundedId]);
   await app.db.query(`INSERT INTO invoice_refunds (invoice_id, stripe_refund_id, amount_cents, reason) VALUES ($1, 're_test_list_full', 2000, 'requested_by_customer')`, [refundedId]);
+  await app.db.query(`UPDATE invoices SET status = 'refunded', amount_refunded_cents = 2000 WHERE id = $1`, [refundedId]);
   const partialId = await ins('SL-2026-0004', 'paid', 2000, 2000);
-  await app.db.query(`UPDATE invoices SET status = 'partially_refunded', amount_refunded_cents = 500 WHERE id = $1`, [partialId]);
   await app.db.query(`INSERT INTO invoice_refunds (invoice_id, stripe_refund_id, amount_cents, reason) VALUES ($1, 're_test_list_part', 500, NULL)`, [partialId]);
+  await app.db.query(`UPDATE invoices SET status = 'partially_refunded', amount_refunded_cents = 500 WHERE id = $1`, [partialId]);
 
   const res = await app.inject({ method: 'GET', url: `/invoices?contactId=${c.id}`, headers: auth(rene) });
   assert.equal(res.statusCode, 200, res.body);

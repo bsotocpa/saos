@@ -419,7 +419,7 @@ export async function markInvoicePaid(
   app: FastifyInstance,
   invoiceId: string,
   refs: { checkoutSessionId?: string | undefined; paymentIntentId?: string | undefined }
-): Promise<{ alreadyPaid: boolean; refused?: 'void' }> {
+): Promise<{ alreadyPaid: boolean; refused?: 'void' | 'refunded' | 'partially_refunded' | 'disputed' }> {
   const { rows } = await app.db.query<{
     id: string; status: string; total_cents: number; invoice_number: string;
     contact_id: string; tax_engagement_id: string | null;
@@ -434,6 +434,21 @@ export async function markInvoicePaid(
   const inv = rows[0];
   if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
   if (inv.status === 'paid') return { alreadyPaid: true };
+  if (inv.status === 'refunded' || inv.status === 'partially_refunded' || inv.status === 'disputed') {
+    // 2026-09-09. Money already went back (or is contested). "Paid" from a session or a
+    // replayed event is not a new payment; a new payment carries a new payment intent and
+    // arrives as its own event. Recorded, refused, left alone.
+    await writeAudit(app.db, {
+      actorType: 'system',
+      actorLabel: 'payment guard',
+      action: 'invoice.payment_ignored',
+      objectType: 'invoice',
+      objectId: invoiceId,
+      contactId: inv.contact_id,
+      details: { status: inv.status, payment_intent: refs.paymentIntentId ?? null, session: refs.checkoutSessionId ?? null },
+    });
+    return { alreadyPaid: false, refused: inv.status as 'refunded' | 'partially_refunded' | 'disputed' };
+  }
   if (inv.status === 'void') {
     // 2026-09-09. The client paid a link to an invoice that had been voided (the session
     // expiry after void is best effort). Void is terminal; the money needs a person.

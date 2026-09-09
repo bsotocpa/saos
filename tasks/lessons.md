@@ -1813,6 +1813,17 @@ nothing kept it true:
 - The Ops card reading Paid — which was TRUE (the resend had 401'd and never latched);
   the lie was upstream, and the honest diagnostic was to prove the DB state before
   touching the display.
+- **Refund recorded, then silently overwritten** (found on the morning walk): the
+  reconcile sweep asked the Checkout Session — whose payment_status stays "paid" after a
+  refund — and markInvoicePaid, which only refused an invoice already paid, wrote paid over
+  refunded at 09:23:18, sixteen minutes after the refund landed. Two facts about the same
+  money from two Stripe objects; the one that knows about refunds is the charge. The
+  database now holds every legal transition (0084), the sweep touches sent/overdue only,
+  and a nightly read of the charge raises a task when Stripe and SAOS disagree.
+- **Void claimed unbilled, deposit stamp said $200**: voiding SA-2026-0002 reset the tax
+  engagement's payment mark but left engagements.deposit_charged_cents at 20000 — the
+  engagement went on asserting a deposit that no invoice carried. Issuance and void are
+  now symmetric, proved by a field-by-field diff.
 
 **The rule.** For every fact the system asserts about the outside world (paid, told,
 agreed, subscribed), name the event that would make it false and either subscribe to that

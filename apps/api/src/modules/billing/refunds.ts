@@ -31,6 +31,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { enqueueEffect } from '../../outbox.ts';
 import { withTransaction } from '../../db.ts';
+import { AppError } from '../../types.ts';
 import { ownerForRole } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
@@ -203,6 +204,58 @@ async function applyRefundedAmount(
   return status;
 }
 
+async function invoiceById(app: FastifyInstance, id: string): Promise<InvoiceRow | null> {
+  const { rows } = await app.db.query<InvoiceRow>(
+    `SELECT id, invoice_number, status::text AS status, total_cents, amount_paid_cents, amount_refunded_cents,
+            contact_id, engagement_id, tax_engagement_id
+       FROM invoices WHERE id = $1`,
+    [id]
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Record Stripe refunds on an invoice: one row per refund id (idempotent), the gross
+ * cumulative amount, the status, the engagement reversal, and a receipt for each refund the
+ * client has not been told about. THE one path — the webhook and re-sync both come here.
+ */
+export async function recordRefunds(
+  app: FastifyInstance,
+  input: {
+    invoice: { id: string };
+    refunds: Array<{ id: string; amountCents: number; reason: string | null }>;
+    amountRefundedCents: number;
+    stripeEventId: string | null;
+  }
+): Promise<{ status: 'refunded' | 'partially_refunded'; amountRefundedCents: number; recorded: number }> {
+  const inv = await invoiceById(app, input.invoice.id);
+  if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
+  let recorded = 0;
+  for (const r of input.refunds) {
+    const ins = await app.db.query<{ id: string }>(
+      `INSERT INTO invoice_refunds (invoice_id, stripe_refund_id, amount_cents, reason, stripe_event_id)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (stripe_refund_id) DO NOTHING
+       RETURNING id`,
+      [inv.id, r.id, r.amountCents, r.reason, input.stripeEventId]
+    );
+    if (ins.rows[0]) {
+      recorded += 1;
+      // The receipt rides the outbox, keyed by the refund ROW: one refund is told about once.
+      await enqueueEffect(app, {
+        effect: 'invoice.refund_receipt',
+        payload: { invoiceId: inv.id, refundId: r.id },
+        contactId: inv.contact_id,
+        objectType: 'invoice_refund',
+        objectId: ins.rows[0].id,
+      });
+    }
+  }
+  // Stripe's cumulative figure is the truth; the rows are the itemisation of it.
+  const status = await applyRefundedAmount(app, inv, input.amountRefundedCents);
+  return { status, amountRefundedCents: Math.min(input.amountRefundedCents, inv.amount_paid_cents), recorded };
+}
+
 export async function applyRefund(app: FastifyInstance, e: RefundEvent): Promise<StripeOutcome> {
   return withTransaction(app.db, async () => {
     const inv = await invoiceForPaymentIntent(app, e.paymentIntentId);
@@ -213,28 +266,12 @@ export async function applyRefund(app: FastifyInstance, e: RefundEvent): Promise
       return out;
     }
 
-    // The refund objects: from the event when it carried them, otherwise asked for by charge.
     const refunds = e.refunds.length > 0 ? e.refunds : await app.stripe.listRefunds(e.chargeId);
-    let recorded = 0;
-    // The receipt is keyed by the refund ROW (a uuid, which is what the outbox keys on),
-    // and carries Stripe's id in its payload for the email.
-    let latest: { rowId: string; stripeId: string } | null = null;
-    for (const r of refunds) {
-      const ins = await app.db.query<{ id: string }>(
-        `INSERT INTO invoice_refunds (invoice_id, stripe_refund_id, amount_cents, reason, stripe_event_id)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (stripe_refund_id) DO NOTHING
-         RETURNING id`,
-        [inv.id, r.id, r.amountCents, r.reason, e.eventId || null]
-      );
-      if (ins.rows[0]) {
-        recorded += 1;
-        latest = { rowId: ins.rows[0].id, stripeId: r.id };
-      }
-    }
-
-    // Stripe's cumulative figure is the truth; the rows are the itemisation of it.
-    const status = await applyRefundedAmount(app, inv, e.amountRefundedCents);
+    // THE one recording path (shared with re-sync): rows by refund id, gross amount, status,
+    // engagement reversal, and a receipt per newly recorded refund.
+    const { status, recorded } = await recordRefunds(app, {
+      invoice: { id: inv.id }, refunds, amountRefundedCents: e.amountRefundedCents, stripeEventId: e.eventId || null,
+    });
 
     await writeAudit(app.db, {
       actorType: 'system',
@@ -252,17 +289,6 @@ export async function applyRefund(app: FastifyInstance, e: RefundEvent): Promise
       },
     });
 
-    // The receipt rides the outbox: it commits with the reversal or vanishes with it. Keyed
-    // by the refund id, so one refund is told about exactly once.
-    if (latest) {
-      await enqueueEffect(app, {
-        effect: 'invoice.refund_receipt',
-        payload: { invoiceId: inv.id, refundId: latest.stripeId },
-        contactId: inv.contact_id,
-        objectType: 'invoice_refund',
-        objectId: latest.rowId,
-      });
-    }
 
     const out: StripeOutcome = { status, invoiceId: inv.id, invoiceNumber: inv.invoice_number, recorded };
     await recordOutcome(app, e.eventId, out);

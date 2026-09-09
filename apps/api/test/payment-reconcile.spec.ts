@@ -54,6 +54,7 @@ const fakeStripe: StripeAdapter = {
   // prefix rule stays out of the way), and a cs_test_ session stored on an invoice is
   // from the other world.
   keyMode: 'live',
+  async retrieveCharge() { return null; },
   async createCheckoutSession(input) {
     const sessionId = `cs_fake_${input.invoiceId}`;
     lastCheckout = { successUrl: input.successUrl, cancelUrl: input.cancelUrl };
