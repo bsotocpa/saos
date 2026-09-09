@@ -142,6 +142,48 @@ worked. It is **unreviewed**. If Stripe's screen, the network's rules, or Brian'
 disagree with a step above: **the step is wrong, not the screen.** Stop, follow the screen as
 far as it is obviously safe, and bring the disagreement to Brian so this page gets corrected.
 `),
+  sop('rene-deposit-refund', 'Refund a deposit on withdrawn work', 'comms_billing', 'Billing', `
+## Why you have this task
+An engagement was withdrawn while it still held a **paid deposit with credit left** — money
+the client paid for work that is no longer happening. Whoever withdrew it chose **refund**
+rather than moving the deposit to other work, and that choice raised this task. The system
+did **not** refund anything: a refund is a person's action in Stripe, and SAOS records it
+from Stripe's confirmation afterward.
+
+---
+
+### 1. Confirm the deposit and the amount
+This task names the invoice (SA-…) and the unapplied amount. Open the client's page in Ops
+and find that invoice: it reads **Paid**, and its engagement reads **withdrawn** with the
+reason given. The amount to refund is the **unapplied** amount on the task, not necessarily
+the whole invoice — part of a deposit may already have been applied to another invoice.
+
+**STOP and bring it to Brian if the invoice is not Paid, if the engagement is still active,
+or if the amount on the task disagrees with the invoice.** A refund against the wrong number
+is two corrections later.
+
+### 2. Check whether the money should move instead
+Before refunding, look at the client's other open engagements. If the same client has open
+work that this deposit should fund, the right action is a **transfer** (Ops → the engagement
+→ Transfer deposit), not a refund — and this task closes with a note saying so. A refund is
+for money the client is owed back, not for money that was filed under the wrong work.
+
+### 3. Refund in Stripe
+Open Stripe → Payments, find the payment by the invoice number in its description, and
+refund the **unapplied amount** from step 1. One refund; do not split it. Note the Stripe
+refund id on this task.
+
+### 4. Let the system record it
+Stripe tells SAOS about the refund within a minute. The invoice on the client's page then
+reads **Refunded** (or **Partially refunded**) with the amount and the date, and the client
+receives the refund receipt from SAOS — you do not send one. If the invoice still reads Paid
+ten minutes after the refund shows in Stripe, that is a defect: use **Re-sync from Stripe**
+on the invoice, and tell Brian either way.
+
+### 5. Close this task
+Close it with the refund id and the amount in the note. If you transferred instead of
+refunding (step 2), say so and name the engagement that took the deposit.
+`),
   sop('rene-invoice-on-filed', 'Invoice a filed return', 'comms_billing', 'Billing', `
 ## Why you have this task
 A return reached Filed. If it had a final fee the invoice generated itself; if it

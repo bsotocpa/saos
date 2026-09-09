@@ -18,6 +18,7 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import { refreshContactStatus } from '../crm/lifecycle.ts';
+import { formatUsd } from '../billing/service.ts';
 
 export type CloseOutcome = 'completed' | 'withdrawn';
 
@@ -42,9 +43,15 @@ const TERMINAL_TAX_STAGES = ['completed', 'withdrawn'] as const;
 export async function closeEngagement(
   app: FastifyInstance,
   engagementId: string,
-  input: { outcome: CloseOutcome; reason?: string | null; endedOn?: string | null },
+  input: {
+    outcome: CloseOutcome; reason?: string | null; endedOn?: string | null;
+    /** What to do with a paid, unapplied deposit on withdrawal (item 7a, 2026-09-09). */
+    depositAction?: 'transfer' | 'refund' | undefined;
+    /** With depositAction 'transfer': the engagement that takes the deposit. */
+    transferToEngagementId?: string | null | undefined;
+  },
   actor: { type: 'staff' | 'system'; id?: string | null; label: string }
-): Promise<{ engagementId: string; contactId: string; outcome: CloseOutcome }> {
+): Promise<{ engagementId: string; contactId: string; outcome: CloseOutcome; depositsMoved: number; refundTaskId: string | null }> {
   const { rows } = await app.db.query<{ id: string; contact_id: string; status: string; service_line: string }>(
     `SELECT id, contact_id, status::text AS status, service_line::text AS service_line
        FROM engagements WHERE id = $1`,
@@ -65,6 +72,41 @@ export async function closeEngagement(
       'reason_required',
       'Withdrawing needs a reason — work that ended without being delivered is the case someone will have to explain later.'
     );
+  }
+
+  /*
+   * STRANDED DEPOSITS (item 7a). SA-2026-0001 — a paid deposit — sat on an engagement withdrawn as
+   * a duplicate, attached to work that no longer existed. A withdrawal that would strand a
+   * paid, unapplied deposit is refused unless the caller says where the money goes:
+   * 'transfer' (to a named open engagement of the same client) or 'refund' (a billing task
+   * through the one door; nothing touches Stripe here).
+   */
+  const { unappliedDepositsFor, transferDeposit, raiseDepositRefundTask } = await import('./deposits.ts');
+  let depositsMoved = 0;
+  let refundTaskId: string | null = null;
+  if (input.outcome === 'withdrawn') {
+    const deposits = await unappliedDepositsFor(app, engagementId);
+    if (deposits.length > 0) {
+      const named = deposits.map((d) => `${d.invoiceNumber} (${formatUsd(d.availableCents)} unapplied)`).join(', ');
+      if (input.depositAction === 'transfer') {
+        if (!input.transferToEngagementId) {
+          throw new AppError(400, 'transfer_target_required', `Say which engagement takes the deposit (${named}).`);
+        }
+        for (const d of deposits) {
+          await transferDeposit(app, { invoiceId: d.invoiceId, toEngagementId: input.transferToEngagementId, reason: `withdrawn: ${input.reason?.trim()}` }, actor);
+          depositsMoved++;
+        }
+      } else if (input.depositAction === 'refund') {
+        refundTaskId = (await raiseDepositRefundTask(app, { engagementId, contactId: eng.contact_id, deposits, reason: input.reason?.trim() ?? '' }, actor)).taskId;
+      } else {
+        throw new AppError(
+          409,
+          'deposit_would_strand',
+          `This engagement holds a paid deposit with credit left (${named}). Withdrawing would strand it. ` +
+            'Choose "transfer" and name the engagement that takes it, or "refund" to raise the refund for billing.'
+        );
+      }
+    }
   }
 
   await app.db.query(
@@ -115,7 +157,7 @@ export async function closeEngagement(
     }
   }
 
-  return { engagementId, contactId: eng.contact_id, outcome: input.outcome };
+  return { engagementId, contactId: eng.contact_id, outcome: input.outcome, depositsMoved, refundTaskId };
 }
 
 /**

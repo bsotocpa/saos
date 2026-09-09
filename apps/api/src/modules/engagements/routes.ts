@@ -18,6 +18,9 @@ const RUNGS = ['registration_setup', 'review_audit', 'admin_training', 'full_man
  */
 const CloseBody = z.object({
   outcome: z.enum(['completed', 'withdrawn']),
+  // Item 7a (2026-09-09): what happens to a paid, unapplied deposit on withdrawal.
+  depositAction: z.enum(['transfer', 'refund']).optional(),
+  transferToEngagementId: z.uuid().nullable().optional(),
   reason: z.string().max(2000).optional(),
   endedOn: z.iso.date().optional(),
 });
@@ -166,9 +169,40 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
         outcome: b.outcome,
         reason: b.reason ?? null,
         endedOn: b.endedOn ?? null,
+        depositAction: b.depositAction,
+        transferToEngagementId: b.transferToEngagementId ?? null,
       },
       { type: 'staff', id: request.staff!.id, label: request.staff!.email }
     );
+  });
+
+  /**
+   * Item 7b (2026-09-09): move a paid, unapplied deposit invoice between two engagements of
+   * the same client. billing.manage. Audit row on both engagements and on the invoice.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/engagements/:id/transfer-deposit',
+    { preHandler: [app.authenticate, requirePermission('billing.manage')] },
+    async (request) => {
+      const toEngagementId = z.uuid().parse(request.params.id);
+      const b = z.object({ invoiceId: z.uuid(), reason: z.string().trim().min(5).max(1000) }).parse(request.body);
+      const { transferDeposit } = await import('./deposits.ts');
+      return transferDeposit(app, { invoiceId: b.invoiceId, toEngagementId, reason: b.reason }, {
+        type: 'staff', id: request.staff!.id, label: request.staff!.email,
+      });
+    }
+  );
+
+  /**
+   * Decision 1 (2026-09-09): a legacy engagement's period, set by a person with a reason.
+   * engagements.write. The partial unique index judges the result — two active engagements
+   * on one line and period cannot both exist, so setting a colliding period is refused.
+   */
+  app.patch<{ Params: { id: string } }>('/engagements/:id/period', closeGate, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ periodKey: z.string().trim().min(2).max(40), reason: z.string().trim().min(5).max(1000) }).parse(request.body);
+    const { setEngagementPeriod } = await import('./period-set.ts');
+    return setEngagementPeriod(app, id, b, { type: 'staff', id: request.staff!.id, label: request.staff!.email });
   });
 
   app.post<{ Params: { id: string } }>('/engagements/:id/pause', closeGate, async (request) => {

@@ -280,8 +280,10 @@ export default function ClientPacketPage() {
       try {
         await api(`/engagements/${engagementId}/${action}`, { method: 'POST', body });
         setActionMsg(okMessage);
+        return null;
       } catch (err) {
         setActionErr(err instanceof Error ? err.message : 'Could not update the engagement.');
+        return (err as { code?: string }).code ?? 'error';
       } finally {
         await load();
         setBusy(false);
@@ -847,7 +849,33 @@ export default function ClientPacketPage() {
                         onClick={async () => {
                           const reason = window.prompt('Why is this being withdrawn? (required)');
                           if (!reason?.trim()) return;
-                          await runEngagementAction(e.id, 'close', { outcome: 'withdrawn', reason }, 'Withdrawn.');
+                          /*
+                           * STRANDED DEPOSITS (item 7a, 2026-09-09). The server refuses a withdrawal
+                           * that would leave a paid deposit on dead work. When it does, the person
+                           * chooses here — transfer to another open engagement of this client, or a
+                           * refund task for billing — and the server validates the choice again.
+                           */
+                          const first = await runEngagementAction(e.id, 'close', { outcome: 'withdrawn', reason }, 'Withdrawn.');
+                          if (first !== 'deposit_would_strand') return;
+                          const open = engagements.filter((o) => o.id !== e.id && (o.status === 'active' || o.status === 'on_hold'));
+                          const menu = open.map((o, i) => `${i + 1}. ${o.scopeName ?? o.title ?? o.service_line} (${o.status})`).join('\n');
+                          const choice = window.prompt(
+                            'This engagement holds a paid deposit with credit left.\n\n' +
+                              (open.length > 0 ? `Type the number of the engagement that takes the deposit:\n${menu}\n\n` : 'This client has no other open engagement to move it to.\n\n') +
+                              'Or type REFUND to raise the refund for billing (nothing is refunded automatically).'
+                          );
+                          if (!choice?.trim()) return;
+                          if (choice.trim().toUpperCase() === 'REFUND') {
+                            await runEngagementAction(e.id, 'close', { outcome: 'withdrawn', reason, depositAction: 'refund' }, 'Withdrawn — a refund task was raised for billing.');
+                            return;
+                          }
+                          const target = open[Number(choice.trim()) - 1];
+                          if (!target) { setActionErr('That was not one of the numbers listed, and not REFUND. Nothing changed.'); return; }
+                          await runEngagementAction(
+                            e.id, 'close',
+                            { outcome: 'withdrawn', reason, depositAction: 'transfer', transferToEngagementId: target.id },
+                            `Withdrawn — the deposit moved to ${target.scopeName ?? target.title ?? target.service_line}.`
+                          );
                         }}
                       >
                         Withdraw

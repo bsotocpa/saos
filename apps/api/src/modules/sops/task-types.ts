@@ -40,6 +40,9 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   // because it has never happened — the task itself is the record that it did.
   // Stripe and SAOS disagree about money on one invoice. The task names both sides and the
   // one control that corrects the record (Re-sync from Stripe); no procedure beyond that.
+  // Item 7a: a withdrawal chose "refund" for a paid deposit. The task names the invoice and
+  // the amount; the procedure is the refund in Stripe, which the webhook then records.
+  deposit_refund: { sop: 'rene-deposit-refund' },
   stripe_drift: {
     sop: null,
     reason: 'The task names both figures and the re-sync control; the decision is which side is right, and that is a person.',
