@@ -22,8 +22,8 @@ ignored = Paid forever" under checks-that-lie · launch-readiness.md updated · 
 - [x] Invoice number retained (sequence, never reissued). PENDING: Brian voids SA-2026-0002 from the iPhone UI — not by script. Sabotage (trigger unattached): exactly the 4 database-level tests fail. Proven on the dev server via API: paid → 409 "refunded, not voided"; blank reason → 400; sent → void with reason + actor, notice queued. The button itself was not clicked locally (stale-cookie fight in the test browser); Brian's first use is the walk.
 
 ## 3. Test client flag
-- [ ] contacts.is_test set on the test client; excluded from AR aging, dashboards, month-end packet, client counts.
-- [ ] Explicitly NOT set on Jackson, Josean Irizarry, Joseph Basilone — verified on the box.
+- [x] contacts.is_test already existed (with a DB constraint: a test flag needs a test_note) and is set on Rehearsal C. Audit: dashboards (14 queries) all excluded; reports: pipeline_conversion and team_throughput did NOT — fixed. No month-end packet exists in SAOS; the aggregate surfaces are the report tiles and the executive dashboard, all covered by one behavioural test: a flagged client with money, work and a pipeline stage moves no number; un-flagged, it moves five.
+- [x] Explicitly NOT set on Jackson F., Josean I. (3 records), Joseph B. (2 records) — verified on the box 2026-09-09: all is_test = false. Test contacts on the box: 2.
 
 ## 4. Invoice pay link (ruled)
 - [ ] Signed tokenized URL scoped to one invoice, no portal login; Stripe Checkout is the auth.

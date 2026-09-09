@@ -152,14 +152,18 @@ const pipelineConversion: ReportDef = {
     const { rows } = await app.db.query<{
       outcome: string; quotes: number; value_cents: number; median_days: string | null;
     }>(
-      `SELECT status::text AS outcome,
+      `SELECT q.status::text AS outcome,
               count(*)::int AS quotes,
-              COALESCE(sum(total_cents), 0)::int AS value_cents,
+              COALESCE(sum(q.total_cents), 0)::int AS value_cents,
               to_char(percentile_cont(0.5) WITHIN GROUP (
-                ORDER BY EXTRACT(EPOCH FROM (COALESCE(accepted_at, declined_at) - sent_at)) / 86400.0
+                ORDER BY EXTRACT(EPOCH FROM (COALESCE(q.accepted_at, q.declined_at) - q.sent_at)) / 86400.0
               ), 'FM990.0') AS median_days
-       FROM quotes
-       WHERE sent_at IS NOT NULL AND sent_at >= $1::date AND sent_at < ($2::date + 1)
+       FROM quotes q
+       JOIN contacts c ON c.id = q.contact_id
+       -- pipeline_conversion excludes test clients (2026-09-09): a rehearsal quote is not a
+       -- won or lost deal, and the win rate must not move because someone rehearsed.
+       WHERE NOT c.is_test
+         AND q.sent_at IS NOT NULL AND q.sent_at >= $1::date AND q.sent_at < ($2::date + 1)
        GROUP BY 1 ORDER BY 2 DESC`,
       [range.from, range.to]
     );
@@ -306,15 +310,21 @@ const teamThroughput: ReportDef = {
   async run(app, range) {
     const { rows } = await app.db.query(
       `SELECT st.full_name AS staff, r.key AS role,
+              -- Work on a test client is rehearsal, not throughput (2026-09-09).
               (SELECT count(*)::int FROM tasks t
                WHERE t.assigned_staff_id = st.id AND t.status = 'completed'
-                 AND t.completed_at >= $1::date AND t.completed_at < ($2::date + 1)) AS tasks_completed,
+                 AND t.completed_at >= $1::date AND t.completed_at < ($2::date + 1)
+                 AND NOT EXISTS (SELECT 1 FROM contacts c WHERE c.id = t.contact_id AND c.is_test)) AS tasks_completed,
               (SELECT count(*)::int FROM tax_engagements te
                WHERE te.preparer_id = st.id AND te.filed_date IS NOT NULL
-                 AND te.filed_date >= $1::date AND te.filed_date <= $2::date) AS returns_filed,
+                 AND te.filed_date >= $1::date AND te.filed_date <= $2::date
+                 AND NOT EXISTS (SELECT 1 FROM engagements e JOIN contacts c ON c.id = e.contact_id
+                                  WHERE e.id = te.engagement_id AND c.is_test)) AS returns_filed,
               (SELECT count(*)::int FROM tax_engagements te
                WHERE te.preparer_id = st.id AND te.efile_accepted_at IS NOT NULL
-                 AND te.efile_accepted_at >= $1::date AND te.efile_accepted_at < ($2::date + 1)) AS returns_accepted,
+                 AND te.efile_accepted_at >= $1::date AND te.efile_accepted_at < ($2::date + 1)
+                 AND NOT EXISTS (SELECT 1 FROM engagements e JOIN contacts c ON c.id = e.contact_id
+                                  WHERE e.id = te.engagement_id AND c.is_test)) AS returns_accepted,
               (SELECT to_char(COALESCE(sum(hours), 0), 'FM990.00') FROM time_entries tm
                WHERE tm.staff_id = st.id AND tm.status = 'confirmed'
                  AND tm.entry_date >= $1::date AND tm.entry_date <= $2::date) AS hours_logged,

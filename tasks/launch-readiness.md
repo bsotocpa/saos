@@ -57,8 +57,10 @@ Paid — proven against Stripe with SAOS's own key before fixing. The live endpo
 partially_refunded / disputed, raise the dispute task on the network's deadline, and are
 latched on the Stripe event id. **Pending:** Brian resends the real `charge.refunded` for
 `ch_3UDexCIT…` from the dashboard; SA-2026-0003 then reads Refunded and the rehearsal inbox
-gets the refund receipt. Void path (SA-2026-0002), test-client audit, and the tokenized pay
-link are the next three commits.
+gets the refund receipt. Void path shipped (5fe9afb; Brian voids SA-2026-0002 from the phone). Test-client audit
+shipped: is_test verified on the box (Rehearsal C. flagged; Jackson F., Josean I., Joseph B. not),
+two reports that leaked fixed, one behavioural test guards every report and the executive
+dashboard. The tokenized pay link is the last of the four.
 
 <details><summary>The reopening, kept as the record</summary>
 
