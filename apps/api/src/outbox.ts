@@ -109,7 +109,19 @@ export async function enqueueEffect(
 }
 
 /** What a handler reports back. `skip` retires the row without sending and without alarm. */
-type HandlerResult = { sent: true } | { sent: false; skip: string } | { sent: false; retry: string };
+/*
+ * WHAT THE DRAIN LEARNED FROM THE HANDLER (2026-09-10, Brian's ruling).
+ *
+ * `skip` and `hold` both retire the row without sending and without alarm, and the difference
+ * between them is the whole point: a HOLD is a decision Brian made in Admin → Automations and
+ * has to be countable as one; a SKIP is the effect no longer being needed. They used to be the
+ * same branch, and both wrote status 'sent'.
+ */
+type HandlerResult =
+  | { sent: true }
+  | { sent: false; skip: string }
+  | { sent: false; hold: string }
+  | { sent: false; retry: string };
 
 /**
  * Machine reason code → the sentence a person reads.
@@ -159,7 +171,7 @@ async function performEffect(
       if (result.sent) return { sent: true };
       if (result.reason === 'already_sent') return { sent: false, skip: 'receipt already sent' };
       // Item 9 (2026-09-09): a gated send that is OFF retires — it is a decision, not a fault.
-      if (result.reason === 'suppressed') return { sent: false, skip: 'held — the automation is off (Admin → Automations)' };
+      if (result.reason === 'suppressed') return { sent: false, hold: 'held — the automation is off (Admin → Automations)' };
       return { sent: false, retry: humanReason(result.reason) };
     }
     case 'invoice.void_notice': {
@@ -170,7 +182,7 @@ async function performEffect(
       if (result.sent) return { sent: true };
       if (result.reason === 'already_sent') return { sent: false, skip: 'void notice already sent' };
       // Item 9 (2026-09-09): a gated send that is OFF retires — it is a decision, not a fault.
-      if (result.reason === 'suppressed') return { sent: false, skip: 'held — the automation is off (Admin → Automations)' };
+      if (result.reason === 'suppressed') return { sent: false, hold: 'held — the automation is off (Admin → Automations)' };
       return { sent: false, retry: humanReason(result.reason) };
     }
     case 'packet.send_signature_link': {
@@ -192,7 +204,10 @@ export interface DrainResult {
   considered: number;
   sent: number;
   retried: number;
+  /** Retired because the effect was no longer needed. */
   skipped: number;
+  /** Retired because an automation gate held it — a decision, counted as one. */
+  suppressed: number;
   abandoned: number;
 }
 
@@ -213,7 +228,7 @@ export interface DrainResult {
  * again would silently strand effects whose cause was already approved.
  */
 export async function drainOutbox(app: FastifyInstance, limit = 25): Promise<DrainResult> {
-  const result: DrainResult = { considered: 0, sent: 0, retried: 0, skipped: 0, abandoned: 0 };
+  const result: DrainResult = { considered: 0, sent: 0, retried: 0, skipped: 0, suppressed: 0, abandoned: 0 };
 
   for (let i = 0; i < limit; i++) {
     /*
@@ -264,11 +279,24 @@ export async function drainOutbox(app: FastifyInstance, limit = 25): Promise<Dra
       continue;
     }
 
+    if ('hold' in outcome) {
+      /*
+       * An automation gate held it. NOTHING WAS SENT, so sent_at stays null and the status says
+       * suppressed — the row used to read 'sent', which is the one thing that did not happen.
+       */
+      await app.db.query(
+        `UPDATE outbox SET status = 'suppressed', sent_at = NULL, last_error = $2 WHERE id = $1`,
+        [row.id, outcome.hold]
+      );
+      result.suppressed++;
+      continue;
+    }
+
     if ('skip' in outcome) {
       // Retired without sending and without alarm — the effect is no longer needed.
       await app.db.query(
-        `UPDATE outbox SET status = 'sent', sent_at = now(), last_error = $2 WHERE id = $1`,
-        [row.id, `skipped: ${outcome.skip}`]
+        `UPDATE outbox SET status = 'skipped', sent_at = NULL, last_error = $2 WHERE id = $1`,
+        [row.id, outcome.skip]
       );
       result.skipped++;
       continue;

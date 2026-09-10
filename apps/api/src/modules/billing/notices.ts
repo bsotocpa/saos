@@ -111,6 +111,9 @@ export async function noticesForInvoices(
   );
   const auditFor = (invoiceId: string, kind: NoticeKind) =>
     audits.rows.find((a) => a.object_id === invoiceId && a.action === AUDIT_BY_KIND[kind]) ?? null;
+  /* A held send has no sent_at (nothing was sent), so its time comes from the suppression row. */
+  const heldAuditFor = (invoiceId: string, kind: NoticeKind) =>
+    audits.rows.find((a) => a.object_id === invoiceId && a.action === SUPPRESSED_BY_KIND[kind]) ?? null;
 
   for (const row of outbox.rows) {
     const kind = KIND_BY_EFFECT[row.effect];
@@ -118,9 +121,15 @@ export async function noticesForInvoices(
     const audit = auditFor(row.invoice_id, kind);
     let state: NoticeState['state'];
     let detail: string | null = null;
-    if (row.status === 'sent' && row.last_error?.startsWith('skipped:')) {
+    /*
+     * 2026-09-10: the status column answers this now. It used to say 'sent' for a held send and
+     * the only way to tell was a 'skipped:' prefix inside last_error — a string sniff standing in
+     * for a state. Both terminal-without-sending states read the same to the client page (the
+     * notice was not delivered); last_error carries the wording that tells them apart.
+     */
+    if (row.status === 'suppressed' || row.status === 'skipped') {
       state = 'skipped';
-      detail = row.last_error.replace(/^skipped:\s*/, '');
+      detail = row.last_error;
     } else if (row.status === 'sent') {
       state = 'delivered';
     } else if (row.status === 'abandoned') {
@@ -133,7 +142,12 @@ export async function noticesForInvoices(
     out[row.invoice_id]?.push({
       kind,
       state,
-      at: (audit?.occurred_at ?? row.sent_at)?.toISOString() ?? null,
+      /*
+       * A held send has no sent_at, because nothing was sent. Its time is when it was HELD,
+       * which is what the suppression audit row records. A queued row still has no time at all,
+       * and must not borrow its own created_at to look as though something happened.
+       */
+      at: (audit?.occurred_at ?? row.sent_at ?? heldAuditFor(row.invoice_id, kind)?.occurred_at)?.toISOString() ?? null,
       outboxId: row.id,
       auditId: audit?.id ?? null,
       detail,

@@ -118,20 +118,66 @@ test('staff-only recipients: the staff channel writes a notification row and nev
   assert.equal(row.rows.length, 1);
 });
 
-test('through the outbox: a held notice retires (no retry storm) and the send log reads "not sent — held"', async () => {
+test('through the outbox: a held notice retires as SUPPRESSED — the row never claims it was sent', async () => {
   await arm('void_notice', false);
   const v = await invoiceFor('void');
   await enqueueEffect(app, { effect: 'invoice.void_notice', payload: { invoiceId: v.invoiceId }, contactId: v.contactId, objectType: 'invoice', objectId: v.invoiceId });
   sent.length = 0;
-  await drainOutbox(app);
-  const row = (await app.db.query<{ status: string; last_error: string | null; attempts: number }>(
-    `SELECT status::text AS status, last_error, attempts FROM outbox WHERE object_id = $1 AND effect = 'invoice.void_notice'`, [v.invoiceId])).rows[0]!;
-  assert.equal(row.status, 'sent', 'retired, not left to retry');
-  assert.match(row.last_error ?? '', /^skipped: held/);
+  const drain = await drainOutbox(app);
+  const row = (await app.db.query<{ status: string; last_error: string | null; attempts: number; sent_at: Date | null }>(
+    `SELECT status::text AS status, last_error, attempts, sent_at FROM outbox WHERE object_id = $1 AND effect = 'invoice.void_notice'`, [v.invoiceId])).rows[0]!;
+  /*
+   * 2026-09-10, Brian's ruling on the morning report. This row used to read 'sent'. Nothing was
+   * sent — the gate held it — and anyone reading the table, or the raw send log which prints the
+   * status verbatim, would have counted a send that never happened.
+   */
+  assert.equal(row.status, 'suppressed', 'retired as held, and it does not say sent');
+  assert.equal(row.sent_at, null, 'nothing was sent, so there is no send time');
+  assert.match(row.last_error ?? '', /^held/);
+  assert.equal(drain.suppressed, 1, 'the drain counts a hold as a hold');
+  assert.equal(drain.sent, 0);
   assert.deepEqual(sent.filter((m) => m.to === v.email), []);
   const notices = (await noticesForInvoices(app, [v.invoiceId]))[v.invoiceId]!;
   const held = notices.find((n) => n.kind === 'void_notice')!;
   assert.equal(held.state, 'skipped');
   assert.match(held.detail ?? '', /held/);
   await arm('void_notice', true);
+});
+
+/*
+ * The other way a row retires without sending: the effect is no longer needed. That is not a
+ * decision about the client and must not be counted as one — 'skipped', not 'suppressed', and
+ * still never 'sent'.
+ */
+test('a notice someone already sent by hand retires as SKIPPED, which is not the same as held', async () => {
+  await arm('void_notice', true);
+  const v = await invoiceFor('void');
+  const first = await sendVoidNotice(app, v.invoiceId);
+  assert.equal(first.sent, true, 'the notice goes out once');
+
+  await enqueueEffect(app, { effect: 'invoice.void_notice', payload: { invoiceId: v.invoiceId }, contactId: v.contactId, objectType: 'invoice', objectId: v.invoiceId });
+  sent.length = 0;
+  const drain = await drainOutbox(app);
+  const row = (await app.db.query<{ status: string; last_error: string | null; sent_at: Date | null }>(
+    `SELECT status::text AS status, last_error, sent_at FROM outbox WHERE object_id = $1 AND effect = 'invoice.void_notice' ORDER BY created_at DESC LIMIT 1`, [v.invoiceId])).rows[0]!;
+  assert.equal(row.status, 'skipped', 'no longer needed is its own state');
+  assert.equal(row.sent_at, null);
+  assert.equal(drain.skipped, 1);
+  assert.equal(drain.suppressed, 0, 'nobody held anything — this was not a decision');
+  assert.deepEqual(sent.filter((m) => m.to === v.email), [], 'and it did not go a second time');
+});
+
+/* 'sent' means sent: the send log prints the status verbatim, so it has to be true on its own. */
+test('a notice that actually goes out is the only one that reads sent', async () => {
+  await arm('void_notice', true);
+  const v = await invoiceFor('void');
+  await enqueueEffect(app, { effect: 'invoice.void_notice', payload: { invoiceId: v.invoiceId }, contactId: v.contactId, objectType: 'invoice', objectId: v.invoiceId });
+  sent.length = 0;
+  const drain = await drainOutbox(app);
+  const row = (await app.db.query<{ status: string; sent_at: Date | null }>(
+    `SELECT status::text AS status, sent_at FROM outbox WHERE object_id = $1 AND effect = 'invoice.void_notice'`, [v.invoiceId])).rows[0]!;
+  assert.equal(row.status, 'sent');
+  assert.ok(row.sent_at, 'a real send has a send time');
+  assert.equal(drain.sent, 1);
+  assert.equal(sent.filter((m) => m.to === v.email).length, 1, 'the client really was written to');
 });
