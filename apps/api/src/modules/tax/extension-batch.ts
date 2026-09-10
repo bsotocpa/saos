@@ -26,7 +26,7 @@ import { isAutomationEnabled } from '../../automations.ts';
 import { firstActiveByRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
-import { AUTOMATIC_EXTENSION_TYPES, addDays, originalDeadline, type DeadlineReturnType } from './deadlines.ts';
+import { AUTOMATIC_EXTENSION_TYPES, addDays, originalDeadline, type DeadlineReturnType, calendarDay } from './deadlines.ts';
 import { markExtensionFiled } from './extension.ts';
 
 /** Stages where documents are still outstanding (pre-preparation work). */
@@ -108,7 +108,7 @@ export async function runAutoExtensionBatchJob(
     // In the window: from the cutoff up to (never on or past) the deadline. The
     // >= makes a missed run day self-correcting; the < keeps the system from
     // ever "protecting" a return whose deadline has already passed.
-    if (today < window.cutoff || today >= window.deadline) continue;
+    if (calendarDay(today) < calendarDay(window.cutoff, 'cutoff') || calendarDay(today) >= calendarDay(window.deadline, 'deadline')) continue;
 
     const key = `${te.tax_year}|${window.deadline}`;
     let batch = perBatch.get(key);

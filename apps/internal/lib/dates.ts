@@ -71,6 +71,15 @@ export function isCalendarDate(v: unknown): v is CalendarDate {
   return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
 
+/**
+ * Item 0 (2026-09-09): every comparison on a calendar-day field goes through here. A validated
+ * 'YYYY-MM-DD' compares correctly with < > <= >=; anything else throws with the value named.
+ */
+export function calendarDay(v: unknown, what = 'date'): CalendarDate {
+  if (isCalendarDate(v)) return v;
+  throw new TypeError(`${what} is not a calendar day (YYYY-MM-DD): ${JSON.stringify(v)}`);
+}
+
 /** The Chicago calendar day an instant fell on — for "paid on", "sent on" from timestamps. */
 export function dayOf(v: Instant | Date | null | undefined): string {
   const d = toDate(v);

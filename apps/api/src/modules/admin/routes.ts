@@ -10,6 +10,7 @@
 //   staff/roles — M4's endpoints already exist; roles listing added here.
 
 import type { FastifyInstance } from 'fastify';
+import { calendarDay } from '../tax/deadlines.ts';
 import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
@@ -157,7 +158,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       );
       const cur = current.rows[0];
       if (!cur) throw new AppError(500, 'price_book_missing', 'No price book to version from.');
-      if (b.effectiveFrom <= cur.effective_from) {
+      if (calendarDay(b.effectiveFrom, 'effectiveFrom') <= calendarDay(cur.effective_from, 'effective_from')) {
         throw new AppError(400, 'effective_date_conflict', `New version must start after ${cur.effective_from}.`);
       }
 

@@ -10,6 +10,7 @@
 // today; they tighten as billing (M13) and document flows (M10) go live.
 
 import type { FastifyInstance } from 'fastify';
+import { calendarDay, daysBetween, todayChicago } from '../tax/deadlines.ts';
 import type { Db } from '../../db.ts';
 import { has7216Consent } from '../compliance/consent.ts';
 import { writeAudit } from '../../audit.ts';
@@ -196,9 +197,9 @@ export async function runHealthRefresh(app: FastifyInstance): Promise<{ scored: 
     health_score: number | null;
     health_band: HealthBand | null;
     assigned_manager_id: string | null;
-    client_since: Date | null;
+    client_since: string | null;
   }>(
-    `SELECT id, first_name, last_name, health_score, health_band, assigned_manager_id, client_since
+    `SELECT id, first_name, last_name, health_score, health_band, assigned_manager_id, client_since::text AS client_since
      FROM contacts
       WHERE contact_status IN ('active', 'dormant') AND NOT is_archived AND NOT is_test`
   );
@@ -238,9 +239,10 @@ export async function runHealthRefresh(app: FastifyInstance): Promise<{ scored: 
       redAlerts++;
     }
 
+    // Item 0: tenure is a difference between two calendar days, never a Date built from the column.
     const tenured =
       c.client_since !== null &&
-      Date.now() - new Date(c.client_since).getTime() > UPSELL_TENURE_YEARS * 365.25 * 24 * 3600 * 1000;
+      daysBetween(calendarDay(c.client_since, 'client_since'), todayChicago()) > UPSELL_TENURE_YEARS * 365.25;
     if (newBand === 'green' && tenured && oldBand !== 'green') {
       // §7216 GATE: upsell flagging uses tax return information — blocked
       // without signed consent (MP §7216 Enforcement).

@@ -11,7 +11,7 @@
 //                   (rate from the price book — never a literal here)
 
 import type { FastifyInstance } from 'fastify';
-import { addDays, originalDeadline, rollToBusinessDay, todayChicago, type DeadlineReturnType } from './deadlines.ts';
+import { addDays, originalDeadline, rollToBusinessDay, todayChicago, type DeadlineReturnType, calendarDay } from './deadlines.ts';
 
 /** E-file is available for the current tax year and the two before it. */
 export const EFILE_YEAR_SPAN = 2;
@@ -67,7 +67,7 @@ export function refundStillClaimable(
   fiscalYearEndMonth = 12
 ): boolean {
   const expiry = refundStatuteExpiry(returnType, taxYear, fiscalYearEndMonth);
-  return expiry !== null && today <= expiry;
+  return expiry !== null && calendarDay(today) <= calendarDay(expiry, 'refund statute expiry');
 }
 
 /** The 6-year lookback window, OLDEST FIRST (the order work is chained in). */
@@ -85,7 +85,7 @@ export function statuteNote(
 ): string | null {
   const expiry = refundStatuteExpiry(returnType, taxYear);
   if (!expiry) return null;
-  if (today > expiry) {
+  if (calendarDay(today) > calendarDay(expiry, 'refund statute expiry')) {
     return language === 'es'
       ? `El plazo para reclamar un reembolso de ${taxYear} venció el ${expiry}. Aún hay que presentarla, pero ya no se puede recibir reembolso de ese año.`
       : `The window to claim a ${taxYear} refund closed on ${expiry}. The return still needs filing, but a refund for that year is no longer available.`;

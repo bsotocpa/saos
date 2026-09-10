@@ -28,12 +28,33 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const roots = [resolve(here, '..', 'apps', 'internal', 'app'), resolve(here, '..', 'apps', 'portal', 'app')];
+/*
+ * Item 0 (2026-09-09): CONSUMERS, not just renderers. A DATE column leaves the driver as
+ * 'YYYY-MM-DD' text; a raw < > <= >= against it, or a Date built from it, is the class of bug
+ * that reads "not overdue" when it is. The API source is in scope for this rule alone; every
+ * such comparison goes through calendarDay() (apps/api/src/modules/tax/deadlines.ts, and
+ * apps/internal/lib/dates.ts for Ops).
+ */
+const consumerRoots = [...roots, resolve(here, '..', 'apps', 'api', 'src')];
+const DAY_FIELD = String.raw`[A-Za-z_$][\w$.?!]*\.(?:[a-z_]+_(?:on|date|deadline|expiry)|overdue_since|client_since|[a-z]+(?:On|Date|Deadline|Expiry)|overdueSince|clientSince)\b`;
+const CONSUMER_RULES = [
+  { name: 'raw comparison on a calendar-day field (use calendarDay)', re: new RegExp(String.raw`(?<!calendarDay\(\s*)(?:${DAY_FIELD})\s*(?:<=|>=|<|>)\s*(?!\s*\d)`, 'g') },
+  { name: 'raw comparison on a calendar-day field (use calendarDay)', re: new RegExp(String.raw`(?:<=|>=|<|>)\s*(?!\s*\d)(?<!calendarDay\()(?:${DAY_FIELD})\b(?!\s*\))`, 'g') },
+  { name: 'a Date built from a calendar-day field (use daysBetween/calendarDay)', re: new RegExp(String.raw`new Date\(\s*(?:${DAY_FIELD})\s*\)`, 'g') },
+];
 
 function* tsxFiles(dir) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) yield* tsxFiles(p);
     else if (p.endsWith('.tsx')) yield p;
+  }
+}
+function* tsFiles(dir) {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) yield* tsFiles(p);
+    else if (p.endsWith('.ts') || p.endsWith('.tsx')) yield p;
   }
 }
 
@@ -60,6 +81,29 @@ for (const root of roots) {
         if (/^\s*(\/\/|\*|\/\*)/.test(lineText)) continue;
         // A controlled input carries the raw value on purpose; a reviewed exception says so.
         if (/value=\{/.test(lineText) || lineText.includes('date-ok')) continue;
+        failures++;
+        console.error(`  ✖ ${relative(resolve(here, '..'), file)}:${line}: ${rule.name} — ${m[0].trim()}`);
+      }
+    }
+  }
+}
+
+for (const root of consumerRoots) {
+  for (const file of tsFiles(root)) {
+    const raw = readFileSync(file, 'utf8');
+    // SQL lives in template literals and compares in Postgres: blank their contents, keep the lines.
+    const text = raw.replace(/`[^`]*`/g, (lit) => lit.replace(/[^\n]/g, ' '));
+    const lines = raw.split('\n');
+    for (const rule of CONSUMER_RULES) {
+      for (const m of text.matchAll(rule.re)) {
+        const line = text.slice(0, m.index).split('\n').length;
+        const lineText = lines[line - 1] ?? '';
+        if (/^\s*(\/\/|\*|\/\*)/.test(lineText)) continue;
+        if (lineText.includes('calendarDay(') || lineText.includes('date-ok')) continue;
+        // JSX comparisons of a field against a literal are handled by the rule's lookahead; SQL
+        // text inside template literals compares in Postgres, not here.
+        if (/^\s*(SELECT|WHERE|AND|OR|WHEN|SET|ORDER|CASE|JOIN|ON|LEFT|COALESCE|--)\b/i.test(lineText.trim())) continue;
+        if (/`[^`]*$/.test(lineText.slice(0, lineText.indexOf(m[0]))) && !/\$\{/.test(lineText)) continue;
         failures++;
         console.error(`  ✖ ${relative(resolve(here, '..'), file)}:${line}: ${rule.name} — ${m[0].trim()}`);
       }

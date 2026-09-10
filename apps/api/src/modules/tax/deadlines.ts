@@ -232,16 +232,45 @@ export function upcomingEstimateDates(
 
 // ── date utilities (unchanged) ───────────────────────────────────────────────
 
+/*
+ * CALENDAR DAYS (item 0, 2026-09-09, Brian's ruling). A DATE column is a calendar day and
+ * leaves the driver as 'YYYY-MM-DD' text. JavaScript compares strings lexicographically and
+ * Dates numerically; a Date against a string is silently false, and 'YYYY-MM-DDT…' against
+ * 'YYYY-MM-DD' compares the wrong thing on the boundary day. So every comparison and every
+ * piece of arithmetic on a calendar day goes through calendarDay(): a validated,
+ * branded 'YYYY-MM-DD'. Two calendar days compare correctly with < > <= >= because the
+ * shape is fixed; anything else — a Date, an instant, a number, garbage — throws, here,
+ * with the value named, rather than deciding "not overdue" quietly.
+ */
+export type CalendarDay = string & { readonly __calendarDay: unique symbol };
+
+const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isCalendarDay(v: unknown): v is CalendarDay {
+  return typeof v === 'string' && CALENDAR_DAY.test(v);
+}
+
+export function calendarDay(v: unknown, what = 'date'): CalendarDay {
+  if (isCalendarDay(v)) return v;
+  if (v instanceof Date) {
+    throw new TypeError(`${what} is a Date object, not a calendar day — select it ::text or let the driver return the day`);
+  }
+  throw new TypeError(`${what} is not a calendar day (YYYY-MM-DD): ${JSON.stringify(v)}`);
+}
+
 /** Days from `from` (YYYY-MM-DD) to `to` (YYYY-MM-DD); negative when past. */
 export function daysBetween(from: string, to: string): number {
-  const a = Date.UTC(Number(from.slice(0, 4)), Number(from.slice(5, 7)) - 1, Number(from.slice(8, 10)));
-  const b = Date.UTC(Number(to.slice(0, 4)), Number(to.slice(5, 7)) - 1, Number(to.slice(8, 10)));
+  const f = calendarDay(from, 'from');
+  const t = calendarDay(to, 'to');
+  const a = Date.UTC(Number(f.slice(0, 4)), Number(f.slice(5, 7)) - 1, Number(f.slice(8, 10)));
+  const b = Date.UTC(Number(t.slice(0, 4)), Number(t.slice(5, 7)) - 1, Number(t.slice(8, 10)));
   return Math.round((b - a) / 86400000);
 }
 
 /** Shift a YYYY-MM-DD date by n days (n may be negative). */
 export function addDays(date: string, n: number): string {
-  const d = new Date(Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))));
+  const c = calendarDay(date);
+  const d = new Date(Date.UTC(Number(c.slice(0, 4)), Number(c.slice(5, 7)) - 1, Number(c.slice(8, 10))));
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }

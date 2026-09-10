@@ -1,3 +1,4 @@
+import { calendarDay } from '../../lib/dates';
 // Shared types + constants for the v4.5 task workspace (Zoho-benchmark UI).
 
 export interface Task {
@@ -175,5 +176,5 @@ export function todayStr(): string {
 }
 
 export function isOverdue(t: Task): boolean {
-  return Boolean(t.due_date && t.due_date < todayStr() && t.status !== 'completed' && t.status !== 'cancelled');
+  return Boolean(t.due_date && calendarDay(t.due_date, 'due_date') < calendarDay(todayStr()) && t.status !== 'completed' && t.status !== 'cancelled');
 }

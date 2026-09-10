@@ -6,7 +6,7 @@
 // column chooser, and bulk operations; kanban groups by any picklist with
 // column counts; create/edit form renders from the tasks.layout setting.
 
-import { dayOf, formatDate, formatDateTime, formatMonth, formatTime } from '../../lib/dates';
+import { calendarDay, dayOf, formatDate, formatDateTime, formatMonth, formatTime } from '../../lib/dates';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -915,7 +915,7 @@ function TimelineView(props: { tasks: Task[]; onEdit: (t: Task) => void }) {
     for (const t of props.tasks) {
       if (!t.due_date) continue;
       const owner = t.assignee_name ?? 'Unassigned';
-      if (t.due_date >= days[0]! && t.due_date <= days[days.length - 1]!) {
+      if (calendarDay(t.due_date, 'due_date') >= calendarDay(days[0]!) && calendarDay(t.due_date, 'due_date') <= calendarDay(days[days.length - 1]!)) {
         map.set(owner, [...(map.get(owner) ?? []), t]);
       }
     }

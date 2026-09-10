@@ -12,7 +12,7 @@ import { writeAudit } from '../../audit.ts';
 import { makeMinioClient } from '../documents/storage.ts';
 import { createTask } from '../tasks/service.ts';
 import { ownerForRole } from '../../staffing.ts';
-import { todayChicago } from '../tax/deadlines.ts';
+import { todayChicago, calendarDay } from '../tax/deadlines.ts';
 import {
   CLOSE_STEPS, closeWorkbench, completeClose, createCloseCycle, markCloseStep, upcomingSession,
 } from './close.ts';
@@ -59,7 +59,7 @@ export function registerBookkeepingRoutes(app: FastifyInstance): void {
 
   app.post('/close-cycles', manage, async (request, reply) => {
     const b = CreateBody.parse(request.body);
-    if (b.periodEnd < b.periodStart) throw new AppError(400, 'bad_period', 'periodEnd must not precede periodStart.');
+    if (calendarDay(b.periodEnd, 'periodEnd') < calendarDay(b.periodStart, 'periodStart')) throw new AppError(400, 'bad_period', 'periodEnd must not precede periodStart.');
     const result = await createCloseCycle(
       app,
       {

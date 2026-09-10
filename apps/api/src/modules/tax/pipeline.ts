@@ -14,7 +14,7 @@ import { withTransaction } from '../../db.ts';
 import { AppError } from '../../types.ts';
 import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
-import { addDays, daysBetween, todayChicago } from './deadlines.ts';
+import { addDays, daysBetween, todayChicago, calendarDay } from './deadlines.ts';
 import { invoiceForFiledEngagement } from '../billing/service.ts';
 
 export const TAX_STAGES = [
@@ -362,7 +362,7 @@ export async function runPerfectionClockJob(
   const brian = await firstActiveByRole(app.db, 'ceo');
   for (const te of rows) {
     const label = `${te.first_name} ${te.last_name} ${te.tax_year} ${te.return_type.toUpperCase()}`;
-    if (te.perfection_deadline < today) {
+    if (calendarDay(te.perfection_deadline, 'perfection_deadline') < calendarDay(today)) {
       if (brian) {
         const fired = await notifyOnce(app.db, {
           staffId: brian,
