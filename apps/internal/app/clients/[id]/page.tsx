@@ -507,8 +507,12 @@ export default function ClientPacketPage() {
           <p className="small" style={{ marginTop: 10 }}>
             <span className={`badge ${portalBadge(c.portal_state)}`}>{PORTAL_LABEL[c.portal_state] ?? c.portal_state}</span>{' '}
             Portal access
-            {c.portal_state === 'active' && c.portal_last_login_at ? (
-              <span className="muted"> · last signed in {dayOf(c.portal_last_login_at)}</span>
+            {c.portal_state === 'active' ? (
+              c.portal_last_login_at ? (
+                <span className="muted"> · last signed in {dayOf(c.portal_last_login_at)}</span>
+              ) : (
+                <span className="muted"> · never signed in — the link was delivered, but nobody has used it yet</span>
+              )
             ) : null}
             {c.portal_state === 'invited' && c.portal_link_sent_at ? (
               <span className="muted">
