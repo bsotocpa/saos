@@ -134,6 +134,11 @@ export function registerBillingRoutes(app: FastifyInstance): void {
     if (inv.status === 'paid') {
       throw new AppError(409, 'already_paid', 'This invoice is paid — there is nothing to chase.');
     }
+    // Audit item 3 (2026-09-09): only an open invoice is chased. A draft was never issued, a void
+    // one was cancelled, a refunded one is closed — a reminder for any of those is a wrong message.
+    if (inv.status !== 'sent' && inv.status !== 'overdue') {
+      throw new AppError(409, 'not_payable', `${inv.invoice_number} is ${inv.status.replace('_', ' ')}; only an open invoice gets a reminder.`);
+    }
     if (!inv.email) {
       throw new AppError(400, 'no_email', 'This client has no email address, so there is nowhere to send it.');
     }

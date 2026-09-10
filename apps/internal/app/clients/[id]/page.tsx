@@ -1188,14 +1188,19 @@ export default function ClientPacketPage() {
                   </button>
                 ) : null}
                 {/* Only an invoice that can still be paid gets a reminder and a pay link. */}
-                {(['sent', 'overdue', 'draft'] as const satisfies readonly string[]).includes(inv.status as never) ? (
+                {/* Audit item 3 (2026-09-09): the reminder appears only for sent/overdue, and says the amount it chases. */}
+                {inv.status === 'sent' || inv.status === 'overdue' ? (
                   <>
                     <button
                       className="btn ghost"
                       type="button"
                       disabled={busy}
                       onClick={async () => {
-                        if (!(await ask({ title: `Email ${c.first_name} a reminder for ${inv.invoice_number}?`, choices: [{ key: 'go', label: 'Send reminder', tone: 'primary' }] }))) return;
+                        if (!(await ask({
+                          title: `Email ${c.first_name} a reminder for ${inv.invoice_number}?`,
+                          body: <p className="small">It chases <strong>{formatMoney(inv.total_cents)}</strong>, with the same pay link the invoice carried.</p>,
+                          choices: [{ key: 'go', label: `Send reminder (${formatMoney(inv.total_cents)})`, tone: 'primary' }],
+                        }))) return;
                         setBusy(true);
                         setActionErr('');
                         try {
@@ -1209,7 +1214,7 @@ export default function ClientPacketPage() {
                         }
                       }}
                     >
-                      Send reminder
+                      Send reminder ({formatMoney(inv.total_cents)})
                     </button>{' '}
                     {/*
                       ITEM 14 (2026-09-09): ONE link per invoice — the tokenized pay link — and it is SENT,
@@ -1247,7 +1252,7 @@ export default function ClientPacketPage() {
                         Send the pay link…
                       </button>
                     ) : null}
-                    {inv.status !== 'draft' ? (
+                    {(inv.status === 'sent' || inv.status === 'overdue') ? (
                       <>
                         {' '}
                         <button
