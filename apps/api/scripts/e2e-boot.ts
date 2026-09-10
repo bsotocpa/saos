@@ -20,13 +20,28 @@ import { mapStripeEvent } from '../src/modules/billing/stripe.ts';
 import { createEngagement } from '../src/modules/engagements/service.ts';
 import { pauseEngagement } from '../src/modules/engagements/pause.ts';
 import { drainOutbox } from '../src/outbox.ts';
+import * as OTPAuth from 'otpauth';
 
 const PORT = Number(process.env.E2E_API_PORT ?? 3101);
 const TOTP_SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
 
 const config = await createTestConfig('e2e');
 if (!/localhost|127\.0\.0\.1/.test(config.DATABASE_URL)) throw new Error('refusing: the harness database is not local');
-const silentMailer: Mailer = { transport: 'console', async send() { return { id: 'e2e' }; } };
+/*
+ * The mailer sends nothing and REMEMBERS the sign-in link. Page two walks the portal, and the
+ * only way in is the magic link the real route emails — so the harness reads it the way the
+ * client would, out of the message, rather than minting a session behind the route's back.
+ */
+const magicTokens: string[] = [];
+const silentMailer: Mailer = {
+  transport: 'console',
+  async send(msg) {
+    const body = `${msg.subject ?? ''} ${msg.text ?? ''} ${msg.html ?? ''}`;
+    const found = /[?&]token=([A-Za-z0-9_-]+)/.exec(body);
+    if (found) magicTokens.push(found[1]!);
+    return { id: 'e2e' };
+  },
+};
 const app = buildServer(config, { mailer: silentMailer });
 await app.ready();
 
@@ -103,12 +118,48 @@ await createInvoice(app, { type: 'staff', id: staff.id, label: staff.fullName },
 //    that falls back to the raw enum (on_hold) is a visible failure, not a lowercase word.
 await pauseEngagement(app, e2.id, { reason: 'Harness: client travelling' }, { type: 'staff', id: staff.id, label: staff.fullName });
 
+/*
+ * PAGE TWO'S WAY IN. 'Grant access' on the Ops client page is POST /portal-users; it creates
+ * the portal user and emails the sign-in link. Called through the route with the walker's own
+ * token, so the fixture uses the control a person uses.
+ */
+// The walker signs in the way the spec does — password plus TOTP — because the route needs a
+// real session token and makeStaff only makes the account.
+const totp = new OTPAuth.TOTP({ algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(TOTP_SECRET) }).generate();
+const loggedIn = await app.inject({
+  method: 'POST', url: '/auth/login',
+  payload: { email: staff.email, password: 'walker-synthetic-2026', totp },
+});
+if (loggedIn.statusCode !== 200) throw new Error(`the walker could not sign in: ${loggedIn.statusCode} ${loggedIn.body}`);
+const staffToken = loggedIn.json().token as string;
+
+const granted = await app.inject({
+  method: 'POST', url: '/portal-users',
+  headers: { authorization: `Bearer ${staffToken}` },
+  payload: { contactId: contact.id },
+});
+if (granted.statusCode >= 300) throw new Error(`portal access was refused: ${granted.statusCode} ${granted.body}`);
+await drainOutbox(app);
+
+/*
+ * A MAGIC LINK IS SINGLE USE, and the harness runs page two once per viewport. So each project
+ * gets its own, requested through the public route a client uses. Two more, plus the one 'Grant
+ * access' already sent, sits under the three-per-ten-minutes throttle in portal-auth/service.ts.
+ */
+for (let i = 0; i < 2; i++) {
+  const asked = await app.inject({ method: 'POST', url: '/portal/auth/magic/request', payload: { email: contact.email } });
+  if (asked.statusCode !== 200) throw new Error(`a sign-in link was refused: ${asked.statusCode} ${asked.body}`);
+  await drainOutbox(app);
+}
+if (magicTokens.length < 2) throw new Error(`only ${magicTokens.length} sign-in link(s) reached the mailer — page two cannot log in twice`);
+
 await app.listen({ port: PORT, host: '127.0.0.1' });
 console.log('E2E_READY ' + JSON.stringify({
   port: PORT,
   contactId: contact.id,
   engagementWithDeposit: acc1.engagementId,
   staff: { email: staff.email, password: 'walker-synthetic-2026', totpSecret: TOTP_SECRET },
+  portalMagicTokens: magicTokens.slice(-2),
 }));
 // Stay up until the harness kills us.
 process.on('SIGTERM', () => { void app.close().then(() => process.exit(0)); });

@@ -39,10 +39,12 @@ async function waitForPorts(ports: number[], timeoutMs: number): Promise<void> {
 
 export default async function globalTeardown(): Promise<void> {
   restoreNextFiles(resolve(here, '.artifacts'), resolve(here, '..', 'internal'));
+  restoreNextFiles(resolve(here, '.artifacts'), resolve(here, '..', 'portal'), 'portal/');
   if (!existsSync(pidsFile)) return;
-  const pids = JSON.parse(readFileSync(pidsFile, 'utf8')) as { api?: number; ops?: number };
+  const pids = JSON.parse(readFileSync(pidsFile, 'utf8')) as { api?: number; ops?: number; portal?: number };
+  kill(pids.portal);
   kill(pids.ops);
   kill(pids.api);
   unlinkSync(pidsFile);
-  await waitForPorts([3101, 3105], 15_000);
+  await waitForPorts([3101, 3105, 3106], 15_000);
 }

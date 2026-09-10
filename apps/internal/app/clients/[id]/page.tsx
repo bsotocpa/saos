@@ -169,11 +169,17 @@ const SOURCE_LABEL: Record<string, string> = {
   referral: 'Referral',
 };
 
+/*
+ * 2026-09-10: page two of the harness caught this badge reading 'active' — the enum word, in
+ * lowercase, sitting inches from an engagement badge that reads 'Active' and means something
+ * else entirely (work in progress, not "the client can sign in"). Audit item 11 made every
+ * other badge read a word; this row was missed because its map returned the enum spelled out.
+ */
 const PORTAL_LABEL: Record<string, string> = {
-  not_invited: 'not invited',
-  invited: 'invited',
-  active: 'active',
-  revoked: 'revoked',
+  not_invited: 'No access',
+  invited: 'Invited',
+  active: 'Signed up',
+  revoked: 'Revoked',
 };
 const portalBadge = (s: string) => (s === 'active' ? 'ok' : s === 'revoked' ? 'warn' : s === 'invited' ? '' : 'warn');
 

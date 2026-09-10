@@ -14,3 +14,20 @@ to `e.status`. Both viewports failed on the same assertion:
     Received: ["active", "on_hold"]
 
 The label was restored and the harness then passed five consecutive runs.
+
+## Page two's own sabotage (portal Invoices, EN/ES)
+
+`inv_refunded` was left untranslated — `['Refunded', 'Refunded']` — so the Spanish page carried
+an English word among Spanish ones. Both viewports went red on "es: the refunded invoice". The
+screenshots are not committed: they were taken, read, and the finding was the point. What the
+run did prove is that the picture now matches the failure. The first version of page two shot
+the screen only after the English assertions passed, so a Spanish failure kept the English
+screenshot and showed a page that was fine. It shoots first, then asserts.
+
+## A finding page two turned up on page one
+
+With a portal account granted and signed in, the Ops client page's portal-access badge read
+`active` — the enum word, lowercase, inches from an engagement badge reading `Active` that
+means something else entirely. Audit item 11 gave every other badge a word and missed this one,
+because its label map returned the enum spelled out rather than falling through to a default.
+The four portal states now read No access, Invited, Signed up, Revoked.

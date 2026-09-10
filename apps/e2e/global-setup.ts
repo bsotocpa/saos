@@ -15,6 +15,7 @@ const root = resolve(here, '..', '..');
 const artifacts = resolve(here, '.artifacts');
 const API_PORT = 3101;
 const OPS_PORT = 3105;
+const PORTAL_PORT = 3106;
 
 function waitForLine(child: ChildProcess, prefix: string, timeoutMs: number): Promise<string> {
   return new Promise((resolveLine, reject) => {
@@ -48,11 +49,21 @@ async function waitForHttp(url: string, timeoutMs: number): Promise<void> {
 // failed setup) puts them back byte for byte.
 export const NEXT_TOUCHED_FILES = ['next-env.d.ts', 'tsconfig.json'];
 
-export function restoreNextFiles(artifactsDir: string, opsDir: string): void {
+/**
+ * Puts those two files back exactly as they were. `prefix` picks which app's snapshot to use:
+ * Ops stores its copies under the bare filename, the portal under `portal/<filename>`, because
+ * both apps have files of the same name and both get rewritten.
+ */
+export function restoreNextFiles(artifactsDir: string, appDir: string, prefix = ''): void {
   const snapshot = resolve(artifactsDir, 'next-files.json');
   if (!existsSync(snapshot)) return;
   const files = JSON.parse(readFileSync(snapshot, 'utf8')) as Record<string, string>;
-  for (const [name, content] of Object.entries(files)) writeFileSync(resolve(opsDir, name), content);
+  for (const [name, content] of Object.entries(files)) {
+    if (!name.startsWith(prefix)) continue;
+    const bare = name.slice(prefix.length);
+    if (prefix === '' && bare.includes('/')) continue; // a prefixed entry, not Ops's own
+    writeFileSync(resolve(appDir, bare), content);
+  }
 }
 
 export default async function globalSetup(): Promise<void> {
@@ -99,6 +110,31 @@ export default async function globalSetup(): Promise<void> {
     throw err;
   }
 
-  writeFileSync(resolve(artifacts, 'fixtures.json'), JSON.stringify({ ...ready, opsPort: OPS_PORT }, null, 2));
-  writeFileSync(resolve(artifacts, 'pids.json'), JSON.stringify({ api: api.pid, ops: ops.pid }));
+  // PAGE TWO (2026-09-10): the portal, on its own port and its own build directory, so the two
+  // dev servers never share a manifest.
+  const portalDir = resolve(root, 'apps', 'portal');
+  const portalDist = resolve(e2eHome, 'next-portal');
+  mkdirSync(portalDist, { recursive: true });
+  for (const name of NEXT_TOUCHED_FILES) snapshot[`portal/${name}`] = readFileSync(resolve(portalDir, name), 'utf8');
+  writeFileSync(resolve(artifacts, 'next-files.json'), JSON.stringify(snapshot));
+
+  const portal = spawn(process.execPath, [nextBin, 'dev', '-p', String(PORTAL_PORT)], {
+    cwd: portalDir,
+    env: { ...process.env, API_URL: `http://localhost:${API_PORT}`, NODE_ENV: 'development', NEXT_DIST_DIR: relative(portalDir, portalDist) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  portal.stdout?.on('data', (c: Buffer) => { if (process.env.E2E_VERBOSE) process.stderr.write(`[portal] ${c.toString()}`); });
+  portal.stderr?.on('data', (c: Buffer) => process.stderr.write(`[portal] ${c.toString()}`));
+  const portalExited = new Promise<never>((_, reject) => portal.on('exit', (code) => reject(new Error(`the portal dev server exited with ${code} before answering`))));
+  try {
+    await Promise.race([waitForHttp(`http://localhost:${PORTAL_PORT}/login`, 240_000), portalExited]);
+  } catch (err) {
+    restoreNextFiles(artifacts, opsDir);
+    restoreNextFiles(artifacts, portalDir, 'portal/');
+    portal.kill(); ops.kill(); api.kill();
+    throw err;
+  }
+
+  writeFileSync(resolve(artifacts, 'fixtures.json'), JSON.stringify({ ...ready, opsPort: OPS_PORT, portalPort: PORTAL_PORT }, null, 2));
+  writeFileSync(resolve(artifacts, 'pids.json'), JSON.stringify({ api: api.pid, ops: ops.pid, portal: portal.pid }));
 }
