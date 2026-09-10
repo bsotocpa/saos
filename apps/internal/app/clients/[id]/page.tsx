@@ -60,6 +60,7 @@ interface Quote {
   range_max_cents: number | null; created_at: string;
 }
 interface Engagement {
+  period_key?: string | null;
   id: string; service_line: string; status: string; title: string | null; created_at: string;
   ended_on: string | null; close_reason: string | null;
   /** #47 — what was agreed, snapshotted at acceptance. Empty for pre-#47 engagements. */
@@ -787,6 +788,41 @@ export default function ClientPacketPage() {
                 <span className="badge">{e.status}</span>
                 {e.service_line !== (e.scopeName ?? e.title ?? e.service_line) ? (
                   <span className="badge">{e.service_line}</span>
+                ) : null}
+                {/* Audit item 1 (2026-09-09): the period, or the control that records it. */}
+                {e.period_key ? (
+                  <span className="badge" title="The period this engagement covers">
+                    {/^\d{4}$/.test(e.period_key) ? `${e.period_key} return` : e.period_key}
+                  </span>
+                ) : (e.status === 'active' || e.status === 'on_hold') && (e.service_line === 'tax' || e.service_line === 'bookkeeping' || e.service_line === 'payroll') ? (
+                  <button
+                    type="button"
+                    className="badge warn"
+                    disabled={busy}
+                    title="No period is recorded for this engagement. Set it here (billing)."
+                    onClick={async () => {
+                      const a = await ask({
+                        title: 'Which period does this engagement cover?',
+                        body: <p className="small">A tax engagement is a tax year (2025). Recurring work is "ongoing". Another active engagement on the same line and period will refuse the change — withdraw or supersede it first.</p>,
+                        reason: { label: 'Period', required: true, placeholder: e.service_line === 'tax' ? '2025' : 'ongoing' },
+                        choices: [{ key: 'set', label: 'Record the period', tone: 'primary' }],
+                      });
+                      if (!a) return;
+                      setBusy(true);
+                      setActionErr('');
+                      try {
+                        await api(`/engagements/${e.id}/period`, { method: 'PATCH', body: { periodKey: a.reason, reason: 'Recorded on the client page' } });
+                        setActionMsg(`Period recorded: ${a.reason}.`);
+                        await load();
+                      } catch (err) {
+                        setActionErr(err instanceof Error ? err.message : 'Could not record the period.');
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    period not recorded
+                  </button>
                 ) : null}
               </span>
               <span className="muted small" style={{ flex: '1 1 100%' }}>

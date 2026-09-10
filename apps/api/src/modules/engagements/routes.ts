@@ -75,6 +75,7 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
       }
       const { rows } = await app.db.query(
         `SELECT e.id, e.contact_id, e.business_id, e.service_line, e.status, e.title,
+                e.period_key,
                 e.lead_staff_id, e.started_on, e.price_book_version_id,
                 e.ended_on, e.close_reason,
                 e.independence_override_at IS NOT NULL AS independence_overridden,
@@ -217,7 +218,9 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
    * engagements.write. The partial unique index judges the result — two active engagements
    * on one line and period cannot both exist, so setting a colliding period is refused.
    */
-  app.patch<{ Params: { id: string } }>('/engagements/:id/period', closeGate, async (request) => {
+  // Audit item 1 (2026-09-09, Brian's ruling): billing.manage, not engagements.write — the period
+  // decides which invoices and deposits belong to which year's work.
+  app.patch<{ Params: { id: string } }>('/engagements/:id/period', { preHandler: [app.authenticate, requirePermission('billing.manage')] }, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const b = z.object({ periodKey: z.string().trim().min(2).max(40), reason: z.string().trim().min(5).max(1000) }).parse(request.body);
     const { setEngagementPeriod } = await import('./period-set.ts');
