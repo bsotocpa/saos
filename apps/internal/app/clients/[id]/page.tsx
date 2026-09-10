@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../../lib/api';
 import { useAsk } from '../../../components/ask';
-import { engagementStatusLabel, invoiceStatusLabel, quoteStatusLabel } from '../../../lib/labels';
+import { consent7216Label, engagementStatusLabel, invoiceStatusLabel, letterStatusLabel, quoteStatusLabel } from '../../../lib/labels';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
 import { badgeToneFor, invoiceStatusLine } from '../../../lib/invoice-display';
 
@@ -368,11 +368,11 @@ export default function ClientPacketPage() {
       <section className="card" style={{ marginBottom: 12, borderColor: consentOk && letterOk ? undefined : 'var(--warn)' }}>
         <h2>Before you work this</h2>
         <p className="small" style={{ margin: '4px 0' }}>
-          <span className={`badge ${okBadge(c.consent_7216_status)}`}>{c.consent_7216_status}</span>{' '}
+          <span className={`badge ${okBadge(c.consent_7216_status)}`}>{consent7216Label(c.consent_7216_status)}</span>{' '}
           §7216 consent
         </p>
         <p className="small" style={{ margin: '4px 0' }}>
-          <span className={`badge ${okBadge(c.engagement_letter_status)}`}>{c.engagement_letter_status}</span>{' '}
+          <span className={`badge ${okBadge(c.engagement_letter_status)}`}>{letterStatusLabel(c.engagement_letter_status)}</span>{' '}
           Engagement letter
         </p>
         {!consentOk || !letterOk ? (

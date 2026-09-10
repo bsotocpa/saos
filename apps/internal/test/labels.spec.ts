@@ -6,13 +6,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  ENGAGEMENT_STATUS_LABEL, INVOICE_STATUS_LABEL, QUOTE_STATUS_LABEL, TAX_STAGE_LABEL,
+  CONSENT_7216_LABEL, ENGAGEMENT_STATUS_LABEL, INVOICE_STATUS_LABEL, LETTER_STATUS_LABEL, QUOTE_STATUS_LABEL, TAX_STAGE_LABEL,
   engagementStatusLabel, invoiceStatusLabel, quoteStatusLabel, taxStageLabel,
 } from '../lib/labels.ts';
 
 const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'overdue', 'void', 'refunded', 'partially_refunded', 'disputed'];
 const ENGAGEMENT_STATUSES = ['draft', 'active', 'on_hold', 'completed', 'withdrawn'];
 const QUOTE_STATUSES = ['draft', 'sent', 'accepted', 'declined', 'expired', 'void'];
+const CONSENT_STATES = ['not_on_file', 'requested', 'signed', 'declined', 'revoked'];
+const LETTER_STATUSES = ['none', 'pending', 'signed'];
 const TAX_STAGES = ['intake_started', 'scheduled', 'documents_requested', 'pending_client_response', 'in_preparation', 'internal_review', 'client_review', 'ready_to_file', 'filed', 'completed', 'on_hold', 'withdrawn', 'rejected'];
 
 test('every enum value has a word, and no word is the raw enum', () => {
@@ -21,6 +23,8 @@ test('every enum value has a word, and no word is the raw enum', () => {
     ['engagement_status', ENGAGEMENT_STATUSES, ENGAGEMENT_STATUS_LABEL],
     ['quote_status', QUOTE_STATUSES, QUOTE_STATUS_LABEL],
     ['tax_stage', TAX_STAGES, TAX_STAGE_LABEL],
+    ['consent_7216_state', CONSENT_STATES, CONSENT_7216_LABEL],
+    ['letter_status', LETTER_STATUSES, LETTER_STATUS_LABEL],
   ] as const) {
     for (const v of values) {
       const word = (map as Record<string, string>)[v];

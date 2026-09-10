@@ -52,6 +52,20 @@ export const TAX_STAGE_LABEL = {
   rejected: 'E-file rejected',
 } as const;
 
+export const CONSENT_7216_LABEL = {
+  not_on_file: 'Not on file',
+  requested: 'Requested',
+  signed: 'Signed',
+  declined: 'Declined',
+  revoked: 'Revoked',
+} as const;
+
+export const LETTER_STATUS_LABEL = {
+  none: 'Not on file',
+  pending: 'Pending signature',
+  signed: 'Signed',
+} as const;
+
 /** The word for a status; an unknown value falls back to the raw enum with underscores spaced, never crashes a page. */
 export function invoiceStatusLabel(status: string): string {
   return (INVOICE_STATUS_LABEL as Record<string, string>)[status] ?? status.replaceAll('_', ' ');
@@ -64,4 +78,10 @@ export function quoteStatusLabel(status: string): string {
 }
 export function taxStageLabel(stage: string): string {
   return (TAX_STAGE_LABEL as Record<string, string>)[stage] ?? stage.replaceAll('_', ' ');
+}
+export function consent7216Label(status: string): string {
+  return (CONSENT_7216_LABEL as Record<string, string>)[status] ?? status.replaceAll('_', ' ');
+}
+export function letterStatusLabel(status: string): string {
+  return (LETTER_STATUS_LABEL as Record<string, string>)[status] ?? status.replaceAll('_', ' ');
 }
