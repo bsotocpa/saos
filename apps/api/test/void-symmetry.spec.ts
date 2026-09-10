@@ -15,7 +15,7 @@ import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
 import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
-import { createQuote, sendQuote, acceptQuote } from '../src/modules/pricing/quotes.ts';
+import { createQuote, sendQuote, acceptQuote, overrideQuoteDeposit } from '../src/modules/pricing/quotes.ts';
 import { voidInvoice } from '../src/modules/billing/void.ts';
 import { createEngagement } from '../src/modules/engagements/service.ts';
 import { transferDeposit } from '../src/modules/engagements/deposits.ts';
@@ -135,4 +135,21 @@ test('a transferred deposit re-stamps both engagements from the record', async (
   await transferDeposit(app, { invoiceId: x.depositInvoiceId, toEngagementId: successor.id, reason: 'symmetry: move the deposit' }, { type: 'system', label: 'test' });
   assert.equal((await row('engagements', x.engagementId)).deposit_charged_cents, null, 'the old engagement lost its stamp with its deposit');
   assert.equal((await row('engagements', successor.id)).deposit_charged_cents, stampedCharge, 'the successor carries the stamp the record supports');
+});
+
+test('a WAIVED deposit never issued an invoice: the stamp says waived, and a restamp keeps it — nothing was issued, so nothing is reversed', async () => {
+  seq += 1;
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: `Waived${seq}`, email: `waived-${seq}@example.test` });
+  await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c.id]);
+  const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await depositItem() }] }, actor());
+  await overrideQuoteDeposit(app, q.id, { amountCents: 0, reason: 'symmetry test: waived for a returning client' }, actor());
+  const s = await sendQuote(app, q.id, actor());
+  const acc = await acceptQuote(app, s.url.split('/').pop()!, {});
+  assert.equal(acc.depositInvoiceId, null, 'a waived deposit issues no invoice');
+  const before = await row('engagements', acc.engagementId);
+  assert.equal(before.deposit_treatment, 'waived');
+  const r = await app.inject({ method: 'POST', url: `/engagements/${acc.engagementId}/restamp-deposit`, headers: auth(rene) });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().changed, false, 'the waived stamp is the record, not an issuance');
+  assert.equal((await row('engagements', acc.engagementId)).deposit_treatment, 'waived');
 });

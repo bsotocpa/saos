@@ -186,16 +186,33 @@ export async function restampDepositFromRecord(
     deposit_treatment: null, deposit_standard_cents: null, deposit_charged_cents: null,
     deposit_override_reason: null, deposit_override_by_staff_id: null,
   };
-  if (live) {
+  /*
+   * A WAIVED deposit never issued an invoice, so there is nothing live to read it from; the
+   * accepted quote that built this engagement (engagement_scope_items.source_quote_id) still
+   * says "waived", and that decision is part of the record. Only when the quote DID issue a
+   * deposit invoice and that invoice is now void is the stamp gone — issuance reversed.
+   */
+  const waived = live ? null : (await app.db.query<{
+    quote_id: string; deposit_item_code: string | null; deposit_override_cents: number | null;
+    deposit_override_reason: string | null; deposit_override_by_staff_id: string | null;
+  }>(
+    `SELECT DISTINCT q.id AS quote_id, q.deposit_item_code, q.deposit_override_cents, q.deposit_override_reason, q.deposit_override_by_staff_id
+       FROM engagement_scope_items si JOIN quotes q ON q.id = si.source_quote_id
+      WHERE si.engagement_id = $1 AND q.status = 'accepted' AND q.deposit_invoice_id IS NULL
+      LIMIT 1`,
+    [engagementId]
+  )).rows[0] ?? null;
+  const source = live ?? waived;
+  if (source) {
     const { resolveDeposit } = await import('../pricing/quotes.ts');
-    const resolved = await resolveDeposit(app, live.deposit_item_code, live.deposit_override_cents, live.quote_id);
-    if (resolved.treatment) {
+    const resolved = await resolveDeposit(app, source.deposit_item_code, source.deposit_override_cents, source.quote_id);
+    if (resolved.treatment && (live || resolved.chargeCents === 0)) {
       after = {
         deposit_treatment: resolved.treatment,
         deposit_standard_cents: resolved.standardCents,
         deposit_charged_cents: resolved.chargeCents ?? 0,
-        deposit_override_reason: live.deposit_override_reason,
-        deposit_override_by_staff_id: live.deposit_override_by_staff_id,
+        deposit_override_reason: source.deposit_override_reason,
+        deposit_override_by_staff_id: source.deposit_override_by_staff_id,
       };
     }
   }
