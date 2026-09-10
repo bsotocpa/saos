@@ -108,7 +108,7 @@ export function registerReferralRoutes(app: FastifyInstance): void {
     if (!state.show) return reply.code(409).send({ error: 'cta_not_available' });
     const result = await createReferral(
       app,
-      { type: 'client', label: client.email },
+      { type: 'client', label: client.displayName },
       { contactId: client.contactId, direction: 'hilo_to_soto', source: 'portal_cta' }
     );
     return reply.code(201).send(result);

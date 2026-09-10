@@ -355,7 +355,7 @@ export async function transitionSubmit(
   );
   await writeAudit(app.db, {
     actorType: 'client',
-    actorLabel: c.email,
+    actorLabel: `${c.first_name} ${c.last_name}`,
     action: 'referral.converted',
     objectType: 'referral',
     objectId: referralId,

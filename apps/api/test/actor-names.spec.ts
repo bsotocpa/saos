@@ -11,6 +11,7 @@ import type { Mailer } from '../src/mailer.ts';
 import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { createEngagement } from '../src/modules/engagements/service.ts';
+import { generateToken } from '../src/crypto.ts';
 
 let app: FastifyInstance;
 let config: Config;
@@ -70,4 +71,17 @@ test('no staff-authored audit row in this database carries an email as its actor
   const leaks = await app.db.query<{ action: string; actor_label: string }>(
     `SELECT action, actor_label FROM audit_log WHERE actor_type = 'staff' AND actor_label LIKE '%@%' LIMIT 5`);
   assert.deepEqual(leaks.rows, [], `staff audit rows with an email as the actor: ${JSON.stringify(leaks.rows)}`);
+});
+
+test('decision 2: a client actor is labelled by the contact\x27s display name, never the email', async () => {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Portalname', email: 'portalname@example.test' });
+  const user = await app.db.query<{ id: string }>(`INSERT INTO portal_users (contact_id, email) VALUES ($1, $2) RETURNING id`, [c.id, 'portalname@example.test']);
+  const { token, hash } = generateToken();
+  await app.db.query(`INSERT INTO portal_sessions (portal_user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval '1 day')`, [user.rows[0]!.id, hash]);
+  const res = await app.inject({ method: 'PATCH', url: '/portal/me', headers: { authorization: `Bearer ${token}` }, payload: { preferredContactMethod: 'email' } });
+  assert.equal(res.statusCode, 200, res.body);
+  const audit = await app.db.query<{ actor_label: string }>(`SELECT actor_label FROM audit_log WHERE action = 'contact.self_updated' AND contact_id = $1`, [c.id]);
+  assert.equal(audit.rows[0]!.actor_label, 'Synthetic Portalname');
+  const leaks = await app.db.query(`SELECT action, actor_label FROM audit_log WHERE actor_type = 'client' AND actor_label LIKE '%@%' LIMIT 5`);
+  assert.deepEqual(leaks.rows, [], 'client audit rows with an email as the actor');
 });

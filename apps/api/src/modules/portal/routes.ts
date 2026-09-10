@@ -100,7 +100,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     await app.db.query(`UPDATE contacts SET ${sets.join(', ')} WHERE id = $1`, params);
     await refreshEnrichmentGaps(app, client.contactId);
     await writeAudit(app.db, {
-      actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
+      actorType: 'client', actorId: client.portalUserId, actorLabel: client.displayName,
       action: 'contact.self_updated', objectType: 'contact', objectId: client.contactId,
       contactId: client.contactId, ip: request.ip,
       details: { fields: sets.map((s) => s.split(' =')[0]) },
@@ -169,7 +169,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     }
 
     await writeAudit(app.db, {
-      actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
+      actorType: 'client', actorId: client.portalUserId, actorLabel: client.displayName,
       action: b.consent ? 'sms.consent_granted' : 'sms.consent_revoked',
       objectType: 'contact', objectId: client.contactId,
       contactId: client.contactId, ip: request.ip,
@@ -227,7 +227,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     if (res.rowCount === 0) throw new AppError(404, 'not_found', 'To-do not found.');
     await cascadeUnblock(app, taskId);
     await writeAudit(app.db, {
-      actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
+      actorType: 'client', actorId: client.portalUserId, actorLabel: client.displayName,
       action: 'task.client_completed', objectType: 'task', objectId: taskId, contactId: client.contactId,
     });
     return { status: 'ok' };
@@ -262,7 +262,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     return withdrawDocument(
       app,
       id,
-      { type: 'client', id: client.portalUserId, label: client.email, ip: request.ip },
+      { type: 'client', id: client.portalUserId, label: client.displayName, ip: request.ip },
       { reason: body.reason, clientContactId: client.contactId }
     );
   });
@@ -458,7 +458,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
       });
     }
     await writeAudit(app.db, {
-      actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
+      actorType: 'client', actorId: client.portalUserId, actorLabel: client.displayName,
       action: 'service_request.created', objectType: 'task', objectId: task.id,
       contactId: client.contactId, details: { service: b.service },
     });
@@ -479,7 +479,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     const quote = await computeQuote(app, { items, language: client.language });
     const range = quote.revenue.one_time ?? { minCents: 0, maxCents: 0 };
     await writeAudit(app.db, {
-      actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
+      actorType: 'client', actorId: client.portalUserId, actorLabel: client.displayName,
       action: 'estimate.requested', contactId: client.contactId,
       details: { inputs: b, range_cents: range },
     });

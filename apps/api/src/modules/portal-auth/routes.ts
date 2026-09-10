@@ -79,7 +79,7 @@ export function registerPortalAuthRoutes(app: FastifyInstance): void {
     await writeAudit(app.db, {
       actorType: 'client',
       actorId: client.portalUserId,
-      actorLabel: client.email,
+      actorLabel: client.displayName,
       action: 'portal.logout',
       contactId: client.contactId,
     });
@@ -110,7 +110,7 @@ export function registerPortalAuthRoutes(app: FastifyInstance): void {
     await writeAudit(app.db, {
       actorType: 'client',
       actorId: client.portalUserId,
-      actorLabel: client.email,
+      actorLabel: client.displayName,
       action: 'portal.logout_all',
       contactId: client.contactId,
       details: { sessions_revoked: rowCount ?? 0 },

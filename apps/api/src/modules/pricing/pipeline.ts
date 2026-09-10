@@ -92,7 +92,7 @@ export async function setLeadStage(
   await writeAudit(app.db, {
     actorType: actor ? 'staff' : 'system',
     actorId: actor?.id ?? null,
-    actorLabel: actor?.email ?? 'pipeline',
+    actorLabel: actor?.fullName ?? 'pipeline',
     action: 'lead.stage_changed',
     objectType: 'contact',
     objectId: contactId,

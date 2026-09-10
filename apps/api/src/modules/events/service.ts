@@ -226,7 +226,7 @@ export async function registerForEvent(
     [e.id, input.email]
   );
   await writeAudit(app.db, {
-    actorType: 'client', actorLabel: input.email,
+    actorType: 'client', actorLabel: `${input.firstName} ${input.lastName}`,
     action: status === 'confirmed' ? 'event.registered' : 'event.waitlisted',
     objectType: 'event', objectId: e.id,
     details: { slug, seat_number: seatNumber, waitlist_position: position },

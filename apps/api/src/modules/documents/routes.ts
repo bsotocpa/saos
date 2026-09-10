@@ -61,7 +61,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
     const result = await uploadDocument(
       app,
       minio,
-      { type: 'client', id: client.portalUserId, label: client.email, ip: request.ip },
+      { type: 'client', id: client.portalUserId, label: client.displayName, ip: request.ip },
       {
         contactId: client.contactId, // ALWAYS the session contact
         category: fields.category,
@@ -107,7 +107,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
     const doc = await uploadDocument(
       app,
       minio,
-      { type: 'client', id: client.portalUserId, label: client.email, ip: request.ip },
+      { type: 'client', id: client.portalUserId, label: client.displayName, ip: request.ip },
       {
         contactId: client.contactId, // ALWAYS the session contact
         category: fields.category,
@@ -174,7 +174,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       const doc = await downloadDocument(
         app,
         minio,
-        { type: 'client', id: client.portalUserId, label: client.email, ip: request.ip },
+        { type: 'client', id: client.portalUserId, label: client.displayName, ip: request.ip },
         id,
         { clientContactId: client.contactId }
       );

@@ -160,8 +160,9 @@ export async function verifyMagicLink(
   const redeemed = rows[0];
   if (!redeemed) throw new AppError(401, 'invalid_magic_link', 'This sign-in link is invalid, used, or expired.');
 
-  const user = await app.db.query<{ contact_id: string; email: string; last_login_at: Date | null }>(
-    `SELECT contact_id, email, last_login_at FROM portal_users WHERE id = $1 AND is_active`,
+  const user = await app.db.query<{ contact_id: string; email: string; last_login_at: Date | null; display_name: string }>(
+    `SELECT u.contact_id, u.email, u.last_login_at, c.first_name || ' ' || c.last_name AS display_name
+       FROM portal_users u JOIN contacts c ON c.id = u.contact_id WHERE u.id = $1 AND u.is_active`,
     [redeemed.portal_user_id]
   );
   const u = user.rows[0];
@@ -179,7 +180,7 @@ export async function verifyMagicLink(
   await writeAudit(app.db, {
     actorType: 'client',
     actorId: redeemed.portal_user_id,
-    actorLabel: u.email,
+    actorLabel: u.display_name,
     action: 'portal.login',
     contactId: u.contact_id,
     ip: meta.ip,

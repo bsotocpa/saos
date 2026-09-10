@@ -184,7 +184,7 @@ export async function draftRecap(
   await writeAudit(app.db, {
     actorType: actor ? 'staff' : 'system',
     actorId: actor?.id ?? null,
-    actorLabel: actor?.email ?? 'meeting-pipeline',
+    actorLabel: actor?.fullName ?? 'meeting-pipeline',
     action: 'recap.drafted',
     objectType: 'meeting',
     objectId: meetingId,

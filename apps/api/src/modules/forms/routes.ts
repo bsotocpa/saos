@@ -621,7 +621,7 @@ export function registerFormRoutes(app: FastifyInstance): void {
     const result = await processServiceOnboarding(app, client.contactId, answers);
 
     await writeAudit(app.db, {
-      actorType: 'client', actorId: client.portalUserId, actorLabel: client.email,
+      actorType: 'client', actorId: client.portalUserId, actorLabel: client.displayName,
       action: 'service_onboarding.revised', objectType: 'form_submission', objectId: submitted.id,
       contactId: client.contactId, ip: request.ip,
       details: { changed: Object.keys(sanitizeAnswers(b.answers)), flags: result.flags },

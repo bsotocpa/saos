@@ -18,6 +18,8 @@ export interface AuthedClient {
   /** THE scoping key: every portal query filters by this — never by client-supplied ids. */
   contactId: string;
   email: string;
+  /** Decision 2 (2026-09-09): the contact's name, for every actor label. Never the email. */
+  displayName: string;
   language: 'en' | 'es';
   sessionId: string;
 }

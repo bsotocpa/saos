@@ -13,6 +13,7 @@ interface PortalSessionRow {
   contact_id: string;
   email: string;
   language: 'en' | 'es';
+  display_name: string;
 }
 
 export function buildAuthenticateClient(app: FastifyInstance) {
@@ -29,7 +30,8 @@ export function buildAuthenticateClient(app: FastifyInstance) {
     }
 
     const { rows } = await app.db.query<PortalSessionRow>(
-      `SELECT s.id AS session_id, u.id AS portal_user_id, u.contact_id, u.email, c.language
+      `SELECT s.id AS session_id, u.id AS portal_user_id, u.contact_id, u.email, c.language,
+              c.first_name || ' ' || c.last_name AS display_name
        FROM portal_sessions s
        JOIN portal_users u ON u.id = s.portal_user_id
        JOIN contacts c     ON c.id = u.contact_id
@@ -76,6 +78,7 @@ export function buildAuthenticateClient(app: FastifyInstance) {
       portalUserId: row.portal_user_id,
       contactId: row.contact_id,
       email: row.email,
+      displayName: row.display_name,
       language: row.language,
       sessionId: row.session_id,
     };

@@ -118,7 +118,9 @@ test('staff grants portal access → magic link email → client session (audite
   });
   assert.equal(me.statusCode, 200);
   assert.equal(me.json().contact.email, ana.email);
-  assert.ok((await auditRows(app.db, 'portal.login', ana.email)) >= 1);
+  // Decision 2 (2026-09-09): a client actor is labelled by the contact's display name, never the email.
+  assert.ok((await auditRows(app.db, 'portal.login', 'Synthetic ClientA')) >= 1);
+  assert.equal(await auditRows(app.db, 'portal.login', ana.email), 0, 'never the email');
   assert.ok((await auditRows(app.db, 'magic_link.issued')) >= 1);
 
   // Single use: redeeming the same link again fails.
