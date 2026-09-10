@@ -90,11 +90,20 @@ export default function DocumentsPage() {
     const wanted = new URLSearchParams(window.location.search).get('scan');
     return wanted && VALID_FILTERS.has(wanted) ? wanted : null;
   });
+  // Audit item 8 (2026-09-09): the client page's "+N more" lands HERE, on this client's documents.
+  const [contactId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const wanted = new URLSearchParams(window.location.search).get('contactId');
+    return wanted && /^[0-9a-f-]{36}$/i.test(wanted) ? wanted : null;
+  });
   const [error, setError] = useState<string | null>(null);
 
   const load = (scanStatus: string | null) => {
     setError(null);
-    void api<Overview>(`/documents/overview${scanStatus ? `?scanStatus=${scanStatus}` : ''}`)
+    const q = new URLSearchParams();
+    if (scanStatus) q.set('scanStatus', scanStatus);
+    if (contactId) q.set('contactId', contactId);
+    void api<Overview>(`/documents/overview${q.size > 0 ? `?${q.toString()}` : ''}`)
       .then(setData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not load documents.'));
   };

@@ -601,7 +601,11 @@ export default function ClientPacketPage() {
               </p>
             ))
           )}
-          {docs.length > 12 ? <p className="muted small">+{docs.length - 12} more</p> : null}
+          {docs.length > 12 ? (
+            <p className="muted small">
+              <a href={`/documents?contactId=${params.id}`}>+{docs.length - 12} more — every document for this client</a>
+            </p>
+          ) : null}
         </section>
 
         <section className="card">
