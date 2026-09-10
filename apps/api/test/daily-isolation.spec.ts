@@ -25,14 +25,14 @@ const silentMailer: Mailer = { transport: 'console', async send() { return { id:
 const stripe: StripeAdapter = {
   mode: 'stub',
   keyMode: null,
-  async createCheckoutSession(input) { return { id: `cs_iso_${input.invoiceId}`, url: 'https://checkout.stripe.example/iso' }; },
+  async createCheckoutSession(input) { return { sessionId: `cs_iso_${input.invoiceId}`, url: 'https://checkout.stripe.example/iso' }; },
   async retrieveCheckoutSession() { return { status: 'open', paymentStatus: 'unpaid' }; },
   parseWebhookEvent() { throw new Error('not used here'); },
   async listRefunds() { return []; },
   async expireCheckoutSession() { /* nothing */ },
   async retrieveCharge(paymentIntentId) {
     if (paymentIntentId === 'pi_test_mode_from_august') throw new Error("No such payment_intent: 'pi_test_mode_from_august'");
-    return { refunded: false, amountRefundedCents: 0, disputed: false };
+    return { chargeId: `ch_${paymentIntentId}`, amountCents: 10000, amountRefundedCents: 0, refunded: false, disputed: false, refunds: [] };
   },
 };
 

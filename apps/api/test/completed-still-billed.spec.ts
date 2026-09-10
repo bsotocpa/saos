@@ -26,12 +26,12 @@ const silentMailer: Mailer = { transport: 'console', async send() { return { id:
 const seen: string[] = [];
 const stripe: StripeAdapter = {
   mode: 'stub', keyMode: null,
-  async createCheckoutSession(input) { return { id: `cs_c_${input.invoiceId}`, url: 'https://checkout.stripe.example/c' }; },
+  async createCheckoutSession(input) { return { sessionId: `cs_c_${input.invoiceId}`, url: 'https://checkout.stripe.example/c' }; },
   async retrieveCheckoutSession() { return { status: 'open', paymentStatus: 'unpaid' }; },
   parseWebhookEvent() { throw new Error('not used'); },
   async listRefunds() { return []; },
   async expireCheckoutSession() { /* nothing */ },
-  async retrieveCharge(pi) { seen.push(pi); return { refunded: false, amountRefundedCents: 0, disputed: false }; },
+  async retrieveCharge(paymentIntentId) { seen.push(paymentIntentId); return { chargeId: `ch_${paymentIntentId}`, amountCents: 10000, amountRefundedCents: 0, refunded: false, disputed: false, refunds: [] }; },
 };
 const today = todayChicago();
 const T = (n: number) => addDays(today, n);

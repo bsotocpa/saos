@@ -374,6 +374,25 @@ function liveAdapter(config: Config): StripeAdapter {
   };
 }
 
+/**
+ * DECISION 4 (2026-09-10, Brian's ruling). The stub takes money from nobody and confirms every
+ * checkout; it is a test double. It loads under NODE_ENV=test and nowhere else, and never on a
+ * box that holds a live key. The reason is returned as a sentence so a boot failure says what
+ * was wrong instead of "adapter error".
+ */
+export function stubRefusalReason(config: Pick<Config, 'STRIPE_MODE' | 'NODE_ENV' | 'STRIPE_SECRET_KEY'>): string | null {
+  if (config.STRIPE_MODE !== 'stub') return null;
+  if (/^[rs]k_live_/.test(config.STRIPE_SECRET_KEY ?? '')) {
+    return 'refusing to load the STUB Stripe adapter: a LIVE Stripe key is present (STRIPE_SECRET_KEY starts with sk_live_). Set STRIPE_MODE=live, or remove the key.';
+  }
+  if (config.NODE_ENV !== 'test') {
+    return `refusing to load the STUB Stripe adapter under NODE_ENV=${config.NODE_ENV}: the stub confirms every checkout without charging anyone and is allowed only under NODE_ENV=test. Set STRIPE_MODE=live with a real key, or run as test.`;
+  }
+  return null;
+}
+
 export function makeStripeAdapter(config: Config): StripeAdapter {
+  const refusal = stubRefusalReason(config);
+  if (refusal) throw new Error(refusal);
   return config.STRIPE_MODE === 'live' ? liveAdapter(config) : stubAdapter(config.STRIPE_WEBHOOK_ENDPOINT_ID ?? null);
 }
