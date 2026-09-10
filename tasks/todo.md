@@ -29,3 +29,17 @@ NEW
 - NOT DONE: STRIPE_WEBHOOK_ENDPOINT_ID on the box — the write needs the live key in a shell and was refused by the tool policy; the audit row says "unconfigured" until the installer runs or Brian sets it.
 - Brian arms in Admin → Automations: payment_receipt, refund_receipt, void_notice (shipped OFF per CLAUDE.md; receipts and cancellation notices are HELD until armed).
 - Next overnight: tasks/next-overnight-plan.md (plan only).
+
+## Evening batch — 2026-09-09 (Brian's evening rulings; all shipped, one commit per item)
+- [x] 0. DATE consumer audit: calendarDay(), guard rule, date-consumers.spec (8 tests on both sides of today), production check clean (5819fb3)
+- [x] 5. Drafts are not payable; filing and acceptance issue in their own transaction (931d4ed)
+- [x] 1. Withdrawal voids attached sent/overdue invoices, deletes drafts; DB invariant 0085; abb43fc6 withdrawn, 6e474b1f = tax/2025 with the $250 deposit (976ac35)
+- [x] 2. Client actors by display name (5522d76)
+- [x] 3. Held count on the automation row; arming replays nothing; NOT armed (73e0628)
+- [x] 4. Installer idempotent; STRIPE_WEBHOOK_ENDPOINT_ID server-managed (755baa9)
+- [x] 12. Zero native dialogs; one in-app modal; guard (4b8707e)
+- [x] 13. Builder chips / sticky summary / tax-year select (6d28e26)
+- [x] 14. One link per invoice — sent by email or text, never printed (7368078)
+- [x] Audit 1, 3, 5, 11, 12, 6, 7, 8, 9, 10 (7ac18e2 … 40f9d83); audit 2 and 4 were done earlier
+- DECISION-PENDING: completing an engagement with an unpaid invoice stays allowed (the collection tail) — the 0085 invariant covers withdrawn only.
+- Held for Brian: arm payment_receipt / refund_receipt / void_notice in Admin → Automations; run install-stripe-live.sh (idempotent) for STRIPE_WEBHOOK_ENDPOINT_ID.
