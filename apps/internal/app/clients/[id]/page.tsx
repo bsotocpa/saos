@@ -1042,109 +1042,6 @@ export default function ClientPacketPage() {
           point is reviewing a conversation without listening to it again, so the
           summary is the body of the row, not a detail behind a click. The transcript
           IS behind a click, because reading one is an audited access. */}
-      <section className="card span" style={{ marginTop: 12 }}>
-        <h2>Sessions ({sessions.length})</h2>
-        {sessions.length === 0 ? (
-          <p className="muted small">No recorded sessions.</p>
-        ) : (
-          sessions.map((s) => (
-            <div key={s.id} style={{ padding: '10px 0', borderTop: '1px solid var(--line)' }}>
-              <p className="small" style={{ margin: 0 }}>
-                <span className="badge">{s.type.replaceAll('_', ' ')}</span>{' '}
-                {s.stalled ? (
-                  <span className="badge warn">stalled — re-queued</span>
-                ) : s.status !== 'ready' ? (
-                  <span className="badge warn">{s.status}</span>
-                ) : null}{' '}
-                <span className="muted">
-                  {(s.started_at ?? s.created_at).slice(0, 10)}
-                  {s.duration_seconds
-                    ? ` · ${Math.floor(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s`
-                    : ''}
-                  {s.staff_name ? ` · ${s.staff_name}` : ''}
-                </span>
-              </p>
-
-              {s.summary ? (
-                <p className="small" style={{ margin: '6px 0 0' }}>{s.summary}</p>
-              ) : s.stalled ? (
-                <p className="muted small" style={{ margin: '6px 0 0' }}>
-                  Processing stopped partway through and has been re-queued. It will
-                  summarize on the next run.
-                </p>
-              ) : s.status === 'failed' ? (
-                <p className="muted small" style={{ margin: '6px 0 0' }}>
-                  This recording could not be processed. Retry below, or check the audio.
-                </p>
-              ) : (
-                <p className="muted small" style={{ margin: '6px 0 0' }}>Still processing…</p>
-              )}
-
-              {s.decisions && s.decisions.length > 0 ? (
-                <p className="small" style={{ margin: '4px 0 0' }}>
-                  <strong>Decisions:</strong> {s.decisions.join(' · ')}
-                </p>
-              ) : null}
-              {s.action_items && s.action_items.length > 0 ? (
-                <p className="small" style={{ margin: '4px 0 0' }}>
-                  <strong>Action items:</strong> {s.action_items.map((a) => a.text).join(' · ')}
-                </p>
-              ) : null}
-              {s.tax_need ? <span className="badge warn">tax need flagged</span> : null}
-
-              <p className="small" style={{ margin: '6px 0 0' }}>
-                {s.has_transcript ? (
-                  <button
-                    type="button"
-                    className="btn ghost"
-                    onClick={() => {
-                      if (openTranscript?.id === s.id) { setOpenTranscript(null); return; }
-                      setTranscriptErr('');
-                      void api<{ transcript: { content: string } }>(`/meetings/${s.id}/transcript`)
-                        .then((r) => setOpenTranscript({ id: s.id, content: r.transcript.content }))
-                        .catch((err: unknown) =>
-                          setTranscriptErr(err instanceof Error ? err.message : 'Could not load the transcript.')
-                        );
-                    }}
-                  >
-                    {openTranscript?.id === s.id ? 'Hide transcript' : 'Full transcript'}
-                  </button>
-                ) : null}{' '}
-                {s.status !== 'ready' ? (
-                  <button
-                    type="button"
-                    className="btn ghost"
-                    onClick={() => {
-                      void api(`/meetings/${s.id}/reprocess`, { method: 'POST' })
-                        .then(() => setActionMsg('Session re-queued for processing.'))
-                        .catch((err: unknown) =>
-                          setTranscriptErr(err instanceof Error ? err.message : 'Could not re-queue.')
-                        );
-                    }}
-                  >
-                    Retry processing
-                  </button>
-                ) : null}
-                {s.model ? <span className="muted small"> · summary auto-generated — review before relying on it</span> : null}
-              </p>
-
-              {openTranscript?.id === s.id ? (
-                <pre
-                  className="small"
-                  style={{
-                    whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginTop: 8,
-                    maxHeight: 320, overflowY: 'auto', background: 'var(--paper)',
-                    padding: 10, borderRadius: 8,
-                  }}
-                >
-                  {openTranscript.content}
-                </pre>
-              ) : null}
-            </div>
-          ))
-        )}
-        {transcriptErr ? <p className="alert error small">{transcriptErr}</p> : null}
-      </section>
 
       {/*
         INVOICES (#33). The record could show quotes, packets, returns and sessions and
@@ -1413,6 +1310,110 @@ export default function ClientPacketPage() {
             </button>
           </>
         )}
+        {/* Audit item 10 (2026-09-09): recorded sessions live here, under the calendar — one card for
+            everything a meeting with this client produced. A row with a transcript says "recorded". */}
+        <h3 style={{ marginTop: 14 }}>Recorded ({sessions.length})</h3>
+        {sessions.length === 0 ? (
+          <p className="muted small">No recorded sessions.</p>
+        ) : (
+          sessions.map((s) => (
+            <div key={s.id} style={{ padding: '10px 0', borderTop: '1px solid var(--line)' }}>
+              <p className="small" style={{ margin: 0 }}>
+                <span className="badge ok" title="A recorded session: transcript and summary below.">recorded</span>{' '}
+                <span className="badge">{s.type.replaceAll('_', ' ')}</span>{' '}
+                {s.stalled ? (
+                  <span className="badge warn">stalled — re-queued</span>
+                ) : s.status !== 'ready' ? (
+                  <span className="badge warn">{s.status}</span>
+                ) : null}{' '}
+                <span className="muted">
+                  {(s.started_at ?? s.created_at).slice(0, 10)}
+                  {s.duration_seconds
+                    ? ` · ${Math.floor(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s`
+                    : ''}
+                  {s.staff_name ? ` · ${s.staff_name}` : ''}
+                </span>
+              </p>
+
+              {s.summary ? (
+                <p className="small" style={{ margin: '6px 0 0' }}>{s.summary}</p>
+              ) : s.stalled ? (
+                <p className="muted small" style={{ margin: '6px 0 0' }}>
+                  Processing stopped partway through and has been re-queued. It will
+                  summarize on the next run.
+                </p>
+              ) : s.status === 'failed' ? (
+                <p className="muted small" style={{ margin: '6px 0 0' }}>
+                  This recording could not be processed. Retry below, or check the audio.
+                </p>
+              ) : (
+                <p className="muted small" style={{ margin: '6px 0 0' }}>Still processing…</p>
+              )}
+
+              {s.decisions && s.decisions.length > 0 ? (
+                <p className="small" style={{ margin: '4px 0 0' }}>
+                  <strong>Decisions:</strong> {s.decisions.join(' · ')}
+                </p>
+              ) : null}
+              {s.action_items && s.action_items.length > 0 ? (
+                <p className="small" style={{ margin: '4px 0 0' }}>
+                  <strong>Action items:</strong> {s.action_items.map((a) => a.text).join(' · ')}
+                </p>
+              ) : null}
+              {s.tax_need ? <span className="badge warn">tax need flagged</span> : null}
+
+              <p className="small" style={{ margin: '6px 0 0' }}>
+                {s.has_transcript ? (
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => {
+                      if (openTranscript?.id === s.id) { setOpenTranscript(null); return; }
+                      setTranscriptErr('');
+                      void api<{ transcript: { content: string } }>(`/meetings/${s.id}/transcript`)
+                        .then((r) => setOpenTranscript({ id: s.id, content: r.transcript.content }))
+                        .catch((err: unknown) =>
+                          setTranscriptErr(err instanceof Error ? err.message : 'Could not load the transcript.')
+                        );
+                    }}
+                  >
+                    {openTranscript?.id === s.id ? 'Hide transcript' : 'Full transcript'}
+                  </button>
+                ) : null}{' '}
+                {s.status !== 'ready' ? (
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => {
+                      void api(`/meetings/${s.id}/reprocess`, { method: 'POST' })
+                        .then(() => setActionMsg('Session re-queued for processing.'))
+                        .catch((err: unknown) =>
+                          setTranscriptErr(err instanceof Error ? err.message : 'Could not re-queue.')
+                        );
+                    }}
+                  >
+                    Retry processing
+                  </button>
+                ) : null}
+                {s.model ? <span className="muted small"> · summary auto-generated — review before relying on it</span> : null}
+              </p>
+
+              {openTranscript?.id === s.id ? (
+                <pre
+                  className="small"
+                  style={{
+                    whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginTop: 8,
+                    maxHeight: 320, overflowY: 'auto', background: 'var(--paper)',
+                    padding: 10, borderRadius: 8,
+                  }}
+                >
+                  {openTranscript.content}
+                </pre>
+              ) : null}
+            </div>
+          ))
+        )}
+        {transcriptErr ? <p className="alert error small">{transcriptErr}</p> : null}
       </section>
 
       {c.notes ? (
