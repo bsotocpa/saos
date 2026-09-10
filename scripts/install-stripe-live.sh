@@ -228,6 +228,9 @@ PY
 set_env STRIPE_MODE live
 set_env STRIPE_SECRET_KEY "$STRIPE_KEY"
 set_env STRIPE_WEBHOOK_SECRET "$WHSEC"
+# Item 10 (2026-09-09): every signature failure names this endpoint, so the log says which
+# door the event knocked on. Server-only key: the deploy merge preserves it.
+set_env STRIPE_WEBHOOK_ENDPOINT_ID "$WEBHOOK_ID"
 chmod 600 "$ENV_FILE"
 pass "STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET written (values not shown)"
 

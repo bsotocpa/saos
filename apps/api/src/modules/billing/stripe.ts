@@ -42,6 +42,43 @@ export interface StripeRefund {
  * Stripe's retained fee is a bookkeeping matter, not SAOS's.
  */
 /** What Stripe says about a charge today — the source of truth a nightly check compares against. */
+/**
+ * ITEM 10 (2026-09-09): a signature failure is a mismatch between worlds — a live event at a
+ * test endpoint, a test key on a live box, a secret rotated on one side. The refusal names
+ * the world the event came from (livemode, from the payload — it is only ever read, never
+ * trusted), the event id, the mode this box is configured for, and the endpoint id the
+ * installer registered. Without those four the next person reads "401" and guesses.
+ */
+export interface SignatureFailure {
+  livemode: boolean | null;
+  eventId: string | null;
+  eventType: string | null;
+  configuredMode: 'stub' | 'live';
+  endpointId: string | null;
+  reason: string;
+}
+
+export function signatureFailure(
+  rawBody: Buffer,
+  configuredMode: 'stub' | 'live',
+  endpointId: string | null,
+  reason: string
+): AppError & { webhook: SignatureFailure } {
+  let livemode: boolean | null = null;
+  let eventId: string | null = null;
+  let eventType: string | null = null;
+  try {
+    const parsed = JSON.parse(rawBody.toString('utf8')) as { livemode?: unknown; id?: unknown; type?: unknown };
+    livemode = typeof parsed.livemode === 'boolean' ? parsed.livemode : null;
+    eventId = typeof parsed.id === 'string' ? parsed.id : null;
+    eventType = typeof parsed.type === 'string' ? parsed.type : null;
+  } catch {
+    // Not JSON: the failure still says so.
+  }
+  const err = new AppError(401, 'unauthorized', `Stripe signature verification failed: ${reason}.`);
+  return Object.assign(err, { webhook: { livemode, eventId, eventType, configuredMode, endpointId, reason } });
+}
+
 export interface StripeChargeState {
   chargeId: string;
   amountCents: number;
@@ -211,7 +248,7 @@ export interface StripeAdapter {
   retrieveCharge(paymentIntentId: string): Promise<StripeChargeState | null>;
 }
 
-function stubAdapter(): StripeAdapter {
+function stubAdapter(endpointId: string | null): StripeAdapter {
   return {
     mode: 'stub',
     keyMode: null,
@@ -229,7 +266,7 @@ function stubAdapter(): StripeAdapter {
       // Stub auth: same shared-secret header convention as our other webhooks.
       const secret = headers['x-webhook-secret'];
       if (secret !== sharedSecret) {
-        throw new AppError(401, 'unauthorized', 'Bad webhook secret.');
+        throw signatureFailure(rawBody, 'stub', endpointId, 'bad webhook secret');
       }
       return mapStripeEvent(JSON.parse(rawBody.toString('utf8')) as RawStripeEvent);
     },
@@ -291,15 +328,16 @@ function liveAdapter(config: Config): StripeAdapter {
     },
     parseWebhookEvent(headers, rawBody) {
       const signature = headers['stripe-signature'];
+      const endpointId = config.STRIPE_WEBHOOK_ENDPOINT_ID ?? null;
       if (typeof signature !== 'string' || !this.mode) {
-        throw new AppError(401, 'unauthorized', 'Missing Stripe signature.');
+        throw signatureFailure(rawBody, 'live', endpointId, 'missing Stripe-Signature header');
       }
       let event: Stripe.Event;
       try {
         // THE signature verification (M13 prove-it): rejects forged payloads.
         event = stripe.webhooks.constructEvent(rawBody, signature, config.STRIPE_WEBHOOK_SECRET ?? '');
-      } catch {
-        throw new AppError(401, 'unauthorized', 'Stripe signature verification failed.');
+      } catch (err) {
+        throw signatureFailure(rawBody, 'live', endpointId, err instanceof Error ? err.message : 'constructEvent failed');
       }
       return mapStripeEvent(event as unknown as RawStripeEvent);
     },
@@ -337,5 +375,5 @@ function liveAdapter(config: Config): StripeAdapter {
 }
 
 export function makeStripeAdapter(config: Config): StripeAdapter {
-  return config.STRIPE_MODE === 'live' ? liveAdapter(config) : stubAdapter();
+  return config.STRIPE_MODE === 'live' ? liveAdapter(config) : stubAdapter(config.STRIPE_WEBHOOK_ENDPOINT_ID ?? null);
 }

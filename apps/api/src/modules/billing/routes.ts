@@ -308,11 +308,29 @@ export function registerBillingRoutes(app: FastifyInstance): void {
     scope.removeAllContentTypeParsers();
     scope.addContentTypeParser('*', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
     scope.post('/webhooks/stripe', async (request, reply) => {
-      const event = stripe.parseWebhookEvent(
-        request.headers,
-        request.body as Buffer,
-        app.config.WEBHOOK_SECRET
-      );
+      let event;
+      try {
+        event = stripe.parseWebhookEvent(request.headers, request.body as Buffer, app.config.WEBHOOK_SECRET);
+      } catch (err) {
+        /*
+         * ITEM 10 (2026-09-09): a signature failure names its worlds. livemode is what the
+         * payload CLAIMS (read, never trusted); configured_mode and endpoint_id are ours. The
+         * audit row is the durable record; the warn line is for the box.
+         */
+        const details = (err as { webhook?: import('./stripe.ts').SignatureFailure }).webhook;
+        if (details) {
+          request.log.warn({ stripe_webhook: details }, 'stripe webhook signature failed');
+          await writeAudit(app.db, {
+            actorType: 'system', actorLabel: 'stripe webhook',
+            action: 'webhook.signature_failed', objectType: 'webhook_endpoint', objectId: details.endpointId ?? 'unconfigured',
+            details: {
+              livemode: details.livemode, event_id: details.eventId, event_type: details.eventType,
+              configured_mode: details.configuredMode, endpoint_id: details.endpointId, reason: details.reason,
+            },
+          });
+        }
+        throw err;
+      }
       /*
        * 2026-09-09. Until tonight this handler knew one event. Brian refunded the first
        * real payment in the Stripe dashboard and the invoice stayed Paid — nothing here
