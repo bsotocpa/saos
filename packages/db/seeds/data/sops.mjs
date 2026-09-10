@@ -856,19 +856,55 @@ A backup nobody has restored is a hope, not a backup. This runs quarterly.
 `),
 ];
 
+/**
+ * DECISION 5 (2026-09-09, Brian's ruling). A seeded SOP that nobody has reviewed is still the
+ * seed's to change: when the seed text moves, the unreviewed row is OVERWRITTEN (version bumps,
+ * updated_at moves). A row somebody reviewed — published_by_staff_id set, which only the
+ * publish route sets — is theirs: the seed REFUSES to touch it and reports the difference in
+ * lines, so the drift is visible and a person decides. "Reviewed" is the column, not a feeling.
+ */
+export function diffSummary(oldText, newText) {
+  const a = oldText.split('\n');
+  const b = newText.split('\n');
+  const inA = new Set(a);
+  const inB = new Set(b);
+  const removed = a.filter((l) => !inB.has(l)).length;
+  const added = b.filter((l) => !inA.has(l)).length;
+  return { added, removed };
+}
+
 export async function seedSops(client) {
   let inserted = 0;
+  let overwritten = 0;
+  const refused = [];
   for (const s of sops) {
-    // published_by_staff_id is deliberately left NULL: nobody has reviewed these.
-    // They publish so the task→SOP links resolve on day one, and every body says
-    // plainly that it is a skeleton awaiting Brian's judgement calls.
     const res = await client.query(
       `INSERT INTO sops (slug, title, role_key, process, body_md, status, version, published_at)
        VALUES ($1, $2, $3, $4, $5, 'published', 1, now())
        ON CONFLICT (slug) DO NOTHING`,
       [s.slug, s.title, s.roleKey, s.process, s.bodyMd]
     );
-    inserted += res.rowCount;
+    if (res.rowCount > 0) { inserted += 1; continue; }
+    const cur = (await client.query(
+      `SELECT title, role_key, process, body_md, version, published_by_staff_id FROM sops WHERE slug = $1`,
+      [s.slug]
+    )).rows[0];
+    const same = cur.title === s.title && cur.role_key === s.roleKey && cur.process === s.process && cur.body_md === s.bodyMd;
+    if (same) continue;
+    if (cur.published_by_staff_id !== null) {
+      // REVIEWED rows are never overwritten. Say what differs; a person decides.
+      const d = diffSummary(cur.body_md, s.bodyMd);
+      refused.push(`${s.slug} (reviewed; seed differs: +${d.added}/-${d.removed} lines${cur.title !== s.title ? ', title' : ''})`);
+      continue;
+    }
+    await client.query(
+      `UPDATE sops SET title = $2, role_key = $3, process = $4, body_md = $5, version = version + 1, updated_at = now()
+        WHERE slug = $1 AND published_by_staff_id IS NULL`,
+      [s.slug, s.title, s.roleKey, s.process, s.bodyMd]
+    );
+    overwritten += 1;
   }
-  return `${inserted} of ${sops.length} SOPs seeded (skeletons, published, UNREVIEWED; existing slugs untouched)`;
+  const parts = [`${inserted} inserted`, `${overwritten} unreviewed row(s) overwritten from the seed`];
+  if (refused.length > 0) parts.push(`REFUSED ${refused.length} reviewed row(s): ${refused.join('; ')}`);
+  return `${sops.length} SOPs in the seed — ${parts.join('; ')}`;
 }
