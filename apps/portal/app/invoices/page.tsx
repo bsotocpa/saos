@@ -132,7 +132,10 @@ export default function InvoicesPage() {
             surprise than reordering them.
           */}
           {[...invoices]
-            .sort((a, b) => Number(b.id === focusInvoiceId) - Number(a.id === focusInvoiceId))
+            // The one from the email first; void sorts last (Cancelled, no pay action).
+            .sort((a, b) =>
+              Number(b.id === focusInvoiceId) - Number(a.id === focusInvoiceId) ||
+              Number(a.status === 'void') - Number(b.status === 'void'))
             .map((i) => (
             <li
               key={i.id}

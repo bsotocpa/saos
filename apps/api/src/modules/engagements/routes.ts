@@ -80,7 +80,11 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
                 e.independence_override_at IS NOT NULL AS independence_overridden,
                 e.created_at
          FROM engagements e ${where}
-         ORDER BY e.created_at DESC LIMIT 200`,
+         -- active first, then on hold, then closed (completed/withdrawn/draft); newest first
+         -- within each group (2026-09-09, Brian's ruling).
+         ORDER BY CASE e.status WHEN 'active' THEN 0 WHEN 'on_hold' THEN 1 ELSE 2 END,
+                  e.created_at DESC
+         LIMIT 200`,
         params
       );
       /*

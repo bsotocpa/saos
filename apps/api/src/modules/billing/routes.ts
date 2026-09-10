@@ -170,9 +170,13 @@ export function registerBillingRoutes(app: FastifyInstance): void {
               ) ORDER BY li.sort_order) FILTER (WHERE li.id IS NOT NULL), '[]') AS lines
        FROM invoices i
        LEFT JOIN invoice_line_items li ON li.invoice_id = i.id
-       WHERE i.contact_id = $1 AND i.status <> 'void'
+       -- Void invoices are listed (2026-09-09): the client was emailed that SA-2026-0002 was
+       -- cancelled, and the portal agrees with the email — labelled Cancelled, sorted last,
+       -- no pay action. Hiding it would leave the client with a message about a thing that
+       -- is not there.
+       WHERE i.contact_id = $1
        GROUP BY i.id
-       ORDER BY i.created_at DESC`,
+       ORDER BY (i.status = 'void') ASC, i.created_at DESC`,
       [client.contactId]
     );
     return { invoices: rows };
@@ -224,6 +228,12 @@ export function registerBillingRoutes(app: FastifyInstance): void {
       const inv = rows[0];
       if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
       if (inv.status === 'paid') throw new AppError(409, 'already_paid', 'This invoice is already paid.');
+      // E (2026-09-09): the portal now lists void invoices as Cancelled. A cancelled, refunded
+      // or disputed invoice has no checkout; draft/sent/overdue stay payable (an invoice raised
+      // at filing is paid from the portal before anyone marks it sent).
+      if (inv.status === 'void' || inv.status === 'refunded' || inv.status === 'partially_refunded' || inv.status === 'disputed') {
+        throw new AppError(409, 'not_payable', `This invoice is ${inv.status === 'void' ? 'cancelled' : inv.status.replace('_', ' ')}; there is nothing to pay.`);
+      }
       if (app.config.NODE_ENV === 'production' && stripe.mode === 'stub') {
         throw new AppError(503, 'stripe_not_configured', 'Payments are not configured (STRIPE_MODE=stub in production).');
       }
