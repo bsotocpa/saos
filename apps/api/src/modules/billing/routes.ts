@@ -228,9 +228,12 @@ export function registerBillingRoutes(app: FastifyInstance): void {
       const inv = rows[0];
       if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
       if (inv.status === 'paid') throw new AppError(409, 'already_paid', 'This invoice is already paid.');
-      // E (2026-09-09): the portal now lists void invoices as Cancelled. A cancelled, refunded
-      // or disputed invoice has no checkout; draft/sent/overdue stay payable (an invoice raised
-      // at filing is paid from the portal before anyone marks it sent).
+      // E (2026-09-09): a cancelled, refunded or disputed invoice has no checkout.
+      // Decision 5 (evening): neither does a DRAFT — nothing was issued. The filing and
+      // acceptance paths issue (sent) in their own transaction, so a client never meets a draft.
+      if (inv.status === 'draft') {
+        throw new AppError(409, 'not_payable', 'This invoice has not been issued yet; there is nothing to pay.');
+      }
       if (inv.status === 'void' || inv.status === 'refunded' || inv.status === 'partially_refunded' || inv.status === 'disputed') {
         throw new AppError(409, 'not_payable', `This invoice is ${inv.status === 'void' ? 'cancelled' : inv.status.replace('_', ' ')}; there is nothing to pay.`);
       }

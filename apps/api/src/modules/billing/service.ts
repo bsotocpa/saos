@@ -47,6 +47,13 @@ export async function createInvoice(
     lines: InvoiceLineInput[];
     dueDate?: string | undefined;
     send?: boolean | undefined; // send immediately (default true)
+    /**
+     * DECISION 5 (2026-09-09, Brian's ruling): drafts are not payable. A path that creates an
+     * invoice the client is about to pay (filing, acceptance) ISSUES it here — status sent,
+     * sent_at now — in the same transaction, and enqueues the email as an intent. The row is
+     * payable the moment it exists; the email follows within a minute.
+     */
+    issued?: boolean | undefined;
     /*
      * THE deposit invoice itself (finding #26). Set only by quote acceptance.
      *
@@ -175,6 +182,7 @@ export async function createInvoice(
   const total = resolved.reduce((sum, l) => sum + l.totalCents, 0);
   const invoiceNumber = await nextInvoiceNumber(app);
   const send = input.send ?? true;
+  const issued = send || input.issued === true;
 
   const { rows } = await app.db.query<{ id: string }>(
     `INSERT INTO invoices
@@ -184,7 +192,7 @@ export async function createInvoice(
      RETURNING id`,
     [
       invoiceNumber, input.contactId, input.engagementId ?? null, input.taxEngagementId ?? null,
-      send ? 'sent' : 'draft', total, total, input.dueDate ?? null, version.id,
+      issued ? 'sent' : 'draft', total, total, input.dueDate ?? null, version.id,
       actor.type === 'staff' ? actor.id : null,
     ]
   );
@@ -270,7 +278,11 @@ export async function sendInvoiceNow(
   );
   const inv = rows[0];
   if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
-  if (inv.status !== 'draft') return { sent: false, reason: 'already_sent' };
+  // Decision 5: an issued invoice is already 'sent' before its email leaves. "Already sent"
+  // means the mail LEFT (the audit row says so), not that the status reads sent.
+  if (inv.status !== 'draft' && inv.status !== 'sent') return { sent: false, reason: 'already_sent' };
+  const emailed = await app.db.query(`SELECT 1 FROM audit_log WHERE action = 'invoice.sent' AND object_id = $1 LIMIT 1`, [invoiceId]);
+  if (emailed.rows.length > 0) return { sent: false, reason: 'already_sent' };
   if (!inv.email) return { sent: false, reason: 'no_email' };
 
   await sendTemplatedEmail(app, {
@@ -287,7 +299,7 @@ export async function sendInvoiceNow(
   });
 
   await app.db.query(
-    `UPDATE invoices SET status = 'sent', sent_at = now() WHERE id = $1 AND status = 'draft'`,
+    `UPDATE invoices SET status = 'sent', sent_at = COALESCE(sent_at, now()) WHERE id = $1 AND status IN ('draft', 'sent')`,
     [invoiceId]
   );
   await writeAudit(app.db, {
@@ -390,6 +402,7 @@ export async function invoiceForFiledEngagement(
     taxEngagementId: te.id,
     lines,
     send: false,
+    issued: true, // Decision 5: payable the moment the filing commits; the email is the intent below.
   });
   const { enqueueEffect } = await import('../../outbox.ts');
   await enqueueEffect(app, {

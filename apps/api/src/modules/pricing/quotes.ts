@@ -943,6 +943,7 @@ async function convertAcceptedQuote(
          * rollback can recall.
          */
         send: false,
+        issued: true, // Decision 5: the deposit invoice is payable the moment acceptance commits.
       }
     );
     depositInvoiceId = invoice.id;

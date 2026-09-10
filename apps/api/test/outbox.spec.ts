@@ -175,7 +175,10 @@ test('#48: accepting a quote queues the deposit email, and the drain sends it', 
   const inv = await app.db.query<{ status: string }>(
     `SELECT status::text AS status FROM invoices WHERE id = $1`, [accepted.depositInvoiceId]
   );
-  assert.equal(inv.rows[0]!.status, 'draft', 'and the invoice does not yet claim to be sent');
+  // Decision 5 (2026-09-09): ISSUED with the acceptance (sent, payable); the EMAIL has not left —
+  // the record of that is the invoice.sent audit row, not the status. Inverted premise.
+  assert.equal(inv.rows[0]!.status, 'sent', 'issued with the acceptance');
+  assert.equal((await app.db.query(`SELECT 1 FROM audit_log WHERE action = 'invoice.sent' AND object_id = $1`, [accepted.depositInvoiceId])).rows.length, 0, 'and the email has not left yet');
 
   const drained = await drainOutbox(app);
   assert.equal(drained.sent, 1, 'the drain performed it');
@@ -252,10 +255,12 @@ test('#48: an invoice already sent by hand retires its row quietly, with no alar
   const s = await sendQuote(app, quote.id, staffActor(await ceoId()));
   const accepted = await acceptQuote(app, s.url.split('/').pop()!, {});
 
-  // Someone sends it from the client record before the tick fires.
+  // Someone sends it from the client record before the tick fires. Decision 5: "sent by hand"
+  // is the RECORD that the mail left (the route writes invoice.sent), not the status word.
   await app.db.query(
-    `UPDATE invoices SET status = 'sent', sent_at = now() WHERE id = $1`,
-    [accepted.depositInvoiceId]
+    `INSERT INTO audit_log (actor_type, actor_label, action, object_type, object_id, contact_id, details)
+     VALUES ('staff', 'Synthetic by hand', 'invoice.sent', 'invoice', $1, $2, '{"by_hand": true}'::jsonb)`,
+    [accepted.depositInvoiceId, c.id]
   );
   const drained = await drainOutbox(app);
   assert.equal(drained.skipped, 1, 'retired without sending');

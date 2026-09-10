@@ -127,7 +127,9 @@ test('automation 12: filed with a final fee → invoice + ES portal notice + Ren
    * The claim being tested is stronger than before: 'sent' now means a message went, not that
    * a function was called in the right place.
    */
-  assert.equal(inv.status, 'draft', 'created, not yet delivered');
+  // Decision 5 (2026-09-09): ISSUED in the filing transaction — payable now; the email is the
+  // outbox intent that follows. Inverted from the "draft until delivered" premise.
+  assert.equal(inv.status, 'sent', 'issued with the filing, before the email leaves');
   const queued = await app.db.query<{ effect: string }>(
     `SELECT effect FROM outbox WHERE object_id = $1 AND status = 'pending'`, [inv.id]
   );

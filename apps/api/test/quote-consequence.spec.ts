@@ -730,8 +730,11 @@ test('#48: acceptance itself sends nothing, and queues the delivery instead', as
     `SELECT status::text AS status, sent_at FROM invoices WHERE id = $1`,
     [accepted.depositInvoiceId]
   );
-  assert.equal(inv.rows[0]!.status, 'draft', 'the invoice does not claim to have been sent');
-  assert.equal(inv.rows[0]!.sent_at, null, 'and carries no sent_at, because nothing was sent yet');
+  // Decision 5 (2026-09-09): issued (sent, payable) with the acceptance; not yet EMAILED — the
+  // invoice.sent audit row is the record of that. Inverted premise.
+  assert.equal(inv.rows[0]!.status, 'sent', 'issued with the acceptance, not yet emailed');
+  assert.ok(inv.rows[0]!.sent_at, 'sent_at is the issuance stamp, set in the same transaction');
+  assert.equal((await app.db.query(`SELECT 1 FROM audit_log WHERE action = 'invoice.sent' AND object_id = $1`, [accepted.depositInvoiceId])).rows.length, 0, 'nothing was EMAILED yet — that record is the audit row');
 
   const queued = await app.db.query<{ effect: string; status: string }>(
     `SELECT effect, status::text AS status FROM outbox WHERE object_id = $1`,
