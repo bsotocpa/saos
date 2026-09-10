@@ -1117,7 +1117,7 @@ export default function ClientPacketPage() {
                     Retry processing
                   </button>
                 ) : null}
-                {s.model ? <span className="muted small"> · summarized by {s.model}</span> : null}
+                {s.model ? <span className="muted small"> · summary auto-generated — review before relying on it</span> : null}
               </p>
 
               {openTranscript?.id === s.id ? (
