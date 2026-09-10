@@ -43,3 +43,14 @@ NEW
 - [x] Audit 1, 3, 5, 11, 12, 6, 7, 8, 9, 10 (7ac18e2 … 40f9d83); audit 2 and 4 were done earlier
 - DECISION-PENDING: completing an engagement with an unpaid invoice stays allowed (the collection tail) — the 0085 invariant covers withdrawn only.
 - Held for Brian: arm payment_receipt / refund_receipt / void_notice in Admin → Automations; run install-stripe-live.sh (idempotent) for STRIPE_WEBHOOK_ENDPOINT_ID.
+
+## Morning batch — 2026-09-10 (rulings on the evening report)
+- [x] 0. First new-driver job run: 09-10 vs 09-09 diffed on the box, read-only. All 18 job run records identical field for field; zero rows flipped overdue / late fees / entity / document reminders on either day; no job.failed rows. Only 09-10 delta is the stripe_drift task the isolation fix was built to raise.
+- [x] 1. Companion tests: dunning, aging and the drift check include invoices on completed engagements (a57d6f7). Sabotage: dunning active-only → red.
+- [x] 4. Stub Stripe adapter refuses to load beside a live key or outside NODE_ENV=test; boot names the reason (5e48270). Sabotage: force-load under production config → boot failed with the reason.
+- [x] BUILD. Rendered-output harness, page one = Ops client page at 390x844 and 1280x800 (c4a3254). In the root suite; failures commit screenshots to tasks/walks/<date>/; passing artifacts local 14 days. Sabotage: raw enum back on a badge → both viewports red, screenshots in tasks/walks/2026-09-10/; restored → five consecutive green runs.
+- [ ] 2. Installer recreates the endpoint only when the secret is missing or fails verification (branch installer-endpoint-in-place, 2828ce3, three cases tested on the box). HELD: Brian runs the current installer this morning; merge and deploy after.
+- Gate for page two of the harness: five consecutive green runs of page one — met 2026-09-10.
+- OBSERVATION: an outbox row reads `sent` when its effect suppressed the client email at the gate (SA-2026-0004 void notice, 02:56 UTC). The audit row says suppressed and no client was written to, but the outbox alone reads as a send.
+- Brian armed payment_receipt, refund_receipt and void_notice himself at 08:47-08:48 UTC. Nothing replayed.
+- STRIPE_WEBHOOK_ENDPOINT_ID still unset on the box until the installer runs.
