@@ -54,3 +54,12 @@ NEW
 - OBSERVATION: an outbox row reads `sent` when its effect suppressed the client email at the gate (SA-2026-0004 void notice, 02:56 UTC). The audit row says suppressed and no client was written to, but the outbox alone reads as a send.
 - Brian armed payment_receipt, refund_receipt and void_notice himself at 08:47-08:48 UTC. Nothing replayed.
 - STRIPE_WEBHOOK_ENDPOINT_ID still unset on the box until the installer runs.
+
+## Evening batch — 2026-09-10 (rulings on the morning report)
+- [x] 1. Merged installer-endpoint-in-place (5cd160a) and deployed. Sabotage: the in-place branch forced to always recreate → case 3 red on all four assertions; restored → all five cases pass on the box.
+- [x] 2. Post-rotation confirmation from the box: we_1UEFdxITVkZx9n3n5QdIfTU5 in .env, in the running container, and server-managed so the deploy preserved it. One endpoint on the live account, enabled, exactly the five events, nothing lost in the delete/create. Reconcile sweep runs clean. The drift check's Stripe call answers for both invoices. Zero webhook.signature_failed rows ever.
+- [x] 4a. Outbox suppressed state (393ee72): sent / suppressed / skipped, `sent` means sent. Backfill touched exactly one row, listed by name first: Rehearsal Client 2's 2026-09-10 cancellation notice, a test client. Sabotage: the hold branch made to write 'sent' → red on exactly that.
+- [x] 4b. Harness page two, portal Invoices EN/ES at both viewports (21631dd). Sabotage: inv_refunded left untranslated → both viewports red, Spanish screenshot showing the English word. Restored → five consecutive green runs of both pages.
+- FINDING, fixed in 21631dd: with a portal account granted, the Ops portal-access badge read `active` — the enum word beside an engagement badge reading `Active` that means something else. Now No access / Invited / Signed up / Revoked.
+- Brian declined a second real-card payment: SA-2026-0003 proved the path on live keys and held through forty ticks; the rotation only risked the signature, which the installer verified both ways.
+- Gate for harness page three: five consecutive green runs of pages one and two — met 2026-09-10.
