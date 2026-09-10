@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import './globals.css';
 import { Shell } from './shell';
+import { AskProvider } from '../components/ask';
 
 export const metadata: Metadata = {
   title: 'SAOS — Soto Accounting Operating System',
@@ -13,7 +14,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <Shell>{children}</Shell>
+        <AskProvider>
+          <Shell>{children}</Shell>
+        </AskProvider>
       </body>
     </html>
   );

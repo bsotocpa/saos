@@ -219,6 +219,14 @@ table.dense .title-cell { max-width: 340px; overflow: hidden; text-overflow: ell
 .modal .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 @media (max-width: 640px) { .modal .grid2 { grid-template-columns: 1fr; } }
 .modal footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+/* Item 12 (2026-09-09): the one in-app modal that asks before a money action. */
+.ask-overlay { align-items: center; }
+.ask-modal { max-width: 520px; align-self: center; }
+.ask-body { margin-bottom: 10px; }
+.ask-reason { display: block; margin-top: 8px; font-weight: 600; }
+.ask-reason textarea { display: block; width: 100%; margin-top: 6px; font-weight: 400; }
+.ask-modal footer { flex-wrap: wrap; }
+@media (max-width: 600px) { .ask-modal footer .btn { flex: 1 1 auto; } }
 
 .lookup { position: relative; }
 .lookup .results { position: absolute; z-index: 5; left: 0; right: 0; top: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 8px; max-height: 180px; overflow-y: auto; box-shadow: 0 6px 16px rgba(9,42,40,0.12); }

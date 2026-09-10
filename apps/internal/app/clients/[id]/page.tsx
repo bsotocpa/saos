@@ -15,6 +15,7 @@ import { dayOf, formatDate, formatDateTime, formatTime } from '../../../lib/date
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../../lib/api';
+import { useAsk } from '../../../components/ask';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
 import { badgeToneFor, invoiceStatusLine } from '../../../lib/invoice-display';
 
@@ -179,6 +180,8 @@ function linkExpired(sentAt: string, ttlMinutes: number): boolean {
 
 export default function ClientPacketPage() {
   const router = useRouter();
+  // Item 12 (2026-09-09): every "are you sure / why" is the in-app modal, never the browser's.
+  const ask = useAsk();
   const params = useParams<{ id: string }>();
   const [packet, setPacket] = useState<Packet | null>(null);
   const [returns, setReturns] = useState<TaxEngagement[]>([]);
@@ -195,11 +198,8 @@ export default function ClientPacketPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   // VOID (2026-09-09): the reason is typed where the decision is made, and the outcome is
   // re-read from the server — the same rule as the deposit override, learned the same night.
-  const [voidingId, setVoidingId] = useState<string | null>(null);
   // The send log under an invoice, loaded when someone opens it.
   const [sendLogs, setSendLogs] = useState<Record<string, SendLogRow[]>>({});
-  const [voidReason, setVoidReason] = useState('');
-  const [voidErr, setVoidErr] = useState('');
   const [nextSession, setNextSession] = useState<NextSession | null>(null);
   const [scheduleEngagementId, setScheduleEngagementId] = useState('');
   // Feedback for the actions further down the page — the packet card's message is far
@@ -516,11 +516,12 @@ export default function ClientPacketPage() {
               disabled={busy}
               onClick={async () => {
                 const first = c.portal_state === 'not_invited';
-                if (!window.confirm(
-                  first
-                    ? 'Grant portal access? The client is emailed a secure sign-in link and a welcome.'
-                    : 'Send another sign-in link? The previous one stops working.'
-                )) return;
+                const ok = await ask({
+                  title: first ? 'Grant portal access?' : 'Send another sign-in link?',
+                  body: <p>{first ? 'The client is emailed a secure sign-in link and a welcome.' : 'The previous link stops working.'}</p>,
+                  choices: [{ key: 'go', label: first ? 'Grant access' : 'Send link', tone: 'primary' }],
+                });
+                if (!ok) return;
                 setBusy(true);
                 setActionErr('');
                 try {
@@ -658,9 +659,7 @@ export default function ClientPacketPage() {
                       type="button"
                       disabled={busy}
                       onClick={async () => {
-                        if (!window.confirm(
-                          'Grant portal access? The client is emailed a secure sign-in link.'
-                        )) return;
+                        if (!(await ask({ title: 'Grant portal access?', body: <p>The client is emailed a secure sign-in link.</p>, choices: [{ key: 'go', label: 'Grant access', tone: 'primary' }] }))) return;
                         setBusy(true);
                         setActionErr('');
                         try {
@@ -682,9 +681,7 @@ export default function ClientPacketPage() {
                       type="button"
                       disabled={busy}
                       onClick={async () => {
-                        if (!window.confirm(
-                          'Send this packet for signature? The client receives it immediately.'
-                        )) return;
+                        if (!(await ask({ title: 'Send this packet for signature?', body: <p>The client receives it immediately.</p>, choices: [{ key: 'go', label: 'Send for signature', tone: 'primary' }] }))) return;
                         setBusy(true);
                         setActionErr('');
                         try {
@@ -827,9 +824,9 @@ export default function ClientPacketPage() {
                       <button
                         className="btn ghost small" type="button" disabled={busy}
                         onClick={async () => {
-                          const reason = window.prompt('Why is this engagement being held? (required)');
-                          if (!reason?.trim()) return;
-                          await runEngagementAction(e.id, 'pause', { reason }, 'On hold. The clock stops — waiting time and the price lock both move out by the length of the hold.');
+                          const a = await ask({ title: 'Put this engagement on hold?', reason: { label: 'Why is it being held?', required: true }, choices: [{ key: 'hold', label: 'Hold', tone: 'primary' }] });
+                          if (!a) return;
+                          await runEngagementAction(e.id, 'pause', { reason: a.reason }, 'On hold. The clock stops — waiting time and the price lock both move out by the length of the hold.');
                         }}
                       >
                         Hold
@@ -837,9 +834,9 @@ export default function ClientPacketPage() {
                       <button
                         className="btn ghost small" type="button" disabled={busy}
                         onClick={async () => {
-                          const reason = window.prompt('Anything to note about how this finished? (optional)');
-                          if (reason === null) return;
-                          await runEngagementAction(e.id, 'close', { outcome: 'completed', reason: reason || undefined }, 'Closed as completed.');
+                          const a = await ask({ title: 'Close this engagement as completed?', reason: { label: 'Anything to note about how this finished?', required: false }, choices: [{ key: 'close', label: 'Close as completed', tone: 'primary' }] });
+                          if (!a) return;
+                          await runEngagementAction(e.id, 'close', { outcome: 'completed', reason: a.reason || undefined }, 'Closed as completed.');
                         }}
                       >
                         Close
@@ -847,8 +844,14 @@ export default function ClientPacketPage() {
                       <button
                         className="btn ghost small" type="button" disabled={busy}
                         onClick={async () => {
-                          const reason = window.prompt('Why is this being withdrawn? (required)');
-                          if (!reason?.trim()) return;
+                          const first0 = await ask({
+                            title: 'Withdraw this engagement?',
+                            body: <p>Any sent invoice on it is cancelled and the client is told; drafts are deleted. This is the record.</p>,
+                            reason: { label: 'Why is it being withdrawn?', required: true },
+                            choices: [{ key: 'withdraw', label: 'Withdraw', tone: 'danger' }],
+                          });
+                          if (!first0) return;
+                          const reason = first0.reason;
                           /*
                            * STRANDED DEPOSITS (item 7a, 2026-09-09). The server refuses a withdrawal
                            * that would leave a paid deposit on dead work. When it does, the person
@@ -858,19 +861,26 @@ export default function ClientPacketPage() {
                           const first = await runEngagementAction(e.id, 'close', { outcome: 'withdrawn', reason }, 'Withdrawn.');
                           if (first !== 'deposit_would_strand') return;
                           const open = engagements.filter((o) => o.id !== e.id && (o.status === 'active' || o.status === 'on_hold'));
-                          const menu = open.map((o, i) => `${i + 1}. ${o.scopeName ?? o.title ?? o.service_line} (${o.status})`).join('\n');
-                          const choice = window.prompt(
-                            'This engagement holds a paid deposit with credit left.\n\n' +
-                              (open.length > 0 ? `Type the number of the engagement that takes the deposit:\n${menu}\n\n` : 'This client has no other open engagement to move it to.\n\n') +
-                              'Or type REFUND to raise the refund for billing (nothing is refunded automatically).'
-                          );
-                          if (!choice?.trim()) return;
-                          if (choice.trim().toUpperCase() === 'REFUND') {
+                          const choice = await ask({
+                            title: 'This engagement holds a paid deposit',
+                            body: (
+                              <p>
+                                It has credit left. Move it to another open engagement of this client, or raise the refund for
+                                billing. Nothing is refunded automatically.
+                              </p>
+                            ),
+                            choices: [
+                              ...open.map((o) => ({ key: `transfer:${o.id}`, label: `Move to ${o.scopeName ?? o.title ?? o.service_line}`, tone: 'primary' as const })),
+                              { key: 'refund', label: 'Raise the refund', tone: 'danger' as const },
+                            ],
+                          });
+                          if (!choice) return;
+                          if (choice.choice === 'refund') {
                             await runEngagementAction(e.id, 'close', { outcome: 'withdrawn', reason, depositAction: 'refund' }, 'Withdrawn — a refund task was raised for billing.');
                             return;
                           }
-                          const target = open[Number(choice.trim()) - 1];
-                          if (!target) { setActionErr('That was not one of the numbers listed, and not REFUND. Nothing changed.'); return; }
+                          const target = open.find((o) => `transfer:${o.id}` === choice.choice);
+                          if (!target) { setActionErr('That engagement is no longer open. Nothing changed.'); return; }
                           await runEngagementAction(
                             e.id, 'close',
                             { outcome: 'withdrawn', reason, depositAction: 'transfer', transferToEngagementId: target.id },
@@ -1149,7 +1159,7 @@ export default function ClientPacketPage() {
                       type="button"
                       disabled={busy}
                       onClick={async () => {
-                        if (!window.confirm(`Email ${c.first_name} a reminder for ${inv.invoice_number}?`)) return;
+                        if (!(await ask({ title: `Email ${c.first_name} a reminder for ${inv.invoice_number}?`, choices: [{ key: 'go', label: 'Send reminder', tone: 'primary' }] }))) return;
                         setBusy(true);
                         setActionErr('');
                         try {
@@ -1176,35 +1186,25 @@ export default function ClientPacketPage() {
                           className="btn ghost"
                           type="button"
                           disabled={busy}
-                          onClick={() => {
-                            setVoidingId(voidingId === inv.id ? null : inv.id);
-                            setVoidReason('');
-                            setVoidErr('');
-                          }}
-                        >
-                          {voidingId === inv.id ? 'Cancel' : 'Void…'}
-                        </button>
-                        {voidingId === inv.id ? (
-                          <div className="card" style={{ marginTop: 8 }}>
-                            <p className="small">
-                              <strong>Void {inv.invoice_number}</strong> — it keeps its number, leaves A/R, and the client is
-                              told their pay link no longer works. A paid invoice cannot be voided; refund it instead.
-                            </p>
-                            <label className="field">
-                              <span>Why (this is the record)</span>
-                              <textarea rows={2} value={voidReason} onChange={(e) => setVoidReason(e.target.value)} />
-                            </label>
-                            {voidErr ? <p className="alert warn">{voidErr}</p> : null}
-                            <button
-                              className="btn"
-                              type="button"
-                              disabled={busy || voidReason.trim().length < 5}
-                              onClick={async () => {
+                          onClick={async () => {
+                            const a = await ask({
+                              title: `Void ${inv.invoice_number}?`,
+                              body: (
+                                <p className="small">
+                                  It keeps its number, leaves A/R, and the client is told their pay link no longer works. A
+                                  paid invoice cannot be voided; refund it instead.
+                                </p>
+                              ),
+                              reason: { label: 'Why (this is the record)', required: true },
+                              choices: [{ key: 'void', label: 'Void invoice', tone: 'danger' }],
+                            });
+                            if (!a) return;
+                            if (a.reason.length < 5) { setActionErr('Say why in at least a few words — this is the record.'); return; }
                                 setBusy(true);
-                                setVoidErr('');
+                                setActionErr('');
                                 try {
                                   const r = await api<{ notice: NoticeState | null }>(`/invoices/${inv.id}/void`, {
-                                    method: 'POST', body: { reason: voidReason.trim() },
+                                    method: 'POST', body: { reason: a.reason },
                                   });
                                   // The notice's REAL state, from the record: "queued" until the send log says
                                   // delivered. "The client has been told" was a claim, not a fact (2026-09-09).
@@ -1213,19 +1213,16 @@ export default function ClientPacketPage() {
                                       r.notice ? describeNotice(r.notice, (iso) => formatTime(iso)) : 'No cancellation notice was queued (no email on file)'
                                     } — see the send log under the invoice.`
                                   );
-                                  setVoidingId(null);
                                   await load();
                                 } catch (e) {
-                                  setVoidErr(e instanceof Error ? e.message : 'Could not void the invoice.');
+                                  setActionErr(e instanceof Error ? e.message : 'Could not void the invoice.');
                                 } finally {
                                   setBusy(false);
                                 }
-                              }}
-                            >
-                              Void invoice
-                            </button>
-                          </div>
-                        ) : null}
+                          }}
+                        >
+                          Void…
+                        </button>
                       </>
                     ) : null}
                   </>

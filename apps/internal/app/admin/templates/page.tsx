@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
+import { useAsk } from '../../../components/ask';
 
 interface Template {
   key: string; name: string; channel: string;
@@ -57,6 +58,7 @@ function spanishState(t: Template): { badge: string; className: string; note: st
 }
 
 export default function TemplatesAdminPage() {
+  const ask = useAsk();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editing, setEditing] = useState<Template | null>(null);
   const [message, setMessage] = useState('');
@@ -103,9 +105,11 @@ export default function TemplatesAdminPage() {
   };
 
   const approveSpanish = async (t: Template) => {
-    if (!window.confirm(
-      `Approve the Spanish copy for "${t.name}"?\n\nThis confirms you have READ the translation and it says what the English says. Spanish-language clients will receive it from now on.`
-    )) return;
+    if (!(await ask({
+      title: `Approve the Spanish copy for "${t.name}"?`,
+      body: <p>This confirms you have READ the translation and it says what the English says. Spanish-language clients will receive it from now on.</p>,
+      choices: [{ key: 'approve', label: 'Approve Spanish', tone: 'primary' }],
+    }))) return;
     await api(`/admin/templates/${t.key}/es-approve`, { method: 'POST' });
     setMessage(`${t.key}: Spanish approved — Spanish clients now receive the Spanish text.`);
     await load();
@@ -223,10 +227,13 @@ export default function TemplatesAdminPage() {
               <button
                 className="btn accent"
                 type="button"
-                onClick={() => {
-                  if (window.confirm('Clear the PLACEHOLDER flag? This confirms the text above is the FINAL legal language — the template becomes sendable to clients.')) {
-                    void save(true);
-                  }
+                onClick={async () => {
+                  const a = await ask({
+                    title: 'Clear the PLACEHOLDER flag?',
+                    body: <p>This confirms the text above is the FINAL legal language — the template becomes sendable to clients.</p>,
+                    choices: [{ key: 'final', label: 'Save as FINAL', tone: 'danger' }],
+                  });
+                  if (a) void save(true);
                 }}
               >
                 Save as FINAL (clear placeholder)

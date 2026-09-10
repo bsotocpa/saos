@@ -10,6 +10,7 @@ import { dayOf, formatDate, formatDateTime, formatTime } from '../../../lib/date
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../../lib/api';
+import { useAsk } from '../../../components/ask';
 
 interface Automation {
   key: string;
@@ -25,6 +26,7 @@ interface Automation {
 
 export default function AutomationsPage() {
   const router = useRouter();
+  const ask = useAsk();
   const [items, setItems] = useState<Automation[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -48,9 +50,11 @@ export default function AutomationsPage() {
 
   const toggle = async (a: Automation) => {
     const next = !a.enabled;
-    if (next && !window.confirm(
-      `Arm "${a.name}"?\n\nThis starts sending to real clients on the next job run.`
-    )) return;
+    if (next && !(await ask({
+      title: `Arm "${a.name}"?`,
+      body: <p>This starts sending to real clients on the next job run. What it held while off stays held.</p>,
+      choices: [{ key: 'arm', label: 'Arm', tone: 'danger' }],
+    }))) return;
     setBusy(a.key);
     setError('');
     try {

@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
+import { useAsk } from '../../components/ask';
 import {
   ALL_COLUMNS, buildSearchQuery, DEFAULT_COLUMNS, EMPTY_FILTERS, GROUP_FIELDS, isOverdue,
   LADDER_LABEL, PRIORITIES, PRIORITY_LABEL, SOURCE_TYPES, STATUS_LABEL, STATUSES, todayStr,
@@ -66,6 +67,7 @@ const BACKLOG_SOURCE = 'enrichment';
 
 export default function TasksPage() {
   const router = useRouter();
+  const ask = useAsk();
   const [me, setMe] = useState<Me | null>(null);
   const [staff, setStaff] = useState<StaffEntry[]>([]);
   const [layout, setLayout] = useState<TaskLayout | null>(null);
@@ -156,9 +158,14 @@ export default function TasksPage() {
   };
 
   const saveCurrentView = async () => {
-    const name = window.prompt('View name:');
-    if (!name?.trim()) return;
-    const shared = window.confirm('Share this view with the whole team?\nOK = shared, Cancel = private.');
+    const a = await ask({
+      title: 'Save this view',
+      reason: { label: 'View name', required: true },
+      choices: [{ key: 'private', label: 'Save as private', tone: 'ghost' }, { key: 'shared', label: 'Save and share with the team', tone: 'primary' }],
+    });
+    if (!a) return;
+    const name = a.reason;
+    const shared = a.choice === 'shared';
     const { sortField, sortDir, ...filterRest } = filters;
     await api('/task-views', {
       method: 'POST',

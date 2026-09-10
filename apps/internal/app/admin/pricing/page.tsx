@@ -102,7 +102,7 @@ export default function PricingAdminPage() {
   }
   const pendingCount = groups.reduce((n, g) => n + g.items.length, 0);
 
-  const confirm = async (code: string, kind: Kind) => {
+  const confirmItem = async (code: string, kind: Kind) => {
     await api(`/admin/price-book/items/${code}/confirm?kind=${kind}`, { method: 'POST' });
   };
 
@@ -112,7 +112,7 @@ export default function PricingAdminPage() {
     try {
       // Sequential, not Promise.all: each is an audited decision, and a partial failure
       // should stop rather than leave a half-answered question with no error.
-      for (const i of g.items) await confirm(i.item_code, g.kind);
+      for (const i of g.items) await confirmItem(i.item_code, g.kind);
       setMessage(`Confirmed ${g.items.length} line${g.items.length === 1 ? '' : 's'}.`);
       await load();
     } catch (e) {

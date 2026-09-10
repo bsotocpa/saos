@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/session';
+import { useAsk } from '../../components/ask';
 import type { DictKey } from '../../lib/i18n';
 
 interface Doc { id: string; category: string; status: string; filename: string; tax_year: number | null; uploaded_at: string }
@@ -16,6 +17,7 @@ const CATEGORIES = ['tax_documents', 'business_records', 'id_verification', 'irs
 
 export default function DocumentsPage() {
   const { t, lang } = useSession();
+  const ask = useAsk();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [requests, setRequests] = useState<DocRequest[]>([]);
   const [category, setCategory] = useState<string>('tax_documents');
@@ -150,8 +152,8 @@ export default function DocumentsPage() {
                 className="btn ghost"
                 type="button"
                 disabled={busy}
-                onClick={() => {
-                  if (!window.confirm(t('doc_withdraw_confirm'))) return;
+                onClick={async () => {
+                  if (!(await ask({ lang, title: t('doc_withdraw_confirm'), choices: [{ key: 'withdraw', label: t('doc_withdraw'), tone: 'danger' }] }))) return;
                   setBusy(true);
                   void (async () => {
                     try {

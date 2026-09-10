@@ -1,4 +1,12 @@
-/* Soto brand system (MP Brand Identity): Forest Teal primary, Electric Teal
+
+/* Item 12 (2026-09-09): the one in-app modal that asks before a client action. */
+.ask-overlay { position: fixed; inset: 0; background: rgba(13, 59, 56, 0.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+.ask-modal { background: var(--card, #fff); border-radius: 14px; padding: 20px; width: 100%; max-width: 480px; }
+.ask-modal h2 { margin-bottom: 10px; }
+.ask-body { margin-bottom: 10px; }
+.ask-reason { display: block; margin-top: 8px; font-weight: 600; }
+.ask-reason textarea { display: block; width: 100%; margin-top: 6px; font-weight: 400; }
+.ask-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }/* Soto brand system (MP Brand Identity): Forest Teal primary, Electric Teal
    accent, Inter everywhere — SELF-HOSTED (no CDN fonts, vendor rule). */
 
 @font-face {
