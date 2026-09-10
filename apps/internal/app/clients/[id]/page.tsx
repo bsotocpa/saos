@@ -362,9 +362,11 @@ export default function ClientPacketPage() {
           Engagement letter
         </p>
         {!consentOk || !letterOk ? (
-          <p className="muted small">
-            Work can be prepared, but nothing client-facing sends and no return is delivered until both are
-            on file. The send paths refuse it rather than relying on anyone remembering.
+          <p className="small">
+            <strong>What clears it:</strong> send the engagement packet for signature (the Engagement packet card
+            below) — the §7216 consent and the engagement letter are both in it. Until they are signed, work can
+            be prepared but nothing client-facing sends and no return is delivered; the send paths refuse it rather
+            than relying on anyone remembering.
           </p>
         ) : null}
       </section>
@@ -613,16 +615,8 @@ export default function ClientPacketPage() {
           was no way to paper a client from the UI at all. */}
       <section className="card span" style={{ marginTop: 12 }}>
         <h2>Engagement packet</h2>
-        {actionErr ? (
-          <>
-            {/* the error itself renders once, in the page-level slot above */}
-            <p className="muted small">
-              Nothing is papered yet. Fix the reason above and reload — the packet is assembled from
-              the client&apos;s active services, so it needs at least one.
-            </p>
-          </>
-        ) : null}
-
+        {/* Audit item 5 (2026-09-09): the gate card above is the one place that explains a blocked
+            state; this card only shows the packet, or the one action that creates it. */}
         {packets.length > 0 ? (
           <>
             {packets.map((p) => (
