@@ -198,6 +198,21 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
   );
 
   /**
+   * Decision 3 (2026-09-09): re-derive an engagement's deposit stamp from its live deposit
+   * invoices — the correction for rows a void left stamped. billing.manage; audited when it
+   * changes anything; a no-op says so.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/engagements/:id/restamp-deposit',
+    { preHandler: [app.authenticate, requirePermission('billing.manage')] },
+    async (request) => {
+      const id = z.uuid().parse(request.params.id);
+      const { restampDepositFromRecord } = await import('./deposits.ts');
+      return restampDepositFromRecord(app, id, { type: 'staff', id: request.staff!.id, label: request.staff!.fullName });
+    }
+  );
+
+  /**
    * Decision 1 (2026-09-09): a legacy engagement's period, set by a person with a reason.
    * engagements.write. The partial unique index judges the result — two active engagements
    * on one line and period cannot both exist, so setting a colliding period is refused.

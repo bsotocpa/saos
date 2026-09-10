@@ -85,6 +85,9 @@ export async function transferDeposit(
 
     const from = inv.engagement_id;
     await app.db.query(`UPDATE invoices SET engagement_id = $2 WHERE id = $1`, [inv.id, to.id]);
+    // Decision 3: the stamp follows the record on both sides of the move.
+    if (from) await restampDepositFromRecord(app, from, actor);
+    await restampDepositFromRecord(app, to.id, actor);
     const details = {
       invoice_number: inv.invoice_number, from_engagement_id: from, to_engagement_id: to.id, available_cents: available, reason,
     };
@@ -130,6 +133,90 @@ export async function raiseDepositRefundTask(
     sourceId: input.engagementId,
   });
   return { taskId: task.id };
+}
+
+/**
+ * DECISION 3 (2026-09-09, Brian's ruling): void reverses issuance completely.
+ *
+ * Acceptance stamps the engagement with what it INTENDED to charge (deposit_treatment,
+ * deposit_standard_cents, deposit_charged_cents, deposit_override_reason,
+ * deposit_override_by_staff_id). Voiding the deposit invoice reversed the invoice and the
+ * tax engagement's billing fields, and left the stamp: 6e474b1f read "deposit charged" with an amount
+ * under a void SA-2026-0002. The stamp is now derived from the record — the newest LIVE
+ * deposit invoice on the engagement, resolved through the same resolveDeposit that stamped it
+ * at acceptance — and re-derived whenever the record changes (void, transfer). No live deposit
+ * invoice: no stamp, which is exactly the pre-issuance state.
+ */
+export interface DepositStamp {
+  deposit_treatment: string | null;
+  deposit_standard_cents: number | null;
+  deposit_charged_cents: number | null;
+  deposit_override_reason: string | null;
+  deposit_override_by_staff_id: string | null;
+}
+
+export async function restampDepositFromRecord(
+  app: FastifyInstance,
+  engagementId: string,
+  actor: { type: 'staff' | 'system'; id?: string | null; label: string }
+): Promise<{ changed: boolean; before: DepositStamp; after: DepositStamp; sourceInvoiceNumber: string | null }> {
+  const beforeRow = (await app.db.query<DepositStamp & { contact_id: string }>(
+    `SELECT deposit_treatment::text AS deposit_treatment, deposit_standard_cents, deposit_charged_cents,
+            deposit_override_reason, deposit_override_by_staff_id, contact_id
+       FROM engagements WHERE id = $1`,
+    [engagementId]
+  )).rows[0];
+  if (!beforeRow) throw new AppError(404, 'not_found', 'Engagement not found.');
+  const { contact_id: contactId, ...before } = beforeRow;
+
+  // The newest live deposit invoice on this engagement, with the quote that issued it.
+  const live = (await app.db.query<{
+    invoice_number: string; quote_id: string; deposit_item_code: string | null; deposit_override_cents: number | null;
+    deposit_override_reason: string | null; deposit_override_by_staff_id: string | null;
+  }>(
+    `SELECT i.invoice_number, q.id AS quote_id, q.deposit_item_code, q.deposit_override_cents,
+            q.deposit_override_reason, q.deposit_override_by_staff_id
+       FROM invoices i JOIN quotes q ON q.deposit_invoice_id = i.id
+      WHERE i.engagement_id = $1 AND i.status <> 'void'
+      ORDER BY i.created_at DESC LIMIT 1`,
+    [engagementId]
+  )).rows[0];
+
+  let after: DepositStamp = {
+    deposit_treatment: null, deposit_standard_cents: null, deposit_charged_cents: null,
+    deposit_override_reason: null, deposit_override_by_staff_id: null,
+  };
+  if (live) {
+    const { resolveDeposit } = await import('../pricing/quotes.ts');
+    const resolved = await resolveDeposit(app, live.deposit_item_code, live.deposit_override_cents, live.quote_id);
+    if (resolved.treatment) {
+      after = {
+        deposit_treatment: resolved.treatment,
+        deposit_standard_cents: resolved.standardCents,
+        deposit_charged_cents: resolved.chargeCents ?? 0,
+        deposit_override_reason: live.deposit_override_reason,
+        deposit_override_by_staff_id: live.deposit_override_by_staff_id,
+      };
+    }
+  }
+
+  const changed = (Object.keys(after) as Array<keyof DepositStamp>).some((k) => (before[k] ?? null) !== (after[k] ?? null));
+  if (changed) {
+    await app.db.query(
+      `UPDATE engagements
+          SET deposit_treatment = $2::deposit_treatment, deposit_standard_cents = $3, deposit_charged_cents = $4,
+              deposit_override_reason = $5, deposit_override_by_staff_id = $6
+        WHERE id = $1`,
+      [engagementId, after.deposit_treatment, after.deposit_standard_cents, after.deposit_charged_cents,
+        after.deposit_override_reason, after.deposit_override_by_staff_id]
+    );
+    await writeAudit(app.db, {
+      actorType: actor.type, actorId: actor.id ?? null, actorLabel: actor.label,
+      action: 'engagement.deposit_restamped', objectType: 'engagement', objectId: engagementId, contactId,
+      details: { before, after, source_invoice: live?.invoice_number ?? null },
+    });
+  }
+  return { changed, before, after, sourceInvoiceNumber: live?.invoice_number ?? null };
 }
 
 /** Item 7d: every invoice attached to an engagement that is not active — by contact and amount. */

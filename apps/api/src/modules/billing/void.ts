@@ -55,9 +55,10 @@ export async function voidInvoice(
       id: string; invoice_number: string; status: string; total_cents: number;
       amount_paid_cents: number; amount_refunded_cents: number;
       contact_id: string; tax_engagement_id: string | null; stripe_checkout_session_id: string | null;
+      engagement_id: string | null;
     }>(
       `SELECT id, invoice_number, status::text AS status, total_cents, amount_paid_cents, amount_refunded_cents,
-              contact_id, tax_engagement_id, stripe_checkout_session_id
+              contact_id, tax_engagement_id, stripe_checkout_session_id, engagement_id
          FROM invoices WHERE id = $1 FOR UPDATE`,
       [invoiceId]
     );
@@ -92,6 +93,16 @@ export async function voidInvoice(
           WHERE id = $1`,
         [inv.tax_engagement_id]
       );
+    }
+    /*
+     * DECISION 3 (2026-09-09): void reverses issuance COMPLETELY. Acceptance stamped the
+     * engagement with the deposit it intended to charge; "unbilled" on the tax engagement
+     * beside "deposit charged" with an amount on the engagement was two answers to one question.
+     * The stamp is re-derived from what is still live, which after this void is nothing.
+     */
+    if (inv.engagement_id) {
+      const { restampDepositFromRecord } = await import('../engagements/deposits.ts');
+      await restampDepositFromRecord(app, inv.engagement_id, { type: 'staff', id: actor.id, label: actor.fullName });
     }
     await writeAudit(app.db, {
       actorType: 'staff',

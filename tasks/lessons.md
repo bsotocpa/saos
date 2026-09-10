@@ -1862,3 +1862,11 @@ the clock that wrote its start — in SQL, against `now()`.
 **How to apply.** When a date is wrong by exactly one day, look for a DATE column that became
 an instant, not for a bug in the formatter. When a duration is off by one at a boundary, look
 for two clocks.
+
+### Instance (2026-09-09, decision 3): void claimed "unbilled", the deposit stamp said $200
+SA-2026-0002 was voided. The invoice read void, the tax engagement read unbilled, and the
+engagement row still read "deposit charged $200" — because acceptance had stamped the
+engagement in one place and void reversed two others. Two answers to one question, and the
+one a person reads first (the engagement row) was the wrong one. Rule: a value written by
+issuance is reversed by void, or it is derived from the record and never written at all. The
+stamp is now derived (restampDepositFromRecord); void, transfer and a route re-derive it.
