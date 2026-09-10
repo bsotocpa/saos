@@ -57,6 +57,8 @@ interface Doc {
   id: string; category: string; original_filename: string; created_at: string;
 }
 interface Quote {
+  created_by?: string | null;
+  is_stale?: boolean;
   id: string; status: string; total_cents: number; range_min_cents: number | null;
   range_max_cents: number | null; created_at: string;
 }
@@ -616,6 +618,41 @@ export default function ClientPacketPage() {
                   ? `${formatMoney(q.range_min_cents)}–${formatMoney(q.range_max_cents)}`
                   : formatMoney(q.total_cents)}
                 <span className="muted"> · {dayOf(q.created_at)}</span>
+                {/* Audit item 6 (2026-09-09): a draft says who started it and when; stale after 30 days; withdrawn with a reason, never deleted. */}
+                {q.status === 'draft' ? (
+                  <>
+                    <span className="muted"> · started by {q.created_by ?? 'unknown'}</span>
+                    {q.is_stale ? <> <span className="badge warn" title="A draft older than 30 days. Nothing deletes it — withdraw it, or send it.">stale</span></> : null}
+                    {' '}
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      disabled={busy}
+                      onClick={async () => {
+                        const a = await ask({
+                          title: 'Withdraw this draft quote?',
+                          body: <p className="small">The draft stays on the record as withdrawn, with your reason. Nothing is sent to the client.</p>,
+                          reason: { label: 'Why', required: true },
+                          choices: [{ key: 'withdraw', label: 'Withdraw draft', tone: 'danger' }],
+                        });
+                        if (!a) return;
+                        setBusy(true);
+                        setActionErr('');
+                        try {
+                          await api(`/quotes/${q.id}/withdraw-draft`, { method: 'POST', body: { reason: a.reason } });
+                          setActionMsg('Draft withdrawn.');
+                          await load();
+                        } catch (err) {
+                          setActionErr(err instanceof Error ? err.message : 'Could not withdraw the draft.');
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Withdraw draft…
+                    </button>
+                  </>
+                ) : null}
               </p>
             ))
           )}

@@ -6,6 +6,8 @@
 // account to read a proposal we sent them.
 
 import type { FastifyInstance } from 'fastify';
+import { writeAudit } from '../../audit.ts';
+import { AppError } from '../../types.ts';
 import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import {
@@ -220,12 +222,40 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
   app.get<{ Params: { id: string } }>('/contacts/:id/quotes', read, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const { rows } = await app.db.query(
-      `SELECT id, status::text AS status, total_cents, range_min_cents, range_max_cents,
-              bundle_slug, sent_at, accepted_at, declined_at, decline_reason, expires_at, created_at
-       FROM quotes WHERE contact_id = $1 ORDER BY created_at DESC`,
+      /*
+       * Audit item 6 (2026-09-09): who started it and when, and whether a draft has gone stale
+       * (older than 30 days). Stale is a FLAG for a person — nothing deletes a draft on its own.
+       */
+      `SELECT q.id, q.status::text AS status, q.total_cents, q.range_min_cents, q.range_max_cents,
+              q.bundle_slug, q.sent_at, q.accepted_at, q.declined_at, q.decline_reason, q.expires_at, q.created_at,
+              st.full_name AS created_by,
+              (q.status = 'draft' AND q.created_at < now() - interval '30 days') AS is_stale
+       FROM quotes q LEFT JOIN staff st ON st.id = q.created_by_staff_id
+       WHERE q.contact_id = $1 ORDER BY q.created_at DESC`,
       [id]
     );
     return { quotes: rows };
+  });
+
+  /**
+   * Audit item 6 (2026-09-09): withdraw a DRAFT quote, with a reason. Only a draft — a sent
+   * quote is the client's to decide on (they decline; it expires); an accepted one is an
+   * engagement. The row stays (status void, the reason on the audit); nothing is deleted.
+   */
+  app.post<{ Params: { id: string } }>('/quotes/:id/withdraw-draft', manage, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ reason: z.string().trim().min(5, 'Say why in at least a few words — this is the record.').max(1000) }).parse(request.body);
+    const { rows } = await app.db.query<{ status: string; contact_id: string }>(`SELECT status::text AS status, contact_id FROM quotes WHERE id = $1`, [id]);
+    const q = rows[0];
+    if (!q) throw new AppError(404, 'not_found', 'Quote not found.');
+    if (q.status !== 'draft') throw new AppError(409, 'not_a_draft', `This quote is ${q.status}; only a draft is withdrawn here.`);
+    await app.db.query(`UPDATE quotes SET status = 'void' WHERE id = $1 AND status = 'draft'`, [id]);
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
+      action: 'quote.draft_withdrawn', objectType: 'quote', objectId: id, contactId: q.contact_id,
+      details: { reason: b.reason },
+    });
+    return { id, status: 'void' };
   });
 
   /** The pipeline board + conversion metrics. */
