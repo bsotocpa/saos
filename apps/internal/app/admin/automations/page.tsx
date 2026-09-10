@@ -19,6 +19,8 @@ interface Automation {
   enabled: boolean;
   updated_at: string;
   updated_by: string | null;
+  /** Sends this automation held while it was off. Arming never replays them (decision 3). */
+  held_count: number;
 }
 
 export default function AutomationsPage() {
@@ -70,7 +72,9 @@ export default function AutomationsPage() {
       <div className="alert info">
         These automations <strong>send messages to clients</strong>. All ship OFF — arm each one when
         you&apos;re ready for it to reach real people. While OFF, the work still surfaces internally
-        (tasks, alerts, A/R status) and each job records how many sends it suppressed.
+        (tasks, alerts, A/R status) and each job records how many sends it suppressed. Arming does
+        <strong> not</strong> replay what was held: a held send stays held, counted on its row and
+        recorded on its invoice&apos;s send log, for a person to resend by hand if it should still go.
       </div>
       <p className="muted small">{armed} of {items.length} armed.</p>
 
@@ -82,6 +86,11 @@ export default function AutomationsPage() {
               {a.enabled
                 ? <span className="badge ok">ARMED</span>
                 : <span className="badge">off</span>}
+              {a.held_count > 0 ? (
+                <span className="badge warn" title="Sends held while this was off. Arming does not replay them — they stay held; each one is on its invoice's send log.">
+                  {a.held_count} held
+                </span>
+              ) : null}
               <br />
               <span className="muted small" style={{ overflowWrap: 'anywhere' }}>{a.description}</span>
               <br />

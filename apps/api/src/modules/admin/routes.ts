@@ -392,8 +392,16 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // here as real clients reach the portal. Each flip is audited.
   app.get('/admin/automations', admin, async () => {
     const { rows } = await app.db.query(
+      /*
+       * held_count (decision 3, 2026-09-09): every send this automation HELD while it was off —
+       * the audit rows the gate wrote instead of sending (details.automation = key). Arming
+       * never replays them; the number stays on the row so a person can see what waited and
+       * decide, by hand, whether any of it should still go.
+       */
       `SELECT a.key, a.name, a.description, a.audience, a.enabled, a.updated_at,
-              st.full_name AS updated_by
+              st.full_name AS updated_by,
+              (SELECT count(*)::int FROM audit_log l
+                WHERE l.action LIKE '%\\_suppressed' AND l.details->>'automation' = a.key) AS held_count
        FROM automations a
        LEFT JOIN staff st ON st.id = a.updated_by_staff_id
        ORDER BY a.enabled DESC, a.key`
