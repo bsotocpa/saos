@@ -3,6 +3,7 @@
 // including immediately after a restart — without double-sending anything.
 
 import type { FastifyInstance } from 'fastify';
+import { writeAudit } from '../audit.ts';
 import { todayChicago } from '../modules/tax/deadlines.ts';
 import { runEstimateReminderJob, runExtensionDecisionListJob, runSummerChaseJob } from '../modules/tax/extension.ts';
 import { runHealthRefresh } from '../modules/crm/health.ts';
@@ -46,137 +47,105 @@ const PUSH_SWEEP_MS = 60 * 1000; // alerts reach iPhones within a minute
  */
 export const OUTBOX_SWEEP_MS = 60 * 1000;
 
-export async function runDailyJobs(app: FastifyInstance, today: string): Promise<void> {
-  const decision = await runExtensionDecisionListJob(app, today);
-  if (!decision.skipped) app.log.info({ job: 'extension_decision_list', ...decision }, 'daily job ran');
-  const chase = await runSummerChaseJob(app, today);
-  if (!chase.skipped) app.log.info({ job: 'summer_chase', ...chase }, 'daily job ran');
-  const estimates = await runEstimateReminderJob(app, today);
-  if (!estimates.skipped) app.log.info({ job: 'estimate_reminder', ...estimates }, 'daily job ran');
-  const entity = await runEntityComplianceJob(app, today);
-  if (!entity.skipped) app.log.info({ job: 'entity_compliance', ...entity }, 'daily job ran');
-  const docs = await runDocumentChaseJob(app, today);
-  if (!docs.skipped) app.log.info({ job: 'document_chase', ...docs }, 'daily job ran');
-  const invoices = await runInvoiceOverdueJob(app, today);
-  if (!invoices.skipped) app.log.info({ job: 'invoice_overdue', ...invoices }, 'daily job ran');
-  // v4.3 flow 4: dunning ladder + late fees (runs AFTER the overdue flip so
-  // freshly-overdue invoices enter the ladder the same day).
-  const dunning = await runDunningJob(app, today);
-  if (!dunning.skipped) app.log.info({ job: 'ar_dunning', ...dunning }, 'daily job ran');
-  const sos = await runSosRecheckJob(app, today);
-  if (!sos.skipped) app.log.info({ job: 'sos_recheck', ...sos }, 'daily job ran');
-  const drill = await runRestoreDrillReminderJob(app, today);
-  if (!drill.skipped) app.log.info({ job: 'restore_drill_reminder', ...drill }, 'daily job ran');
-  const backup = await runBackupStaleCheckJob(app, today);
-  if (!backup.skipped) app.log.info({ job: 'backup_stale_check', ...backup }, 'daily job ran');
-  // Brian's trigger: alert once when Dubsado can be switched off.
-  const dubsado = await runDubsadoRetirementCheckJob(app, today);
-  if (!dubsado.skipped && dubsado.alerted) app.log.info({ job: 'dubsado_retirement', ...dubsado.readiness }, 'retirement trigger met');
-  // v4.3 flow 6: funder-deadline reminders on open voucher periods.
-  const vouchers = await runVoucherReminderJob(app, today);
-  if (!vouchers.skipped) app.log.info({ job: 'voucher_reminders', ...vouchers }, 'daily job ran');
-  // v4.3 flow 7: stalled-onboarding rescue (Day-60 decisions to Brian).
-  const rescue = await runOnboardingRescueJob(app, today);
-  if (!rescue.skipped) app.log.info({ job: 'onboarding_rescue', ...rescue }, 'daily job ran');
-  // v4.3 flow 3: season auto-extension batch. The sweep window is DERIVED per
-  // engagement — original due date minus the admin offset (default 10 days).
-  const extBatch = await runAutoExtensionBatchJob(app, today);
-  if (!extBatch.skipped) app.log.info({ job: 'auto_extension_batch', ...extBatch }, 'daily job ran');
-  // M27: expire quotes past their date, back to the pipeline with a reason.
-  const quoteExpiry = await runQuoteExpiryJob(app, today);
-  if (!quoteExpiry.skipped) app.log.info({ job: 'quote_expiry', ...quoteExpiry }, 'daily job ran');
-  // 2026-09-09: does Stripe still agree with what SAOS says about every paid invoice?
-  const drift = await runStripeDriftCheckJob(app, today);
-  if (!drift.skipped) app.log.info({ job: 'stripe_drift', ...drift }, 'daily job ran');
-  // M27: review asks off accepted returns / completed onboardings. Client-acting,
-  // so gated by the review_requests kill switch; every skip is recorded.
-  const reviews = await runReviewRequestJob(app, today);
-  if (!reviews.skipped) app.log.info({ job: 'review_requests', ...reviews }, 'daily job ran');
-  // M27: T-1 reminders for tomorrow's Hilo workshops. Client-acting, so gated by
-  // the event_reminders kill switch; the SMS half additionally needs the
-  // registrant's own opt-in plus the standing TCPA consent gate.
-  const eventReminders = await runEventReminderJob(app, today);
-  if (!eventReminders.skipped) app.log.info({ job: 'event_reminders', ...eventReminders }, 'daily job ran');
-  // v4.3 flow 1: perfection-period clocks on rejected e-files.
-  const perfection = await runPerfectionClockJob(app, today);
-  if (!perfection.skipped) app.log.info({ job: 'perfection_clock', ...perfection }, 'daily job ran');
-  // v4.5: the waiting-for-input escalation ladder (D3 email → D7 SMS → D14 call → D30 stalled).
-  const ladder = await runLadderJob(app, today);
-  if (!ladder.skipped) app.log.info({ job: 'escalation_ladder', rungs: ladder.rungs }, 'daily job ran');
-  // Restart safety: re-enqueue recordings stuck before processing began.
-  if (app.meetingQueue) {
-    const { recoverStuckMeetings } = await import('../modules/meetings/pipeline.ts');
-    const recovered = await recoverStuckMeetings(app, app.meetingQueue);
-    if (recovered > 0) app.log.info({ job: 'meeting_recovery', recovered }, 'stuck meetings re-enqueued');
-  }
-  /*
-   * THE OUTBOX DRAIN, EVERY TICK — not daily (#48).
-   *
-   * Every row here is a client waiting: a payment link, a signing link. The gap between the
-   * state committing and the client hearing about it should be minutes. Cheap when empty —
-   * one indexed query that returns nothing and breaks out.
-   *
-   * Runs FIRST among the tick jobs, ahead of the escalation work, because chasing someone
-   * about a document while an unsent invoice sits in the queue is the wrong order to do
-   * things in.
-   */
-  const { drainOutbox } = await import('../outbox.ts');
-  const outbox = await drainOutbox(app);
-  if (outbox.considered > 0) {
-    app.log.info({ job: 'outbox_drain', ...outbox }, 'outbox effects performed');
-  }
-
-  // Notice escalations run EVERY tick (48h precision matters); idempotent per notice.
-  const notices = await runNoticeEscalations(app);
-  if (notices.unactioned > 0 || notices.deadline > 0) {
-    app.log.info({ job: 'notice_escalations', ...notices }, 'escalations fired');
-  }
-  // Task reminders every tick too (reminded_at NULL-check makes it idempotent;
-  // 15-minute granularity is fine for a "remind me at" alarm).
-  const reminders = await runTaskReminderSweep(app);
-  if (reminders.reminded > 0) app.log.info({ job: 'task_reminders', ...reminders }, 'reminders fired');
-
-  // DEPENDENCY PROBE, every tick — not daily. Docker health answers "does the
-  // container think it is fine"; this answers "can the API reach the scanner right
-  // now", which is the question that matters and the one nobody was asking while
-  // ClamAV sat wedged for twelve hours.
-  const { probeDependencies } = await import('../modules/admin/container-health.ts');
-  const deps = await probeDependencies(app);
-  if (deps.alerted.length > 0) {
-    app.log.error({ job: 'dependency_probe', unreachable: deps.alerted }, 'dependency unreachable');
-  }
-
-  // FINDING #14 — rescan documents whose verdict is still outstanding, every tick.
-  //
-  // Every tick, not daily: this is the mechanism that makes "intake never refuses"
-  // honest. A document sitting at 'skipped' is a client who uploaded what we asked
-  // for and is still being chased for it. The gap between the scanner coming back and
-  // the filing completing should be minutes, not until tomorrow.
-  //
-  // It no-ops cheaply when there is nothing outstanding — one indexed query.
-  const { runDocumentRescanJob } = await import('../modules/documents/rescan.ts');
-  const { makeMinioClient } = await import('../modules/documents/storage.ts');
-  const rescan = await runDocumentRescanJob(app, makeMinioClient(app.config));
-  if (rescan.considered > 0) {
-    app.log.info({ job: 'document_rescan', ...rescan }, 'rescanned documents awaiting a verdict');
-  }
-
-  /*
-   * FINDING #24 — payment reconciliation, every tick.
-   *
-   * A client who pays and closes the tab never triggers the browser-side reconcile, so
-   * a lost webhook would leave them marked unpaid indefinitely. This asks Stripe about
-   * any checkout started and not settled. Every tick rather than daily: the gap between
-   * a client's money leaving and our record agreeing should be minutes.
-   */
-  const { runPaymentReconcileJob } = await import('../modules/billing/reconcile.ts');
-  const recon = await runPaymentReconcileJob(app);
-  if (recon.settled > 0 || recon.retired > 0 || recon.errors > 0) {
-    app.log.warn({ job: 'payment_reconcile', ...recon }, 'settled payments the webhook never delivered');
-  }
+/**
+ * ONE JOB'S FAILURE IS THAT JOB'S. 2026-09-10: the Stripe drift check threw on a payment the live
+ * key could not see, and because the jobs ran as one straight line, everything after it — review
+ * requests, event reminders, the perfection clock, the escalation ladder, the health refresh — did
+ * not run that day, and would not have run any day until the throw was fixed. Each job now runs
+ * inside its own try; a failure is logged with the job's name, written to the audit log as
+ * job.failed, and the next job runs. Jobs stay idempotent per calendar date, so a tick can retry
+ * a failed one on the next pass without touching the ones that succeeded.
+ */
+export interface DailyJob {
+  name: string;
+  run: (app: FastifyInstance, today: string) => Promise<Record<string, unknown> & { skipped?: boolean }>;
 }
 
-/** Kick off the scheduler loop; health refresh runs on the first tick of each day too. */
+export const DAILY_JOBS: DailyJob[] = [
+  { name: 'extension_decision_list', run: runExtensionDecisionListJob },
+  { name: 'summer_chase', run: runSummerChaseJob },
+  { name: 'estimate_reminder', run: runEstimateReminderJob },
+  { name: 'entity_compliance', run: runEntityComplianceJob },
+  { name: 'document_chase', run: runDocumentChaseJob },
+  { name: 'invoice_overdue', run: runInvoiceOverdueJob },
+  // v4.3 flow 4: dunning ladder + late fees, AFTER the overdue flip so freshly-overdue invoices
+  // enter the ladder the same day.
+  { name: 'ar_dunning', run: runDunningJob },
+  { name: 'sos_recheck', run: runSosRecheckJob },
+  { name: 'restore_drill_reminder', run: runRestoreDrillReminderJob },
+  { name: 'backup_stale_check', run: runBackupStaleCheckJob },
+  // Brian's trigger: alert once when Dubsado can be switched off.
+  { name: 'dubsado_retirement', run: async (app, today) => { const r = await runDubsadoRetirementCheckJob(app, today); return { ...r, skipped: r.skipped || !r.alerted }; } },
+  { name: 'voucher_reminders', run: runVoucherReminderJob },
+  { name: 'onboarding_rescue', run: runOnboardingRescueJob },
+  { name: 'auto_extension_batch', run: runAutoExtensionBatchJob },
+  { name: 'quote_expiry', run: runQuoteExpiryJob },
+  // 2026-09-09: does Stripe still agree with what SAOS says about every paid invoice?
+  { name: 'stripe_drift', run: runStripeDriftCheckJob },
+  { name: 'review_requests', run: runReviewRequestJob },
+  { name: 'event_reminders', run: runEventReminderJob },
+  // v4.3 flow 1: perfection-period clocks on rejected e-files.
+  { name: 'perfection_clock', run: runPerfectionClockJob },
+  // v4.5: the waiting-for-input escalation ladder (D3 email → D7 SMS → D14 call → D30 stalled).
+  { name: 'escalation_ladder', run: async (app, today) => { const r = await runLadderJob(app, today); return { rungs: r.rungs, skipped: r.skipped }; } },
+  // Restart safety: re-enqueue recordings stuck before processing began.
+  { name: 'meeting_recovery', run: async (app) => {
+    if (!app.meetingQueue) return { skipped: true };
+    const { recoverStuckMeetings } = await import('../modules/meetings/pipeline.ts');
+    const recovered = await recoverStuckMeetings(app, app.meetingQueue);
+    return { recovered, skipped: recovered === 0 };
+  } },
+  /*
+   * THE OUTBOX DRAIN, EVERY TICK — not daily (#48). Every row here is a client waiting: a payment
+   * link, a signing link. Cheap when empty. The fast lane (OUTBOX_SWEEP_MS) drains it every minute
+   * too; this is the belt to that suspender.
+   */
+  { name: 'outbox_drain', run: async (app) => { const { drainOutbox } = await import('../outbox.ts'); const r = await drainOutbox(app); return { ...r, skipped: r.considered === 0 }; } },
+  // Notice escalations run EVERY tick (48h precision matters); idempotent per notice.
+  { name: 'notice_escalations', run: async (app) => { const r = await runNoticeEscalations(app); return { ...r, skipped: !Object.values(r).some((v) => typeof v === 'number' && v > 0) }; } },
+  { name: 'task_reminder_sweep', run: async (app) => { const r = await runTaskReminderSweep(app); return { ...r, skipped: !Object.values(r).some((v) => typeof v === 'number' && v > 0) }; } },
+  // DEPENDENCY PROBE, every tick: can the API reach the scanner right now — the question nobody
+  // was asking while ClamAV sat wedged for twelve hours.
+  { name: 'dependency_probe', run: async (app) => { const { probeDependencies } = await import('../modules/admin/container-health.ts'); const d = await probeDependencies(app); if (d.alerted.length > 0) app.log.error({ job: 'dependency_probe', unreachable: d.alerted }, 'dependency unreachable'); return { unreachable: d.alerted, skipped: true }; } },
+  { name: 'document_rescan', run: async (app) => { const { runDocumentRescanJob } = await import('../modules/documents/rescan.ts'); const { makeMinioClient } = await import('../modules/documents/storage.ts'); const r = await runDocumentRescanJob(app, makeMinioClient(app.config)); return { ...r, skipped: r.considered === 0 }; } },
+  /*
+   * FINDING #24 — payment reconciliation, every tick. A client who pays and closes the tab never
+   * triggers the browser-side reconcile; a lost webhook would leave them unpaid indefinitely.
+   * 2026-09-10: this sat behind the drift check's throw for a whole morning — every tick died
+   * before reaching it. Isolated now, like everything else on this list.
+   */
+  { name: 'payment_reconcile', run: async (app) => { const { runPaymentReconcileJob } = await import('../modules/billing/reconcile.ts'); const r = await runPaymentReconcileJob(app); if (r.settled > 0 || r.retired > 0 || r.errors > 0) app.log.warn({ job: 'payment_reconcile', ...r }, 'settled payments the webhook never delivered'); return { ...r, skipped: true }; } },
+];
+
+export async function runJobsIsolated(app: FastifyInstance, today: string, jobs: DailyJob[]): Promise<{ ran: string[]; failed: string[] }> {
+  const ran: string[] = [];
+  const failed: string[] = [];
+  for (const job of jobs) {
+    try {
+      const result = await job.run(app, today);
+      ran.push(job.name);
+      if (!result.skipped) app.log.info({ job: job.name, ...result }, 'daily job ran');
+    } catch (err) {
+      failed.push(job.name);
+      app.log.error({ err, job: job.name }, 'daily job failed — the next one still runs');
+      try {
+        await writeAudit(app.db, {
+          actorType: 'system', actorLabel: 'daily jobs',
+          action: 'job.failed', objectType: 'job', objectId: job.name,
+          details: { job: job.name, run_date: today, error: err instanceof Error ? err.message : String(err) },
+        });
+      } catch (auditErr) {
+        app.log.error({ err: auditErr, job: job.name }, 'could not even record the failure');
+      }
+    }
+  }
+  return { ran, failed };
+}
+
+export async function runDailyJobs(app: FastifyInstance, today: string): Promise<void> {
+  await runJobsIsolated(app, today, DAILY_JOBS);
+}
+
 export function startScheduler(app: FastifyInstance): NodeJS.Timeout {
   let lastHealthRun = '';
   const tick = async () => {
@@ -184,10 +153,10 @@ export function startScheduler(app: FastifyInstance): NodeJS.Timeout {
       const today = todayChicago();
       await runDailyJobs(app, today);
       if (lastHealthRun !== today) {
-        // Health is transition-alerting and cheap at this scale — once per day.
-        const summary = await runHealthRefresh(app);
-        lastHealthRun = today;
-        app.log.info({ job: 'health_refresh', ...summary }, 'daily job ran');
+        // Health is transition-alerting and cheap at this scale — once per day, and isolated
+        // like every other job (2026-09-10: it did not run because a job before it threw).
+        const { failed } = await runJobsIsolated(app, today, [{ name: 'health_refresh', run: async (a) => ({ ...(await runHealthRefresh(a)) }) }]);
+        if (failed.length === 0) lastHealthRun = today;
       }
     } catch (err) {
       app.log.error({ err }, 'daily job tick failed');

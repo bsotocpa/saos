@@ -39,13 +39,13 @@ export async function runStripeDriftCheckJob(
   app: FastifyInstance,
   today: string,
   opts: { limit?: number } = {}
-): Promise<{ checked: number; drifted: number; tasksCreated: number; skipped: boolean }> {
+): Promise<{ checked: number; drifted: number; unverifiable: number; tasksCreated: number; skipped: boolean }> {
   // Once per calendar day, like the other daily jobs.
   const ran = await app.db.query(
     `SELECT 1 FROM audit_log WHERE action = 'ops.stripe_drift_checked' AND details->>'day' = $1 LIMIT 1`,
     [today]
   );
-  if (ran.rows.length > 0) return { checked: 0, drifted: 0, tasksCreated: 0, skipped: true };
+  if (ran.rows.length > 0) return { checked: 0, drifted: 0, unverifiable: 0, tasksCreated: 0, skipped: true };
 
   const { rows } = await app.db.query<{
     id: string; invoice_number: string; status: string; amount_paid_cents: number; amount_refunded_cents: number;
@@ -62,9 +62,40 @@ export async function runStripeDriftCheckJob(
   );
 
   const drifted: DriftRow[] = [];
+  const unverifiable: Array<{ invoiceNumber: string; reason: string }> = [];
   let tasksCreated = 0;
   for (const inv of rows) {
-    const charge = await app.stripe.retrieveCharge(inv.stripe_payment_intent_id);
+    /*
+     * 2026-09-10, the first daily run under the live key. SA-2026-0001 was paid on 08-13 under
+     * the TEST key; the live key cannot see that payment intent; Stripe threw; the throw left
+     * this loop, killed the daily tick, and four jobs (review requests, event reminders, the
+     * perfection clock, the escalation ladder) and the health refresh did not run. A payment
+     * Stripe cannot verify is a FINDING — a task, counted, on the run record — never a throw.
+     */
+    let charge: Awaited<ReturnType<typeof app.stripe.retrieveCharge>>;
+    try {
+      charge = await app.stripe.retrieveCharge(inv.stripe_payment_intent_id);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      unverifiable.push({ invoiceNumber: inv.invoice_number, reason });
+      const owner = await ownerForRole(app.db, 'comms_billing');
+      const task = await createTask(app, {
+        title: `Stripe cannot verify ${inv.invoice_number}'s payment under the current key`,
+        description:
+          `SAOS says ${inv.status}; Stripe answered: "${reason}". The usual cause is a payment taken under a ` +
+          'different key (test vs live) — the record is right and Stripe simply cannot see it from here. ' +
+          'Confirm in the Stripe dashboard (switch the mode toggle), note what you found on this task, and ' +
+          'nothing needs changing on the invoice. If Stripe has NO record of it in either mode, tell Brian.',
+        ...(owner ? { assignedStaffId: owner } : {}),
+        contactId: inv.contact_id,
+        priority: 2,
+        source: 'automation',
+        sourceType: 'stripe_drift',
+        sourceId: inv.id,
+      });
+      if (task.created) tasksCreated++;
+      continue;
+    }
     if (!charge) continue; // the stub, or a payment intent Stripe no longer knows
     const expected = expectedStatus(charge, inv.amount_paid_cents);
     if (expected === inv.status && charge.amountRefundedCents === inv.amount_refunded_cents) continue;
@@ -95,10 +126,11 @@ export async function runStripeDriftCheckJob(
     actorType: 'system',
     actorLabel: 'stripe drift check',
     action: 'ops.stripe_drift_checked',
-    details: { day: today, checked: rows.length, drifted: drifted.map((d) => d.invoiceNumber) },
+    details: { day: today, checked: rows.length, drifted: drifted.map((d) => d.invoiceNumber), unverifiable },
   });
   if (drifted.length > 0) app.log.warn({ drifted }, 'Stripe and SAOS disagree about money');
-  return { checked: rows.length, drifted: drifted.length, tasksCreated, skipped: false };
+  if (unverifiable.length > 0) app.log.warn({ unverifiable }, 'Stripe could not verify a payment under the current key');
+  return { checked: rows.length, drifted: drifted.length, unverifiable: unverifiable.length, tasksCreated, skipped: false };
 }
 
 /**
