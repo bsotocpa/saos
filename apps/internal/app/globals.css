@@ -179,6 +179,12 @@ main:has(.task-layout) { max-width: 1500px; }
 .chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink); }
 .chip.active { background: var(--forest); color: #fff; border-color: var(--forest); }
 .chip .x { margin-left: 6px; opacity: 0.6; }
+/* Item 13b (2026-09-09): the builder's summary bar — inline on a desk, pinned to the bottom of
+   the modal on a phone so the numbers stay in view while chips are tapped. */
+.builder-summary { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding: 8px 10px; margin: 8px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 13px; }
+@media (max-width: 640px) {
+  .builder-summary { position: sticky; bottom: 0; z-index: 2; box-shadow: 0 -4px 12px rgba(9, 42, 40, 0.08); }
+}
 
 .viewtabs { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .viewtabs button { border: none; background: var(--card); padding: 6px 14px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--muted); }

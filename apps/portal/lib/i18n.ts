@@ -425,6 +425,7 @@ const dict = {
   ],
   quote_included: ['Included', 'Incluido'],
   quote_tax_year: ['Tax year', 'Año fiscal'],
+  quote_tax_year_interview: ['from your answers', 'según sus respuestas'],
   quote_optional: ['Optional — your choice', 'Opcional — usted decide'],
   quote_optional_hint: [
     'Tick anything you want added. Leave it unticked and it is not part of the price.',

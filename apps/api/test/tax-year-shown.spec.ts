@@ -69,13 +69,13 @@ test('the default tax year is the prior calendar year, and it is shown in the bu
   const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await taxItem() }] }, actor());
   const staffView = await app.inject({ method: 'GET', url: `/quotes/${q.id}`, headers: auth(ceo) });
   assert.equal(staffView.statusCode, 200, staffView.body);
-  assert.deepEqual(staffView.json().periods, [{ serviceLine: 'tax', periodKey: year }]);
+  assert.deepEqual(staffView.json().periods, [{ serviceLine: 'tax', periodKey: year, source: 'default' }]);
 
   const sent = await sendQuote(app, q.id, actor());
   const token = sent.url.split('/').pop()!;
   const publicView = await app.inject({ method: 'GET', url: `/public/quote/${token}` });
   assert.equal(publicView.statusCode, 200, publicView.body);
-  assert.deepEqual(publicView.json().periods, [{ serviceLine: 'tax', periodKey: year }], 'the client reads the same year');
+  assert.deepEqual(publicView.json().periods, [{ serviceLine: 'tax', periodKey: year, source: 'default' }], 'the client reads the same year');
 
   // 3. The engagement title carries the year.
   const acc = await acceptQuote(app, token, {});
@@ -89,9 +89,22 @@ test('an interview that names the year wins over the default', async () => {
   await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c.id]);
   const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await taxItem() }], interviewAnswers: { tax_year: 2023 } }, actor());
   const view = await app.inject({ method: 'GET', url: `/quotes/${q.id}`, headers: auth(ceo) });
-  assert.deepEqual(view.json().periods, [{ serviceLine: 'tax', periodKey: '2023' }]);
+  assert.deepEqual(view.json().periods, [{ serviceLine: 'tax', periodKey: '2023', source: 'interview' }], 'an interview answer with no builder marker is the interview\x27s');
   const sent = await sendQuote(app, q.id, actor());
   const acc = await acceptQuote(app, sent.url.split('/').pop()!, {});
   const eng = await app.db.query<{ title: string }>(`SELECT title FROM engagements WHERE id = $1`, [acc.engagementId]);
   assert.match(eng.rows[0]!.title, /^Tax 2023 — /);
+});
+
+test('item 13c: a year chosen in the builder is marked chosen; the default left in place is marked default; the proposal and title read whatever was chosen', async () => {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Chosenyear', email: 'chosenyear@example.test' });
+  await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c.id]);
+  const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await taxItem() }], interviewAnswers: { tax_year: 2024, tax_year_source: 'chosen' } }, actor());
+  const view = await app.inject({ method: 'GET', url: `/quotes/${q.id}`, headers: auth(ceo) });
+  assert.deepEqual(view.json().periods, [{ serviceLine: 'tax', periodKey: '2024', source: 'chosen' }]);
+  const sent = await sendQuote(app, q.id, actor());
+  const acc = await acceptQuote(app, sent.url.split('/').pop()!, {});
+  const eng = await app.db.query<{ title: string; period_key: string }>(`SELECT title, period_key FROM engagements WHERE id = $1`, [acc.engagementId]);
+  assert.equal(eng.rows[0]!.period_key, '2024');
+  assert.match(eng.rows[0]!.title, /^Tax 2024 — /);
 });

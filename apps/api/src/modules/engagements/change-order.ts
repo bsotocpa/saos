@@ -25,24 +25,40 @@ export interface ChangeOrderTarget {
 
 /** The tax year a quote names, when it does (interview answer `tax_year`). */
 export async function quoteTaxYear(app: FastifyInstance, quoteId: string): Promise<number | null> {
-  const { rows } = await app.db.query<{ tax_year: string | null }>(
-    `SELECT interview_answers->>'tax_year' AS tax_year FROM quotes WHERE id = $1`,
+  return (await quoteTaxYearWithSource(app, quoteId)).year;
+}
+
+/**
+ * Item 13c (2026-09-09): where the year came from. 'interview' when the interview named it
+ * (an answer with no builder marker), 'chosen' when a person picked it in the builder,
+ * 'default' when the builder left the prior calendar year in place, or when nothing named one.
+ */
+export async function quoteTaxYearWithSource(
+  app: FastifyInstance,
+  quoteId: string
+): Promise<{ year: number | null; source: 'default' | 'chosen' | 'interview' }> {
+  const { rows } = await app.db.query<{ tax_year: string | null; tax_year_source: string | null }>(
+    `SELECT interview_answers->>'tax_year' AS tax_year, interview_answers->>'tax_year_source' AS tax_year_source FROM quotes WHERE id = $1`,
     [quoteId]
   );
   const raw = rows[0]?.tax_year;
   const n = raw ? Number(raw) : NaN;
-  return Number.isInteger(n) && n > 1990 && n < 2200 ? n : null;
+  const year = Number.isInteger(n) && n > 1990 && n < 2200 ? n : null;
+  if (year === null) return { year: null, source: 'default' };
+  const marked = rows[0]?.tax_year_source;
+  if (marked === 'chosen' || marked === 'default') return { year, source: marked };
+  return { year, source: 'interview' };
 }
 
 /** Each engagement line on the quote with the period it would cover. */
 export async function periodsForQuote(
   app: FastifyInstance,
   quoteId: string
-): Promise<Array<{ serviceLine: string; periodKey: string | null }>> {
-  const taxYear = await quoteTaxYear(app, quoteId);
+): Promise<Array<{ serviceLine: string; periodKey: string | null; source: 'default' | 'chosen' | 'interview' }>> {
+  const { year: taxYear, source } = await quoteTaxYearWithSource(app, quoteId);
   const lines = await engagementLinesForQuote(app, quoteId);
   const todayIso = todayChicago();
-  return lines.map((l) => ({ serviceLine: l.serviceLine, periodKey: periodKeyFor(l.serviceLine, { taxYear, todayIso }) }));
+  return lines.map((l) => ({ serviceLine: l.serviceLine, periodKey: periodKeyFor(l.serviceLine, { taxYear, todayIso }), source }));
 }
 
 /**

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
+import { builderSummary, isPicked, taxYearLabel, taxYearOptions, togglePick, type TaxYearSource } from './builder-lib';
 
 interface CatalogItem {
   item_code: string;
@@ -90,6 +91,9 @@ export default function PipelinePage() {
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   /** Decision 2 (2026-09-09): the tax year a return quoted today is for — from the server. */
   const [defaultTaxYear, setDefaultTaxYear] = useState<number | null>(null);
+  /** Item 13c: the year on the quote — the default until changed; the interview's when it said so. */
+  const [taxYear, setTaxYear] = useState<number | null>(null);
+  const [taxYearSource, setTaxYearSource] = useState<TaxYearSource>('default');
   const [bundles, setBundles] = useState<CatalogBundle[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -174,6 +178,8 @@ export default function PipelinePage() {
       setMetrics(p.metrics);
       setCatalog(c.items);
       setDefaultTaxYear(c.defaultTaxYear ?? null);
+      setTaxYear(c.defaultTaxYear ?? null);
+      setTaxYearSource('default');
       setBundles(c.bundles);
       // `deposits.override` is explicit-only, so a '*' role does NOT imply it —
       // check for the key itself, exactly as the API does.
@@ -448,6 +454,8 @@ export default function PipelinePage() {
           asRange,
           expiresInDays,
           ...(notes.trim() ? { notes: notes.trim() } : {}),
+          // Item 13c: the year the person saw, and whether it was the default or their choice.
+          ...(taxYear ? { interviewAnswers: { tax_year: taxYear, tax_year_source: taxYearSource } } : {}),
         },
       });
       createdId = created.id;
@@ -744,20 +752,56 @@ export default function PipelinePage() {
                     />
                   </label>
                   <div className="chipbar">
-                    {filtered.map((i) => (
-                      <button key={i.item_code} type="button" className="chip" onClick={() => addItem(i.item_code)}>
-                        {i.name_en} · {money(i.amount_cents)}
-                        {i.needs_confirmation ? ' ⚠' : ''}
-                      </button>
-                    ))}
+                    {filtered.map((i) => {
+                      const on = isPicked(picked, i.item_code);
+                      return (
+                        <button
+                          key={i.item_code}
+                          type="button"
+                          className={on ? 'chip active' : 'chip'}
+                          aria-pressed={on}
+                          onClick={() => setPicked((prev) => togglePick(prev, i.item_code))}
+                        >
+                          {on ? '✓ ' : ''}{i.name_en} · {money(i.amount_cents)}
+                          {i.needs_confirmation ? ' ⚠' : ''}
+                        </button>
+                      );
+                    })}
                   </div>
 
-                  {picked.some((p) => { const l = catalog.find((i) => i.item_code === p.itemCode)?.service_line; return l === 'individual_tax' || l === 'business_tax'; }) && defaultTaxYear ? (
-                    <p className="muted small">
-                      Tax year <strong>{defaultTaxYear}</strong> — the prior calendar year, the default when the interview
-                      does not name one. The engagement will be titled with it and the client sees it on the proposal.
-                    </p>
+                  {picked.some((p) => { const l = catalog.find((i) => i.item_code === p.itemCode)?.service_line; return l === 'individual_tax' || l === 'business_tax'; }) && defaultTaxYear && taxYear ? (
+                    <label className="field">
+                      Tax year — <strong>{taxYearLabel(taxYear, taxYearSource)}</strong>
+                      <select
+                        value={taxYear}
+                        disabled={taxYearSource === 'interview'}
+                        onChange={(e) => { setTaxYear(Number(e.target.value)); setTaxYearSource(Number(e.target.value) === defaultTaxYear ? 'default' : 'chosen'); }}
+                      >
+                        {taxYearOptions(defaultTaxYear).map((y) => (
+                          <option key={y} value={y}>{y === defaultTaxYear ? `${y} (default — prior calendar year)` : String(y)}</option>
+                        ))}
+                      </select>
+                      <span className="muted small">
+                        The engagement is titled with it and the client reads it on the proposal.
+                      </span>
+                    </label>
                   ) : null}
+                  {/* 13b: the sticky summary — deposit, committed total, line count — follows every tap. */}
+                  {picked.length > 0 ? (() => {
+                    const s = builderSummary(picked, catalog);
+                    return (
+                      <div className="builder-summary" aria-live="polite">
+                        <span><strong>{s.lineCount}</strong> line{s.lineCount === 1 ? '' : 's'}</span>
+                        <span>
+                          Committed{' '}
+                          <strong>
+                            {s.hasRange ? `${money(s.committedMinCents)}–${money(s.committedMaxCents)}` : money(s.committedCents)}
+                          </strong>
+                        </span>
+                        <span>Deposit <strong>{s.depositCents === null ? 'none' : money(s.depositCents)}</strong></span>
+                      </div>
+                    );
+                  })() : null}
                   {picked.map((p, idx) => {
                     const item = catalog.find((i) => i.item_code === p.itemCode);
                     return (
