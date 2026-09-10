@@ -335,6 +335,17 @@ export default function ClientPacketPage() {
         <span className={`badge ${LIFECYCLE_BADGE[c.contact_status] ?? ''}`}>
           {LIFECYCLE_LABEL[c.contact_status] ?? c.contact_status}
         </span>
+        {c.is_test ? (
+          <>
+            {' '}
+            <span
+              className="badge warn test-client-badge"
+              title={c.test_note ?? 'Test client: workable here, excluded from every number on this page.'}
+            >
+              TEST
+            </span>
+          </>
+        ) : null}
         {c.client_since ? <span className="muted"> · client since {c.client_since}</span> : null}
         {c.hilo_status !== 'none' ? <span className="muted"> · Hilo: {c.hilo_status}</span> : null}
       </p>
