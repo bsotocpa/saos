@@ -145,56 +145,31 @@ fi
 pass "confirmed"
 
 step "4. Webhook endpoint and signing secret"
-# Stripe only reveals a signing secret at CREATION, so an existing endpoint has an unreadable
-# one. Deleting a LIVE endpoint is more consequential than deleting a test one — it can drop
-# events in flight — so this asks rather than assuming.
-EXISTING="$(stripe_api GET /webhook_endpoints || true)"
-OLD_ID="$(printf '%s' "$EXISTING" | python3 -c '
-import json,sys
-url = sys.argv[1]
-try:
-    data = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-for e in data.get("data", []):
-    if e.get("url") == url:
-        print(e.get("id", ""))
-        break
-' "$WEBHOOK_URL" 2>/dev/null || true)"
-
-if [ -n "${OLD_ID:-}" ]; then
-  info "a LIVE endpoint for this URL already exists ($OLD_ID)"
-  info "Stripe will not reveal its signing secret again, so it must be replaced to capture one."
-  printf '        Replace it? Events arriving during the swap could be missed. [type: yes] '
-  read -r REPLACE || true
-  if [ "${REPLACE:-}" != "yes" ]; then
-    fail "not replacing — nothing was written"
-    info "if you already hold that endpoint's whsec_, set STRIPE_WEBHOOK_SECRET by hand instead"
-    exit 1
-  fi
-  stripe_api DELETE "/webhook_endpoints/$OLD_ID" >/dev/null || true
-  info "deleted $OLD_ID"
-fi
-
-CREATED="$(stripe_api POST /webhook_endpoints \
-  "url=$WEBHOOK_URL" \
-  "enabled_events[]=checkout.session.completed" \
-  "enabled_events[]=payment_intent.payment_failed" \
-  "enabled_events[]=charge.refunded" \
-  "enabled_events[]=charge.dispute.created" \
-  "enabled_events[]=charge.dispute.closed" \
-  "description=SAOS deposit checkout (installed by install-stripe-live.sh)")"
-
-read -r WEBHOOK_ID WHSEC < <(printf '%s' "$CREATED" | python3 -c '
-import json,sys
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    print("", ""); sys.exit(0)
-print(d.get("id", "") or "", d.get("secret", "") or "")
-' 2>/dev/null || echo " ")
-
-if [ -z "${WHSEC:-}" ]; then
+# DECISION 2 (2026-09-10, Brian's ruling): the endpoint is recreated ONLY when the signing secret
+# on this box is missing or fails verification. Otherwise its enabled_events are brought up to
+# date in place and the secret stays — no rotation, no window in which events in flight are
+# missed. The logic lives in scripts/lib/stripe-endpoint.sh so scripts/test-stripe-endpoint.sh
+# can prove the three cases against a stubbed Stripe.
+# shellcheck source=lib/stripe-endpoint.sh
+. "$(dirname "$0")/lib/stripe-endpoint.sh"
+WEBHOOK_EVENTS=(checkout.session.completed payment_intent.payment_failed charge.refunded charge.dispute.created charge.dispute.closed)
+STORED_WHSEC="$(sed -n 's/^STRIPE_WEBHOOK_SECRET=//p' "$ENV_FILE" 2>/dev/null | tr -d '\r' | head -1)"
+secret_verifies() {
+  # The running API signs nothing itself; the container signs a synthetic event with the stored
+  # secret the way Stripe does and posts it to its own webhook: genuine accepted, forged refused.
+  docker cp "$COMPOSE_DIR/scripts/verify-webhook-secret.mjs" saos-api-1:/app/verify-webhook-secret.mjs >/dev/null 2>&1 || return 1
+  local rc=0
+  docker exec -e STRIPE_WEBHOOK_SECRET="$STORED_WHSEC" saos-api-1 node /app/verify-webhook-secret.mjs >/dev/null 2>&1 || rc=$?
+  docker exec saos-api-1 rm -f /app/verify-webhook-secret.mjs >/dev/null 2>&1 || true
+  return $rc
+}
+ensure_webhook_endpoint
+case "$ENDPOINT_ACTION" in
+  created)   pass "endpoint ${WEBHOOK_ID} created; signing secret captured (whsec_…${WHSEC: -4})" ;;
+  recreated) pass "endpoint ${WEBHOOK_ID} recreated — the stored secret was missing or did not verify; new secret captured (whsec_…${WHSEC: -4})" ;;
+  updated)   pass "endpoint ${WEBHOOK_ID} kept — the stored secret verifies; enabled_events brought up to date in place, nothing rotated" ;;
+esac
+if [ -z "${WHSEC:-}" ] && [ "$ENDPOINT_ACTION" != "updated" ]; then
   fail "could not read a signing secret out of Stripe's response"
   printf '%s' "$CREATED" | head -c 400
   echo
