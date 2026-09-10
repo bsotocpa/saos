@@ -983,6 +983,21 @@ export const templates = [
       'que al momento de declarar.\n\n' +
       '— Brian Soto, CPA · Soto Accounting',
   },
+  {
+    key: 'invoice_pay_link_sms',
+    name: 'Pay link by text (a person pressed Send on the invoice card — item 14)',
+    channel: 'sms',
+    isPlaceholder: false,
+    variables: ['first_name', 'invoice_number', 'amount', 'pay_link'],
+    subjectEn: null,
+    subjectEs: null,
+    bodyEn:
+      'Hi {{first_name}}, it’s Soto Accounting. Your pay link for invoice {{invoice_number}} ({{amount}}): ' +
+      '{{pay_link}} Reply STOP to opt out.',
+    bodyEs:
+      'Hola {{first_name}}, le escribe Soto Accounting. Su enlace de pago para la factura {{invoice_number}} ({{amount}}): ' +
+      '{{pay_link}} Responda STOP para no recibir más mensajes.',
+  },
 ];
 
 /*

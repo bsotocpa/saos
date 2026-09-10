@@ -14,7 +14,7 @@
 
 import type { FastifyInstance } from 'fastify';
 
-export type NoticeKind = 'invoice_send' | 'void_notice' | 'refund_receipt' | 'payment_receipt';
+export type NoticeKind = 'invoice_send' | 'void_notice' | 'refund_receipt' | 'payment_receipt' | 'pay_link';
 
 export interface NoticeState {
   kind: NoticeKind;
@@ -41,6 +41,7 @@ const AUDIT_BY_KIND: Record<NoticeKind, string> = {
   void_notice: 'invoice.void_notice_sent',
   refund_receipt: 'invoice.refund_receipt_sent',
   payment_receipt: 'invoice.payment_receipt_sent',
+  pay_link: 'invoice.pay_link_sent',
 };
 
 /** Item 9 (2026-09-09): the audit a gated send writes when its automation is OFF — the hold, on the log. */
@@ -55,6 +56,7 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   void_notice: 'Cancellation notice',
   refund_receipt: 'Refund receipt',
   payment_receipt: 'Payment receipt',
+  pay_link: 'Pay link',
 };
 
 /** One line a person reads: "Cancellation notice queued" / "Refund receipt delivered 09:08". */
@@ -138,10 +140,14 @@ export async function noticesForInvoices(
     });
   }
 
-  // Inline sends (no outbox row): the payment receipt. Delivered iff its audit row exists.
+  // Inline sends (no outbox row): the payment receipt, and the pay link a person sent (item 14).
+  // Delivered iff the audit row exists.
   for (const a of audits.rows) {
-    if (a.action !== AUDIT_BY_KIND.payment_receipt) continue;
-    out[a.object_id]?.push({ kind: 'payment_receipt', state: 'delivered', at: a.occurred_at.toISOString(), outboxId: null, auditId: a.id, detail: null });
+    if (a.action === AUDIT_BY_KIND.payment_receipt) {
+      out[a.object_id]?.push({ kind: 'payment_receipt', state: 'delivered', at: a.occurred_at.toISOString(), outboxId: null, auditId: a.id, detail: null });
+    } else if (a.action === AUDIT_BY_KIND.pay_link) {
+      out[a.object_id]?.push({ kind: 'pay_link', state: 'delivered', at: a.occurred_at.toISOString(), outboxId: null, auditId: a.id, detail: null });
+    }
   }
   // Held sends (item 9): the automation was off, and the hold is on the log where the send would be.
   // The outbox-carried kinds already show "not sent — held" through their outbox row; the

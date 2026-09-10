@@ -1175,10 +1175,42 @@ export default function ClientPacketPage() {
                     >
                       Send reminder
                     </button>{' '}
-                    {/* The client's own pay screen. Read it to them; do not take the card. */}
-                    <span className="muted small" style={{ overflowWrap: 'anywhere' }}>
-                      {packet.portalBaseUrl}/invoices?invoice={inv.id}
-                    </span>
+                    {/*
+                      ITEM 14 (2026-09-09): ONE link per invoice — the tokenized pay link — and it is SENT,
+                      never printed. The portal URL that used to sit here "so it could be read out on a
+                      call" was a 40-character token nobody reads aloud. Email or text, through the send log.
+                    */}
+                    {inv.status === 'sent' || inv.status === 'overdue' ? (
+                      <button
+                        className="btn ghost"
+                        type="button"
+                        disabled={busy}
+                        onClick={async () => {
+                          const a = await ask({
+                            title: `Send ${c.first_name} the pay link for ${inv.invoice_number}?`,
+                            body: <p className="small">One link, the same one the invoice email carried. It goes on the send log.</p>,
+                            choices: [
+                              { key: 'email', label: 'Email it', tone: 'primary' },
+                              { key: 'sms', label: 'Text it', tone: 'ghost' },
+                            ],
+                          });
+                          if (!a) return;
+                          setBusy(true);
+                          setActionErr('');
+                          try {
+                            const r = await api<{ to: string; channel: string }>(`/invoices/${inv.id}/pay-link/send`, { method: 'POST', body: { channel: a.choice } });
+                            setActionMsg(`Pay link ${r.channel === 'sms' ? 'texted' : 'emailed'} to ${r.to}.`);
+                            await load();
+                          } catch (e) {
+                            setActionErr(e instanceof Error ? e.message : 'Could not send the pay link.');
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                      >
+                        Send the pay link…
+                      </button>
+                    ) : null}
                     {inv.status !== 'draft' ? (
                       <>
                         {' '}

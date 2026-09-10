@@ -81,7 +81,7 @@ export const UNGATED_CLIENT_SENDS: Record<string, UngatedClientSend> = {
       'A staff member chose this person and pressed Send on a referral introduction. Not a campaign — one message, one recipient, one decision, made by a human seconds earlier.',
   },
   'modules/billing/routes.ts:registerBillingRoutes': {
-    template: 'invoice_reminder',
+    template: 'invoice_reminder; invoice_sent + invoice_pay_link_sms (item 14: the pay link, by email or text, when a person presses Send)',
     recipientClass: 'client',
     reason:
       'The one-off "remind this client about this invoice" button. A staff member looked at an unpaid invoice and chose to nudge; the route even refuses if the invoice is already paid. The AUTOMATED chase over the same invoices is billing/dunning.ts and is gated as `ar_dunning` — this is a person deciding to do once what that automation would do on a schedule.',

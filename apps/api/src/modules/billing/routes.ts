@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
+import { payLinkFor } from './pay-link.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import { createInvoice, formatUsd, markInvoicePaid, runInvoiceOverdueJob } from './service.ts';
@@ -57,6 +58,64 @@ export function registerBillingRoutes(app: FastifyInstance): void {
    * client is the decision the gate is standing in for, and the same is already true of
    * sending an engagement packet. The audit row records who decided.
    */
+  /**
+   * ITEM 14 (2026-09-09, Brian's phone-walk ruling): ONE link per invoice — the tokenized pay
+   * link — sent to the client by email or by text when a person presses the control on the
+   * invoice card. The card no longer prints a portal URL "to be read out"; nobody reads a
+   * 40-character token aloud. Audited as invoice.pay_link_sent with the channel, so it shows
+   * on the invoice's send log. A human pressed Send, so this is a registered ungated send.
+   */
+  app.post<{ Params: { id: string } }>('/invoices/:id/pay-link/send', billing, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ channel: z.enum(['email', 'sms']) }).parse(request.body);
+    const actor = request.staff!;
+    const { rows } = await app.db.query<{
+      id: string; invoice_number: string; status: string; total_cents: number;
+      contact_id: string; email: string | null; phone: string | null; first_name: string; language: 'en' | 'es';
+    }>(
+      `SELECT i.id, i.invoice_number, i.status::text AS status, i.total_cents,
+              c.id AS contact_id, c.email, c.phone, c.first_name, c.language
+         FROM invoices i JOIN contacts c ON c.id = i.contact_id
+        WHERE i.id = $1`,
+      [id]
+    );
+    const inv = rows[0];
+    if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
+    if (inv.status !== 'sent' && inv.status !== 'overdue') {
+      throw new AppError(409, 'not_payable', `${inv.invoice_number} is ${inv.status}; only an open invoice has a pay link to send.`);
+    }
+    const payLink = await payLinkFor(app, inv.id);
+    if (b.channel === 'email') {
+      if (!inv.email) throw new AppError(400, 'no_email', 'This client has no email address, so there is nowhere to send it.');
+      await sendTemplatedEmail(app, {
+        to: inv.email, templateKey: 'invoice_sent', language: inv.language, contactId: inv.contact_id,
+        vars: { first_name: inv.first_name, invoice_number: inv.invoice_number, amount: formatUsd(inv.total_cents), portal_link: payLink },
+      });
+    } else {
+      const { sendSms } = await import('../comms/send-sms.ts');
+      const r = await sendSms(app, {
+        contactId: inv.contact_id, templateKey: 'invoice_pay_link_sms', language: inv.language,
+        vars: { first_name: inv.first_name, invoice_number: inv.invoice_number, amount: formatUsd(inv.total_cents), pay_link: payLink },
+      });
+      if (!r.sent) {
+        const why: Record<string, string> = {
+          no_sms_consent: 'This client has not opted in to texts (TCPA). Email the link instead.',
+          no_phone: 'This client has no phone number on file.',
+          twilio_not_configured: 'Texting is not configured on this box yet. Email the link instead.',
+          template_missing: 'The pay-link text template is missing from Admin → Templates.',
+          template_placeholder_blocked: 'The pay-link text template is still a PLACEHOLDER and cannot be sent.',
+        };
+        throw new AppError(409, `sms_${r.reason ?? 'failed'}`, why[r.reason ?? ''] ?? `The text could not be sent (${r.reason}).`);
+      }
+    }
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+      action: 'invoice.pay_link_sent', objectType: 'invoice', objectId: inv.id, contactId: inv.contact_id,
+      details: { invoice_number: inv.invoice_number, channel: b.channel, to: b.channel === 'email' ? inv.email : 'phone on file' },
+    });
+    return { sent: true, channel: b.channel, to: b.channel === 'email' ? inv.email : 'the phone on file' };
+  });
+
   app.post<{ Params: { id: string } }>('/invoices/:id/remind', billing, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const actor = request.staff!;
