@@ -19,6 +19,8 @@ import { AppError } from '../../types.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import { refreshContactStatus } from '../crm/lifecycle.ts';
 import { formatUsd } from '../billing/service.ts';
+import { withTransaction } from '../../db.ts';
+import { retirePayableInvoices } from './retire-invoices.ts';
 
 export type CloseOutcome = 'completed' | 'withdrawn';
 
@@ -51,7 +53,18 @@ export async function closeEngagement(
     transferToEngagementId?: string | null | undefined;
   },
   actor: { type: 'staff' | 'system'; id?: string | null; label: string }
-): Promise<{ engagementId: string; contactId: string; outcome: CloseOutcome; depositsMoved: number; refundTaskId: string | null }> {
+): Promise<{ engagementId: string; contactId: string; outcome: CloseOutcome; depositsMoved: number; refundTaskId: string | null; invoicesVoided: string[]; draftsDeleted: string[] }> {
+  // DECISION 1 (2026-09-09): everything below commits together or not at all — the deposit
+  // decision, the retired invoices, the status, the audit. A withdrawal is one fact.
+  return withTransaction(app.db, () => closeEngagementInTransaction(app, engagementId, input, actor));
+}
+
+async function closeEngagementInTransaction(
+  app: FastifyInstance,
+  engagementId: string,
+  input: Parameters<typeof closeEngagement>[2],
+  actor: Parameters<typeof closeEngagement>[3]
+): Promise<{ engagementId: string; contactId: string; outcome: CloseOutcome; depositsMoved: number; refundTaskId: string | null; invoicesVoided: string[]; draftsDeleted: string[] }> {
   const { rows } = await app.db.query<{ id: string; contact_id: string; status: string; service_line: string }>(
     `SELECT id, contact_id, status::text AS status, service_line::text AS service_line
        FROM engagements WHERE id = $1`,
@@ -109,6 +122,17 @@ export async function closeEngagement(
     }
   }
 
+  /*
+   * DECISION 1 (2026-09-09): a withdrawal never leaves a payable invoice behind. Sent and
+   * overdue invoices on this engagement are voided (reason "engagement withdrawn — …", the
+   * cancellation notice through its gate); drafts are deleted. Migration 0085 refuses the
+   * status change at the database if anything payable is still attached.
+   */
+  let retired = { voided: [] as string[], deleted: [] as string[] };
+  if (input.outcome === 'withdrawn') {
+    retired = await retirePayableInvoices(app, engagementId, input.reason?.trim() ?? '', actor);
+  }
+
   await app.db.query(
     `UPDATE engagements
         SET status = $2::engagement_status,
@@ -126,7 +150,10 @@ export async function closeEngagement(
     objectType: 'engagement',
     objectId: engagementId,
     contactId: eng.contact_id,
-    details: { outcome: input.outcome, reason: input.reason ?? null, service_line: eng.service_line },
+    details: {
+      outcome: input.outcome, reason: input.reason ?? null, service_line: eng.service_line,
+      invoices_voided: retired.voided, drafts_deleted: retired.deleted,
+    },
   });
 
   /*
@@ -157,7 +184,7 @@ export async function closeEngagement(
     }
   }
 
-  return { engagementId, contactId: eng.contact_id, outcome: input.outcome, depositsMoved, refundTaskId };
+  return { engagementId, contactId: eng.contact_id, outcome: input.outcome, depositsMoved, refundTaskId, invoicesVoided: retired.voided, draftsDeleted: retired.deleted };
 }
 
 /**

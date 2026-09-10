@@ -20,7 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { enqueueEffect } from '../../outbox.ts';
 import { withTransaction } from '../../db.ts';
-import { AppError, type AuthedStaff } from '../../types.ts';
+import { AppError } from '../../types.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { isAutomationEnabled } from '../../automations.ts';
 import { formatUsd } from './service.ts';
@@ -40,11 +40,15 @@ export interface VoidResult {
   notice: NoticeState | null;
 }
 
+/** Who voided: a staff member, or the system acting on a rule (decision 1: withdrawal). */
+/** A staff member (AuthedStaff fits), or the system acting on a rule (id null). */
+export interface VoidActor { id: string | null; fullName: string; email?: string; roleKey?: string; permissions?: string[]; sessionId?: string }
+
 export async function voidInvoice(
   app: FastifyInstance,
   invoiceId: string,
   input: { reason: string },
-  actor: AuthedStaff
+  actor: VoidActor
 ): Promise<VoidResult> {
   const reason = input.reason.trim();
   if (reason.length < 5) {
@@ -103,10 +107,10 @@ export async function voidInvoice(
      */
     if (inv.engagement_id) {
       const { restampDepositFromRecord } = await import('../engagements/deposits.ts');
-      await restampDepositFromRecord(app, inv.engagement_id, { type: 'staff', id: actor.id, label: actor.fullName });
+      await restampDepositFromRecord(app, inv.engagement_id, { type: actor.id ? 'staff' : 'system', id: actor.id, label: actor.fullName });
     }
     await writeAudit(app.db, {
-      actorType: 'staff',
+      actorType: actor.id ? 'staff' : 'system',
       actorId: actor.id,
       actorLabel: actor.fullName,
       action: 'invoice.voided',

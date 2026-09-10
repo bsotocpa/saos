@@ -102,6 +102,10 @@ export async function withdrawForChangeOrder(
   oldEngagementId: string,
   quoteId: string
 ): Promise<ChangeOrderTarget> {
+  // Decision 1 (2026-09-09): the superseded engagement's payable invoices retire with it —
+  // the change order issues its own. Same transaction as the acceptance.
+  const { retirePayableInvoices } = await import('./retire-invoices.ts');
+  await retirePayableInvoices(app, oldEngagementId, `superseded by change order ${quoteId}`, { id: null, label: 'change order acceptance' });
   const { rows } = await app.db.query<{ id: string; service_line: string; period_key: string | null }>(
     `UPDATE engagements
         SET status = 'withdrawn', ended_on = CURRENT_DATE,
