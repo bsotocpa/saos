@@ -86,7 +86,7 @@ test('CRM walkthrough: contact → business → gaps shrink as data lands → en
 
   let detail = await app.inject({ method: 'GET', url: `/contacts/${contactId}`, headers: auth(brian) });
   assert.deepEqual(detail.json().enrichmentGaps, ['email', 'phone']);
-  assert.ok((await auditRows(app.db, 'contact.viewed', brian.email)) >= 1, 'PII view must be audited');
+  assert.ok((await auditRows(app.db, 'contact.viewed', brian.fullName)) >= 1, 'PII view must be audited');
 
   // Add a business missing EIN/entity type/industry → gaps grow.
   const biz = await app.inject({
@@ -786,7 +786,7 @@ test('archived is the only hand-set state, it needs a reason, and no sweep undoe
   });
   const contactId = created.json().id as string;
 
-  await archiveContact(app, contactId, 'Closed the business — confirmed by phone.', { id: brian.id, email: brian.email });
+  await archiveContact(app, contactId, 'Closed the business — confirmed by phone.', { id: brian.id, email: brian.email, fullName: brian.fullName });
   const row = await app.db.query<{ contact_status: string; archived_reason: string }>(
     `SELECT contact_status, archived_reason FROM contacts WHERE id = $1`, [contactId]
   );

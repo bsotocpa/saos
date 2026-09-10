@@ -124,7 +124,7 @@ export async function fileAttachment(
   id: string,
   opts: {
     category: string; contactId?: string | null;
-    actor: { id: string; email: string }; ip?: string | null;
+    actor: { id: string; email: string; fullName: string }; ip?: string | null;
     /** CEO-only: file a document whose scan never ran. Recorded by name. */
     unscannedOverrideNote?: string | undefined;
     actorRoleKey?: string | undefined;
@@ -175,7 +175,7 @@ export async function fileAttachment(
 
   const doc = await uploadDocument(
     app, minio,
-    { type: 'staff', id: opts.actor.id, label: opts.actor.email, ip: opts.ip ?? null },
+    { type: 'staff', id: opts.actor.id, label: opts.actor.fullName, ip: opts.ip ?? null },
     { contactId, category: opts.category, filename: att.filename, mimeType: att.mime_type ?? 'application/octet-stream', buffer }
   );
 
@@ -187,7 +187,7 @@ export async function fileAttachment(
     [id, contactId, doc.id, opts.actor.id]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: opts.actor.id, actorLabel: opts.actor.email,
+    actorType: 'staff', actorId: opts.actor.id, actorLabel: opts.actor.fullName,
     action: 'attachment.filed', objectType: 'inbound_attachment', objectId: id,
     contactId, ip: opts.ip ?? null,
     details: {
@@ -200,7 +200,7 @@ export async function fileAttachment(
   // did we file, and why" must be answerable without reading every filing row.
   if (att.scan_status !== 'clean') {
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: opts.actor.id, actorLabel: opts.actor.email,
+      actorType: 'staff', actorId: opts.actor.id, actorLabel: opts.actor.fullName,
       action: 'attachment.unscanned_override', objectType: 'inbound_attachment', objectId: id,
       contactId, ip: opts.ip ?? null,
       details: {
@@ -216,7 +216,7 @@ export async function reassignAttachment(
   app: FastifyInstance,
   id: string,
   contactId: string,
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<void> {
   const att = await loadQuarantined(app, id);
   const contact = await app.db.query(`SELECT 1 FROM contacts WHERE id = $1`, [contactId]);
@@ -226,7 +226,7 @@ export async function reassignAttachment(
     [id, contactId, suggestCategory(att.filename, att.mime_type, true)]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'attachment.reassigned', objectType: 'inbound_attachment', objectId: id,
     contactId,
     details: { origin_channel: att.channel, from_contact: att.contact_id },
@@ -236,7 +236,7 @@ export async function reassignAttachment(
 export async function discardAttachment(
   app: FastifyInstance,
   id: string,
-  actor: { id: string; email: string },
+  actor: { id: string; email: string; fullName: string },
   reason?: string
 ): Promise<void> {
   const att = await loadQuarantined(app, id);
@@ -247,7 +247,7 @@ export async function discardAttachment(
     [id, actor.id]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'attachment.discarded', objectType: 'inbound_attachment', objectId: id,
     contactId: att.contact_id,
     details: { origin_channel: att.channel, origin_ref: att.origin_ref, reason: reason ?? null, scan: att.scan_status },

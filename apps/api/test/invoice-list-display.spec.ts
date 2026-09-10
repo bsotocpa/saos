@@ -74,7 +74,7 @@ test('paid, void, refunded and partially refunded all come back with what the ca
   const voided = byId.get(voidId)!;
   assert.equal(voided.status, 'void', 'the same status column the portal reads');
   assert.equal(voided.void_reason, 'testing testing testing');
-  assert.equal(voided.voided_by, 'rene-invlist@example.test', 'the actor, by email');
+  assert.equal(voided.voided_by, 'Synthetic comms_billing', 'the actor, by name (item 11: never the email)');
   assert.ok(voided.voided_at, 'the date');
 
   const refunded = byId.get(refundedId)!;

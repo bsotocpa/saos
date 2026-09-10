@@ -28,7 +28,7 @@ const ListQuery = z.object({ deadline: z.iso.date() });
 const AsOfQuery = z.object({ asOf: z.iso.date().optional() });
 
 function actorOf(request: FastifyRequest) {
-  return { staffId: request.staff!.id, label: request.staff!.email };
+  return { staffId: request.staff!.id, label: request.staff!.fullName };
 }
 
 export function registerExtensionRoutes(app: FastifyInstance): void {

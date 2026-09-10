@@ -51,7 +51,7 @@ export async function createSop(
   );
   if (!rows[0]) throw new AppError(409, 'slug_taken', `An SOP with slug '${input.slug}' already exists.`);
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'sop.created', objectType: 'sop', objectId: rows[0].id,
     details: { slug: input.slug, seeded_from_meeting: input.seededFromMeetingId ?? null },
   });
@@ -82,7 +82,7 @@ export async function updateSop(
   );
   if ((rowCount ?? 0) === 0) throw new AppError(404, 'not_found', 'SOP not found.');
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'sop.updated', objectType: 'sop', objectId: slug,
     details: { fields: sets.map((s) => s.split(' =')[0]) },
   });
@@ -137,7 +137,7 @@ export async function publishSop(
     [sop.id, nextVersion, actor.id]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'sop.published', objectType: 'sop', objectId: sop.id,
     details: { slug, version: nextVersion, note: note ?? null },
   });

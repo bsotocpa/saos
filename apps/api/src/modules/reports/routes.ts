@@ -50,7 +50,7 @@ export function registerReportRoutes(app: FastifyInstance): void {
         await writeAudit(app.db, {
           actorType: 'staff',
           actorId: request.staff!.id,
-          actorLabel: request.staff!.email,
+          actorLabel: request.staff!.fullName,
           action: 'report.exported',
           objectType: 'report',
           objectId: key,

@@ -40,7 +40,7 @@ export function registerNoticeRoutes(app: FastifyInstance): void {
     const b = CreateBody.parse(request.body);
     const result = await createIrsNotice(
       app,
-      { type: 'staff', id: request.staff!.id, label: request.staff!.email },
+      { type: 'staff', id: request.staff!.id, label: request.staff!.fullName },
       b
     );
     return reply.code(201).send(result);
@@ -96,7 +96,7 @@ export function registerNoticeRoutes(app: FastifyInstance): void {
       await closeTasksForSource(app, 'irs_notice', id, 'notice resolved');
     }
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
       action: 'irs_notice.updated', objectType: 'irs_notice', objectId: id,
       contactId: existing.rows[0].contact_id,
       details: { fields: sets.map((s) => s.split(' =')[0]) },
@@ -117,7 +117,7 @@ export function registerNoticeRoutes(app: FastifyInstance): void {
     if (notice.rows[0].invoice_id) throw new AppError(409, 'already_billed', 'This notice already has an invoice.');
     const invoice = await createInvoice(
       app,
-      { type: 'staff', id: request.staff!.id, label: request.staff!.email },
+      { type: 'staff', id: request.staff!.id, label: request.staff!.fullName },
       {
         contactId: notice.rows[0].contact_id,
         lines: [{ code: b.tier === 'business' ? 'BIZ_NOTICE_SUPPORT' : 'IND_NOTICE_SUPPORT' }],
@@ -125,7 +125,7 @@ export function registerNoticeRoutes(app: FastifyInstance): void {
     );
     await app.db.query(`UPDATE irs_notices SET invoice_id = $2 WHERE id = $1`, [id, invoice.id]);
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
       action: 'irs_notice.billed', objectType: 'irs_notice', objectId: id,
       contactId: notice.rows[0].contact_id,
       details: { invoice_id: invoice.id, tier: b.tier, total_cents: invoice.totalCents },

@@ -140,7 +140,7 @@ export async function createAttestAddendum(
   );
 
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'attest.addendum_created', objectType: 'attest_addendum', objectId: rows[0]!.id,
     contactId: e.contact_id,
     details: {

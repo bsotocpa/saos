@@ -250,7 +250,7 @@ export async function createQuote(
       );
     }
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'quote.created', objectType: 'quote', objectId: quoteId,
       contactId: input.contactId,
       details: { bundle: input.bundleSlug ?? null, total_cents: totalCents, lines: lines.length },
@@ -351,7 +351,7 @@ export async function sendQuote(
         [quoteId]
       );
       await writeAudit(app.db, {
-        actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
         action: 'quote.send_failed', objectType: 'quote', objectId: quoteId,
         contactId: quote.contact_id,
         details: { reason: (err as Error).message, rolled_back_to: 'draft' },
@@ -362,7 +362,7 @@ export async function sendQuote(
 
   await setLeadStage(app, quote.contact_id, 'quoted', actor, 'quote sent');
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'quote.sent', objectType: 'quote', objectId: quoteId,
     contactId: quote.contact_id,
     details: { emailed: Boolean(c?.email) },
@@ -606,7 +606,7 @@ export async function overrideQuoteDeposit(
 
   const resolved = await resolveDeposit(app, quote.deposit_item_code, input.amountCents, quoteId);
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: input.amountCents === null ? 'quote.deposit_override_cleared' : 'quote.deposit_overridden',
     objectType: 'quote', objectId: quoteId,
     contactId: quote.contact_id,

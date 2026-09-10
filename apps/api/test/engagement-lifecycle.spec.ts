@@ -112,7 +112,7 @@ test('closing is permission-gated, and the route is the same one a person clicks
   });
   assert.equal(ok.statusCode, 200, ok.body);
   assert.equal(ok.json().outcome, 'completed');
-  assert.ok(await auditRows(app.db, 'engagement.closed', brian.email) >= 1, 'who closed it is recorded');
+  assert.ok(await auditRows(app.db, 'engagement.closed', brian.fullName) >= 1, 'who closed it is recorded');
 });
 
 test('a second close is refused rather than overwriting the first', async () => {

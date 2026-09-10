@@ -178,7 +178,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     const id = rows[0]!.id;
     await refreshEnrichmentGaps(app, id);
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'contact.created', objectType: 'contact', objectId: id, contactId: id, ...meta(request),
     });
     return reply.code(201).send({ id });
@@ -267,7 +267,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
 
     // WISP: viewing a client record (PII fields) is an audited access.
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'contact.viewed', objectType: 'contact', objectId: id, contactId: id, ...meta(request),
     });
 
@@ -312,7 +312,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
 
     const gaps = await refreshEnrichmentGaps(app, id);
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'contact.updated', objectType: 'contact', objectId: id, contactId: id, ...meta(request),
       details: { fields: sets.map((s) => s.split(' =')[0]) },
     });
@@ -347,7 +347,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     );
     await refreshEnrichmentGaps(app, contactId);
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'business.created', objectType: 'business', objectId: businessId, contactId, ...meta(request),
     });
     return reply.code(201).send({ id: businessId });
@@ -403,7 +403,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     );
     for (const m of members.rows) await refreshEnrichmentGaps(app, m.contact_id);
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'business.updated', objectType: 'business', objectId: id, ...meta(request),
       details: { fields: sets.map((s) => s.split(' =')[0]) },
     });
@@ -468,7 +468,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     const res = await app.db.query(`UPDATE entity_groups SET ${sets.join(', ')} WHERE id = $1`, params);
     if (res.rowCount === 0) throw new AppError(404, 'not_found', 'Entity group not found.');
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
       action: 'entity_group.updated', objectType: 'entity_group', objectId: id,
       details: { fields: sets.map((s) => s.split(' =')[0]) },
     });
@@ -525,7 +525,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
   app.post<{ Params: { id: string } }>('/entity-groups/:id/f8879-envelope', taxManage, async (request, reply) => {
     const id = z.uuid().parse(request.params.id);
     const b = z.object({ taxYear: z.number().int().min(2000).max(2100) }).parse(request.body);
-    const result = await startGroupRemote8879(app, { id: request.staff!.id, label: request.staff!.email }, id, b.taxYear);
+    const result = await startGroupRemote8879(app, { id: request.staff!.id, label: request.staff!.fullName }, id, b.taxYear);
     return reply.code(201).send(result);
   });
 
@@ -561,7 +561,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     }
     const invoice = await createInvoice(
       app,
-      { type: 'staff', id: request.staff!.id, label: request.staff!.email },
+      { type: 'staff', id: request.staff!.id, label: request.staff!.fullName },
       {
         contactId: billable.rows[0]!.contact_id,
         lines: billable.rows.map((r) => ({
@@ -576,7 +576,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       [billable.rows.map((r) => r.te_id), invoice.invoiceNumber]
     );
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
       action: 'entity_group.consolidated_invoice', objectType: 'entity_group', objectId: id,
       details: { invoice_number: invoice.invoiceNumber, engagements: billable.rows.length, total_cents: invoice.totalCents },
     });

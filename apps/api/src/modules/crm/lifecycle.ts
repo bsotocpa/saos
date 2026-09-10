@@ -149,7 +149,7 @@ export async function archiveContact(
   app: FastifyInstance,
   contactId: string,
   reason: string,
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<void> {
   await app.db.query(
     `UPDATE contacts
@@ -159,7 +159,7 @@ export async function archiveContact(
     [contactId, reason]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'contact.archived', objectType: 'contact', objectId: contactId,
     contactId, details: { reason },
   });

@@ -139,7 +139,7 @@ export async function createEngagement(
   await writeAudit(app.db, {
     actorType: 'staff',
     actorId: actor.id,
-    actorLabel: actor.email,
+    actorLabel: actor.fullName,
     action: 'engagement.created',
     objectType: 'engagement',
     objectId: id,
@@ -152,7 +152,7 @@ export async function createEngagement(
     await writeAudit(app.db, {
       actorType: 'staff',
       actorId: actor.id,
-      actorLabel: actor.email,
+      actorLabel: actor.fullName,
       action: 'engagement.independence_override',
       objectType: 'engagement',
       objectId: id,

@@ -38,7 +38,7 @@ export function registerReferralRoutes(app: FastifyInstance): void {
     const b = CreateBody.parse(request.body);
     const result = await createReferral(
       app,
-      { type: 'staff', id: request.staff!.id, label: request.staff!.email },
+      { type: 'staff', id: request.staff!.id, label: request.staff!.fullName },
       b
     );
     return reply.code(201).send(result);
@@ -69,19 +69,19 @@ export function registerReferralRoutes(app: FastifyInstance): void {
 
   app.post<{ Params: { id: string } }>('/referrals/:id/approve', approve, async (request) => {
     const id = z.uuid().parse(request.params.id);
-    await approveReferral(app, { id: request.staff!.id, label: request.staff!.email }, id);
+    await approveReferral(app, { id: request.staff!.id, label: request.staff!.fullName }, id);
     return { status: 'ok' };
   });
 
   app.post<{ Params: { id: string } }>('/referrals/:id/decline', approve, async (request) => {
     const id = z.uuid().parse(request.params.id);
-    await declineReferral(app, { id: request.staff!.id, label: request.staff!.email }, id);
+    await declineReferral(app, { id: request.staff!.id, label: request.staff!.fullName }, id);
     return { status: 'ok' };
   });
 
   app.post<{ Params: { id: string } }>('/referrals/:id/send', approve, async (request) => {
     const id = z.uuid().parse(request.params.id);
-    const result = await sendReferral(app, { id: request.staff!.id, label: request.staff!.email }, id);
+    const result = await sendReferral(app, { id: request.staff!.id, label: request.staff!.fullName }, id);
     return { status: 'ok', ...result };
   });
 

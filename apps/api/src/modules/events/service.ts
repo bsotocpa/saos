@@ -51,7 +51,7 @@ export async function createEvent(
   );
   if (!rows[0]) throw new AppError(409, 'slug_taken', `An event with slug '${input.slug}' already exists.`);
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'event.created', objectType: 'event', objectId: rows[0].id,
     details: { slug: input.slug, capacity: input.capacity },
   });
@@ -66,7 +66,7 @@ export async function publishEvent(app: FastifyInstance, slug: string, actor: Au
   );
   if ((rowCount ?? 0) === 0) throw new AppError(409, 'not_draft', 'Only a draft event can be published.');
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'event.published', objectType: 'event', objectId: slug,
   });
 }
@@ -327,7 +327,7 @@ export async function checkIn(app: FastifyInstance, registrationId: string, acto
     );
   }
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'event.checked_in', objectType: 'event_registration', objectId: registrationId,
   });
 }
@@ -433,7 +433,7 @@ export async function completeEvent(
   }
 
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'event.completed', objectType: 'event', objectId: e.id,
     details: {
       slug, attended: attendees.rows.length, no_shows: noShow.rowCount ?? 0,
@@ -467,7 +467,7 @@ export async function recordSurvey(
   );
   if ((rowCount ?? 0) === 0) throw new AppError(404, 'not_found', 'Registration not found.');
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'event.survey_recorded', objectType: 'event_registration', objectId: registrationId,
   });
 }

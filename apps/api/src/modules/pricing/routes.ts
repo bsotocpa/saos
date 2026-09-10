@@ -58,7 +58,7 @@ export function registerPricingRoutes(app: FastifyInstance): void {
     await writeAudit(app.db, {
       actorType: 'staff',
       actorId: request.staff!.id,
-      actorLabel: request.staff!.email,
+      actorLabel: request.staff!.fullName,
       action: 'tax_engagement.estimate_locked',
       objectType: 'tax_engagement',
       objectId: id,

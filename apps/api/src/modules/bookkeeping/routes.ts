@@ -97,7 +97,7 @@ export function registerBookkeepingRoutes(app: FastifyInstance): void {
         buffer,
         today: fields.asOf ?? todayChicago(),
       },
-      { id: request.staff!.id, email: request.staff!.email, ip: request.ip }
+      { id: request.staff!.id, email: request.staff!.email, fullName: request.staff!.fullName, ip: request.ip }
     );
     return reply.code(201).send(result);
   });
@@ -118,7 +118,7 @@ export function registerBookkeepingRoutes(app: FastifyInstance): void {
       ]
     );
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
       action: 'client_session.recorded', objectType: 'client_session', objectId: rows[0]!.id,
       contactId: b.contactId,
       details: { starts_at: b.startsAt, recurring: b.isRecurring ?? false, event_type: b.eventType ?? null },
@@ -199,7 +199,7 @@ export function registerBookkeepingRoutes(app: FastifyInstance): void {
     });
 
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'client_session.scheduling_requested', objectType: 'task', objectId: task.id,
       contactId, ip: request.ip,
       details: { engagement_id: b.engagementId ?? null },

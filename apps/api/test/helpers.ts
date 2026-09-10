@@ -57,6 +57,8 @@ export async function createTestConfig(dbSuffix: string): Promise<Config> {
 export interface TestStaff {
   id: string;
   email: string;
+  /** Item 11: actors are named, never emailed — the helper carries the name the row was made with. */
+  fullName: string;
   password: string;
   totpSecret?: string;
 }
@@ -81,7 +83,7 @@ export async function makeStaff(
       Boolean(opts.totpSecret),
     ]
   );
-  const staff: TestStaff = { id: rows[0]!.id, email: opts.email, password: opts.password };
+  const staff: TestStaff = { id: rows[0]!.id, email: opts.email, fullName: opts.name, password: opts.password };
   if (opts.totpSecret !== undefined) staff.totpSecret = opts.totpSecret;
   return staff;
 }

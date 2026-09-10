@@ -213,7 +213,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       const result = await uploadDocument(
         app,
         minio,
-        { type: 'staff', id: staff.id, label: staff.email, ip: request.ip },
+        { type: 'staff', id: staff.id, label: staff.fullName, ip: request.ip },
         {
           contactId: fields.contactId,
           category: fields.category,
@@ -230,7 +230,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       if (fields.category === 'return_deliverable' && fields.taxEngagementId) {
         const delivered = await afterReturnDelivered(
           app,
-          { staffId: staff.id, label: staff.email },
+          { staffId: staff.id, label: staff.fullName },
           fields.taxEngagementId
         );
         stageMoved = delivered.stageMoved;
@@ -276,7 +276,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       await writeAudit(app.db, {
         actorType: 'staff',
         actorId: staff.id,
-        actorLabel: staff.email,
+        actorLabel: staff.fullName,
         action: 'documents.listed',
         objectType: 'contact',
         objectId: q.contactId,
@@ -354,7 +354,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       await writeAudit(app.db, {
         actorType: 'staff',
         actorId: staff.id,
-        actorLabel: staff.email,
+        actorLabel: staff.fullName,
         action: 'documents.listed',
         objectType: 'documents',
         objectId: null,
@@ -379,7 +379,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       const doc = await downloadDocument(
         app,
         minio,
-        { type: 'staff', id: staff.id, label: staff.email, ip: request.ip },
+        { type: 'staff', id: staff.id, label: staff.fullName, ip: request.ip },
         id,
         {}
       );
@@ -403,7 +403,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       );
       if (!rows[0]) throw new AppError(404, 'not_found', 'Document not found.');
       await writeAudit(app.db, {
-        actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+        actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
         action: 'document.status_changed', objectType: 'document', objectId: id,
         contactId: rows[0].contact_id, ip: request.ip,
         details: { status: b.status },

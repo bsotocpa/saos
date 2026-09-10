@@ -93,7 +93,7 @@ function meta(request: FastifyRequest) {
   return { ip: request.ip, userAgent: request.headers['user-agent'] ?? null };
 }
 function actorOf(request: FastifyRequest) {
-  return { staffId: request.staff!.id, label: request.staff!.email };
+  return { staffId: request.staff!.id, label: request.staff!.fullName };
 }
 
 async function loadTaxEngagement(app: FastifyInstance, id: string) {
@@ -233,7 +233,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       [id, b.minCents, b.maxCents]
     );
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
       action: 'tax_engagement.estimate_locked', objectType: 'tax_engagement', objectId: id,
       contactId: te.contact_id, ...meta(request),
     });
@@ -273,7 +273,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     );
     if (creep) {
       await writeAudit(app.db, {
-        actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+        actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
         action: 'tax_engagement.scope_creep_flagged', objectType: 'tax_engagement', objectId: id,
         contactId: te.contact_id, ...meta(request),
         details: { reason: b.scopeCreepReason, over_estimate_cents: b.finalFeeCents - (te.estimated_fee_max_cents ?? 0) },
@@ -325,7 +325,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       [te.contact_id, id, b.type === 'f8879' ? 'f8879' : 'engagement_letter', b.documentId ?? null, request.staff!.id]
     );
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
       action: 'signature.recorded_wet', objectType: 'tax_engagement', objectId: id,
       contactId: te.contact_id, ...meta(request),
       details: { type: b.type, note: b.note ?? null },

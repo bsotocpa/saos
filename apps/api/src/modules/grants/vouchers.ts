@@ -24,7 +24,7 @@ export async function createVoucherPeriod(
     grantId: string; periodLabel: string; periodStart?: string | null; periodEnd?: string | null;
     funderDueDate?: string | null; amountCents?: number | null; notes?: string | null;
   },
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<{ id: string; created: boolean }> {
   const grant = await app.db.query<{ funder: string; lead_staff_id: string | null }>(
     `SELECT funder, lead_staff_id FROM grants_received WHERE id = $1`,
@@ -67,7 +67,7 @@ export async function createVoucherPeriod(
     sourceId: id,
   });
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'voucher_period.created', objectType: 'grant_voucher_period', objectId: id,
     details: { grant_id: input.grantId, period: input.periodLabel, funder_due_date: input.funderDueDate ?? null },
   });
@@ -78,7 +78,7 @@ export async function setVoucherStatus(
   app: FastifyInstance,
   id: string,
   status: VoucherStatus,
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<void> {
   const existing = await app.db.query<{ status: VoucherStatus; grant_id: string }>(
     `SELECT status, grant_id FROM grant_voucher_periods WHERE id = $1`,
@@ -99,7 +99,7 @@ export async function setVoucherStatus(
     await closeTasksForSource(app, 'voucher_period', id, 'voucher reimbursed');
   }
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'voucher_period.status_changed', objectType: 'grant_voucher_period', objectId: id,
     details: { from: existing.rows[0].status, to: status },
   });

@@ -76,7 +76,7 @@ async function recordFailure(db: Db, config: Config, staff: StaffAuthRow, reason
     await writeAudit(db, {
       actorType: 'staff',
       actorId: staff.id,
-      actorLabel: staff.email,
+      actorLabel: staff.full_name,
       action: 'auth.locked_out',
       ip: meta.ip,
       userAgent: meta.userAgent,
@@ -88,7 +88,7 @@ async function recordFailure(db: Db, config: Config, staff: StaffAuthRow, reason
   await writeAudit(db, {
     actorType: 'staff',
     actorId: staff.id,
-    actorLabel: staff.email,
+    actorLabel: staff.full_name,
     action: 'auth.login_failed',
     ip: meta.ip,
     userAgent: meta.userAgent,
@@ -152,7 +152,7 @@ export async function login(
     await writeAudit(db, {
       actorType: 'staff',
       actorId: staff.id,
-      actorLabel: staff.email,
+      actorLabel: staff.full_name,
       action: 'auth.login_mfa_setup_required',
       ip: meta.ip,
       userAgent: meta.userAgent,
@@ -181,7 +181,7 @@ export async function login(
   await writeAudit(db, {
     actorType: 'staff',
     actorId: staff.id,
-    actorLabel: staff.email,
+    actorLabel: staff.full_name,
     action: 'auth.login_success',
     ip: meta.ip,
     userAgent: meta.userAgent,
@@ -221,8 +221,8 @@ export async function mfaVerify(
   const staffId = verifyScopedToken(config.APP_ENCRYPTION_KEY, setupToken, MFA_SETUP_PURPOSE);
   if (!staffId) throw new AppError(401, 'invalid_setup_token', 'MFA setup token is invalid or expired.');
 
-  const { rows } = await db.query<{ email: string; totp_secret_enc: Buffer | null; totp_enabled: boolean }>(
-    `SELECT email, totp_secret_enc, totp_enabled FROM staff WHERE id = $1 AND is_active`,
+  const { rows } = await db.query<{ email: string; full_name: string; totp_secret_enc: Buffer | null; totp_enabled: boolean }>(
+    `SELECT email, full_name, totp_secret_enc, totp_enabled FROM staff WHERE id = $1 AND is_active`,
     [staffId]
   );
   const staff = rows[0];
@@ -239,7 +239,7 @@ export async function mfaVerify(
   await writeAudit(db, {
     actorType: 'staff',
     actorId: staffId,
-    actorLabel: staff.email,
+    actorLabel: staff.full_name,
     action: 'auth.mfa_enrolled',
     ip: meta.ip,
     userAgent: meta.userAgent,
@@ -248,12 +248,12 @@ export async function mfaVerify(
   return { token };
 }
 
-export async function logout(db: Db, sessionId: string, staffId: string, email: string, meta: RequestMeta): Promise<void> {
+export async function logout(db: Db, sessionId: string, staffId: string, actorLabel: string, meta: RequestMeta): Promise<void> {
   await db.query(`UPDATE staff_sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL`, [sessionId]);
   await writeAudit(db, {
     actorType: 'staff',
     actorId: staffId,
-    actorLabel: email,
+    actorLabel: actorLabel,
     action: 'auth.logout',
     ip: meta.ip,
     userAgent: meta.userAgent,
@@ -264,7 +264,7 @@ export async function changePassword(
   db: Db,
   config: Config,
   staffId: string,
-  email: string,
+  actorLabel: string,
   currentPassword: string,
   newPassword: string,
   keepSessionId: string,
@@ -287,7 +287,7 @@ export async function changePassword(
   await writeAudit(db, {
     actorType: 'staff',
     actorId: staffId,
-    actorLabel: email,
+    actorLabel: actorLabel,
     action: 'auth.password_changed',
     ip: meta.ip,
     userAgent: meta.userAgent,

@@ -349,7 +349,7 @@ export async function configureRecurringEngagement(
     ]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'engagement.configured', objectType: 'engagement', objectId: engagementId,
     contactId: e.contact_id,
     details: {

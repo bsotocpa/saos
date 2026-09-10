@@ -194,7 +194,7 @@ export function registerOpsRoutes(app: FastifyInstance): void {
     const summary = await buildSummary(app);
     const actor = request.staff!;
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'wisp.summary_exported',
       details: { format: request.query.format === 'markdown' ? 'markdown' : 'json' },
     });

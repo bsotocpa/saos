@@ -116,7 +116,7 @@ export async function addTaskDependency(
   app: FastifyInstance,
   blockedId: string,
   blockerId: string,
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<void> {
   if (blockedId === blockerId) throw new AppError(400, 'self_dependency', 'A task cannot block itself.');
   const both = await app.db.query<{ id: string; status: TaskStatus }>(
@@ -146,7 +146,7 @@ export async function addTaskDependency(
     [blockedId, blockerId]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'task.dependency_added', objectType: 'task', objectId: blockedId,
     details: { blocker_task_id: blockerId },
   });
@@ -156,7 +156,7 @@ export async function removeTaskDependency(
   app: FastifyInstance,
   blockedId: string,
   blockerId: string,
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<void> {
   const res = await app.db.query(
     `DELETE FROM task_dependencies WHERE blocked_task_id = $1 AND blocker_task_id = $2`,
@@ -164,7 +164,7 @@ export async function removeTaskDependency(
   );
   if (res.rowCount === 0) throw new AppError(404, 'not_found', 'Dependency not found.');
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'task.dependency_removed', objectType: 'task', objectId: blockedId,
     details: { blocker_task_id: blockerId },
   });
@@ -254,7 +254,7 @@ export async function setTaskStatus(
   app: FastifyInstance,
   taskId: string,
   status: TaskStatus,
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<void> {
   const { rows } = await app.db.query<{
     id: string; status: TaskStatus; title: string; description: string | null;
@@ -331,7 +331,7 @@ export async function setTaskStatus(
   }
 
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'task.status_changed', objectType: 'task', objectId: taskId,
     contactId: task.contact_id,
     details: { status, from: task.status },
@@ -554,7 +554,7 @@ export async function teamWorkload(app: FastifyInstance) {
 export async function instantiateTemplate(
   app: FastifyInstance,
   templateId: string,
-  opts: { contactId?: string | null; assignedStaffId?: string | null; dueDate?: string | null; actor: { id: string; email: string } }
+  opts: { contactId?: string | null; assignedStaffId?: string | null; dueDate?: string | null; actor: { id: string; email: string; fullName: string } }
 ): Promise<{ taskId: string }> {
   const tpl = await app.db.query<{ name: string; description: string | null; default_priority: number; sop_link: string | null; items: string[] }>(
     `SELECT name, description, default_priority, sop_link, items FROM task_templates WHERE id = $1`,
@@ -575,7 +575,7 @@ export async function instantiateTemplate(
     checklist: t.items,
   });
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: opts.actor.id, actorLabel: opts.actor.email,
+    actorType: 'staff', actorId: opts.actor.id, actorLabel: opts.actor.fullName,
     action: 'task.template_instantiated', objectType: 'task', objectId: id,
     details: { template_id: templateId },
   });

@@ -237,7 +237,7 @@ test('the client packet scopes returns to one client, and lists documents WITH a
     `SELECT actor_label, contact_id, details FROM audit_log
      WHERE action = 'documents.listed' ORDER BY occurred_at DESC LIMIT 1`
   );
-  assert.equal(audit.rows[0]!.actor_label, ana.email, 'the audit names who looked');
+  assert.equal(audit.rows[0]!.actor_label, ana.fullName, 'the audit names who looked');
   assert.equal(audit.rows[0]!.contact_id, mine.contactId);
   assert.equal(audit.rows[0]!.details.count, 1);
 

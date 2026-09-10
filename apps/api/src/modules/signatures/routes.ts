@@ -44,7 +44,7 @@ export function registerSignatureRoutes(app: FastifyInstance): void {
     const b = CreateBody.parse(request.body);
     const result = await createEnvelope(
       app,
-      { type: 'staff', id: request.staff!.id, label: request.staff!.email },
+      { type: 'staff', id: request.staff!.id, label: request.staff!.fullName },
       {
         contactId: b.contactId,
         type: b.type,
@@ -62,7 +62,7 @@ export function registerSignatureRoutes(app: FastifyInstance): void {
     const result = await sendEnvelope(
       app,
       docuseal,
-      { type: 'staff', id: request.staff!.id, label: request.staff!.email },
+      { type: 'staff', id: request.staff!.id, label: request.staff!.fullName },
       id
     );
     return { status: 'ok', ...result };
@@ -88,7 +88,7 @@ export function registerSignatureRoutes(app: FastifyInstance): void {
   // Remote 8879: KBA first, Docuseal only after a pass (MP compliance flow).
   app.post<{ Params: { id: string } }>('/tax-engagements/:id/signatures/remote-8879', manage, async (request, reply) => {
     const id = z.uuid().parse(request.params.id);
-    const result = await startRemote8879(app, { id: request.staff!.id, label: request.staff!.email }, id);
+    const result = await startRemote8879(app, { id: request.staff!.id, label: request.staff!.fullName }, id);
     return reply.code(201).send(result);
   });
 

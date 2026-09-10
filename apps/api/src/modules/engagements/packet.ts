@@ -357,7 +357,7 @@ export async function createPacket(
       ]
     );
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'packet.created', objectType: 'engagement_packet', objectId: rows[0]!.id,
       contactId,
       details: {
@@ -465,7 +465,7 @@ export async function sendPacketForPortalSignature(
       objectId: packetId,
     });
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'packet.sent', objectType: 'engagement_packet', objectId: packetId,
       contactId: p.contact_id,
       details: {
@@ -516,7 +516,7 @@ export async function envelopeForPacket(
   // envelope is_packet_envelope makes pointing it at a Docuseal template
   // unrepresentable (CHECK signature_envelopes_packet_never_templated).
   const { createEnvelope } = await import('../signatures/service.ts');
-  const env = await createEnvelope(app, { type: 'staff', id: actor.id, label: actor.email }, {
+  const env = await createEnvelope(app, { type: 'staff', id: actor.id, label: actor.fullName }, {
     contactId: p.contact_id,
     type: 'engagement_letter',
     templateKey: p.master_template_key,

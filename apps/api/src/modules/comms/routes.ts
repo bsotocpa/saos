@@ -376,7 +376,7 @@ export function registerCommsRoutes(app: FastifyInstance): void {
     );
     if (!rows[0]) throw new AppError(404, 'not_found', 'Attachment not found.');
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
       action: 'attachment.reviewed', objectType: 'inbound_attachment', objectId: id,
       contactId: rows[0].contact_id, ip: request.ip,
     });

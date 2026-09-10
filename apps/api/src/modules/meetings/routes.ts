@@ -104,7 +104,7 @@ export function registerMeetingRoutes(
     if (!fields.contactId) {
       throw new AppError(400, 'contact_required', 'Pick the client this session was with (recordings file under the client record).');
     }
-    const doc = await uploadDocument(app, minio, { type: 'staff', id: actor.id, label: actor.email, ip: request.ip }, {
+    const doc = await uploadDocument(app, minio, { type: 'staff', id: actor.id, label: actor.fullName, ip: request.ip }, {
       contactId: fields.contactId,
       category: 'recording',
       filename: data.filename || `recording-${meetingId}.webm`,
@@ -179,7 +179,7 @@ export function registerMeetingRoutes(
     await writeAudit(app.db, {
       actorType: 'staff',
       actorId: request.staff!.id,
-      actorLabel: request.staff!.email,
+      actorLabel: request.staff!.fullName,
       action: 'transcript.read',
       objectType: 'meeting',
       objectId: id,

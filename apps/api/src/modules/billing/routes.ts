@@ -35,7 +35,7 @@ export function registerBillingRoutes(app: FastifyInstance): void {
     const b = CreateInvoiceBody.parse(request.body);
     const result = await createInvoice(
       app,
-      { type: 'staff', id: request.staff!.id, label: request.staff!.email },
+      { type: 'staff', id: request.staff!.id, label: request.staff!.fullName },
       b
     );
     return reply.code(201).send(result);
@@ -95,7 +95,7 @@ export function registerBillingRoutes(app: FastifyInstance): void {
     });
 
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'invoice.reminder_sent', objectType: 'invoice', objectId: inv.id,
       contactId: inv.contact_id, ip: request.ip,
       details: { invoice_number: inv.invoice_number, manual: true },
@@ -128,7 +128,7 @@ export function registerBillingRoutes(app: FastifyInstance): void {
       // must say inline: reason, actor and date; amount and date (2026-09-09).
       `SELECT i.id, i.invoice_number, i.status, i.total_cents, i.amount_paid_cents, i.sent_at, i.paid_at,
               i.qb_exported_at, c.id AS contact_id, c.first_name, c.last_name,
-              i.amount_refunded_cents, i.void_reason, i.voided_at, vs.email AS voided_by,
+              i.amount_refunded_cents, i.void_reason, i.voided_at, vs.full_name AS voided_by,
               (SELECT max(r.created_at) FROM invoice_refunds r WHERE r.invoice_id = i.id) AS refunded_at
        FROM invoices i JOIN contacts c ON c.id = i.contact_id
        LEFT JOIN staff vs ON vs.id = i.voided_by_staff_id
@@ -149,7 +149,7 @@ export function registerBillingRoutes(app: FastifyInstance): void {
   app.post<{ Params: { id: string } }>('/invoices/:id/resync-stripe', billing, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const { resyncRefundsFromStripe } = await import('./drift.ts');
-    return resyncRefundsFromStripe(app, id, { type: 'staff', id: request.staff!.id, label: request.staff!.email });
+    return resyncRefundsFromStripe(app, id, { type: 'staff', id: request.staff!.id, label: request.staff!.fullName });
   });
 
   /** The send log for one invoice — what the "send log" control under an invoice opens. */

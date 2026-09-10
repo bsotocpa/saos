@@ -224,7 +224,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       await client.query('COMMIT');
 
       await writeAudit(app.db, {
-        actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
         action: 'price_book.version_created',
         objectType: 'price_book_version', objectId: newId,
         details: {
@@ -269,7 +269,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     );
     if (res.rowCount === 0) throw new AppError(404, 'not_found', 'No unconfirmed item with that code in the current version.');
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: kind === 'structure' ? 'price_book.item_structure_confirmed' : 'price_book.item_confirmed',
       objectType: 'price_book_item', objectId: code,
       details: { kind },
@@ -325,7 +325,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     // The launch-gate moment: placeholder → live means final legal text landed.
     const cleared = existing.rows[0].is_placeholder && b.isPlaceholder === false;
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: cleared ? 'template.placeholder_cleared' : 'template.updated',
       objectType: 'template', objectId: key,
       details: { fields: Object.keys(b), es_requeued: esEdited },
@@ -379,7 +379,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       [key, JSON.stringify(b.value), actor.id]
     );
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'setting.updated', objectType: 'app_setting', objectId: key,
       details: { from: existing.rows[0].value, to: b.value },
     });
@@ -414,7 +414,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       [key, b.enabled, actor.id]
     );
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: b.enabled ? 'automation.enabled' : 'automation.disabled',
       objectType: 'automation', objectId: key,
       details: { name: existing.rows[0].name, from: existing.rows[0].enabled, to: b.enabled },

@@ -272,7 +272,7 @@ export function registerTaskRoutes(app: FastifyInstance): void {
       assignedStaffId: b.assignedStaffId ?? actor.id, // default: yours
     });
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'task.created', objectType: 'task', objectId: id,
       contactId: b.contactId ?? null,
       details: { client_visible: b.clientVisible ?? false },
@@ -313,7 +313,7 @@ export function registerTaskRoutes(app: FastifyInstance): void {
     const res = await app.db.query(`UPDATE tasks SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`, params);
     if (res.rowCount === 0) throw new AppError(404, 'not_found', 'Task not found.');
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
       action: 'task.updated', objectType: 'task', objectId: id,
       details: { fields: Object.keys(b) },
     });
@@ -389,7 +389,7 @@ export function registerTaskRoutes(app: FastifyInstance): void {
       updated = Math.max(updated, res.rowCount ?? 0);
     }
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'task.bulk_updated',
       details: { count: b.ids.length, set: Object.keys(b.set), blocked },
     });

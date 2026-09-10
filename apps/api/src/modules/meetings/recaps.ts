@@ -224,7 +224,7 @@ export async function updateRecap(
     [meetingId, patch.bodyEn ?? null, patch.bodyEs ?? null]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'recap.edited', objectType: 'meeting', objectId: meetingId,
     details: { languages: [patch.bodyEn !== undefined ? 'en' : null, patch.bodyEs !== undefined ? 'es' : null].filter(Boolean) },
   });
@@ -284,7 +284,7 @@ export async function approveAndSendRecap(
     [r.summary_id, actor.id]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'recap.approved', objectType: 'meeting', objectId: meetingId, contactId: r.contact_id,
   });
 
@@ -348,7 +348,7 @@ export async function approveAndSendRecap(
     [r.summary_id, message.rows[0]!.id, emailed]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'recap.sent', objectType: 'meeting', objectId: meetingId, contactId: r.contact_id,
     details: { language: lang, emailed, message_id: message.rows[0]!.id },
   });

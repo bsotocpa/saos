@@ -84,7 +84,7 @@ test('wrong password fails, wrong TOTP fails, correct pair logs in (all audited)
     payload: { email: ceo.email, password: 'wrong-password-123' },
   });
   assert.equal(bad.statusCode, 401);
-  assert.ok((await auditRows(app.db, 'auth.login_failed', ceo.email)) >= 1);
+  assert.ok((await auditRows(app.db, 'auth.login_failed', ceo.fullName)) >= 1);
 
   const noTotp = await app.inject({
     method: 'POST',
@@ -108,7 +108,7 @@ test('wrong password fails, wrong TOTP fails, correct pair logs in (all audited)
   });
   assert.equal(ok.statusCode, 200, ok.body);
   assert.ok(ok.json().token);
-  assert.ok((await auditRows(app.db, 'auth.login_success', ceo.email)) >= 1);
+  assert.ok((await auditRows(app.db, 'auth.login_success', ceo.fullName)) >= 1);
 
   const me = await app.inject({
     method: 'GET',
@@ -148,7 +148,7 @@ test('failed-login lockout engages at the limit and blocks even correct credenti
   });
   assert.equal(locking.statusCode, 423);
   assert.ok(locking.json().until);
-  assert.equal(await auditRows(app.db, 'auth.locked_out', victim.email), 1);
+  assert.equal(await auditRows(app.db, 'auth.locked_out', victim.fullName), 1);
 
   // Correct credentials are refused while locked.
   const during = await app.inject({
@@ -198,7 +198,7 @@ test('MFA is required: password-only account must enroll before receiving a sess
   assert.equal(verify.statusCode, 200, verify.body);
   const token = verify.json().token as string;
   assert.ok(token);
-  assert.equal(await auditRows(app.db, 'auth.mfa_enrolled', fresh.email), 1);
+  assert.equal(await auditRows(app.db, 'auth.mfa_enrolled', fresh.fullName), 1);
 
   const me = await app.inject({ method: 'GET', url: '/auth/me', headers: { authorization: `Bearer ${token}` } });
   assert.equal(me.statusCode, 200);
@@ -230,7 +230,7 @@ test('sessions expire and logout revokes immediately', async () => {
     headers: { authorization: `Bearer ${token2}` },
   });
   assert.equal(out.statusCode, 200);
-  assert.ok((await auditRows(app.db, 'auth.logout', ceo.email)) >= 1);
+  assert.ok((await auditRows(app.db, 'auth.logout', ceo.fullName)) >= 1);
   const afterLogout = await app.inject({
     method: 'GET',
     url: '/auth/me',
@@ -263,7 +263,7 @@ test('RBAC: intern is refused staff management; CEO is allowed; role change audi
   assert.equal(created.statusCode, 201, created.body);
   assert.ok(created.json().tempPassword);
   const newId = created.json().id as string;
-  assert.equal(await auditRows(app.db, 'staff.created', ceo.email), 1);
+  assert.equal(await auditRows(app.db, 'staff.created', ceo.fullName), 1);
 
   const promoted = await app.inject({
     method: 'PATCH',
@@ -329,7 +329,7 @@ test('password change requires the current password and revokes other sessions',
     payload: { currentPassword: user.password, newPassword: 'brand-new-password-456' },
   });
   assert.equal(ok.statusCode, 200, ok.body);
-  assert.equal(await auditRows(app.db, 'auth.password_changed', user.email), 1);
+  assert.equal(await auditRows(app.db, 'auth.password_changed', user.fullName), 1);
 
   // The other session is dead; the changing session survives.
   const b = await app.inject({ method: 'GET', url: '/auth/me', headers: { authorization: `Bearer ${tokenB}` } });

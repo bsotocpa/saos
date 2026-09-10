@@ -191,7 +191,7 @@ export async function createBroadcast(
     ]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'broadcast.created', objectType: 'broadcast', objectId: rows[0]!.id,
     details: { name: input.name, channel: input.channel, segment: input.segment },
   });
@@ -209,7 +209,7 @@ export async function submitForApproval(
   );
   if (rowCount === 0) throw new AppError(409, 'not_draft', 'Only a draft can be submitted for approval.');
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'broadcast.submitted', objectType: 'broadcast', objectId: broadcastId,
   });
 }
@@ -245,7 +245,7 @@ export async function approveBroadcast(
     [broadcastId, actor.id]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'broadcast.approved', objectType: 'broadcast', objectId: broadcastId,
   });
 }
@@ -374,7 +374,7 @@ export async function sendBroadcast(
     [broadcastId, result.sentEmail + result.sentSms, result.suppressed]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'broadcast.sent', objectType: 'broadcast', objectId: broadcastId,
     details: {
       intended: audience.rows.length,
@@ -423,7 +423,7 @@ export async function resubscribeToBroadcasts(
     [contactId]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'broadcast.resubscribed', objectType: 'contact', objectId: contactId, contactId,
     details: { note },
   });

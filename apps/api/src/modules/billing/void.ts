@@ -107,7 +107,7 @@ export async function voidInvoice(
     await writeAudit(app.db, {
       actorType: 'staff',
       actorId: actor.id,
-      actorLabel: actor.email,
+      actorLabel: actor.fullName,
       action: 'invoice.voided',
       objectType: 'invoice',
       objectId: inv.id,

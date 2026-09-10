@@ -76,7 +76,7 @@ export function registerStaffRoutes(app: FastifyInstance): void {
     await writeAudit(app.db, {
       actorType: 'staff',
       actorId: actor.id,
-      actorLabel: actor.email,
+      actorLabel: actor.fullName,
       action: 'staff.created',
       objectType: 'staff',
       objectId: staffId,
@@ -106,7 +106,7 @@ export function registerStaffRoutes(app: FastifyInstance): void {
       await writeAudit(app.db, {
         actorType: 'staff',
         actorId: actor.id,
-        actorLabel: actor.email,
+        actorLabel: actor.fullName,
         action: 'permission.change',
         objectType: 'staff',
         objectId: targetId,
@@ -127,7 +127,7 @@ export function registerStaffRoutes(app: FastifyInstance): void {
       await writeAudit(app.db, {
         actorType: 'staff',
         actorId: actor.id,
-        actorLabel: actor.email,
+        actorLabel: actor.fullName,
         action: body.isActive ? 'staff.reactivated' : 'staff.deactivated',
         objectType: 'staff',
         objectId: targetId,

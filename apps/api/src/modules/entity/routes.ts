@@ -232,7 +232,7 @@ export function registerEntityRoutes(app: FastifyInstance): void {
       app,
       businessId,
       { status: b.status, formationDate: b.formationDate ?? null },
-      { type: 'staff', id: actor.id, label: actor.email }
+      { type: 'staff', id: actor.id, label: actor.fullName }
     );
     if (status === null) throw new AppError(404, 'not_found', 'Business not found.');
     return { status: 'ok', sosStatus: status };
@@ -282,7 +282,7 @@ export function registerEntityRoutes(app: FastifyInstance): void {
       [id, b.filedDate, nextDue]
     );
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.email,
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
       action: 'annual_report.filed', objectType: 'entity_compliance', objectId: id,
       details: { period_year: periodYear, next_due: nextDue },
     });
@@ -294,7 +294,7 @@ export function registerEntityRoutes(app: FastifyInstance): void {
     const b = CreatePllcBody.parse(request.body);
     const result = await createPllcConversion(
       app,
-      { type: 'staff', id: request.staff!.id, label: request.staff!.email },
+      { type: 'staff', id: request.staff!.id, label: request.staff!.fullName },
       b
     );
     return reply.code(201).send(result);

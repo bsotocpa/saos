@@ -89,7 +89,7 @@ export async function spawnResolutionCase(
   }
 
   // 8821 at onboarding — before any document work.
-  const envelope = await createEnvelope(app, { type: 'staff', id: actor.id, label: actor.email }, {
+  const envelope = await createEnvelope(app, { type: 'staff', id: actor.id, label: actor.fullName }, {
     contactId: input.contactId,
     type: 'f8821',
     signatureMethod: 'remote_kba',
@@ -109,7 +109,7 @@ export async function spawnResolutionCase(
   });
 
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'resolution_case.spawned', objectType: 'resolution_case', objectId: caseId,
     contactId: input.contactId,
     details: {
@@ -232,7 +232,7 @@ export async function recordF2848(
   caseId: string,
   scopeYears: number[],
   envelopeId: string | null,
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<void> {
   const res = await app.db.query(
     `UPDATE resolution_cases
@@ -244,7 +244,7 @@ export async function recordF2848(
   );
   if (res.rowCount === 0) throw new AppError(404, 'not_found', 'Resolution case not found.');
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'resolution_case.f2848_recorded', objectType: 'resolution_case', objectId: caseId,
     details: { scope_years: scopeYears },
   });
@@ -314,7 +314,7 @@ export async function recordPaperMailing(
   app: FastifyInstance,
   taxEngagementId: string,
   input: { mailedOn: string; tracking: string },
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<void> {
   const te = await app.db.query<{ filing_lane: string | null; tax_year: number }>(
     `SELECT filing_lane, tax_year FROM tax_engagements WHERE id = $1`,
@@ -334,7 +334,7 @@ export async function recordPaperMailing(
     [taxEngagementId, input.mailedOn, input.tracking.trim()]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'tax_engagement.paper_mailed', objectType: 'tax_engagement', objectId: taxEngagementId,
     details: { mailed_on: input.mailedOn, certified_tracking: input.tracking.trim() },
   });

@@ -136,7 +136,9 @@ test('the billing role voids a sent invoice: reason and actor recorded, session 
   const audit = await app.db.query<{ actor_label: string; details: { reason: string } }>(
     `SELECT actor_label, details FROM audit_log WHERE object_id = $1 AND action = 'invoice.voided'`, [inv.id]);
   assert.equal(audit.rows.length, 1);
-  assert.equal(audit.rows[0]!.actor_label, 'rene-void@example.test');
+  // Item 11 (2026-09-09): the actor is a NAME, never an email — inverted from the email premise.
+  assert.equal(audit.rows[0]!.actor_label, 'Synthetic comms_billing');
+  assert.doesNotMatch(audit.rows[0]!.actor_label, /@/);
 
   // The client is told through the outbox, not during the request.
   assert.equal(sentMail.filter((m) => m.to === inv.email).length, 0, 'nothing sent inside the request');

@@ -208,7 +208,7 @@ test('the override is Brian\'s alone, needs a real reason, and is audited by nam
     [id]
   );
   assert.equal(override.rows.length, 1, 'a separately searchable audit action');
-  assert.equal(override.rows[0]!.actor_label, brian.email, 'recorded by name');
+  assert.equal(override.rows[0]!.actor_label, brian.fullName, 'recorded by name');
   assert.equal((override.rows[0]!.details as { scan_status: string }).scan_status, 'skipped');
   assert.match(String((override.rows[0]!.details as { note: string }).note), /sandbox/);
 

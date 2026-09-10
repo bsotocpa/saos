@@ -302,7 +302,7 @@ ${doc.html}
       [key, actor.id]
     );
     await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'template.es_approved', objectType: 'template', objectId: key,
     });
     return { status: 'approved' };

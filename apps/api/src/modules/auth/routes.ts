@@ -60,7 +60,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
 
   app.post('/auth/logout', { preHandler: [app.authenticate] }, async (request, reply) => {
     const staff = request.staff!;
-    await auth.logout(app.db, staff.sessionId, staff.id, staff.email, meta(request));
+    await auth.logout(app.db, staff.sessionId, staff.id, staff.fullName, meta(request));
     reply.clearCookie(STAFF_SESSION_COOKIE, clearCookieOptions(app.config));
     return { status: 'ok' };
   });
@@ -83,7 +83,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       app.db,
       app.config,
       staff.id,
-      staff.email,
+      staff.fullName,
       body.currentPassword,
       body.newPassword,
       staff.sessionId,

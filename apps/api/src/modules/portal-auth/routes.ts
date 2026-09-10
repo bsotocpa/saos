@@ -135,7 +135,7 @@ export function registerPortalAuthRoutes(app: FastifyInstance): void {
         await writeAudit(app.db, {
           actorType: 'staff',
           actorId: actor.id,
-          actorLabel: actor.email,
+          actorLabel: actor.fullName,
           action: 'portal_user.created',
           objectType: 'portal_user',
           objectId: user.id,

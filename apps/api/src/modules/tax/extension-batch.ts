@@ -182,7 +182,7 @@ export async function runAutoExtensionBatchJob(
 export async function approveBatch(
   app: FastifyInstance,
   batchId: string,
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<{ items: number }> {
   const batch = await app.db.query<{ status: string; tax_year: number; deadline_date: string }>(
     `SELECT status, tax_year, deadline_date::text AS deadline_date FROM extension_batches WHERE id = $1`,
@@ -201,7 +201,7 @@ export async function approveBatch(
     [batchId]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'extension_batch.approved', objectType: 'extension_batch', objectId: batchId,
     details: { tax_year: batch.rows[0].tax_year, deadline: batch.rows[0].deadline_date, items: count.rows[0]!.n },
   });
@@ -213,7 +213,7 @@ export async function removeBatchItem(
   app: FastifyInstance,
   batchId: string,
   taxEngagementId: string,
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<void> {
   const res = await app.db.query(
     `UPDATE extension_batch_items SET removed_at = now()
@@ -222,7 +222,7 @@ export async function removeBatchItem(
   );
   if (res.rowCount === 0) throw new AppError(404, 'not_found', 'Batch item not found (or already filed).');
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'extension_batch.item_removed', objectType: 'extension_batch', objectId: batchId,
     details: { tax_engagement_id: taxEngagementId },
   });
@@ -237,7 +237,7 @@ export async function fileBatchItem(
   app: FastifyInstance,
   batchId: string,
   taxEngagementId: string,
-  actor: { id: string; email: string },
+  actor: { id: string; email: string; fullName: string },
   today: string
 ): Promise<{ extendedDeadline: string | null; batchComplete: boolean }> {
   const batch = await app.db.query<{ status: string }>(
@@ -258,7 +258,7 @@ export async function fileBatchItem(
   );
   if (item.rows.length === 0) throw new AppError(404, 'not_found', 'Batch item not found (removed or already filed).');
 
-  const result = await markExtensionFiled(app, { staffId: actor.id, label: actor.email }, taxEngagementId, today);
+  const result = await markExtensionFiled(app, { staffId: actor.id, label: actor.fullName }, taxEngagementId, today);
   await app.db.query(
     `UPDATE extension_batch_items SET filed_at = now() WHERE batch_id = $1 AND tax_engagement_id = $2`,
     [batchId, taxEngagementId]

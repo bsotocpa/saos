@@ -48,7 +48,7 @@ export async function createCloseCycle(
     contactId: string; businessId?: string | null; engagementId?: string | null;
     cadence: Cadence; periodStart: string; periodEnd: string; assignedStaffId?: string | null;
   },
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<{ id: string; created: boolean }> {
   const marian = input.assignedStaffId ?? (await ownerForRole(app.db, 'bookkeeper'));
   const { rows } = await app.db.query<{ id: string }>(
@@ -82,7 +82,7 @@ export async function createCloseCycle(
     sourceId: id,
   });
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'close_cycle.created', objectType: 'close_cycle', objectId: id,
     contactId: input.contactId,
     details: { cadence: input.cadence, period_start: input.periodStart, period_end: input.periodEnd },
@@ -108,7 +108,7 @@ export async function markCloseStep(
   app: FastifyInstance,
   id: string,
   step: CloseStep,
-  actor: { id: string; email: string }
+  actor: { id: string; email: string; fullName: string }
 ): Promise<void> {
   const cycle = await loadCycle(app, id);
   if (cycle.closed_at) throw new AppError(409, 'already_closed', 'This period is already closed.');
@@ -124,7 +124,7 @@ export async function markCloseStep(
     [id]
   );
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'close_cycle.step_completed', objectType: 'close_cycle', objectId: id,
     contactId: cycle.contact_id, details: { step },
   });
@@ -154,7 +154,7 @@ export async function completeClose(
   minio: MinioClient,
   id: string,
   input: { filename: string; mimeType: string; buffer: Buffer; today: string },
-  actor: { id: string; email: string; ip?: string | null }
+  actor: { id: string; email: string; fullName: string; ip?: string | null }
 ): Promise<{ documentId: string; attachedSessionId: string | null; schedulingTaskCreated: boolean }> {
   const cycle = await loadCycle(app, id);
   if (cycle.closed_at) throw new AppError(409, 'already_closed', 'This period is already closed.');
@@ -165,7 +165,7 @@ export async function completeClose(
   // 1. Statements AUTO-POST to the portal — no review gate.
   const doc = await uploadDocument(
     app, minio,
-    { type: 'staff', id: actor.id, label: actor.email, ip: actor.ip ?? null },
+    { type: 'staff', id: actor.id, label: actor.fullName, ip: actor.ip ?? null },
     {
       contactId: cycle.contact_id,
       category: 'financial_statements',
@@ -228,7 +228,7 @@ export async function completeClose(
   }
 
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.email,
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'close_cycle.closed', objectType: 'close_cycle', objectId: id,
     contactId: cycle.contact_id, ip: actor.ip ?? null,
     details: {
