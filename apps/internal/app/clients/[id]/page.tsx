@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../../lib/api';
 import { useAsk } from '../../../components/ask';
+import { engagementStatusLabel, invoiceStatusLabel, quoteStatusLabel } from '../../../lib/labels';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
 import { badgeToneFor, invoiceStatusLine } from '../../../lib/invoice-display';
 
@@ -598,7 +599,7 @@ export default function ClientPacketPage() {
             quotes.slice(0, 6).map((q) => (
               <p key={q.id} className="small" style={{ margin: '3px 0' }}>
                 <span className={`badge ${q.status === 'accepted' ? 'ok' : q.status === 'sent' ? '' : 'warn'}`}>
-                  {q.status}
+                  {quoteStatusLabel(q.status)}
                 </span>{' '}
                 {q.range_min_cents !== null && q.range_max_cents !== null
                   ? `${formatMoney(q.range_min_cents)}–${formatMoney(q.range_max_cents)}`
@@ -779,7 +780,7 @@ export default function ClientPacketPage() {
             <div className="quote-line" key={e.id}>
               <span className="name">
                 {e.scopeName ?? e.title ?? e.service_line}{' '}
-                <span className="badge">{e.status}</span>
+                <span className="badge">{engagementStatusLabel(e.status)}</span>
                 {e.service_line !== (e.scopeName ?? e.title ?? e.service_line) ? (
                   <span className="badge">{e.service_line}</span>
                 ) : null}
@@ -1115,7 +1116,7 @@ export default function ClientPacketPage() {
                     <span className="muted"> · {formatMoney(inv.amount_paid_cents)} paid</span>
                   ) : null}
                   <br />
-                  <span className={`badge ${badgeToneFor(inv.status)}`}>{inv.status}</span>
+                  <span className={`badge ${badgeToneFor(inv.status)}`}>{invoiceStatusLabel(inv.status)}</span>
                   {/* Metadata stacks on a phone (D, 2026-09-09): each piece is its own block under 600px. */}
                   <span className="invoice-meta">
                     {inv.status === 'void' || inv.status === 'refunded' || inv.status === 'partially_refunded' ? (
