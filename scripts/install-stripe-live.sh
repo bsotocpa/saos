@@ -240,7 +240,9 @@ pass "STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET written (values not shown)"
 # scripts/merge-env.sh keeps the server's value for every key named in this file.
 MANAGED="$ENV_FILE.server-managed"
 touch "$MANAGED" && chmod 600 "$MANAGED"
-for k in STRIPE_MODE STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
+# Decision 4 (2026-09-09): the endpoint id is server-managed too, so a re-run with the same key
+# leaves every one of these four owned by the box. The loop is idempotent (grep -qx before append).
+for k in STRIPE_MODE STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_WEBHOOK_ENDPOINT_ID; do
   grep -qx "$k" "$MANAGED" || echo "$k" >> "$MANAGED"
 done
 pass "registered as server-managed in $MANAGED — deploys keep the server's value from now on"
