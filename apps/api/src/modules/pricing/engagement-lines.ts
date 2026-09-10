@@ -118,8 +118,11 @@ const LINE_LABEL: Record<EngagementLine, string> = {
  * enough either — two tax engagements in different years would collide — so the leading
  * item is named, and the count carries the rest.
  */
-export function engagementTitle(line: QuotedEngagementLine): string {
-  const label = LINE_LABEL[line.serviceLine];
+export function engagementTitle(line: QuotedEngagementLine, periodKey?: string | null): string {
+  // Decision 2 (2026-09-09): a tax engagement names its year in the title — "Tax 2025 — …" —
+  // so two tax engagements for different years never read the same. Recurring lines carry
+  // 'ongoing' and per-matter lines null; neither belongs in a title.
+  const label = periodKey && /^\d{4}$/.test(periodKey) ? `${LINE_LABEL[line.serviceLine]} ${periodKey}` : LINE_LABEL[line.serviceLine];
   const first = line.itemNames[0];
   if (!first) return label;
   const extra = line.itemNames.length - 1;

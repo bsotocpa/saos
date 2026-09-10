@@ -111,7 +111,11 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
        GROUP BY b.slug, b.name_en, b.name_es ORDER BY b.name_en`,
       [v.id]
     );
-    return { version: v, items: items.rows, bundles: bundles.rows };
+    // Decision 2 (2026-09-09): the builder shows the tax year a return quoted today is for.
+    // The rule lives in one place (defaultTaxYear); the builder only reads it.
+    const { defaultTaxYear } = await import('../engagements/period.ts');
+    const { todayChicago } = await import('../tax/deadlines.ts');
+    return { version: v, items: items.rows, bundles: bundles.rows, defaultTaxYear: defaultTaxYear(todayChicago()) };
   });
 
   /** Build a draft quote from price-book items or a bundle. Nothing sends yet. */
@@ -195,9 +199,12 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
     );
     const { resolveDeposit } = await import('./quotes.ts');
     const resolved = await resolveDeposit(app, quote.deposit_item_code, quote.deposit_override_cents, id);
+    const { periodsForQuote } = await import('../engagements/change-order.ts');
     return {
       quote,
       lines: lines.rows,
+      // Decision 2: the periods each engagement line will cover ('2025' for tax).
+      periods: await periodsForQuote(app, id),
       deposit: {
         standardCents: resolved.standardCents,
         chargeCents: resolved.chargeCents,

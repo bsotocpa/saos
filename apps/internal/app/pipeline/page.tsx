@@ -88,6 +88,8 @@ export default function PipelinePage() {
   const [board, setBoard] = useState<BoardRow[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  /** Decision 2 (2026-09-09): the tax year a return quoted today is for — from the server. */
+  const [defaultTaxYear, setDefaultTaxYear] = useState<number | null>(null);
   const [bundles, setBundles] = useState<CatalogBundle[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -166,11 +168,12 @@ export default function PipelinePage() {
     try {
       const [p, c] = await Promise.all([
         api<{ board: BoardRow[]; metrics: Metrics }>('/pipeline'),
-        api<{ items: CatalogItem[]; bundles: CatalogBundle[] }>('/quotes/catalog'),
+        api<{ items: CatalogItem[]; bundles: CatalogBundle[]; defaultTaxYear: number | null }>('/quotes/catalog'),
       ]);
       setBoard(p.board);
       setMetrics(p.metrics);
       setCatalog(c.items);
+      setDefaultTaxYear(c.defaultTaxYear ?? null);
       setBundles(c.bundles);
       // `deposits.override` is explicit-only, so a '*' role does NOT imply it —
       // check for the key itself, exactly as the API does.
@@ -749,6 +752,12 @@ export default function PipelinePage() {
                     ))}
                   </div>
 
+                  {picked.some((p) => { const l = catalog.find((i) => i.item_code === p.itemCode)?.service_line; return l === 'individual_tax' || l === 'business_tax'; }) && defaultTaxYear ? (
+                    <p className="muted small">
+                      Tax year <strong>{defaultTaxYear}</strong> — the prior calendar year, the default when the interview
+                      does not name one. The engagement will be titled with it and the client sees it on the proposal.
+                    </p>
+                  ) : null}
                   {picked.map((p, idx) => {
                     const item = catalog.find((i) => i.item_code === p.itemCode);
                     return (

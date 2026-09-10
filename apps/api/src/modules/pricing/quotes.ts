@@ -401,9 +401,13 @@ export async function quoteByToken(app: FastifyInstance, token: string) {
   // The deposit the client will actually be asked for. Resolved rather than read
   // raw so a waiver reads as "waived", not as a silently missing line.
   const deposit = await resolveDeposit(app, quote.deposit_item_code, quote.deposit_override_cents, quote.id);
+  // Decision 2 (2026-09-09): the client reads which tax year the proposal is for. The year
+  // comes from the interview when it says; otherwise the prior calendar year (defaultTaxYear).
+  const { periodsForQuote } = await import('../engagements/change-order.ts');
   return {
     quote: { ...quote, expired },
     lines: lines.rows,
+    periods: await periodsForQuote(app, quote.id),
     deposit: {
       standardCents: deposit.standardCents,
       dueCents: deposit.chargeCents,
@@ -828,7 +832,8 @@ async function convertAcceptedQuote(
   const todayIso = todayChicago();
   const engagements: Array<{ id: string; serviceLine: string; title: string }> = [];
   for (const line of quotedLines) {
-    const title = engagementTitle(line);
+    const periodKey = periodKeyFor(line.serviceLine, { taxYear, todayIso });
+    const title = engagementTitle(line, periodKey);
     const created = await createEngagement(
       app,
       system,
@@ -841,7 +846,7 @@ async function convertAcceptedQuote(
         // The period puts this row under the unique index; a second plain acceptance for
         // the same line and period is refused by the database and rolls this whole
         // acceptance back (engagement_exists).
-        periodKey: periodKeyFor(line.serviceLine, { taxYear, todayIso }),
+        periodKey,
       },
       {}
     );

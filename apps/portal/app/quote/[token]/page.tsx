@@ -70,6 +70,8 @@ export default function QuotePage() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [deposit, setDeposit] = useState<Deposit | null>(null);
+  /** Decision 2 (2026-09-09): the tax year this proposal is for, from the server. */
+  const [taxYear, setTaxYear] = useState<string | null>(null);
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [state, setState] = useState<'loading' | 'ready' | 'accepted' | 'declined' | 'invalid'>('loading');
   const [hasDeposit, setHasDeposit] = useState(false);
@@ -80,10 +82,11 @@ export default function QuotePage() {
 
   const load = useCallback(async () => {
     try {
-      const r = await api<{ quote: Quote; lines: Line[]; deposit: Deposit }>(`/public/quote/${token}`);
+      const r = await api<{ quote: Quote; lines: Line[]; deposit: Deposit; periods?: Array<{ serviceLine: string; periodKey: string | null }> }>(`/public/quote/${token}`);
       setQuote(r.quote);
       setLines(r.lines);
       setDeposit(r.deposit);
+      setTaxYear(r.periods?.find((p) => p.serviceLine === 'tax')?.periodKey ?? null);
       // Meet the client in the language the quote was written in.
       if (r.quote.language !== lang) setLang(r.quote.language);
       if (r.quote.status === 'accepted') setState('accepted');
@@ -211,6 +214,7 @@ export default function QuotePage() {
 
       <section className="card">
         <h2>{t('quote_included')}</h2>
+        {taxYear ? <p className="muted small">{t('quote_tax_year')}: <strong>{taxYear}</strong></p> : null}
         <ul className="quote-lines">
           {included.map((l) => (
             <li key={l.item_code}>
