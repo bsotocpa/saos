@@ -9,6 +9,12 @@
 // price lock extends); a dunning pause is theirs and is refunded to nobody. Same two
 // columns, opposite consequences, which is why the source is recorded.
 //
+// ONE CLOCK (decision 6, 2026-09-09). The pause duration is measured by the database against
+// the same now() that stamped work_paused_at (engagements/pause.ts). This spec backdates the
+// pause with SQL and never reads Date.now(): the clock is frozen to Postgres on both sides, so
+// six backdated days are six days on every run, on every host. calendar-dates.spec proves it
+// five runs in a row.
+//
 // Synthetic data only.
 
 import { test, before, after } from 'node:test';
