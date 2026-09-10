@@ -69,6 +69,15 @@ body {
 /* min-width: 0 is the whole point: without it a flex child refuses to shrink below its
    content, and one long word widens the page instead of wrapping. */
 .list .grow { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+/* D (2026-09-09): invoice metadata pieces read inline on a desk and stack on a phone, so
+   "void · reason · actor · date" never collides with "sent <date>". */
+.invoice-meta > span { margin-left: 6px; }
+@media (max-width: 600px) {
+  .invoice-meta > span { display: block; margin-left: 0; }
+}
+/* Send-log rows wrap, never clip: block rows, any-word wrapping, no nowrap inherited from
+   the flex list. */
+.send-log li { display: block; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 
 /* Filter chips on ops list pages (desk-sized, unlike the portal's touch chips). */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }

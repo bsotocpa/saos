@@ -1076,13 +1076,15 @@ export default function ClientPacketPage() {
                   ) : null}
                   <br />
                   <span className={`badge ${badgeToneFor(inv.status)}`}>{inv.status}</span>
-                  {inv.status === 'void' || inv.status === 'refunded' || inv.status === 'partially_refunded' ? (
-                    <span className="muted small">
-                      {' '}
-                      {invoiceStatusLine(inv, { money: formatMoney, date: (iso) => dayOf(iso) })}
-                    </span>
-                  ) : null}
-                  {inv.sent_at ? <span className="muted small"> sent {dayOf(inv.sent_at)}</span> : null}
+                  {/* Metadata stacks on a phone (D, 2026-09-09): each piece is its own block under 600px. */}
+                  <span className="invoice-meta">
+                    {inv.status === 'void' || inv.status === 'refunded' || inv.status === 'partially_refunded' ? (
+                      <span className="muted small">
+                        {invoiceStatusLine(inv, { money: formatMoney, date: (iso) => dayOf(iso) })}
+                      </span>
+                    ) : null}
+                    {inv.sent_at ? <span className="muted small">sent {dayOf(inv.sent_at)}</span> : null}
+                  </span>
                   {/* What actually happened to each client message — from the record, never rounded up. */}
                   {(inv.notices ?? []).map((n) => (
                     <span key={n.outboxId ?? n.auditId ?? n.kind} className="muted small">
@@ -1103,7 +1105,7 @@ export default function ClientPacketPage() {
                     >
                       <summary className="muted small">send log</summary>
                       {sendLogs[inv.id] ? (
-                        <ul className="list small">
+                        <ul className="list small send-log">
                           {sendLogs[inv.id]!.map((row) => (
                             <li key={`${row.source}-${row.id}`}>
                               <span className="muted">{formatDateTime(row.at)}</span> · {row.what} · {row.state}
