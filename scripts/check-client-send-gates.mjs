@@ -203,6 +203,10 @@ if (registered.size === 0) {
 /* A registered entry with no reason is a parked decision, which is the thing this prevents. */
 const entryBlocks = [...registrySource.matchAll(/^\s{2}'([^']+)':\s*\{([\s\S]*?)^\s{2}\},/gm)];
 const missingReason = entryBlocks.filter(([, , body]) => !/reason:\s*\S/.test(body)).map(([, k]) => k);
+/* Item 9 (2026-09-09): every entry also names its template and its recipient class. */
+const missingFields = entryBlocks
+  .filter(([, , body]) => !/template:\s*'[^']+'/.test(body) || !/recipientClass:\s*'(client|staff)'/.test(body))
+  .map(([, k]) => k);
 
 const violations = [];
 const seen = new Set();
@@ -230,6 +234,12 @@ for (const file of walk(SRC)) {
 
 const stale = [...registered].filter((k) => !seen.has(k));
 
+if (missingFields.length > 0) {
+  console.error('✖ Registered client sends missing template or recipientClass (item 9):\n');
+  for (const k of missingFields) console.error(`  ${k}`);
+  console.error('');
+  process.exit(1);
+}
 if (missingReason.length > 0) {
   console.error('✖ Registered client sends with no reason:\n');
   for (const k of missingReason) console.error(`  ${k}`);

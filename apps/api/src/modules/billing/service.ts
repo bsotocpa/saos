@@ -472,7 +472,15 @@ export async function markInvoicePaid(
       [inv.tax_engagement_id]
     );
   }
-  if (inv.email) {
+  // Item 9 (2026-09-09): the receipt is a client-acting automation — it fires from the
+  // webhook, not from a person. Gated; a hold is recorded where the send would have been.
+  if (inv.email && !(await isAutomationEnabled(app, 'payment_receipt'))) {
+    await writeAudit(app.db, {
+      actorType: 'system', actorLabel: 'payment receipt',
+      action: 'invoice.payment_receipt_suppressed', objectType: 'invoice', objectId: invoiceId, contactId: inv.contact_id,
+      details: { invoice_number: inv.invoice_number, amount_cents: inv.total_cents, automation: 'payment_receipt' },
+    });
+  } else if (inv.email) {
     await sendTemplatedEmail(app, {
       to: inv.email,
       templateKey: 'payment_received',

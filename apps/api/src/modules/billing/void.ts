@@ -22,6 +22,7 @@ import { enqueueEffect } from '../../outbox.ts';
 import { withTransaction } from '../../db.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
+import { isAutomationEnabled } from '../../automations.ts';
 import { formatUsd } from './service.ts';
 import { noticesForInvoices, type NoticeState } from './notices.ts';
 
@@ -183,6 +184,17 @@ export async function sendVoidNotice(
     [invoiceId]
   );
   if (already.rows.length > 0) return { sent: false, reason: 'already_sent' };
+
+  // Item 9 (2026-09-09): the void is a person's action; the notice was automatic — gated,
+  // and the hold is recorded on the invoice's send log.
+  if (!(await isAutomationEnabled(app, 'void_notice'))) {
+    await writeAudit(app.db, {
+      actorType: 'system', actorLabel: 'outbox',
+      action: 'invoice.void_notice_suppressed', objectType: 'invoice', objectId: invoiceId, contactId: inv.contact_id,
+      details: { invoice_number: inv.invoice_number, amount_cents: inv.total_cents, automation: 'void_notice' },
+    });
+    return { sent: false, reason: 'suppressed' };
+  }
 
   await sendTemplatedEmail(app, {
     to: inv.email,

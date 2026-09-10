@@ -35,6 +35,7 @@ import { AppError } from '../../types.ts';
 import { ownerForRole } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
+import { isAutomationEnabled } from '../../automations.ts';
 import { formatUsd } from './service.ts';
 import type { DisputeClosedEvent, DisputeOpenedEvent, PaymentEvent, RefundEvent } from './stripe.ts';
 
@@ -483,6 +484,15 @@ export async function sendRefundReceipt(
   if (already.rows.length > 0) return { sent: false, reason: 'already_sent' };
 
   const amount = inv.refund_cents ?? inv.amount_refunded_cents;
+  // Item 9 (2026-09-09): fires from the webhook, not from a person — gated, hold recorded.
+  if (!(await isAutomationEnabled(app, 'refund_receipt'))) {
+    await writeAudit(app.db, {
+      actorType: 'system', actorLabel: 'outbox',
+      action: 'invoice.refund_receipt_suppressed', objectType: 'invoice', objectId: invoiceId, contactId: inv.contact_id,
+      details: { invoice_number: inv.invoice_number, refund_id: refundId, amount_cents: amount, automation: 'refund_receipt' },
+    });
+    return { sent: false, reason: 'suppressed' };
+  }
   await sendTemplatedEmail(app, {
     to: inv.email,
     templateKey: 'refund_processed',

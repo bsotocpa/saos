@@ -43,6 +43,13 @@ const AUDIT_BY_KIND: Record<NoticeKind, string> = {
   payment_receipt: 'invoice.payment_receipt_sent',
 };
 
+/** Item 9 (2026-09-09): the audit a gated send writes when its automation is OFF — the hold, on the log. */
+const SUPPRESSED_BY_KIND: Partial<Record<NoticeKind, string>> = {
+  void_notice: 'invoice.void_notice_suppressed',
+  refund_receipt: 'invoice.refund_receipt_suppressed',
+  payment_receipt: 'invoice.payment_receipt_suppressed',
+};
+
 export const NOTICE_LABEL: Record<NoticeKind, string> = {
   invoice_send: 'Invoice email',
   void_notice: 'Cancellation notice',
@@ -98,7 +105,7 @@ export async function noticesForInvoices(
       WHERE object_type = 'invoice' AND object_id = ANY($1::text[])
         AND action = ANY($2::text[])
       ORDER BY occurred_at`,
-    [invoiceIds, Object.values(AUDIT_BY_KIND)]
+    [invoiceIds, [...Object.values(AUDIT_BY_KIND), ...Object.values(SUPPRESSED_BY_KIND)]]
   );
   const auditFor = (invoiceId: string, kind: NoticeKind) =>
     audits.rows.find((a) => a.object_id === invoiceId && a.action === AUDIT_BY_KIND[kind]) ?? null;
@@ -135,6 +142,13 @@ export async function noticesForInvoices(
   for (const a of audits.rows) {
     if (a.action !== AUDIT_BY_KIND.payment_receipt) continue;
     out[a.object_id]?.push({ kind: 'payment_receipt', state: 'delivered', at: a.occurred_at.toISOString(), outboxId: null, auditId: a.id, detail: null });
+  }
+  // Held sends (item 9): the automation was off, and the hold is on the log where the send would be.
+  // The outbox-carried kinds already show "not sent — held" through their outbox row; the
+  // inline payment receipt has only this audit row to speak for it.
+  for (const a of audits.rows) {
+    if (a.action !== SUPPRESSED_BY_KIND.payment_receipt) continue;
+    out[a.object_id]?.push({ kind: 'payment_receipt', state: 'skipped', at: a.occurred_at.toISOString(), outboxId: null, auditId: a.id, detail: 'held — the automation is off (Admin → Automations)' });
   }
   return out;
 }

@@ -158,6 +158,8 @@ async function performEffect(
       const result = await sendRefundReceipt(app, invoiceId, refundId);
       if (result.sent) return { sent: true };
       if (result.reason === 'already_sent') return { sent: false, skip: 'receipt already sent' };
+      // Item 9 (2026-09-09): a gated send that is OFF retires — it is a decision, not a fault.
+      if (result.reason === 'suppressed') return { sent: false, skip: 'held — the automation is off (Admin → Automations)' };
       return { sent: false, retry: humanReason(result.reason) };
     }
     case 'invoice.void_notice': {
@@ -167,6 +169,8 @@ async function performEffect(
       const result = await sendVoidNotice(app, invoiceId);
       if (result.sent) return { sent: true };
       if (result.reason === 'already_sent') return { sent: false, skip: 'void notice already sent' };
+      // Item 9 (2026-09-09): a gated send that is OFF retires — it is a decision, not a fault.
+      if (result.reason === 'suppressed') return { sent: false, skip: 'held — the automation is off (Admin → Automations)' };
       return { sent: false, retry: humanReason(result.reason) };
     }
     case 'packet.send_signature_link': {

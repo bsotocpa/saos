@@ -33,6 +33,11 @@ export const AUTOMATION_KEYS = [
   'session_recaps',
   'booking_confirmations',
   'sos_adverse_client_notice',
+  // Item 9 (2026-09-09, Brian's ruling): the three client sends that fire from a system event
+  // (a webhook, a void) rather than a person pressing Send on that message.
+  'payment_receipt',
+  'refund_receipt',
+  'void_notice',
 ] as const;
 
 export type AutomationKey = (typeof AUTOMATION_KEYS)[number];

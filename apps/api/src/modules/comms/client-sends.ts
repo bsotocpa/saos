@@ -31,63 +31,78 @@
 export interface UngatedClientSend {
   /** Why this send is not behind an automation toggle. Required — the guard enforces it. */
   reason: string;
+  /** The template key (or the mechanism) the message goes out through. Required (item 9). */
+  template: string;
+  /** Who receives it. A 'client' entry is a person pressing Send on THIS message; a 'staff' entry never reaches a client. */
+  recipientClass: 'client' | 'staff';
 }
 
 export const UNGATED_CLIENT_SENDS: Record<string, UngatedClientSend> = {
   // ── The client asked for this, seconds ago, and is watching for it ──────────
   'modules/portal-auth/service.ts:issueMagicLink': {
+    template: 'portal magic link (invite / login templates)',
+    recipientClass: 'client',
     reason:
       'The client just clicked "send me a sign-in link" and is looking at the screen. A toggle here is a kill switch on the front door: flip it and every client is locked out of the portal with no error anyone would connect to a setting. The controls that belong on this are rate limiting (3 per window, already enforced) and link expiry, not arming.',
   },
-  'modules/billing/void.ts:sendVoidNotice': {
-    reason:
-      'A staff member voided an invoice the client may be holding a live pay link for. Not telling them means a client pays an invoice that no longer exists — the exact case void exists to prevent. Staff-initiated, one invoice, once.',
-  },
-  'modules/billing/refunds.ts:sendRefundReceipt': {
-    reason:
-      'The mirror image of the payment receipt: money went BACK to the client\u2019s card, and they must be told so, by us, in writing. Suppressing it would mean refunding and going quiet — the client sees a credit appear with no explanation and calls the bank.',
-  },
-  'modules/billing/service.ts:markInvoicePaid': {
-    reason:
-      'The receipt for a payment the client made a moment ago, triggered by the Stripe webhook for their own card. Suppressing it would mean taking money and going quiet, which is worse than any risk arming protects against.',
-  },
+  // Item 9 (2026-09-09): sendVoidNotice, sendRefundReceipt and the payment receipt in
+  // markInvoicePaid left this registry — they fire from a system event, and are now gated
+  // automations (void_notice, refund_receipt, payment_receipt), armed in Admin.
 
   // ── A person pressed Send on this specific message ──────────────────────────
   'modules/pricing/quotes.ts:sendQuote': {
+    template: 'quote_ready',
+    recipientClass: 'client',
     reason:
       'A staff member built this quote and pressed Send. Gating a deliberate human action would mean a person clicks send, sees success, and nothing goes out. The real control on this path is the PLACEHOLDER template gate, which refuses and says WHY.',
   },
   'modules/billing/service.ts:sendInvoiceNow': {
+    template: 'invoice_sent',
+    recipientClass: 'client',
     reason:
       'One named invoice going out — either a staff member pressed Send, or acceptance enqueued the deposit invoice the client is waiting for after agreeing to pay it. The RECURRING chase over unpaid invoices is a different path (billing/dunning.ts) and IS gated as `ar_dunning`. Arming this one would break checkout for a client who has already said yes.',
   },
   'modules/bookkeeping/close.ts:completeClose': {
+    template: 'statements_posted',
+    recipientClass: 'client',
     reason:
       'The finished monthly close, sent when a staff member completes it. This is the deliverable the client pays for; a toggle that silently withholds it is a way to lose a client without anyone noticing.',
   },
   'modules/documents/service.ts:afterReturnDelivered': {
+    template: 'return_delivered',
+    recipientClass: 'client',
     reason:
       'The return is finished and a staff member delivered it. Same reasoning as the close: the message IS the delivery, and suppressing it means the work is done and the client does not know.',
   },
   'modules/referrals/service.ts:sendReferral': {
+    template: 'referral_intro_hilo_to_soto / referral_intro_soto_to_hilo',
+    recipientClass: 'client',
     reason:
       'A staff member chose this person and pressed Send on a referral introduction. Not a campaign — one message, one recipient, one decision, made by a human seconds earlier.',
   },
   'modules/billing/routes.ts:registerBillingRoutes': {
+    template: 'invoice_reminder',
+    recipientClass: 'client',
     reason:
       'The one-off "remind this client about this invoice" button. A staff member looked at an unpaid invoice and chose to nudge; the route even refuses if the invoice is already paid. The AUTOMATED chase over the same invoices is billing/dunning.ts and is gated as `ar_dunning` — this is a person deciding to do once what that automation would do on a schedule.',
   },
   'modules/tax/routes.ts:registerTaxRoutes': {
+    template: 'doc_request',
+    recipientClass: 'client',
     reason:
       'The document request a preparer just built, item by item, and sent — the client is being told what is needed to continue their return. The recurring reminders that follow while it sits open ARE gated, as `document_chase`. Arming the first message would mean a preparer assembles a list, presses send, and the client never learns anything is wanted.',
   },
 
   // ── Gated, but by something stronger than an automation toggle ──────────────
   'modules/comms/broadcast.ts:sendBroadcast': {
+    template: 'broadcast (approved campaign body, email and SMS)',
+    recipientClass: 'client',
     reason:
       'Broadcasts carry a STRICTER control than arming, per CLAUDE.md: the send refuses any status but `approved`, and a database CHECK prevents a row reaching `sent` without a named approver — so even direct SQL cannot produce an unapproved send. Suppression (unsubscribe, TCPA opt-out) is enforced at send time and shown to the approver beforehand. An on/off toggle on top would be the weaker of the two controls, and would let someone believe the campaign went out when it did not.',
   },
   'modules/engagements/packet.ts:deliverPacketSignatureLink': {
+    template: 'packet_ready_to_sign',
+    recipientClass: 'client',
     reason:
       'Delivering the signature link for a packet a staff member deliberately sent — the step the whole engagement is waiting on. Its gate is the PLACEHOLDER template check, which refuses to send an unwritten engagement letter and names what is wrong, rather than going quiet. Reached through the outbox so a delivery failure raises `outbox_abandoned` loudly instead of vanishing.',
   },

@@ -93,6 +93,28 @@ export const automations = [
   },
 ];
 
+export const ITEM_9_2026_09_09 = [
+  {
+    key: 'payment_receipt',
+    name: 'Payment receipt (email after a card payment)',
+    description:
+      'Emails the client a receipt when Stripe confirms a payment on their invoice. OFF: the invoice still flips to Paid, the tax engagement still reads paid, the send log records "receipt held — automation off", and Stripe\u2019s own receipt (if enabled in the dashboard) is unaffected. Registered 2026-09-09 (item 9): a send that fires from a webhook, not from a person pressing Send.',
+  },
+  {
+    key: 'refund_receipt',
+    name: 'Refund receipt (email after a refund is recorded)',
+    description:
+      'Emails the client when a refund lands on their invoice. OFF: the invoice still reads Refunded / Partially refunded with the amount, and the send log records the hold. Registered 2026-09-09 (item 9): fires from the Stripe webhook, not from a person.',
+  },
+  {
+    key: 'void_notice',
+    name: 'Cancellation notice (email when an invoice is voided)',
+    description:
+      'Emails the client that an invoice they may hold a pay link for was cancelled. OFF: the invoice still reads Cancelled in the portal, its pay link is dead, and the send log records the hold — but nobody tells the client unless a person does. Registered 2026-09-09 (item 9): the void is a person\u2019s action; the notice was automatic.',
+  },
+];
+automations.push(...ITEM_9_2026_09_09);
+
 export async function seedAutomations(client) {
   let inserted = 0;
   for (const a of automations) {
