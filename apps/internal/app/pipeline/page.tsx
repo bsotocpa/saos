@@ -7,6 +7,7 @@
 // version, so a price change tomorrow never re-prices a proposal a client is
 // reading today.
 
+import { ModalShell } from '../../components/modal-shell';
 import { dayOf, formatDate, formatDateTime, formatTime } from '../../lib/dates';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -545,18 +546,7 @@ export default function PipelinePage() {
           was wiped by resetBuilder(), so the send left no trace and a second quote
           got built. It stays until Brian says he has seen it. */}
       {sentConfirm ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Quote sent"
-          style={{
-            position: "fixed", inset: 0, zIndex: 50, display: "flex",
-            alignItems: "center", justifyContent: "center", padding: 16,
-            background: "rgba(13, 59, 56, 0.45)",
-          }}
-        >
-          <div className="modal" style={{ maxWidth: 560 }}>
-            <h2>Quote sent to {sentConfirm.name}</h2>
+        <ModalShell id="quote-sent" title={`Quote sent to ${sentConfirm.name}`} onClose={() => { setSentConfirm(null); setSentLink(''); }}>
             <p className="alert ok" style={{ marginBottom: 8 }}>
               The proposal email is on its way, and the quote is now open awaiting their decision.
             </p>
@@ -585,8 +575,7 @@ export default function PipelinePage() {
                 Dismiss
               </button>
             </p>
-          </div>
-        </div>
+        </ModalShell>
       ) : null}
 
       <div className="chipbar">

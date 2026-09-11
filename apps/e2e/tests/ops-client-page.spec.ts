@@ -122,6 +122,36 @@ test.describe('Ops → client page', () => {
       const modal = page.locator('[role=dialog]');
       await expect(modal).toBeVisible();
       await expect(modal.getByRole('heading', { name: 'Withdraw this engagement?' })).toBeVisible();
+
+      /*
+       * THE MODAL IS A MODAL (2026-09-10, finding 1). The task modal was reported transparent on
+       * the phone, with the page legible through the panel and text overlapping. Every modal now
+       * comes from one shell (components/modal-shell.tsx); these are the four things it owes a
+       * person, asserted against the PRODUCTION build because that is the one that ships.
+       */
+      const modalHealth = await page.evaluate(() => {
+        const panel = document.querySelector('[role=dialog]') as HTMLElement | null;
+        const backdrop = panel?.parentElement as HTMLElement | null;
+        if (!panel || !backdrop) return null;
+        const bg = getComputedStyle(panel).backgroundColor;
+        const alpha = /rgba?(([^)]+))/.exec(bg);
+        const parts = alpha ? alpha[1]!.split(',').map((n) => Number(n.trim())) : [];
+        const rect = backdrop.getBoundingClientRect();
+        // What a tap in the top-left corner would actually hit, well outside the panel.
+        const behind = document.elementFromPoint(4, 4);
+        return {
+          panelAlpha: parts.length === 4 ? parts[3]! : 1,
+          panelBg: bg,
+          coversViewport: rect.width >= document.documentElement.clientWidth && rect.height >= document.documentElement.clientHeight,
+          hitTestReachesPanelOrBackdrop: backdrop.contains(behind) || behind === backdrop,
+          bodyOverflow: getComputedStyle(document.body).overflow,
+        };
+      });
+      expect(modalHealth, 'the modal and its backdrop are both on the page').not.toBeNull();
+      expect(modalHealth!.panelAlpha, `the panel is opaque, not ${modalHealth!.panelBg}`).toBe(1);
+      expect(modalHealth!.coversViewport, 'the backdrop covers the whole viewport').toBe(true);
+      expect(modalHealth!.hitTestReachesPanelOrBackdrop, 'nothing behind the backdrop can be tapped').toBe(true);
+      expect(modalHealth!.bodyOverflow, 'the page behind is scroll-locked').toBe('hidden');
       await expect(modal.getByRole('button', { name: 'Withdraw' })).toBeDisabled();
       await modal.locator('textarea').fill('harness walk: duplicate engagement');
       await modal.getByRole('button', { name: 'Withdraw' }).click();

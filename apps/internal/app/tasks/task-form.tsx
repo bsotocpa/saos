@@ -5,6 +5,7 @@
 // without a deploy ("Edit Page Layout"). Dual Contact + Business lookups,
 // Reminder, Repeat, Tags, Save and New.
 
+import { ModalShell } from '../../components/modal-shell';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
@@ -406,16 +407,21 @@ export function TaskFormModal(props: {
   };
 
   return (
-    <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) props.onClose(); }}>
-      <div className="modal">
+    <ModalShell
+      id="task-form"
+      title={props.task ? 'Edit Task' : 'Create Task'}
+      onClose={props.onClose}
+      heading={
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h2>{props.task ? 'Edit Task' : 'Create Task'}</h2>
+          <h2 id="task-form-title">{props.task ? 'Edit Task' : 'Create Task'}</h2>
           {props.canEditLayout ? (
             <Link className="small" href="/admin" title="Field order, sections, and required flags live in the tasks.layout setting">
               Edit Page Layout
             </Link>
           ) : null}
         </div>
+      }
+    >
         {error ? <div className="alert error">{error}</div> : null}
         <form onSubmit={(e) => { e.preventDefault(); void save(false); }}>
           {layout.sections.map((section) => (
@@ -437,7 +443,6 @@ export function TaskFormModal(props: {
             <button type="submit" className="btn" disabled={busy}>Save</button>
           </footer>
         </form>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

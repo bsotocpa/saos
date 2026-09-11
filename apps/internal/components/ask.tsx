@@ -18,6 +18,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ModalShell } from './modal-shell';
 
 export interface AskChoice {
   key: string;
@@ -88,24 +89,14 @@ export function AskProvider({ children }: { children: ReactNode }) {
     <AskContext.Provider value={ask}>
       {children}
       {pending ? (
-        <div className="overlay ask-overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) finish(null); }}>
-          <div className="modal ask-modal" role="dialog" aria-modal="true" aria-labelledby="ask-title">
-            <h2 id="ask-title">{pending.opts.title}</h2>
-            {pending.opts.body ? <div className="ask-body">{pending.opts.body}</div> : null}
-            {pending.opts.reason ? (
-              <label className="ask-reason">
-                {pending.opts.reason.label}
-                {pending.opts.reason.required ? <span className="muted small"> (required)</span> : <span className="muted small"> (optional)</span>}
-                <textarea
-                  ref={reasonRef}
-                  rows={3}
-                  value={reason}
-                  placeholder={pending.opts.reason.placeholder ?? ''}
-                  onChange={(e) => setReason(e.target.value)}
-                />
-              </label>
-            ) : null}
-            <footer>
+        <ModalShell
+          id="ask"
+          title={pending.opts.title}
+          panelClass="ask-modal"
+          backdropClass="ask-overlay"
+          onClose={() => finish(null)}
+          footer={
+            <>
               <button type="button" className="btn ghost" onClick={() => finish(null)}>
                 {pending.opts.cancelLabel ?? 'Cancel'}
               </button>
@@ -120,9 +111,24 @@ export function AskProvider({ children }: { children: ReactNode }) {
                   {c.label}
                 </button>
               ))}
-            </footer>
-          </div>
-        </div>
+            </>
+          }
+        >
+          {pending.opts.body ? <div className="ask-body">{pending.opts.body}</div> : null}
+          {pending.opts.reason ? (
+            <label className="ask-reason">
+              {pending.opts.reason.label}
+              {pending.opts.reason.required ? <span className="muted small"> (required)</span> : <span className="muted small"> (optional)</span>}
+              <textarea
+                ref={reasonRef}
+                rows={3}
+                value={reason}
+                placeholder={pending.opts.reason.placeholder ?? ''}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            </label>
+          ) : null}
+        </ModalShell>
       ) : null}
     </AskContext.Provider>
   );
