@@ -63,3 +63,15 @@ NEW
 - FINDING, fixed in 21631dd: with a portal account granted, the Ops portal-access badge read `active` — the enum word beside an engagement badge reading `Active` that means something else. Now No access / Invited / Signed up / Revoked.
 - Brian declined a second real-card payment: SA-2026-0003 proved the path on live keys and held through forty ticks; the rotation only risked the signature, which the installer verified both ways.
 - Gate for harness page three: five consecutive green runs of pages one and two — met 2026-09-10.
+
+## Phone walk findings — 2026-09-10 evening (Brian's rulings on the 09-10 walk)
+- [x] 0. Harness vs device. Three gaps closed: it ran `next dev` (now build+start), its phone was Chromium (now WebKit), it dispatched clicks instead of tapping (now hit-tested). None reproduces the dead Withdraw. App-shell cache header fixed (no-store; only /_next/static immutable). Lesson written under checks-that-lie: "green harness, dead button". NOT root-caused — see the report.
+- [x] 1. One modal shell: opaque panel, backdrop, scroll lock, focus in, escape and click-out. All three modals converted. Harness asserts the contract at both viewports.
+- [x] 2. No money record reads unknown. invoices.voided_by_label; cascades record mechanism + person. SA-2026-0004 backfilled.
+- [x] 3. Reasons stand alone. SA-2026-0004 rewritten; the cascade prefix is a sentence.
+- [x] 4. Task dedupe. Seven duplicates, not two — dedupe key was the quote id. Opt-in by kind; five duplicates cancelled through setTaskStatus on two test clients.
+- [x] 5. Tasks on a phone, 5a–5h, plus harness page three. Found and fixed a 1280px horizontal overflow nobody had reported.
+- [x] 6. Drift task: reported as a finding, NOT built — no resolve-as-expected path exists. Awaiting a ruling.
+- [x] 7. Pay-link walk item noted as untestable until an open invoice exists.
+- [x] Role resolver audit delivered (table only, no changes). Four live defects found; awaiting rulings.
+- Gate for harness page four: five consecutive green runs of pages one, two and three.
