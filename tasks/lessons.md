@@ -1870,3 +1870,45 @@ engagement in one place and void reversed two others. Two answers to one questio
 one a person reads first (the engagement row) was the wrong one. Rule: a value written by
 issuance is reversed by void, or it is derived from the record and never written at all. The
 stamp is now derived (restampDepositFromRecord); void, transfer and a route re-derive it.
+
+## 2026-09-10 — checks-that-lie: green harness, dead button
+
+Brian tapped Withdraw on the one engagement holding a paid deposit, on his iPhone, on
+production. Nothing happened. No modal, no choice, no error. Harness page one asserts that exact
+control and had been green five runs out of five.
+
+**The finding is the disagreement, not the modal.** A guard that passes while the thing it
+guards is dead in someone's hand is worse than no guard: it is a reason not to look.
+
+Three ways the harness was not testing what a person uses, all three now closed:
+
+1. **It ran `next dev`.** Dev and production are different artifacts — different compilation,
+   different minification, different chunking, React in development mode. Production is the only
+   build anybody ships. The harness now runs `next build` then `next start`, for both apps.
+2. **Its "phone" was Chromium.** The iPhone device preset was overridden to Chromium to avoid a
+   second browser download, so the phone project had the geometry of Brian's phone and the
+   engine of his desktop. Safari is a different engine and the walk is a Safari walk. It is
+   WebKit now.
+3. **It did not tap; it dispatched.** The step reached into the DOM and called `.click()` on the
+   element it found. That fires the handler and skips every question a finger has to answer: is
+   the control in view, is it covered, is it stable. A harness that can drive a button a person
+   cannot reach will certify a button a person cannot reach. Every click is a real hit-tested
+   click now, which scrolls, waits for stability, and fails if something else would catch the tap.
+
+**What none of them explained.** With all three fixed, page one is still green and the failure
+does not reproduce. What was ruled out with evidence: the modal code and its CSS are both in the
+deployed bundle; the modal provider is mounted in the layout; no handler leaves the page's busy
+flag stuck; every chunk the served document names still resolves.
+
+**The one mechanism found that fits.** The Ops and portal app shells were served with
+`Cache-Control: s-maxage=31536000` and nothing telling any cache to revalidate. That document
+names the hashed JS bundles, and a deploy deletes them — so a client holding an old shell asks
+for code that is gone and gets a page whose buttons do nothing, with no error to show for it.
+Two deploys went out the day of the walk. The shell is now `no-store, must-revalidate` and only
+`/_next/static/*` stays immutable. This is a real defect and it is fixed; it is NOT confirmed as
+the cause, and saying otherwise would be the same kind of lie as the green harness.
+
+**The rule.** A browser check must run the artifact production serves, in the engine the person
+uses, through the events a finger generates. Any one of those three substituted for convenience
+turns the check into a claim about something nobody ships. And when a walk and a green check
+disagree, the walk is right until proven otherwise — the check is the thing on trial.

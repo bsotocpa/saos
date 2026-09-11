@@ -11,6 +11,25 @@ portal.sotoaccounting.com {
 	# Brian was mid-navigation on /clients/[id] and broke the page. Retrying for a
 	# few seconds turns a container swap into a pause instead of an error — a
 	# standing deploy characteristic engineered away rather than documented around.
+	# THE DOCUMENT IS NEVER CACHED; THE HASHED CHUNKS ALWAYS ARE (2026-09-10).
+	#
+	# Next serves its prerendered shells with s-maxage=31536000 and no directive telling
+	# anyone to revalidate. That shell NAMES the hashed JS bundles, and a deploy deletes
+	# them — so a client holding an old shell asks for code that is gone and lands on a
+	# page whose buttons do nothing, with no error to show for it. Everything under
+	# /_next/static is content-hashed and safe to keep forever; the document is not.
+	# `defer` so these land after the upstream's own Cache-Control, replacing it.
+	@static path /_next/static/*
+	@document not path /_next/static/*
+	header @static {
+		Cache-Control "public, max-age=31536000, immutable"
+		defer
+	}
+	header @document {
+		Cache-Control "no-store, must-revalidate"
+		defer
+	}
+
 	reverse_proxy portal:3000 {
 		lb_try_duration 10s
 		lb_try_interval 250ms
@@ -37,6 +56,25 @@ ops.sotoaccounting.com {
 	# Brian was mid-navigation on /clients/[id] and broke the page. Retrying for a
 	# few seconds turns a container swap into a pause instead of an error — a
 	# standing deploy characteristic engineered away rather than documented around.
+	# THE DOCUMENT IS NEVER CACHED; THE HASHED CHUNKS ALWAYS ARE (2026-09-10).
+	#
+	# Next serves its prerendered shells with s-maxage=31536000 and no directive telling
+	# anyone to revalidate. That shell NAMES the hashed JS bundles, and a deploy deletes
+	# them — so a client holding an old shell asks for code that is gone and lands on a
+	# page whose buttons do nothing, with no error to show for it. Everything under
+	# /_next/static is content-hashed and safe to keep forever; the document is not.
+	# `defer` so these land after the upstream's own Cache-Control, replacing it.
+	@static path /_next/static/*
+	@document not path /_next/static/*
+	header @static {
+		Cache-Control "public, max-age=31536000, immutable"
+		defer
+	}
+	header @document {
+		Cache-Control "no-store, must-revalidate"
+		defer
+	}
+
 	reverse_proxy internal:3005 {
 		lb_try_duration 10s
 		lb_try_interval 250ms

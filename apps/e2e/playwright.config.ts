@@ -30,8 +30,14 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
-    // The iPhone preset (touch, mobile UA) in Chromium: one browser to install, the phone geometry to read.
-    { name: 'phone', use: { ...devices['iPhone 14'], defaultBrowserType: 'chromium', viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 } },
+    /*
+     * THE PHONE IS SAFARI (2026-09-10, after the walk). This project used to force Chromium
+     * behind the iPhone preset — one browser to install, the phone geometry to read. That is
+     * the geometry of Brian's phone and the engine of his desktop, which is how page one stayed
+     * green five runs out of five while the Withdraw button was dead in his hand. The iPhone
+     * preset's own engine is WebKit; it stays WebKit.
+     */
+    { name: 'phone', use: { ...devices['iPhone 14'], viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 } },
     { name: 'desk', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
   ],
 });

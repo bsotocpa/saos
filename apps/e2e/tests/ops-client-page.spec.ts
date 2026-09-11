@@ -93,29 +93,45 @@ test.describe('Ops → client page', () => {
       const rawEnum = badges.filter(RAW_ENUM);
       expect(rawEnum, 'no raw enum on a badge').toEqual([]);
       // 7. The send log opens, and every row wraps inside the viewport.
-      await page.evaluate(() => { for (const s of document.querySelectorAll('details summary')) if (/send log/i.test(s.textContent ?? '')) (s as HTMLElement).click(); });
+      // Real taps here too, one summary at a time, for the same reason as step 8.
+      const logs = page.locator('details summary', { hasText: /send log/i });
+      for (let i = 0; i < (await logs.count()); i++) await logs.nth(i).click();
       await page.waitForTimeout(800);
       const overflowing = await page.evaluate(() => [...document.querySelectorAll('.send-log li')].filter((li) => li.getBoundingClientRect().right > document.documentElement.clientWidth + 1).length);
       expect(overflowing, 'send-log rows inside the viewport').toBe(0);
-      // 8. Withdraw on the engagement that holds a paid deposit (the quote engagement, not
-      //    "Books, monthly"): the in-app modal, the reason, then the transfer/refund choice —
-      //    and Cancel leaves it active.
-      const depositRow = () => [...document.querySelectorAll(".quote-line")].find((r) => !/Books, monthly/.test(r.textContent ?? "") && [...r.querySelectorAll("button")].some((b) => b.textContent?.trim() === "Withdraw"));
-      const clicked = await page.evaluate((finder) => { const row = new Function("return " + finder)()(); const btn = row && [...row.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Withdraw"); btn?.click(); return Boolean(btn); }, depositRow.toString());
-      expect(clicked, "a Withdraw control on the deposit engagement").toBe(true);
-      const modal = page.locator("[role=dialog]");
+      /*
+       * 8. Withdraw on the engagement that holds a paid deposit: the in-app modal, the reason,
+       *    then the refund-or-transfer choice, and Cancel leaves it active.
+       *
+       * THE TAP IS A REAL TAP (2026-09-10). This step used to reach into the DOM and call
+       * .click() on the button it found. That dispatches the event straight at the element and
+       * skips every question a finger has to answer: is the control scrolled into view, is it
+       * covered by something, does it still sit where it was measured. So the harness could
+       * drive a button a person cannot reach — which is exactly the shape of the failure Brian
+       * hit on his phone while this page was green five runs out of five. Playwright's own click
+       * hit-tests: it scrolls the control into view, waits for it to be stable, and FAILS if
+       * another element would receive the tap.
+       */
+      const depositRow = page.locator('.quote-line')
+        .filter({ hasNot: page.getByText('Books, monthly') })
+        .filter({ has: page.getByRole('button', { name: 'Withdraw' }) })
+        .first();
+      await expect(depositRow, 'a Withdraw control on the deposit engagement').toBeVisible();
+      await depositRow.getByRole('button', { name: 'Withdraw' }).click();
+
+      const modal = page.locator('[role=dialog]');
       await expect(modal).toBeVisible();
-      await expect(modal.getByRole("heading", { name: "Withdraw this engagement?" })).toBeVisible();
-      await expect(modal.getByRole("button", { name: "Withdraw" })).toBeDisabled();
-      await modal.locator("textarea").fill("harness walk: duplicate engagement");
-      await modal.getByRole("button", { name: "Withdraw" }).click();
-      await expect(modal.getByRole("heading", { name: "This engagement holds a paid deposit" })).toBeVisible();
-      await expect(modal.getByRole("button", { name: "Move to Books, monthly" })).toBeVisible();
-      await expect(modal.getByRole("button", { name: "Raise the refund" })).toBeVisible();
-      await modal.getByRole("button", { name: "Cancel" }).click();
+      await expect(modal.getByRole('heading', { name: 'Withdraw this engagement?' })).toBeVisible();
+      await expect(modal.getByRole('button', { name: 'Withdraw' })).toBeDisabled();
+      await modal.locator('textarea').fill('harness walk: duplicate engagement');
+      await modal.getByRole('button', { name: 'Withdraw' }).click();
+      await expect(modal.getByRole('heading', { name: 'This engagement holds a paid deposit' })).toBeVisible();
+      await expect(modal.getByRole('button', { name: 'Move to Books, monthly' })).toBeVisible();
+      await expect(modal.getByRole('button', { name: 'Raise the refund' })).toBeVisible();
+      await modal.getByRole('button', { name: 'Cancel' }).click();
       await expect(modal).toHaveCount(0);
-      const stillActive = await page.evaluate((finder) => { const row = new Function("return " + finder)()(); return /Active/.test(row?.querySelector(".badge")?.textContent ?? ""); }, depositRow.toString());
-      expect(stillActive, "the engagement is still active after Cancel").toBe(true);
+      await expect(depositRow.locator('.badge').first(), 'the engagement is still active after Cancel').toHaveText('Active');
+
       passed = true;
     } finally {
       await page.screenshot({ path: shot, fullPage: true });

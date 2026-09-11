@@ -66,6 +66,55 @@ export function restoreNextFiles(artifactsDir: string, appDir: string, prefix = 
   }
 }
 
+
+/*
+ * THE HARNESS WALKS WHAT PRODUCTION SERVES (2026-09-10, Brian's ruling after the phone walk).
+ *
+ * It used to run `next dev`. Dev and production are different artifacts: dev compiles per
+ * request with no minification, no chunk splitting and React in development mode. A guard that
+ * green-lights an artifact nobody ships is not a guard — the phone found a dead Withdraw button
+ * on production while page one was green five runs out of five.
+ *
+ * So: `next build`, then `next start`. Slower by a minute; it is the only version that means
+ * anything. Build output goes outside the repo for the same Dropbox reason as before.
+ */
+async function buildAndStart(
+  label: string,
+  appDir: string,
+  distDir: string,
+  port: number,
+  nextBin: string,
+  apiPort: number
+): Promise<ChildProcess> {
+  const distRel = relative(appDir, distDir);
+  const env = { ...process.env, API_URL: `http://localhost:${apiPort}`, NEXT_DIST_DIR: distRel };
+
+  await new Promise<void>((done, fail) => {
+    const build = spawn(process.execPath, [nextBin, 'build'], {
+      cwd: appDir,
+      env: { ...env, NODE_ENV: 'production' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let tail = '';
+    const keep = (c: Buffer) => {
+      tail = (tail + c.toString()).slice(-4000);
+      if (process.env.E2E_VERBOSE) process.stderr.write(`[${label} build] ${c.toString()}`);
+    };
+    build.stdout?.on('data', keep);
+    build.stderr?.on('data', keep);
+    build.on('exit', (code) => (code === 0 ? done() : fail(new Error(`${label} failed to build (${code}):\n${tail}`))));
+  });
+
+  const server = spawn(process.execPath, [nextBin, 'start', '-p', String(port)], {
+    cwd: appDir,
+    env: { ...env, NODE_ENV: 'production' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  server.stdout?.on('data', (c: Buffer) => { if (process.env.E2E_VERBOSE) process.stderr.write(`[${label}] ${c.toString()}`); });
+  server.stderr?.on('data', (c: Buffer) => process.stderr.write(`[${label}] ${c.toString()}`));
+  return server;
+}
+
 export default async function globalSetup(): Promise<void> {
   mkdirSync(artifacts, { recursive: true });
 
@@ -94,13 +143,8 @@ export default async function globalSetup(): Promise<void> {
   writeFileSync(resolve(artifacts, 'next-files.json'), JSON.stringify(snapshot));
 
   const nextBin = resolve(root, 'node_modules', 'next', 'dist', 'bin', 'next');
-  const ops = spawn(process.execPath, [nextBin, 'dev', '-p', String(OPS_PORT)], {
-    cwd: opsDir,
-    env: { ...process.env, API_URL: `http://localhost:${API_PORT}`, NODE_ENV: 'development', NEXT_DIST_DIR: distRel },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  ops.stdout?.on('data', (c: Buffer) => { if (process.env.E2E_VERBOSE) process.stderr.write(`[ops] ${c.toString()}`); });
-  ops.stderr?.on('data', (c: Buffer) => process.stderr.write(`[ops] ${c.toString()}`));
+  void distRel;
+  const ops = await buildAndStart('ops', opsDir, distDir, OPS_PORT, nextBin, API_PORT);
   const opsExited = new Promise<never>((_, reject) => ops.on('exit', (code) => reject(new Error(`the Ops dev server exited with ${code} before answering`))));
   try {
     await Promise.race([waitForHttp(`http://localhost:${OPS_PORT}/login`, 240_000), opsExited]);
@@ -118,13 +162,7 @@ export default async function globalSetup(): Promise<void> {
   for (const name of NEXT_TOUCHED_FILES) snapshot[`portal/${name}`] = readFileSync(resolve(portalDir, name), 'utf8');
   writeFileSync(resolve(artifacts, 'next-files.json'), JSON.stringify(snapshot));
 
-  const portal = spawn(process.execPath, [nextBin, 'dev', '-p', String(PORTAL_PORT)], {
-    cwd: portalDir,
-    env: { ...process.env, API_URL: `http://localhost:${API_PORT}`, NODE_ENV: 'development', NEXT_DIST_DIR: relative(portalDir, portalDist) },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  portal.stdout?.on('data', (c: Buffer) => { if (process.env.E2E_VERBOSE) process.stderr.write(`[portal] ${c.toString()}`); });
-  portal.stderr?.on('data', (c: Buffer) => process.stderr.write(`[portal] ${c.toString()}`));
+  const portal = await buildAndStart('portal', portalDir, portalDist, PORTAL_PORT, nextBin, API_PORT);
   const portalExited = new Promise<never>((_, reject) => portal.on('exit', (code) => reject(new Error(`the portal dev server exited with ${code} before answering`))));
   try {
     await Promise.race([waitForHttp(`http://localhost:${PORTAL_PORT}/login`, 240_000), portalExited]);
