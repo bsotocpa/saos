@@ -1,6 +1,6 @@
 // DECISION 1 (2026-09-09, Brian's evening ruling): a withdrawal never leaves a payable invoice
 // behind. Sent/overdue invoices on the engagement are voided in the same transaction (reason
-// "engagement withdrawn — <reason>", cancellation notice through its gate); drafts are deleted.
+// "Engagement withdrawn: <reason>", cancellation notice through its gate); drafts are deleted.
 // The database holds the invariant from both sides (migration 0085), and item 7d's query is the
 // guard: no payable invoice on a withdrawn engagement, ever. Synthetic data only.
 
@@ -69,7 +69,7 @@ test('withdrawing voids the attached sent invoice with the withdrawal reason, de
   const inv = (await app.db.query<{ status: string; void_reason: string; voided_by_staff_id: string | null }>(
     `SELECT status::text AS status, void_reason, voided_by_staff_id FROM invoices WHERE id = $1`, [x.depositInvoiceId])).rows[0]!;
   assert.equal(inv.status, 'void');
-  assert.equal(inv.void_reason, 'engagement withdrawn — duplicate of the real engagement');
+  assert.equal(inv.void_reason, 'Engagement withdrawn: duplicate of the real engagement');
   assert.equal(inv.voided_by_staff_id, ceoId, 'voided by the person who withdrew');
   assert.equal((await app.db.query(`SELECT 1 FROM invoices WHERE id = $1`, [draft[0]!.id])).rows.length, 0, 'the draft is gone');
 
@@ -119,4 +119,36 @@ test('completing an engagement with an unpaid invoice is still allowed (DECISION
   const r = await closeEngagement(app, e.id, { outcome: 'completed' }, { type: 'system', label: 'test' });
   assert.equal(r.outcome, 'completed');
   assert.deepEqual(r.invoicesVoided, [], 'completion does not void: the invoice is collected after the work');
+});
+
+/*
+ * NO MONEY RECORD READS "UNKNOWN" (2026-09-10, Brian's ruling from the phone walk).
+ *
+ * SA-2026-0004 was voided by the withdrawal cascade under a system actor with no staff id, so
+ * the invoice row on the client page said "(actor unknown)" about money. The cascade knew who
+ * started it the whole time. A cascade is not anonymous: it records the mechanism AND the person.
+ */
+test('a cascade names itself and the person behind it — never "unknown"', async () => {
+  const x = await acceptedUnpaid();
+  await app.db.query(
+    `UPDATE invoices SET status = 'sent', sent_at = now() WHERE id = $1`, [x.depositInvoiceId]);
+
+  // A system actor: no staff id, the way the overnight batch and the change-order path run.
+  await closeEngagement(
+    app, x.engagementId,
+    { outcome: 'withdrawn', reason: 'superseded by the engagement that remains open' },
+    { type: 'system', label: 'Brian Soto' }
+  );
+
+  const inv = (await app.db.query<{ voided_by_staff_id: string | null; voided_by_label: string | null; void_reason: string }>(
+    `SELECT voided_by_staff_id, voided_by_label, void_reason FROM invoices WHERE id = $1`, [x.depositInvoiceId])).rows[0]!;
+
+  assert.equal(inv.voided_by_staff_id, null, 'no person pressed Void — this was the cascade');
+  assert.equal(
+    inv.voided_by_label,
+    'system — engagement withdrawal by Brian Soto',
+    'the mechanism and the person who started it, both on the record'
+  );
+  assert.match(inv.void_reason, /^Engagement withdrawn: /, 'the reason says what happened, in a sentence');
+  assert.doesNotMatch(inv.voided_by_label ?? '', /unknown/i);
 });

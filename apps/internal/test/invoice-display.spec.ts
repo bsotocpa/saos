@@ -42,5 +42,6 @@ test('partially refunded reads "$X of $Y"', () => {
 
 test('a void row with nothing recorded says so instead of printing blanks', () => {
   const line = invoiceStatusLine({ invoice_number: 'SX-5', status: 'void', total_cents: 100, amount_paid_cents: 0 }, fmt);
-  assert.equal(line, 'void · (no reason recorded) · (actor unknown) · (date unknown)');
+  // No money record reads "unknown" (2026-09-10): an unrecorded actor says where to look.
+  assert.equal(line, 'void · (no reason recorded) · actor not recorded — see the audit log · (date unknown)');
 });

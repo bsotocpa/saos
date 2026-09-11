@@ -52,6 +52,28 @@ export interface CreateTaskInput {
  * The one entry point. Dedupes on (source_type, source_id) across open
  * statuses so job re-runs and webhook replays never double a work item.
  */
+/*
+ * ONE OPEN TASK PER CLIENT PER KIND, for the kinds where a second one means nothing
+ * (2026-09-10, Brian's ruling from the phone walk).
+ *
+ * Seven identical "Start onboarding: … (quote accepted)" tasks sat in the queue, because the
+ * dedupe key was (source_type, source_id) and source_id is the QUOTE — a new id on every
+ * acceptance. The work those tasks describe is the same work: onboard this client. A second row
+ * is not a second job, it is the same job written down twice.
+ *
+ * NOT every kind. Two IRS notices for one client are two notices, two document requests are two
+ * requests, two resolution years are two returns to prepare. Collapsing those would lose work.
+ * So the rule is opt-in by kind, and the kinds that opt in are the ones where the task names a
+ * STATE of the client rather than a THING that arrived.
+ */
+const ONE_OPEN_PER_CONTACT = new Set<string>([
+  'quote_accepted',        // onboard this client — one client, one onboarding
+  'onboarding_deposit',    // they owe their deposit; a second quote does not double it
+  'onboarding_docs',       // their documents are outstanding
+  'stalled_flag',          // this client has stalled
+  'sos_verify',            // their SOS record needs checking
+]);
+
 export async function createTask(app: FastifyInstance, input: CreateTaskInput): Promise<{ id: string; created: boolean }> {
   if (input.sourceType && input.sourceId) {
     const existing = await app.db.query<{ id: string }>(
@@ -61,6 +83,27 @@ export async function createTask(app: FastifyInstance, input: CreateTaskInput): 
       [input.sourceType, input.sourceId, OPEN_STATUSES]
     );
     if (existing.rows[0]) return { id: existing.rows[0].id, created: false };
+  }
+
+  /*
+   * The same client, the same kind, already open: that task IS this task. Point it at the newer
+   * cause so the row leads to the thing that just happened, and hand back the id that already
+   * exists. Nothing is created, and nothing is lost.
+   */
+  if (input.sourceType && input.contactId && ONE_OPEN_PER_CONTACT.has(input.sourceType)) {
+    const open = await app.db.query<{ id: string }>(
+      `SELECT id FROM tasks
+        WHERE source_type = $1 AND contact_id = $2 AND status = ANY($3::task_status[])
+        ORDER BY created_at LIMIT 1`,
+      [input.sourceType, input.contactId, OPEN_STATUSES]
+    );
+    if (open.rows[0]) {
+      await app.db.query(
+        `UPDATE tasks SET source_id = COALESCE($2, source_id), updated_at = now() WHERE id = $1`,
+        [open.rows[0].id, input.sourceId ?? null]
+      );
+      return { id: open.rows[0].id, created: false };
+    }
   }
 
   const status = input.status ?? 'not_started';

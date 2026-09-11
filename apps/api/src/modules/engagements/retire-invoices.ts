@@ -47,7 +47,13 @@ export async function retirePayableInvoices(
       deleted.push(inv.invoice_number);
       continue;
     }
-    await voidInvoice(app, inv.id, { reason: `engagement withdrawn — ${reason}` }, { id: actor.id ?? null, fullName: actor.label });
+    /*
+     * THE CASCADE NAMES ITSELF AND THE PERSON BEHIND IT (2026-09-10). This ran under a system
+     * actor with no staff id, so the invoice row said "(actor unknown)" about money. A cascade
+     * is not anonymous — it was started by someone, and both halves belong on the record.
+     */
+    const label = actor.id ? actor.label : `system — engagement withdrawal by ${actor.label}`;
+    await voidInvoice(app, inv.id, { reason: `Engagement withdrawn: ${reason}` }, { id: actor.id ?? null, fullName: label });
     voided.push(inv.invoice_number);
   }
   return { voided, deleted };

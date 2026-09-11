@@ -5,6 +5,7 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
@@ -612,4 +613,47 @@ test('backlog: the route ships the hidden count with the list, and the filtered 
     (excluded.json().tasks as Array<{ source_type: string | null }>).every((t) => t.source_type !== 'enrichment'),
     'excludeSourceType removes exactly that source'
   );
+});
+
+/*
+ * ONE OPEN TASK PER CLIENT PER KIND (2026-09-10, Brian's ruling from the phone walk).
+ *
+ * Seven identical "Start onboarding: … (quote accepted)" tasks sat in the production queue. The
+ * dedupe key was (source_type, source_id) and source_id is the quote — a new id every time. The
+ * work is the same work.
+ */
+test('a second quote acceptance updates the open onboarding task instead of creating another', async () => {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Dedupe', email: 'dedupe@example.test' });
+
+  const first = await createTask(app, {
+    title: 'Start onboarding: Synthetic Dedupe (quote accepted)',
+    contactId: c.id, source: 'automation', sourceType: 'quote_accepted', sourceId: randomUUID(),
+  });
+  assert.equal(first.created, true);
+
+  const secondQuote = randomUUID();
+  const second = await createTask(app, {
+    title: 'Start onboarding: Synthetic Dedupe (quote accepted)',
+    contactId: c.id, source: 'automation', sourceType: 'quote_accepted', sourceId: secondQuote,
+  });
+  assert.equal(second.created, false, 'the same job, not a second one');
+  assert.equal(second.id, first.id, 'and it is the task that already existed');
+
+  const rows = await app.db.query<{ n: string }>(
+    `SELECT count(*) AS n FROM tasks WHERE contact_id = $1 AND source_type = 'quote_accepted'`, [c.id]);
+  assert.equal(rows.rows[0]!.n, '1', 'one row, not two');
+
+  const pointed = await app.db.query<{ source_id: string }>(
+    `SELECT source_id FROM tasks WHERE id = $1`, [first.id]);
+  assert.equal(pointed.rows[0]!.source_id, secondQuote, 'pointed at the acceptance that just happened');
+});
+
+/* The kinds where a second one IS a second job must still create one. */
+test('two IRS notices for one client are two tasks, not one', async () => {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Twonotice', email: 'twonotice@example.test' });
+  const a = await createTask(app, { title: 'IRS notice CP2000', contactId: c.id, source: 'automation', sourceType: 'irs_notice', sourceId: randomUUID() });
+  const b = await createTask(app, { title: 'IRS notice CP14', contactId: c.id, source: 'automation', sourceType: 'irs_notice', sourceId: randomUUID() });
+  assert.equal(a.created, true);
+  assert.equal(b.created, true, 'a different notice is a different job');
+  assert.notEqual(a.id, b.id);
 });

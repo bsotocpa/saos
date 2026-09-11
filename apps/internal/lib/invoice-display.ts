@@ -46,7 +46,9 @@ export function invoiceStatusLine(
   const refunded = inv.amount_refunded_cents ?? 0;
   switch (inv.status) {
     case 'void':
-      return ['void', inv.void_reason ?? '(no reason recorded)', inv.voided_by ?? '(actor unknown)', inv.voided_at ? fmt.date(inv.voided_at) : '(date unknown)']
+      // No money record reads "unknown" (2026-09-10). Pre-2026-09-10 rows that genuinely have
+      // no actor recorded say where to look instead of shrugging.
+      return ['void', inv.void_reason ?? '(no reason recorded)', inv.voided_by ?? 'actor not recorded — see the audit log', inv.voided_at ? fmt.date(inv.voided_at) : '(date unknown)']
         .join(' · ');
     case 'refunded':
       return ['refunded', fmt.money(refunded), inv.refunded_at ? fmt.date(inv.refunded_at) : '(date unknown)'].join(' · ');

@@ -28,7 +28,7 @@ const silentMailer: Mailer = { transport: 'console', async send() { return { id:
 const auth = (t: { token: string }) => ({ authorization: `Bearer ${t.token}` });
 
 const DEPOSIT_FIELDS = ['deposit_treatment', 'deposit_standard_cents', 'deposit_charged_cents', 'deposit_override_reason', 'deposit_override_by_staff_id'] as const;
-const VOID_FIELDS = new Set(['status', 'void_reason', 'voided_by_staff_id', 'voided_at', 'stripe_checkout_session_id', 'pay_token_revoked_at', 'updated_at']);
+const VOID_FIELDS = new Set(['status', 'void_reason', 'voided_by_staff_id', 'voided_by_label', 'voided_at', 'stripe_checkout_session_id', 'pay_token_revoked_at', 'updated_at']);
 
 async function staffWithToken(email: string, role: string): Promise<TestStaff & { token: string }> {
   const secret = new OTPAuth.Secret({ size: 20 }).base32;

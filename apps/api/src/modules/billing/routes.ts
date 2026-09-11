@@ -192,7 +192,10 @@ export function registerBillingRoutes(app: FastifyInstance): void {
       // must say inline: reason, actor and date; amount and date (2026-09-09).
       `SELECT i.id, i.invoice_number, i.status, i.total_cents, i.amount_paid_cents, i.sent_at, i.paid_at,
               i.qb_exported_at, c.id AS contact_id, c.first_name, c.last_name,
-              i.amount_refunded_cents, i.void_reason, i.voided_at, vs.full_name AS voided_by,
+              i.amount_refunded_cents, i.void_reason, i.voided_at,
+              -- The joined staff name when a person did it; the recorded label when a cascade did
+              -- (2026-09-10). Never null on a void, so the row never reads "unknown".
+              COALESCE(vs.full_name, i.voided_by_label) AS voided_by,
               (SELECT max(r.created_at) FROM invoice_refunds r WHERE r.invoice_id = i.id) AS refunded_at
        FROM invoices i JOIN contacts c ON c.id = i.contact_id
        LEFT JOIN staff vs ON vs.id = i.voided_by_staff_id

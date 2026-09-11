@@ -87,10 +87,10 @@ export async function voidInvoice(
     // The trigger re-checks every one of the above; this UPDATE is where it fires.
     await app.db.query(
       `UPDATE invoices
-          SET status = 'void', void_reason = $2, voided_by_staff_id = $3, voided_at = now(),
+          SET status = 'void', void_reason = $2, voided_by_staff_id = $3, voided_by_label = $4, voided_at = now(),
               stripe_checkout_session_id = NULL, pay_token_revoked_at = now()
         WHERE id = $1`,
-      [inv.id, reason, actor.id]
+      [inv.id, reason, actor.id, actor.fullName]
     );
     if (inv.tax_engagement_id) {
       await app.db.query(
