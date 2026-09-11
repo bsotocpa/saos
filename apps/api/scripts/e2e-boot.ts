@@ -20,6 +20,8 @@ import { mapStripeEvent } from '../src/modules/billing/stripe.ts';
 import { createEngagement } from '../src/modules/engagements/service.ts';
 import { pauseEngagement } from '../src/modules/engagements/pause.ts';
 import { drainOutbox } from '../src/outbox.ts';
+import { createTask } from '../src/modules/tasks/service.ts';
+import { todayChicago } from '../src/modules/tax/deadlines.ts';
 import * as OTPAuth from 'otpauth';
 
 const PORT = Number(process.env.E2E_API_PORT ?? 3101);
@@ -117,6 +119,28 @@ await createInvoice(app, { type: 'staff', id: staff.id, label: staff.fullName },
 // 5. The books engagement goes ON HOLD through the pause route: a two-word status, so a badge
 //    that falls back to the raw enum (on_hold) is a visible failure, not a lowercase word.
 await pauseEngagement(app, e2.id, { reason: 'Harness: client travelling' }, { type: 'staff', id: staff.id, label: staff.fullName });
+
+/*
+ * PAGE THREE needs a queue with something in it: one overdue, one due today, one with no due
+ * date, one far off. Those are the shapes the phone card has to render side by side. Through
+ * createTask, the same service every route uses.
+ */
+const taskSeed = [
+  { title: 'Harness: overdue, high priority', dueDate: '2026-09-01', priority: 2 },
+  { title: 'Harness: due today', dueDate: todayChicago(), priority: 1 },
+  { title: 'Harness: no due date', priority: 0 },
+  { title: 'Harness: someday', dueDate: '2026-12-31', priority: 0 },
+];
+for (const t of taskSeed) {
+  await createTask(app, {
+    title: t.title,
+    contactId: contact.id,
+    assignedStaffId: staff.id,
+    priority: t.priority,
+    ...(t.dueDate ? { dueDate: t.dueDate } : {}),
+    source: 'manual',
+  });
+}
 
 /*
  * PAGE TWO'S WAY IN. 'Grant access' on the Ops client page is POST /portal-users; it creates

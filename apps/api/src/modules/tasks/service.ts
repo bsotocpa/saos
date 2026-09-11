@@ -410,7 +410,13 @@ export interface TaskFilters {
   limit?: number | undefined;
 }
 
+/*
+ * QUEUE ORDER (2026-09-10, Brian's ruling 5b): what is late, then what matters. Two columns,
+ * one choice, because "sort by due date" alone buries a P1 under a pile of same-day chores and
+ * "sort by priority" alone hides what is already overdue.
+ */
 const SORTABLE: Record<string, string> = {
+  due_then_priority: 't.due_date',
   due_date: 't.due_date', priority: 't.priority', status: 't.status', title: 't.title',
   created_at: 't.created_at', updated_at: 't.updated_at', assignee: 'assignee_name', client: 'client_name',
 };
@@ -478,7 +484,10 @@ export async function searchTasks(app: FastifyInstance, f: TaskFilters) {
 
   const sortCol = SORTABLE[f.sortField ?? ''] ?? 't.priority';
   const sortDir = f.sortDir === 'asc' ? 'ASC' : 'DESC';
-  const secondary = sortCol === 't.priority' ? ', t.due_date NULLS LAST, t.created_at' : ', t.created_at DESC';
+  const secondary =
+    f.sortField === 'due_then_priority' ? ', t.priority DESC, t.created_at'
+    : sortCol === 't.priority' ? ', t.due_date NULLS LAST, t.created_at'
+    : ', t.created_at DESC';
 
   const { rows } = await app.db.query(
     `${TASK_SELECT}

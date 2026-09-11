@@ -76,6 +76,12 @@ export default function TasksPage() {
 
   const [filters, setFilters] = useState<Filters>({ ...EMPTY_FILTERS, assignee: 'me' });
   const [viewType, setViewType] = useState<ViewType>('list');
+  /*
+   * 5b: the phone opens on MY OPEN TASKS, as a queue — the question a person unlocks their
+   * phone to answer. Sorted due date first, then priority: what is late, then what matters.
+   * Applied once, on the first load at phone width, so it never fights a later choice.
+   */
+  const phoneDefaultApplied = useRef(false);
   const [groupBy, setGroupBy] = useState('status');
   const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS);
 
@@ -84,6 +90,12 @@ export default function TasksPage() {
   const [backlogCount, setBacklogCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  /*
+   * 5e: SELECT MODE IS EXPLICIT. Every card used to carry a checkbox, so a thumb that missed a
+   * title put the page into bulk mode with one row chosen and a bar of destructive controls
+   * across the bottom. Nobody asked for that. Bulk is a mode you turn on by name.
+   */
+  const [selectMode, setSelectMode] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [creating, setCreating] = useState(false);
   const [showWorkload, setShowWorkload] = useState(false);
@@ -152,7 +164,8 @@ export default function TasksPage() {
   const applyView = (v: SavedView) => {
     setActiveViewId(v.id);
     setFilters({ ...EMPTY_FILTERS, ...(v.filters as Partial<Filters>), sortField: v.sort.field ?? 'priority', sortDir: v.sort.dir ?? 'desc' });
-    setViewType(v.view_type);
+    // A saved Kanban view opened on a phone falls back to the list rather than a blank pane.
+    setViewType(isPhone && (v.view_type === 'kanban' || v.view_type === 'timeline') ? 'list' : v.view_type);
     if (v.columns.length) setColumns(v.columns);
     if (v.group_by) setGroupBy(v.group_by);
   };
@@ -204,6 +217,13 @@ export default function TasksPage() {
     await api(`/tasks/${id}/follow-up`, { method: 'POST', body: {} });
     refresh();
   };
+  useEffect(() => {
+    if (!isPhone || phoneDefaultApplied.current) return;
+    phoneDefaultApplied.current = true;
+    setViewType('list');
+    setFilters((f) => ({ ...f, assignee: 'me', includeDone: false, sortField: 'due_then_priority', sortDir: 'asc' }));
+  }, [isPhone]);
+
   const bulk = async (set: Record<string, unknown>) => {
     if (selected.size === 0) return;
     const r = await api<{ updated: number; blocked?: number }>('/tasks/bulk', { method: 'POST', body: { ids: [...selected], set } });
@@ -232,8 +252,14 @@ export default function TasksPage() {
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
         <h1 style={{ margin: 0 }}>Tasks</h1>
+        {/*
+          * PHONE VIEWS (2026-09-10, Brian's ruling). Kanban is horizontally scrolling columns
+          * and Timeline is a 150px label beside a lane: neither survives 390px, and offering
+          * them is offering a dead end. Under 900px there are two views, and the default is
+          * the one a person came here for.
+          */}
         <div className="viewtabs">
-          {(['list', 'kanban', 'calendar', 'timeline'] as ViewType[]).map((v) => (
+          {(isPhone ? (['list', 'calendar'] as ViewType[]) : (['list', 'kanban', 'calendar', 'timeline'] as ViewType[])).map((v) => (
             <button key={v} className={viewType === v ? 'active' : ''} onClick={() => setViewType(v)} type="button">
               {v[0]!.toUpperCase() + v.slice(1)}
             </button>
@@ -250,6 +276,15 @@ export default function TasksPage() {
         {isPhone ? (
           <button className="chip" type="button" onClick={() => setSheetOpen(true)}>
             Filters{activeFilterCount(filters) > 0 ? ` · ${activeFilterCount(filters)}` : ''}
+          </button>
+        ) : null}
+        {isPhone && canManage ? (
+          <button
+            className={`chip ${selectMode ? 'active' : ''}`}
+            type="button"
+            onClick={() => { setSelectMode((m) => !m); setSelected(new Set()); }}
+          >
+            {selectMode ? 'Done selecting' : 'Select'}
           </button>
         ) : null}
         <span style={{ flex: 1 }} />
@@ -287,10 +322,7 @@ export default function TasksPage() {
           later, not noise to delete". A backlog nobody can see is one nobody triages,
           which is how it reached 611.
         */}
-        <button type="button" className={`chip ${activeViewId === '' && filters.sourceType === BACKLOG_SOURCE ? 'active' : ''}`}
-          onClick={() => { setActiveViewId(''); setFilters({ ...EMPTY_FILTERS, sourceType: BACKLOG_SOURCE }); }}>
-          Migration backlog{backlogCount > 0 ? ` (${backlogCount})` : ''}
-        </button>
+
         {views.map((v) => (
           <span key={v.id} className={`chip ${activeViewId === v.id ? 'active' : ''}`} style={{ display: 'inline-flex', alignItems: 'center' }}>
             <button type="button" style={{ all: 'unset', cursor: 'pointer' }} onClick={() => applyView(v)}>
@@ -305,6 +337,18 @@ export default function TasksPage() {
         <button type="button" className="chip" onClick={() => void saveCurrentView()}>+ Save view</button>
       </div>
 
+      {/*
+        * 5g: THE MIGRATION BACKLOG IS NOT A WORKING VIEW. Six hundred imported rows sat in the
+        * same chip row as "My open" and "Overdue", so the row a person uses to work was mostly
+        * a number they are never going to act on today. It lives below, named for what it is.
+        */}
+      <p className="small muted" style={{ margin: '2px 0 10px' }}>
+                <button type="button" className={`chip ${activeViewId === '' && filters.sourceType === BACKLOG_SOURCE ? 'active' : ''}`}
+                  onClick={() => { setActiveViewId(''); setFilters({ ...EMPTY_FILTERS, sourceType: BACKLOG_SOURCE }); }}>
+                  Migration backlog{backlogCount > 0 ? ` (${backlogCount})` : ''}
+                </button>
+      </p>
+
       <div className="task-layout">
         <FilterRail filters={filters} setFilters={(f) => { setActiveViewId(''); setFilters(f); }} staff={staff} />
 
@@ -316,6 +360,16 @@ export default function TasksPage() {
               onOwner={(id) => void bulk({ assignedStaffId: id || null })}
               onPriority={(p) => void bulk({ priority: p })}
               onDue={(d) => void bulk({ dueDate: d || null })}
+              onMassComplete={async () => {
+                const n = selected.size;
+                const a = await ask({
+                  title: `Complete ${n} task${n === 1 ? '' : 's'}?`,
+                  body: <p>They move to Completed together. There is no undo from this bar — reopen them one at a time if this was wrong.</p>,
+                  choices: [{ key: 'go', label: `Complete ${n}`, tone: 'danger' }],
+                });
+                if (!a) return;
+                await bulk({ status: 'completed' });
+              }}
               onClear={() => setSelected(new Set())}
             />
           ) : null}
@@ -324,7 +378,8 @@ export default function TasksPage() {
 
           {viewType === 'list' && isPhone ? (
             <ListCards
-              tasks={tasks} selected={selected} setSelected={setSelected} canManage={canManage} staff={staff}
+              tasks={tasks} selected={selected} setSelected={setSelected} selectMode={selectMode}
+              canManage={canManage} staff={staff}
               onStatus={(id, s) => void setStatus(id, s)}
               onPatch={(id, b) => void patchTask(id, b)}
               onEdit={setEditing} onDuplicate={(id) => void duplicate(id)} onFollowUp={(id) => void followUp(id)}
@@ -395,56 +450,131 @@ export default function TasksPage() {
 function ListCards(props: {
   tasks: Task[];
   selected: Set<string>; setSelected: (s: Set<string>) => void;
+  selectMode: boolean;
   canManage: boolean; staff: StaffEntry[];
   onStatus: (id: string, s: TaskStatus) => void;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onEdit: (t: Task) => void; onDuplicate: (id: string) => void; onFollowUp: (id: string) => void;
 }) {
+  /*
+   * THE CARD FACE (2026-09-10, Brian's rulings 5c/5d/5e).
+   *
+   * It used to carry a checkbox, the title, four pieces of metadata, two dropdowns and two
+   * icon buttons — eleven controls per row, on a 390px screen, for a person trying to answer
+   * "what do I have to do". The face is now the four things that identify the task and the one
+   * action that is nearly always the right one. Everything else is one tap further in.
+   *
+   * The checkbox appears only in select mode. A thumb that misses a title no longer puts the
+   * page into bulk editing.
+   */
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpand = (id: string) => {
+    const next = new Set(expanded);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setExpanded(next);
+  };
   const toggleOne = (id: string, checked: boolean) => {
     const next = new Set(props.selected);
     if (checked) next.add(id); else next.delete(id);
     props.setSelected(next);
   };
+
   return (
     <div>
-      {props.tasks.map((t) => (
-        <div className="tcard" key={t.id}>
-          <div className="trow">
-            <input type="checkbox" style={{ width: 'auto', margin: '3px 0 0' }}
-              checked={props.selected.has(t.id)} onChange={(e) => toggleOne(t.id, e.target.checked)} />
-            <span className="ttitle" onClick={() => props.onEdit(t)}>
-              {t.title}
-              {t.open_blockers > 0 ? <span className="badge warn" style={{ marginLeft: 6 }}>⛔ blocked</span> : null}
-              {t.client_visible ? <span className="badge" style={{ marginLeft: 6 }}>client</span> : null}
-              {isOverdue(t) ? <span className="badge danger" style={{ marginLeft: 6 }}>overdue</span> : null}
-            </span>
+      {props.tasks.map((t) => {
+        const open = expanded.has(t.id);
+        return (
+          <div className="tcard" key={t.id}>
+            <div className="trow">
+              {props.selectMode ? (
+                <input
+                  type="checkbox"
+                  aria-label={`Select "${t.title}"`}
+                  style={{ width: 'auto', margin: '3px 0 0' }}
+                  checked={props.selected.has(t.id)}
+                  onChange={(e) => toggleOne(t.id, e.target.checked)}
+                />
+              ) : null}
+              <span className="ttitle" onClick={() => props.onEdit(t)}>
+                {t.title}
+                {t.open_blockers > 0 ? <span className="badge warn" style={{ marginLeft: 6 }}>⛔ blocked</span> : null}
+                {t.client_visible ? <span className="badge" style={{ marginLeft: 6 }}>client</span> : null}
+                {isOverdue(t) ? <span className="badge danger" style={{ marginLeft: 6 }}>overdue</span> : null}
+              </span>
+            </div>
+
+            {/* Title, client, due, owner. Nothing else earns room on the face. */}
+            <div className="tmeta">
+              {t.client_name ? `${t.client_name} · ` : ''}
+              {t.due_date ? `due ${formatDate(t.due_date)} · ` : 'no due date · '}
+              {t.assignee_name ?? 'unassigned'}
+            </div>
+
+            <div className="tctl">
+              {props.canManage ? (
+                <>
+                  {/* The one action. A blocked task cannot complete, and says so rather than failing. */}
+                  <button
+                    className="btn accent"
+                    type="button"
+                    disabled={t.status === 'completed' || t.open_blockers > 0}
+                    title={t.open_blockers > 0 ? 'Waiting on another task' : 'Mark this complete'}
+                    onClick={() => props.onStatus(t.id, 'completed')}
+                  >
+                    Complete
+                  </button>
+                  <button
+                    className="chip"
+                    type="button"
+                    aria-expanded={open}
+                    onClick={() => toggleExpand(t.id)}
+                  >
+                    {open ? 'Less' : 'More'}
+                  </button>
+                </>
+              ) : (
+                <span className="muted small">{STATUS_LABEL[t.status]} · {PRIORITY_LABEL[t.priority]}</span>
+              )}
+            </div>
+
+            {/* Status, priority, reassign: real controls, one tap in, not on the face. */}
+            {open && props.canManage ? (
+              <div className="tmore">
+                <label className="small">
+                  Status
+                  <select value={t.status} onChange={(e) => props.onStatus(t.id, e.target.value as TaskStatus)}>
+                    {STATUSES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                    {t.status === 'cancelled' ? <option value="cancelled">Cancelled</option> : null}
+                  </select>
+                </label>
+                <label className="small">
+                  Priority
+                  <select value={t.priority} onChange={(e) => props.onPatch(t.id, { priority: Number(e.target.value) })}>
+                    {PRIORITIES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                  </select>
+                </label>
+                <label className="small">
+                  Owner
+                  <select
+                    value={t.assigned_staff_id ?? ''}
+                    onChange={(e) => props.onPatch(t.id, { assignedStaffId: e.target.value || null })}
+                  >
+                    <option value="">Unassigned</option>
+                    {props.staff.map((st) => <option key={st.id} value={st.id}>{st.full_name}</option>)}
+                  </select>
+                </label>
+                <div className="tmore-actions">
+                  <button className="chip" type="button" onClick={() => props.onEdit(t)}>Open</button>
+                  <button className="chip" type="button" onClick={() => props.onDuplicate(t.id)}>Duplicate</button>
+                  <button className="chip" type="button" onClick={() => props.onFollowUp(t.id)}>Follow-up</button>
+                </div>
+                {t.business_name ? <p className="muted small" style={{ margin: '6px 0 0' }}>{t.business_name}</p> : null}
+                {t.tags.length ? <p className="muted small" style={{ margin: '2px 0 0' }}>{t.tags.join(', ')}</p> : null}
+              </div>
+            ) : null}
           </div>
-          <div className="tmeta">
-            {t.client_name ? `${t.client_name} · ` : ''}
-            {t.business_name ? `${t.business_name} · ` : ''}
-            {t.due_date ? `due ${formatDate(t.due_date)} · ` : ''}
-            {t.assignee_name ?? 'unassigned'}
-            {t.tags.length ? ` · ${t.tags.join(', ')}` : ''}
-          </div>
-          <div className="tctl">
-            {props.canManage ? (
-              <>
-                <select value={t.status} onChange={(e) => props.onStatus(t.id, e.target.value as TaskStatus)}>
-                  {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                  {t.status === 'cancelled' ? <option value="cancelled">Cancelled</option> : null}
-                </select>
-                <select value={t.priority} onChange={(e) => props.onPatch(t.id, { priority: Number(e.target.value) })}>
-                  {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                </select>
-                <button className="chip" type="button" title="Duplicate" onClick={() => props.onDuplicate(t.id)}>⧉</button>
-                <button className="chip" type="button" title="Follow-up" onClick={() => props.onFollowUp(t.id)}>↳</button>
-              </>
-            ) : (
-              <span className="muted small">{STATUS_LABEL[t.status]} · {PRIORITY_LABEL[t.priority]}</span>
-            )}
-          </div>
-        </div>
-      ))}
+        );
+      })}
       {props.tasks.length === 0 ? <p className="muted small">No tasks match these filters.</p> : null}
     </div>
   );
@@ -563,29 +693,43 @@ function BulkBar(props: {
   count: number; staff: StaffEntry[];
   onStatus: (s: TaskStatus) => void; onOwner: (id: string) => void;
   onPriority: (p: number) => void; onDue: (d: string) => void; onClear: () => void;
+  onMassComplete: () => Promise<void> | void;
 }) {
   const [due, setDue] = useState('');
   return (
     <div className="bulkbar">
       <strong>{props.count} selected</strong>
-      <select defaultValue="" onChange={(e) => { if (e.target.value) props.onStatus(e.target.value as TaskStatus); e.target.value = ''; }}>
+      {/*
+        * Every control in this bar says what it is (2026-09-10, 5h). The placeholder option is
+        * the visible name; aria-label is what a screen reader and the walk read, because a
+        * placeholder disappears the moment a value is chosen.
+        */}
+      <select aria-label="Set status on the selected tasks" defaultValue="" onChange={(e) => { if (e.target.value) props.onStatus(e.target.value as TaskStatus); e.target.value = ''; }}>
         <option value="" disabled>Set status…</option>
         {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
       </select>
-      <select defaultValue="" onChange={(e) => { props.onOwner(e.target.value === 'none' ? '' : e.target.value); e.target.value = ''; }}>
+      <select aria-label="Set owner on the selected tasks" defaultValue="" onChange={(e) => { props.onOwner(e.target.value === 'none' ? '' : e.target.value); e.target.value = ''; }}>
         <option value="" disabled>Set owner…</option>
         <option value="none">Unassigned</option>
         {props.staff.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
       </select>
-      <select defaultValue="" onChange={(e) => { if (e.target.value !== '') props.onPriority(Number(e.target.value)); e.target.value = ''; }}>
+      <select aria-label="Set priority on the selected tasks" defaultValue="" onChange={(e) => { if (e.target.value !== '') props.onPriority(Number(e.target.value)); e.target.value = ''; }}>
         <option value="" disabled>Set priority…</option>
         {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
       </select>
       <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-        <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+        {/* 5h (2026-09-10): this input sat in the bar with no label at all. */}
+        <label className="small" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+          Due date
+          <input type="date" aria-label="New due date for the selected tasks" value={due} onChange={(e) => setDue(e.target.value)} />
+        </label>
         <button className="chip" type="button" disabled={!due} onClick={() => { if (due) props.onDue(due); }}>Set due</button>
       </span>
-      <button className="chip" type="button" onClick={() => props.onStatus('completed')}>Mass complete</button>
+      {/*
+        * 5f (2026-09-10): completing many tasks at once is not undoable from this bar, so it
+        * says how many before it does it. The count is the thing people get wrong.
+        */}
+      <button className="chip" type="button" onClick={() => void props.onMassComplete()}>Mass complete</button>
       <span style={{ flex: 1 }} />
       <button className="chip" type="button" onClick={props.onClear}>Clear</button>
     </div>
@@ -639,6 +783,7 @@ function ListView(props: {
         ) : null}
       </div>
 
+      <div className="tablewrap">
       <table className="dense">
         <thead>
           <tr>
@@ -742,6 +887,7 @@ function ListView(props: {
           ))}
         </tbody>
       </table>
+      </div>
       {props.tasks.length === 0 ? <p className="muted small" style={{ marginTop: 8 }}>No tasks match these filters.</p> : null}
     </section>
   );
@@ -981,6 +1127,7 @@ function WorkloadTable(props: { workload: Workload[]; setWorkload: (w: Workload[
   return (
     <section className="card" style={{ marginTop: 12 }}>
       <h2>Team workload</h2>
+      <div className="tablewrap">
       <table className="dense">
         <thead>
           <tr><th className="nosort">Person</th><th className="nosort">Not Started</th><th className="nosort">In Progress</th><th className="nosort">Waiting</th><th className="nosort">Deferred</th><th className="nosort">Overdue</th></tr>
@@ -998,6 +1145,7 @@ function WorkloadTable(props: { workload: Workload[]; setWorkload: (w: Workload[
           ))}
         </tbody>
       </table>
+      </div>
     </section>
   );
 }

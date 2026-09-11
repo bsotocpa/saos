@@ -66,7 +66,7 @@ const SearchQuery = z.object({
   delegatedBy: z.uuid().optional(),
   untouchedDays: z.coerce.number().int().min(1).max(365).optional(),
   includeDone: boolParam,
-  sortField: z.enum(['due_date', 'priority', 'status', 'title', 'created_at', 'updated_at', 'assignee', 'client']).optional(),
+  sortField: z.enum(['due_then_priority', 'due_date', 'priority', 'status', 'title', 'created_at', 'updated_at', 'assignee', 'client']).optional(),
   sortDir: z.enum(['asc', 'desc']).optional(),
   limit: z.coerce.number().int().min(1).max(2000).optional(),
 });

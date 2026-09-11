@@ -165,7 +165,10 @@ input:focus, select:focus { outline: 2px solid var(--electric); border-color: va
 
 /* ── v4.5 task workspace (Zoho-benchmark density) ───────────────────────── */
 main:has(.task-layout) { max-width: 1500px; }
-.task-layout { display: grid; grid-template-columns: 230px 1fr; gap: 14px; align-items: start; }
+/* minmax(0, 1fr), not 1fr: a grid track defaults to min-content, so a table wider than the
+   column stretches the COLUMN instead of scrolling inside it, and the whole page goes sideways
+   (harness page three, 2026-09-10: 1351px of document in a 1280px window). */
+.task-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 900px) { .task-layout { grid-template-columns: 1fr; } }
 
 .rail { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; position: sticky; top: 90px; max-height: calc(100vh - 110px); overflow-y: auto; }
@@ -398,3 +401,16 @@ label.inline-check input[type='checkbox'],
   background: var(--paper); border: 1px solid var(--line); border-radius: 8px;
   padding: 10px 12px; margin: 0; max-height: 420px; overflow-y: auto;
 }
+
+/* Task card expand (2026-09-10, finding 5d): status, priority and owner one tap in, never on
+   the face. The face is title, client, due, owner and a single Complete. */
+.tmore { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; display: grid; gap: 8px; }
+.tmore label { display: grid; gap: 3px; font-weight: 600; }
+.tmore label select { margin: 0; font-weight: 400; }
+.tmore-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* A WIDE TABLE SCROLLS ITSELF (2026-09-10, caught by harness page three at 1280px: the tasks
+   table pushed the document to 1351 and the whole page scrolled sideways). The table is allowed
+   to be wider than the screen; the PAGE is not. */
+.tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tablewrap > table { min-width: 100%; }
