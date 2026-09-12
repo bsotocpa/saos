@@ -39,6 +39,7 @@ interface Business {
   id: string; name: string; ein: string | null; entity_type: string | null; status?: string | null;
   industry: string | null; state: string | null; il_sos_status: string | null;
   member_role: string | null; is_primary: boolean;
+  is_test?: boolean; test_note?: string | null;
 }
 interface Packet {
   contact: Contact;
@@ -575,6 +576,13 @@ export default function ClientPacketPage() {
 
         <section className="card">
           <h2>Businesses</h2>
+          {/*
+            2026-09-12 (Brian): exactly one primary business per contact, at the database. When the
+            primary is archived nothing is promoted in its place; the page says so and a person chooses.
+          */}
+          {packet.businesses.length > 0 && !packet.businesses.some((b) => b.is_primary) ? (
+            <p className="small" style={{ color: 'var(--warn)' }}>No primary business set.</p>
+          ) : null}
           {packet.businesses.length === 0 ? (
             <p className="muted small">Individual client — no business on file.</p>
           ) : (
@@ -582,12 +590,84 @@ export default function ClientPacketPage() {
               <div className="lead-card" key={b.id}>
                 <strong>{b.name}</strong>
                 {b.is_primary ? <span className="badge">primary</span> : null}
+                {b.is_test ? <span className="badge warn test-client-badge" title={b.test_note ?? undefined}>TEST</span> : null}
                 <br />
                 <span className="muted small">
                   {b.entity_type ?? 'entity type unknown'}{b.status === 'dissolved' ? <> · <span className="badge warn">dissolved</span></> : null}
                   {b.ein ? ` · EIN on file` : ' · no EIN'}
                   {b.state ? ` · ${b.state}` : ''}
                   {b.industry ? ` · ${b.industry}` : ''}
+                </span>
+                <br />
+                <span className="small">
+                  {!b.is_primary ? (
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!(await ask({ title: `Make ${b.name} the primary business?`, body: <p>The current primary, if any, stops being primary.</p>, choices: [{ key: 'go', label: 'Set as primary', tone: 'primary' }] }))) return;
+                        setBusy(true);
+                        try {
+                          await api(`/contacts/${params.id}/primary-business`, { method: 'POST', body: { businessId: b.id } });
+                          await load();
+                        } catch (err) {
+                          setActionErr(err instanceof Error ? err.message : String(err));
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Set as primary
+                    </button>
+                  ) : null}
+                  {b.is_primary ? (
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!(await ask({ title: `${b.name} is no longer the primary business?`, body: <p>No other business is promoted; the record says no primary is set until someone chooses.</p>, choices: [{ key: 'go', label: 'Clear primary', tone: 'primary' }] }))) return;
+                        setBusy(true);
+                        try {
+                          await api(`/contacts/${params.id}/primary-business`, { method: 'POST', body: { businessId: null } });
+                          await load();
+                        } catch (err) {
+                          setActionErr(err instanceof Error ? err.message : String(err));
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Clear primary
+                    </button>
+                  ) : null}
+                  {' · '}
+                  <button
+                    type="button"
+                    className="btn ghost small"
+                    disabled={busy}
+                    onClick={async () => {
+                      const a = await ask({
+                        title: `Archive ${b.name}?`,
+                        body: <p>Archived, never deleted: it leaves this page and every picker; its history stays. {b.is_primary ? 'It is the primary business; nothing is promoted in its place.' : ''}</p>,
+                        reason: { label: 'Why is it being archived?', required: true },
+                        choices: [{ key: 'go', label: 'Archive', tone: 'danger' }],
+                      });
+                      if (!a) return;
+                      setBusy(true);
+                      try {
+                        await api(`/businesses/${b.id}/archive`, { method: 'POST', body: { reason: a.reason } });
+                        await load();
+                      } catch (err) {
+                        setActionErr(err instanceof Error ? err.message : String(err));
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Archive
+                  </button>
                 </span>
                 {b.il_sos_status && b.il_sos_status !== 'good_standing' ? (
                   <>

@@ -9,6 +9,7 @@ import { writeAudit } from '../../audit.ts';
 import { holds, requireAnyPermission, requirePermission } from '../../plugins/auth.ts';
 import { reasonText } from '../../reasons.ts';
 import { mergeContacts } from './merge.ts';
+import { archiveBusiness, mergeBusinesses } from './businesses.ts';
 import { archiveContact } from './lifecycle.ts';
 import { AppError } from '../../types.ts';
 import { refreshEnrichmentGaps } from './service.ts';
@@ -64,6 +65,9 @@ const BusinessBody = z.object({
 const BusinessUpdateBody = BusinessBody.omit({ memberRole: true }).partial().extend({
   /** active or dissolved (2026-09-12): a fact the firm knows, beside the Secretary of State's observation. */
   status: z.enum(['active', 'dissolved']).optional(),
+  /** Parity with contacts (2026-09-12): a test business says what the test was. */
+  isTest: z.boolean().optional(),
+  testNote: z.string().trim().min(10).max(500).optional(),
 });
 
 /** Archive, never delete (2026-09-12): a reason always; a test flag with its note when the record was never real. */
@@ -306,11 +310,13 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       contactRow.pii_withheld = true;
     }
 
+    // Archived businesses stay on the record's history, not on the page (2026-09-12).
     const businesses = await app.db.query(
       `SELECT b.id, b.name, b.ein, b.entity_type, b.industry, b.naics_code, b.state,
-              b.fiscal_year_end_month, b.il_sos_status, b.status::text AS status, m.member_role, m.is_primary
+              b.fiscal_year_end_month, b.il_sos_status, b.status::text AS status, b.is_test, b.test_note,
+              m.member_role, m.is_primary
        FROM businesses b JOIN business_members m ON m.business_id = b.id
-       WHERE m.contact_id = $1 ORDER BY m.is_primary DESC, b.name`,
+       WHERE m.contact_id = $1 AND NOT b.is_archived ORDER BY m.is_primary DESC, b.name`,
       [id]
     );
     const groups = await app.db.query(
@@ -386,8 +392,9 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     const b = BusinessBody.parse(request.body);
     const actor = request.staff!;
 
+    // The first business a contact adds is primary; after that a person chooses (exactly one, at the database).
     const existing = await app.db.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM business_members WHERE contact_id = $1`,
+      `SELECT count(*)::int AS n FROM business_members WHERE contact_id = $1 AND is_primary`,
       [contactId]
     );
     const { rows } = await app.db.query<{ id: string }>(
@@ -425,10 +432,60 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     }
     params.push(q.limit);
     const { rows } = await app.db.query(
-      `SELECT b.id, b.name, b.entity_type FROM businesses b ${where} ORDER BY b.name LIMIT $${params.length}`,
+      `SELECT b.id, b.name, b.entity_type FROM businesses b ${where ? where + ' AND' : 'WHERE'} NOT b.is_archived ORDER BY b.name LIMIT $${params.length}`,
       params
     );
     return { businesses: rows };
+  });
+
+  /** Archive a business (2026-09-12): never a delete; a primary that goes clears the flag and nothing is promoted. */
+  app.post<{ Params: { id: string } }>('/businesses/:id/archive', write, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = ArchiveBody.parse(request.body);
+    const actor = request.staff!;
+    return archiveBusiness(app, id, { reason: b.reason, isTest: b.isTest, testNote: b.testNote }, { id: actor.id, email: actor.email, fullName: actor.fullName }, meta(request));
+  });
+
+  /** Merge businesses (2026-09-12): the same shape as contacts; money-adjacent, so billing.manage or the CEO. */
+  app.post<{ Params: { id: string } }>('/businesses/:id/merge', merge, async (request) => {
+    const winnerId = z.uuid().parse(request.params.id);
+    const b = z.object({ loserIds: z.array(z.uuid()).min(1).max(10), reason: reasonText(10, 1000) }).parse(request.body);
+    const actor = request.staff!;
+    return mergeBusinesses(app, winnerId, b.loserIds, b.reason, { id: actor.id, email: actor.email, fullName: actor.fullName }, meta(request));
+  });
+
+  /**
+   * A person chooses the primary business (2026-09-12): the previous one is cleared in the same
+   * transaction. businessId null clears it and promotes nothing; the page then says "no primary
+   * business set" until someone chooses.
+   */
+  app.post<{ Params: { id: string } }>('/contacts/:id/primary-business', write, async (request) => {
+    const contactId = z.uuid().parse(request.params.id);
+    const b = z.object({ businessId: z.uuid().nullable() }).parse(request.body);
+    const actor = request.staff!;
+    const { withTransaction } = await import('../../db.ts');
+    await withTransaction(app.db, async () => {
+      if (b.businessId) {
+        const member = await app.db.query(`SELECT 1 FROM business_members m JOIN businesses b ON b.id = m.business_id WHERE m.contact_id = $1 AND m.business_id = $2 AND NOT b.is_archived`, [contactId, b.businessId]);
+        if (!member.rows[0]) throw new AppError(404, 'not_found', 'This contact is not a member of that business, or it is archived.');
+      }
+      const cleared = await app.db.query<{ business_id: string }>(`UPDATE business_members SET is_primary = false WHERE contact_id = $1 AND is_primary AND business_id IS DISTINCT FROM $2 RETURNING business_id`, [contactId, b.businessId]);
+      for (const c of cleared.rows) {
+        await writeAudit(app.db, {
+          actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+          action: 'business.primary_cleared', objectType: 'business', objectId: c.business_id, contactId, ...meta(request),
+          details: { reason: b.businessId ? 'another business chosen as primary' : 'cleared by a person; none chosen' },
+        });
+      }
+      if (b.businessId) {
+        await app.db.query(`UPDATE business_members SET is_primary = true WHERE contact_id = $1 AND business_id = $2`, [contactId, b.businessId]);
+        await writeAudit(app.db, {
+          actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+          action: 'business.primary_set', objectType: 'business', objectId: b.businessId, contactId, ...meta(request),
+        });
+      }
+    });
+    return { status: 'ok' };
   });
 
   app.patch<{ Params: { id: string } }>('/businesses/:id', write, async (request) => {
@@ -444,7 +501,10 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       revenue_range: b.revenueRange, employees_range: b.employeesRange, zip: b.zip, state: b.state,
       fiscal_year_end_month: b.fiscalYearEndMonth,
       status: b.status,
+      is_test: b.isTest,
+      test_note: b.testNote,
     };
+    if (b.isTest && !b.testNote) throw new AppError(400, 'test_note_required', 'A test flag carries a note saying what the test was.');
     for (const [col, val] of Object.entries(map)) {
       if (val !== undefined) {
         params.push(val);
