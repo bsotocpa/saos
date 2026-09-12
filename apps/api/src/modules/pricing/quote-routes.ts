@@ -10,7 +10,7 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { z } from 'zod';
 import { reasonText } from '../../reasons.ts';
-import { requirePermission } from '../../plugins/auth.ts';
+import { holds, requirePermission } from '../../plugins/auth.ts';
 import {
   acceptQuote, createQuote, declineQuote, overrideQuoteDeposit, quoteByToken, sendQuote,
 } from './quotes.ts';
@@ -194,6 +194,9 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
     );
     const quote = rows[0];
     if (!quote) return { quote: null, lines: [], deposit: null };
+    // THE WALL (phase 2, 2026-09-12): the interview answers that derived the price are return
+    // content. They leave this route only for a holder of interviews.read.
+    if (!holds(request.staff!, 'interviews.read')) delete (quote as Record<string, unknown>).interview_answers;
     const lines = await app.db.query(
       `SELECT item_code, description_en, description_es, quantity, unit_cents, line_cents,
               min_cents, max_cents, is_optional, chosen, is_pass_through

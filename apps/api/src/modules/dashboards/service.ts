@@ -5,6 +5,7 @@
 // cycles → Phase 2/3) — never silently invented numbers.
 
 import type { FastifyInstance } from 'fastify';
+import { hiloSessionSql } from '../meetings/wall.ts';
 import { moneyActionsToday } from '../billing/money-digest.ts';
 import { deadlineDashboard } from '../tax/extension.ts';
 import { todayChicago } from '../tax/deadlines.ts';
@@ -155,7 +156,9 @@ export async function hiloDashboard(app: FastifyInstance) {
        FROM meeting_summaries ms
        JOIN meetings m ON m.id = ms.meeting_id
        LEFT JOIN contacts c ON c.id = m.contact_id
-       WHERE ms.created_at >= now() - interval '7 days'
+       -- Hilo sessions only (meetings/wall.ts): a CPA session with a Soto client is return-adjacent
+       -- and is not on the Hilo dashboard, whoever is reading it.
+       WHERE ms.created_at >= now() - interval '7 days' AND ${hiloSessionSql('m')}
        ORDER BY ms.created_at DESC LIMIT 10`
     ),
     Promise.all([

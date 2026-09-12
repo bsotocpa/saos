@@ -11,10 +11,12 @@ import { AppError } from '../../types.ts';
 import { makeMinioClient } from './storage.ts';
 import { afterReturnDelivered, downloadDocument, runDocumentChaseJob, uploadDocument } from './service.ts';
 import { firstActiveByRole } from '../../staffing.ts';
+import { readableCategories } from './wall.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 
 const CLIENT_CATEGORIES = ['tax_documents', 'business_records', 'id_verification', 'irs_notices', 'other'] as const;
-const STAFF_CATEGORIES = [...CLIENT_CATEGORIES, 'signed_authorizations', 'return_deliverable'] as const;
+// entity_filings (0094): formation papers, SOS filings, EIN letters, annual reports — Laura's category.
+const STAFF_CATEGORIES = [...CLIENT_CATEGORIES, 'signed_authorizations', 'return_deliverable', 'entity_filings'] as const;
 
 const ClientUploadFields = z.object({
   category: z.enum(CLIENT_CATEGORIES),
@@ -278,6 +280,12 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         params.push(q.category);
         categoryClause = ` AND d.category = $${params.length}::document_category`;
       }
+      // THE WALL (phase 2, 2026-09-12): the reader's categories, in the query. documents/wall.ts.
+      const readable = readableCategories(staff);
+      if (readable !== null) {
+        params.push([...readable]);
+        categoryClause += ` AND d.category = ANY($${params.length}::document_category[])`;
+      }
       const { rows } = await app.db.query(
         `SELECT d.id, d.category::text AS category, d.filename AS original_filename,
                 d.mime_type, d.size_bytes, d.tax_year, d.status::text AS status,
@@ -298,7 +306,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         contactId: q.contactId,
         ip: request.ip,
         userAgent: request.headers['user-agent'] ?? null,
-        details: { count: rows.length, category: q.category ?? null },
+        details: { count: rows.length, category: q.category ?? null, categories: readable ?? 'all' },
       });
       return { documents: rows };
     }
@@ -333,11 +341,17 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         .parse(request.query);
 
       // Counts are unfiltered by scanStatus on purpose: the chips must show the
-      // quarantine count even while you are looking at something else.
+      // quarantine count even while you are looking at something else. They ARE filtered by
+      // the reader's categories (the wall): a count of documents you may not see is a fact
+      // about them.
+      const readable = readableCategories(staff);
+      const readableParam = readable === null ? null : [...readable];
       const counts = await app.db.query<{ status: string; n: number }>(
         `SELECT scan_status::text AS status, count(*)::int AS n
            FROM documents WHERE archived_at IS NULL
-          GROUP BY scan_status`
+            AND ($1::document_category[] IS NULL OR category = ANY($1))
+          GROUP BY scan_status`,
+        [readableParam]
       );
 
       const { rows } = await app.db.query(
@@ -353,6 +367,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
             AND ($1::text IS NULL OR d.scan_status::text = $1)
             AND ($2::text IS NULL OR d.category::text = $2)
             AND ($3::uuid IS NULL OR d.contact_id = $3)
+            AND ($5::document_category[] IS NULL OR d.category = ANY($5))
           -- Infected first, then whatever is stuck, then the boring ones. The order IS
           -- the triage: the top of this list is the work.
           ORDER BY CASE d.scan_status
@@ -363,7 +378,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
                    END,
                    d.created_at DESC
           LIMIT $4`,
-        [q.scanStatus ?? null, q.category ?? null, q.contactId ?? null, q.limit]
+        [q.scanStatus ?? null, q.category ?? null, q.contactId ?? null, q.limit, readableParam]
       );
 
       await writeAudit(app.db, {
@@ -375,7 +390,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         objectId: null,
         ip: request.ip,
         userAgent: request.headers['user-agent'] ?? null,
-        details: { scope: 'firm_wide', count: rows.length, filters: q },
+        details: { scope: 'firm_wide', count: rows.length, filters: q, categories: readable ?? 'all' },
       });
 
       return {
@@ -396,7 +411,8 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         minio,
         { type: 'staff', id: staff.id, label: staff.fullName, ip: request.ip },
         id,
-        {}
+        // THE WALL, in the download too: a category the reader may not see is a 404.
+        { categories: readableCategories(staff) ?? undefined }
       );
       reply.header('content-disposition', `attachment; filename="${doc.filename.replace(/"/g, '')}"`);
       if (doc.mimeType) reply.type(doc.mimeType);

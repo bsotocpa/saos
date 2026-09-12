@@ -15,7 +15,7 @@ export function registerRecapRoutes(app: FastifyInstance): void {
   const approve = { preHandler: [app.authenticate, requirePermission('dashboards.executive')] };
 
   /** The approval queue + whether the send is armed (the UI says so before the tap). */
-  app.get('/recaps', read, async () => recapQueue(app));
+  app.get('/recaps', read, async (request) => recapQueue(app, request.staff!));
 
   app.post<{ Params: { id: string } }>('/meetings/:id/recap/draft', read, async (request) => {
     const id = z.uuid().parse(request.params.id);

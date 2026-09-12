@@ -14,6 +14,7 @@ export const BUCKET_BY_CATEGORY: Record<string, string> = {
   irs_notices: 'saos-documents',
   other: 'saos-documents',
   financial_statements: 'saos-documents', // books-close statements (v4.3 flow 5)
+  entity_filings: 'saos-documents', // formation papers, SOS filings, EIN letters, annual reports (0094)
   signed_authorizations: 'saos-signed-docs',
   return_deliverable: 'saos-returns',
   recording: 'saos-recordings',

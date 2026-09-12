@@ -233,6 +233,7 @@ const dict = {
   cat_id_verification: ['ID verification', 'Verificación de identidad'],
   cat_irs_notices: ['IRS notice', 'Aviso del IRS'],
   cat_other: ['Other', 'Otro'],
+  cat_entity_filings: ['Entity filings', 'Documentos de la entidad'],
   docs_uploaded: ['Uploaded — thank you!', '¡Subido — gracias!'],
   docs_for_request: ['This fulfills:', 'Esto corresponde a:'],
   doc_status_uploaded: ['Received', 'Recibido'],

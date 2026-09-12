@@ -38,8 +38,8 @@ const RegistrationBody = z.object({
 });
 
 export function registerEventRoutes(app: FastifyInstance): void {
-  // Hilo events are Jackson's; leadership manages them.
-  const manage = { preHandler: [app.authenticate, requirePermission('dashboards.executive')] };
+  // Hilo events are Jaqueline's: events.manage (2026-09-12, her six), not the firm's executive view.
+  const manage = { preHandler: [app.authenticate, requirePermission('events.manage')] };
   const anyStaff = { preHandler: [app.authenticate] };
 
   app.get('/events', anyStaff, async () => {

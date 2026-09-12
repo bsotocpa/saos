@@ -46,7 +46,8 @@ test('rulings 2, 3, 6: named grants only — no wildcard on ed_coo, no phantom p
     `SELECT rp.permission FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.key = $1 ORDER BY 1`, [key])).rows.map((r) => r.permission);
   const edCoo = await grants('ed_coo');
   assert.ok(!edCoo.includes('*'), 'ed_coo holds no wildcard');
-  assert.deepEqual([...edCoo].sort(), ['contacts.read', 'engagements.read', 'referrals.suggest', 'tasks.manage', 'tasks.read']);
+  // Phase 2 (the wall, same day) added her six; wall.spec.ts holds the exact list. Here: no wildcard, and nothing return-adjacent.
+  for (const p of ['*', 'pii.read', 'interviews.read', 'documents.read.all', 'meetings.read.all', 'engagements.tax.manage']) assert.ok(!edCoo.includes(p), 'ed_coo does not hold ' + p);
   const phantom = await app.db.query(`SELECT 1 FROM role_permissions WHERE permission IN ('sales_tax.manage', 'payroll.manage')`);
   assert.equal(phantom.rows.length, 0, 'a grant nothing checks is not a grant');
   assert.ok((await grants('comms_billing')).includes('bookkeeping.assigned.manage'), 'Rene holds bookkeeping scope directly');
@@ -79,7 +80,8 @@ test('ruling 1: the temporary password dies at 72 hours or first use, and the se
   assert.equal(verified.json().mustChangePassword, true, 'the session knows it owes a password');
   const token = verified.json().token as string;
   const spent = await app.db.query<{ temp_password_expires_at: Date }>(`SELECT temp_password_expires_at FROM staff WHERE id = $1`, [id]);
-  assert.ok(spent.rows[0]!.temp_password_expires_at.getTime() <= Date.now(), 'consumed on first use');
+  // Postgres now() vs Node's clock: the container can sit a few ms ahead, which is not a finding.
+  assert.ok(spent.rows[0]!.temp_password_expires_at.getTime() <= Date.now() + 5_000, 'consumed on first use');
 
   // Until the password is set, nothing but /auth works.
   const blocked = await app.inject({ method: 'GET', url: '/tasks/mine', headers: auth(token) });

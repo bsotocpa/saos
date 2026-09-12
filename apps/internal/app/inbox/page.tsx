@@ -25,7 +25,7 @@ interface Attachment {
 }
 
 const CATEGORIES = [
-  'tax_documents', 'business_records', 'id_verification', 'irs_notices', 'signed_authorizations', 'other',
+  'tax_documents', 'business_records', 'id_verification', 'irs_notices', 'signed_authorizations', 'entity_filings', 'other',
 ];
 
 function fmtSize(bytes: number): string {

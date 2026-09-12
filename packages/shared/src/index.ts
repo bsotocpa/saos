@@ -63,5 +63,8 @@ export const DOCUMENT_CATEGORIES = [
   'signed_authorizations',
   'return_deliverable',
   'other',
+  'recording',
+  'financial_statements',
+  'entity_filings',
 ] as const;
 export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];

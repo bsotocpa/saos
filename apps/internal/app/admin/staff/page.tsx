@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
+import { useAsk } from '../../../components/ask';
 
 interface Staff {
   id: string; full_name: string; legal_name: string; display_name: string; email: string; role: string;
@@ -30,6 +31,7 @@ export default function StaffAdminPage() {
   const [draft, setDraft] = useState<EditDraft>({ legalName: '', displayName: '', email: '' });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const ask = useAsk();
 
   const load = async () => {
     const [s, r] = await Promise.all([
@@ -158,7 +160,12 @@ export default function StaffAdminPage() {
                         type="button"
                         disabled={!s.is_active}
                         onClick={() => act(async () => {
-                          if (!window.confirm(`Issue ${s.display_name} a new temporary password? The current one and every open session die immediately. This is audited.`)) return;
+                          const go = await ask({
+                            title: `Issue ${s.display_name} a new temporary password?`,
+                            body: <p>The current password and every open session die immediately. This is audited.</p>,
+                            choices: [{ key: 'go', label: 'Issue a new password', tone: 'danger' }],
+                          });
+                          if (!go) return;
                           const res = await api<{ tempPassword: string }>(`/staff/${s.id}/password/regenerate`, { method: 'POST' });
                           setCopied(false);
                           setReveal({ password: res.tempPassword, whose: s.display_name, how: 'regenerated' });

@@ -51,7 +51,7 @@ export function registerSopRoutes(app: FastifyInstance): void {
 
   app.get<{ Params: { slug: string } }>('/sops/:slug', anyStaff, async (request) => {
     const slug = z.string().min(3).max(80).parse(request.params.slug);
-    return getSop(app, slug);
+    return getSop(app, slug, request.staff!);
   });
 
   app.post('/sops', author, async (request, reply) => {

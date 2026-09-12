@@ -8,6 +8,7 @@ import type { MultipartFile } from '@fastify/multipart';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
+import { meetingScope } from './wall.ts';
 import { AppError } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
 import { uploadDocument } from '../documents/service.ts';
@@ -134,6 +135,9 @@ export function registerMeetingRoutes(
    */
   app.get<{ Params: { id: string } }>('/contacts/:id/meetings', readMeetings, async (request) => {
     const contactId = z.uuid().parse(request.params.id);
+    // THE WALL (phase 2, 2026-09-12): meetings.read is scoped to the reader's own sessions and Hilo
+    // sessions unless they hold meetings.read.all. meetings/wall.ts.
+    const scope = meetingScope(request.staff!, 2);
     const { rows } = await app.db.query(
       `SELECT m.id, m.type::text AS type, m.source::text AS source, m.status::text AS status,
               m.title, m.started_at, m.duration_seconds, m.created_at,
@@ -147,9 +151,9 @@ export function registerMeetingRoutes(
          LEFT JOIN meeting_summaries s ON s.meeting_id = m.id
          LEFT JOIN transcripts t ON t.meeting_id = m.id
          LEFT JOIN staff st ON st.id = m.staff_id
-        WHERE m.contact_id = $1
+        WHERE m.contact_id = $1${scope.clause}
         ORDER BY COALESCE(m.started_at, m.created_at) DESC`,
-      [contactId]
+      [contactId, ...scope.params]
     );
     return { meetings: rows };
   });
@@ -162,6 +166,7 @@ export function registerMeetingRoutes(
    */
   app.get<{ Params: { id: string } }>('/meetings/:id/transcript', readMeetings, async (request) => {
     const id = z.uuid().parse(request.params.id);
+    const scope = meetingScope(request.staff!, 2);
     const { rows } = await app.db.query<{
       content: string; engine: string; language: string | null;
       contact_id: string | null; title: string | null; started_at: string | null;
@@ -170,10 +175,11 @@ export function registerMeetingRoutes(
       `SELECT t.content, t.engine, t.language, m.contact_id, m.title, m.started_at,
               m.type::text AS type, m.duration_seconds
          FROM transcripts t JOIN meetings m ON m.id = t.meeting_id
-        WHERE t.meeting_id = $1`,
-      [id]
+        WHERE t.meeting_id = $1${scope.clause}`,
+      [id, ...scope.params]
     );
     const row = rows[0];
+    // Out of scope reads exactly like nonexistent: no oracle for what is behind the wall.
     if (!row) throw new AppError(404, 'not_found', 'No transcript for this session yet.');
 
     await writeAudit(app.db, {
@@ -213,12 +219,14 @@ export function registerMeetingRoutes(
     return { status: 'queued' };
   });
 
-  app.get<{ Params: { id: string } }>('/meetings/:id', staff, async (request) => {
+  // Reading a session is a READ (it was gated on meetings.upload before 2026-09-12), scoped by the wall.
+  app.get<{ Params: { id: string } }>('/meetings/:id', readMeetings, async (request) => {
     const id = z.uuid().parse(request.params.id);
+    const scope = meetingScope(request.staff!, 2);
     const meeting = await app.db.query(
       `SELECT m.id, m.contact_id, m.type, m.source, m.status, m.title, m.started_at, m.duration_seconds
-       FROM meetings m WHERE m.id = $1`,
-      [id]
+       FROM meetings m WHERE m.id = $1${scope.clause}`,
+      [id, ...scope.params]
     );
     if (!meeting.rows[0]) throw new AppError(404, 'not_found', 'Meeting not found.');
     const summary = await app.db.query(

@@ -6,13 +6,15 @@ import { executiveDashboard, hiloDashboard } from './service.ts';
 import { makePusher, runPushSweep } from '../../notify/push.ts';
 
 export function registerDashboardRoutes(app: FastifyInstance): void {
-  // Executive-level views are leadership-only ('*' roles: Brian, Jackson).
-  // Staff scorecards (own-only) are Phase 4.
+  // The executive view is the CEO's ('*'). The Hilo dashboard is its own grant, dashboards.hilo
+  // (2026-09-12, Brian's ruling on Jaqueline's six): the Hilo Executive Director reads her program
+  // without holding the firm's executive view. Staff scorecards (own-only) are Phase 4.
   const leadership = { preHandler: [app.authenticate, requirePermission('dashboards.executive')] };
+  const hilo = { preHandler: [app.authenticate, requirePermission('dashboards.hilo')] };
   const authed = { preHandler: [app.authenticate] };
 
   app.get('/dashboards/executive', leadership, async () => executiveDashboard(app));
-  app.get('/dashboards/hilo', leadership, async () => hiloDashboard(app));
+  app.get('/dashboards/hilo', hilo, async () => hiloDashboard(app));
 
   // Alert Center: the signed-in staffer's notifications.
   app.get('/notifications', authed, async (request) => {

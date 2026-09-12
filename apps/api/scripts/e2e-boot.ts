@@ -21,6 +21,8 @@ import { createEngagement } from '../src/modules/engagements/service.ts';
 import { pauseEngagement } from '../src/modules/engagements/pause.ts';
 import { drainOutbox } from '../src/outbox.ts';
 import { createTask } from '../src/modules/tasks/service.ts';
+import { uploadDocument } from '../src/modules/documents/service.ts';
+import { makeMinioClient } from '../src/modules/documents/storage.ts';
 import { todayChicago } from '../src/modules/tax/deadlines.ts';
 import * as OTPAuth from 'otpauth';
 
@@ -83,7 +85,18 @@ async function depositItem(): Promise<string> {
 
 // 1. A quote accepted: the deposit invoice is issued (sent) — then PAID through the stub's
 //    payment event, so the engagement holds a paid deposit (the withdraw modal's choice case).
-const q1 = await createQuote(app, { contactId: contact.id, lines: [{ itemCode: await depositItem() }] }, actor);
+const WALL = {
+  ssnLast4: '7391',
+  taxDoc: 'HARNESS-W2-2025-TAXDOC.pdf',
+  irsNotice: 'HARNESS-CP2000-NOTICE.pdf',
+  bankDoc: 'HARNESS-BANK-STATEMENT.pdf',
+  entityDoc: 'HARNESS-ARTICLES-OF-ORGANIZATION.pdf',
+  interview: 'HARNESS-INTERVIEW-ANSWER-MARKER',
+  complexity: 'HARNESS-COMPLEXITY-MARKER',
+  transcript: 'HARNESS-CPA-TRANSCRIPT-MARKER',
+  summary: 'HARNESS-CPA-SUMMARY-MARKER',
+};
+const q1 = await createQuote(app, { contactId: contact.id, lines: [{ itemCode: await depositItem() }], interviewAnswers: { dependents: 2, note: WALL.interview } }, actor);
 const s1 = await sendQuote(app, q1.id, actor);
 const acc1 = await acceptQuote(app, s1.url.split('/').pop()!, {});
 await drainOutbox(app); // the deposit email leaves; the send log has a row
@@ -143,6 +156,35 @@ for (const t of taskSeed) {
 }
 
 /*
+ * PAGE FOUR (2026-09-12): the §7216 wall, read as Laura (va_entity) and Jaqueline (ed_coo). The
+ * client carries each of the four walled things with a unique synthetic marker: the SSN last-4,
+ * documents in walled and allowed categories, interview answers on the quote above and complexity
+ * inputs on a tax engagement, and a CPA session with a transcript and a summary. The two personas
+ * sign in the way the walker does.
+ */
+const laura = await makeStaff(app.db, config, { email: 'laura-walker@example.test', name: 'Synthetic Laura', role: 'va_entity', password: 'laura-synthetic-2026', totpSecret: TOTP_SECRET });
+const jaqueline = await makeStaff(app.db, config, { email: 'jaqueline-walker@example.test', name: 'Synthetic Jaqueline', role: 'ed_coo', password: 'jaqueline-synthetic-2026', totpSecret: TOTP_SECRET });
+await app.db.query(`UPDATE contacts SET ssn_last4 = $2 WHERE id = $1`, [contact.id, WALL.ssnLast4]);
+const minio = makeMinioClient(config);
+const PDF = Buffer.from('%PDF-1.4 synthetic harness document — no real client data\n%%EOF');
+const uploadAs = (category: string, filename: string) => uploadDocument(app, minio, { type: 'staff', id: staff.id, label: staff.fullName }, { contactId: contact.id, category, filename, mimeType: 'application/pdf', buffer: PDF });
+const taxDocument = await uploadAs('tax_documents', WALL.taxDoc);
+await uploadAs('irs_notices', WALL.irsNotice);
+const bankDocument = await uploadAs('business_records', WALL.bankDoc);
+const entityDocument = await uploadAs('entity_filings', WALL.entityDoc);
+const cpaMeeting = await app.db.query<{ id: string }>(
+  `INSERT INTO meetings (contact_id, staff_id, type, source, status, title, started_at)
+   VALUES ($1, $2, 'in_person', 'manual', 'ready', 'Harness CPA session', now() - interval '1 hour') RETURNING id`,
+  [contact.id, staff.id]
+);
+const cpaMeetingId = cpaMeeting.rows[0]!.id;
+await app.db.query(`INSERT INTO transcripts (meeting_id, engine, content) VALUES ($1, 'test', $2)`, [cpaMeetingId, `Verbatim. ${WALL.transcript}`]);
+await app.db.query(
+  `INSERT INTO meeting_summaries (meeting_id, summary, client_recap_status, recap_body_en, recap_body_es) VALUES ($1, $2, 'drafted', $3, $3)`,
+  [cpaMeetingId, WALL.summary, `Recap. ${WALL.summary}`]
+);
+
+/*
  * PAGE TWO'S WAY IN. 'Grant access' on the Ops client page is POST /portal-users; it creates
  * the portal user and emails the sign-in link. Called through the route with the walker's own
  * token, so the fixture uses the control a person uses.
@@ -156,6 +198,15 @@ const loggedIn = await app.inject({
 });
 if (loggedIn.statusCode !== 200) throw new Error(`the walker could not sign in: ${loggedIn.statusCode} ${loggedIn.body}`);
 const staffToken = loggedIn.json().token as string;
+
+const taxEngagement = await app.inject({
+  method: 'POST', url: '/tax-engagements',
+  headers: { authorization: `Bearer ${staffToken}` },
+  payload: { contactId: contact.id, taxYear: 2024, returnType: '1040', title: 'Harness wall: 2024 return' },
+});
+if (taxEngagement.statusCode !== 201) throw new Error(`the tax engagement was refused: ${taxEngagement.statusCode} ${taxEngagement.body}`);
+const taxEngagementId = (taxEngagement.json() as { id: string }).id;
+await app.db.query(`UPDATE tax_engagements SET complexity_inputs = $2::jsonb WHERE id = $1`, [taxEngagementId, JSON.stringify({ states: 1, note: WALL.complexity })]);
 
 const granted = await app.inject({
   method: 'POST', url: '/portal-users',
@@ -184,6 +235,13 @@ console.log('E2E_READY ' + JSON.stringify({
   engagementWithDeposit: acc1.engagementId,
   staff: { email: staff.email, password: 'walker-synthetic-2026', totpSecret: TOTP_SECRET },
   portalMagicTokens: magicTokens.slice(-2),
+  wall: {
+    laura: { email: laura.email, password: 'laura-synthetic-2026', totpSecret: TOTP_SECRET },
+    jaqueline: { email: jaqueline.email, password: 'jaqueline-synthetic-2026', totpSecret: TOTP_SECRET },
+    quoteId: q1.id, taxEngagementId, cpaMeetingId,
+    taxDocumentId: taxDocument.id, entityDocumentId: entityDocument.id, bankDocumentId: bankDocument.id,
+    markers: WALL,
+  },
 }));
 // Stay up until the harness kills us.
 process.on('SIGTERM', () => { void app.close().then(() => process.exit(0)); });

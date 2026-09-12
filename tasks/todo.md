@@ -93,5 +93,13 @@ NEW
 - [x] Session recap signs as the firm EN/ES.
 - [x] Owner routing: referral approvals → ceo; final fee → tax_preparer.
 - [x] 8879: remote path retired (routes 410, KBA gone); the wet-signed upload is the authorization; DB trigger refuses a timestamp without the document. Lesson: reported a reference as the artifact.
-- [ ] Phase 2: the §7216 wall (documents category filter per role, pii.read real, interview answers behind a permission), harness page for Laura/Jaqueline, then their accounts. NOT started.
+- [x] Phase 2: the §7216 wall. documents.read scoped by category grant (entity / relationship / all) in list, overview and download; pii.read checked (SSN last-4 leaves only for holders); interviews.read (quote answers, complexity inputs); meetings.read scoped to own + Hilo sessions unless meetings.read.all; SOP drafts are the author's. wall.spec.ts in Brian's sabotage form; harness page four (ops-wall.spec.ts) as Laura and Jaqueline. Accounts: Brian creates them in Admin → Staff.
 - Phase-2 grant questions surfaced by the wildcard removal: Jaqueline's recorder uploads (meetings.upload/read), her Hilo dashboard (dashboards.executive is CEO-only by omission), her event completion.
+
+
+## Password reveal, Jaqueline's six, Docuseal, the wall — 2026-09-12 (Brian's batch after phase 1)
+- [x] 1. Never a password in a report (lesson: a secret in a report). Admin → Staff: one-time reveal with Copy; regenerate is POST /staff/:id/password/regenerate, audited, sessions revoked; PATCH accepts email (audited; sessions keyed by staff id, so no orphaned login); Edit control for names and address.
+- [x] 2. Jaqueline's six: meetings.upload; dashboards.hilo (split from dashboards.executive); events.manage (split from dashboards.executive); meetings.read scoped (own + Hilo); referrals.suggest (phase 1). Migration 0094 audits the grants.
+- [ ] 3a. Schedule C is pending for Rehearsal Client 2 (bookkeeping engagement created through createEngagement, actor Brian via the proof script). Brian accepts on the phone; expect schedule_acceptances + audit schedule.accepted, no envelope row (Master §1).
+- [ ] 3b. Docuseal decommission: only after 3a lands with Docuseal untouched. Footprint mapped (compose, Caddy, env, adapter, webhook, backup volume list, docs).
+- [ ] Laura and Jaqueline: Brian creates in Admin → Staff.

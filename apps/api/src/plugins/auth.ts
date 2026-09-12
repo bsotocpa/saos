@@ -112,3 +112,28 @@ export function requirePermission(permission: string) {
     }
   };
 }
+
+/**
+ * The same rule as requirePermission, for a handler that must scope what it returns by what the
+ * caller holds (the §7216 wall: which document categories, whether the SSN last-4 leaves, whether
+ * a session is in scope). '*' applies except to the explicit-only set.
+ */
+export function holds(staff: AuthedStaff, permission: string): boolean {
+  const wildcardApplies = staff.permissions.includes('*') && !EXPLICIT_ONLY_PERMISSIONS.has(permission);
+  return wildcardApplies || staff.permissions.includes(permission);
+}
+
+/** Any one of the named permissions opens the route; the handler scopes by which one is held. */
+export function requireAnyPermission(...permissions: string[]) {
+  return async function check(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const staff = request.staff;
+    if (!staff) {
+      await reply.code(401).send({ error: 'unauthorized' });
+      return;
+    }
+    if (!permissions.some((p) => holds(staff, p))) {
+      await reply.code(403).send({ error: 'forbidden', permission: permissions[0] });
+      return;
+    }
+  };
+}

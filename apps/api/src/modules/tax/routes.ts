@@ -6,7 +6,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
-import { requirePermission } from '../../plugins/auth.ts';
+import { holds, requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
 import { createEngagement } from '../engagements/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
@@ -196,6 +196,8 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       [id]
     );
     if (!rows[0]) throw new AppError(404, 'not_found', 'Tax engagement not found.');
+    // THE WALL (phase 2, 2026-09-12): the complexity inputs are the return interview. interviews.read only.
+    if (!holds(request.staff!, 'interviews.read')) delete (rows[0] as Record<string, unknown>).complexity_inputs;
     const history = await app.db.query(
       `SELECT stage, entered_at, changed_by_staff_id, waiting_on, note
        FROM engagement_stage_history WHERE tax_engagement_id = $1 ORDER BY entered_at`,

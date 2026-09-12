@@ -6,7 +6,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
-import { requirePermission } from '../../plugins/auth.ts';
+import { holds, requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
 import { refreshEnrichmentGaps } from './service.ts';
 import { runHealthRefresh } from './health.ts';
@@ -244,6 +244,14 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       [id]
     );
     if (!contact.rows[0]) throw new AppError(404, 'not_found', 'Contact not found.');
+    // THE WALL, field filtering (phase 2, 2026-09-12): the SSN last-4 leaves this route only for a
+    // holder of pii.read. ssn_status stays: whether one is on file is workflow, not the number.
+    // The EIN below is a business identifier and stays with contacts.read (Laura files with it).
+    const contactRow = contact.rows[0] as Record<string, unknown>;
+    if (!holds(actor, 'pii.read')) {
+      delete contactRow.ssn_last4;
+      contactRow.pii_withheld = true;
+    }
 
     const businesses = await app.db.query(
       `SELECT b.id, b.name, b.ein, b.entity_type, b.industry, b.naics_code, b.state,

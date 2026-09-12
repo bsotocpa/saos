@@ -114,6 +114,8 @@ test.describe('Ops → client page', () => {
        */
       const depositRow = page.locator('.quote-line')
         .filter({ hasNot: page.getByText('Books, monthly') })
+        // Page four's fixture (the wall) adds a second tax engagement to this client; it is not the one with the deposit.
+        .filter({ hasNot: page.getByText('Harness wall') })
         .filter({ has: page.getByRole('button', { name: 'Withdraw' }) })
         .first();
       await expect(depositRow, 'a Withdraw control on the deposit engagement').toBeVisible();

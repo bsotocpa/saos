@@ -454,21 +454,31 @@ export async function downloadDocument(
   minio: MinioClient,
   actor: UploadActor,
   documentId: string,
-  scope: { clientContactId?: string | undefined }
+  /**
+   * clientContactId: a portal session may only reach its own contact's documents.
+   * categories: a staff reader behind the §7216 wall (documents/wall.ts) may only reach these
+   * categories. Both fail closed to the same 404.
+   */
+  scope: { clientContactId?: string | undefined; categories?: readonly string[] | undefined }
 ): Promise<{ stream: NodeJS.ReadableStream; filename: string; mimeType: string | null }> {
   const { rows } = await app.db.query<{
     id: string; contact_id: string; filename: string; mime_type: string | null;
-    minio_bucket: string; minio_key: string; scan_status: string;
+    minio_bucket: string; minio_key: string; scan_status: string; category: string;
   }>(
     `SELECT id, contact_id, filename, mime_type, minio_bucket, minio_key,
-            scan_status::text AS scan_status
+            scan_status::text AS scan_status, category::text AS category
      FROM documents WHERE id = $1 AND archived_at IS NULL`,
     [documentId]
   );
   const doc = rows[0];
   // Row-level rule: a client asking for someone else's document sees the same
-  // 404 as for a nonexistent one (fail closed, no existence oracle).
-  if (!doc || (scope.clientContactId !== undefined && doc.contact_id !== scope.clientContactId)) {
+  // 404 as for a nonexistent one (fail closed, no existence oracle). The wall's category
+  // rule is the same 404 for the same reason.
+  if (
+    !doc ||
+    (scope.clientContactId !== undefined && doc.contact_id !== scope.clientContactId) ||
+    (scope.categories !== undefined && !scope.categories.includes(doc.category))
+  ) {
     throw new AppError(404, 'not_found', 'Document not found.');
   }
 

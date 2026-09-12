@@ -21,8 +21,22 @@ export const roles = [
   {
     key: 'ed_coo',
     name: 'ED Hilo / Fractional COO',
-    description: 'Jaqueline Flores, display name Jackson. Executive Director of Hilo NFP; delivers paid COO/HR work under Soto Accounting. Named grants only (2026-09-12): the client book for RELATIONSHIP data. No return contents, no SSNs, no tax documents, no IRS notices except on engagements she is assigned to — the §7216 wall, phase 2.',
-    permissions: ['contacts.read', 'engagements.read', 'tasks.read', 'tasks.manage', 'referrals.suggest'],
+    description: 'Jaqueline Flores, display name Jackson. Executive Director of Hilo NFP; delivers paid COO/HR work under Soto Accounting. Named grants only (2026-09-12): the client book for RELATIONSHIP data, her recorder, her sessions and Hilo sessions, the Hilo dashboard, Hilo events. Behind the §7216 wall (phase 2, in code): no return contents, no SSN last-4, no interview answers, no tax documents, no IRS notices, no signed authorizations, no return deliverables, no CPA session with a Soto client.',
+    permissions: [
+      'contacts.read',
+      'engagements.read',
+      'tasks.read',
+      'tasks.manage',
+      'referrals.suggest',
+      // Her six (2026-09-12): the recorder, her sessions (scoped), the Hilo dashboard, event close-out,
+      // and the document categories on the relationship side of the wall.
+      'meetings.upload',
+      'meetings.read',
+      'dashboards.hilo',
+      'events.manage',
+      'documents.read',
+      'documents.read.relationship',
+    ],
   },
   {
     key: 'tax_preparer',
@@ -34,11 +48,14 @@ export const roles = [
       'engagements.tax.manage',
       'irs_notices.manage',
       'documents.read',
+      'documents.read.all', // every category: the preparer is inside the wall
       'documents.write',
-      'pii.read',
+      'pii.read', // checked in code since 2026-09-12: the SSN last-4 leaves only for this grant
+      'interviews.read', // the return interview (quote answers, complexity inputs)
       'tasks.read',
       'tasks.manage',
       'meetings.read',
+      'meetings.read.all', // every session, CPA sessions included
       'meetings.upload',
       'time.log',
     ],
@@ -46,11 +63,12 @@ export const roles = [
   {
     key: 'va_entity',
     name: 'Remote VA / Entity & Annual Reports',
-    description: 'Laura. Entity module, admin tickets. Fully remote.',
+    description: 'Laura. Entity module, admin tickets. Fully remote. Behind the §7216 wall (phase 2): entity filings only among documents, no SSN last-4, no interview content, no sessions. The EIN stays visible: she files with it.',
     permissions: [
       'contacts.read',
       'entity.manage',
       'documents.read',
+      'documents.read.entity', // formation papers, SOS filings, EIN letters, annual reports
       'documents.write',
       'tasks.read',
       'tasks.manage',
@@ -87,6 +105,7 @@ export const roles = [
       'contacts.read',
       'bookkeeping.assigned.manage',
       'documents.read',
+      'documents.read.all', // unchanged reach after the wall (2026-09-12); the category scope is for Laura and Jaqueline
       'documents.write',
       'tasks.read',
       'tasks.manage',

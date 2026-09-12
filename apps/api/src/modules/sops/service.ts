@@ -17,6 +17,7 @@
 //     link.
 
 import type { FastifyInstance } from 'fastify';
+import { holds } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
 import { TASK_TYPE_SOPS } from './task-types.ts';
@@ -179,7 +180,7 @@ export async function searchSops(
   return { sops: rows };
 }
 
-export async function getSop(app: FastifyInstance, slug: string) {
+export async function getSop(app: FastifyInstance, slug: string, reader?: AuthedStaff) {
   const { rows } = await app.db.query(
     `SELECT s.slug, s.title, s.role_key, s.process, s.body_md, s.status::text AS status, s.version,
             s.seeded_from_meeting_id IS NOT NULL AS from_transcript,
@@ -189,6 +190,12 @@ export async function getSop(app: FastifyInstance, slug: string) {
     [slug]
   );
   if (!rows[0]) throw new AppError(404, 'not_found', 'SOP not found.');
+  // THE WALL (phase 2, 2026-09-12): a DRAFT seeded from a recording carries transcript text
+  // verbatim. Until an author publishes it, it is the author's; everyone else gets the 404 a
+  // missing SOP gets.
+  if (rows[0].status !== 'published' && reader && !holds(reader, 'dashboards.executive')) {
+    throw new AppError(404, 'not_found', 'SOP not found.');
+  }
   const history = await app.db.query(
     `SELECT v.version, v.title, v.note, v.created_at, st.full_name AS changed_by
      FROM sop_versions v LEFT JOIN staff st ON st.id = v.changed_by_staff_id

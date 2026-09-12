@@ -22,6 +22,7 @@
 //     says so BEFORE the tap, so "approve" never silently does nothing.
 
 import type { FastifyInstance } from 'fastify';
+import { inMeetingScope, meetingScope } from './wall.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
 import { isAutomationEnabled } from '../../automations.ts';
@@ -101,15 +102,20 @@ export async function draftRecap(
     summary_id: string; contact_id: string | null; status: RecapStatus;
     summary: string | null; decisions: unknown; action_items: unknown;
     starts_at: Date | null;
+    staff_id: string | null; hilo_status: string | null; soto_status: string | null; uploader_role: string | null;
   }>(
     `SELECT ms.id AS summary_id, m.contact_id, ms.client_recap_status::text AS status,
-            ms.summary, ms.decisions, ms.action_items, m.started_at AS starts_at
+            ms.summary, ms.decisions, ms.action_items, m.started_at AS starts_at,
+            m.staff_id, c.hilo_status::text AS hilo_status, c.soto_status::text AS soto_status,
+            (SELECT r.key FROM staff st JOIN roles r ON r.id = st.role_id WHERE st.id = m.staff_id) AS uploader_role
      FROM meeting_summaries ms JOIN meetings m ON m.id = ms.meeting_id
+     LEFT JOIN contacts c ON c.id = m.contact_id
      WHERE ms.meeting_id = $1`,
     [meetingId]
   );
   const s = rows[0];
-  if (!s) {
+  // Out of the reader's scope (the wall) reads exactly like no summary: no oracle.
+  if (!s || (actor && !inMeetingScope(actor, s))) {
     throw new AppError(
       404,
       'no_summary',
@@ -355,8 +361,9 @@ export async function approveAndSendRecap(
   return { status: 'sent', sent: true, emailed, suppressedReason: null };
 }
 
-/** The approval queue: recaps waiting on Brian, newest session first. */
-export async function recapQueue(app: FastifyInstance) {
+/** The approval queue: recaps waiting on Brian, newest session first. Scoped by the wall for the reader. */
+export async function recapQueue(app: FastifyInstance, reader: AuthedStaff) {
+  const scope = meetingScope(reader, 1);
   const { rows } = await app.db.query(
     `SELECT m.id AS meeting_id, m.title, m.started_at, m.contact_id,
             c.first_name, c.last_name, c.language,
@@ -368,9 +375,10 @@ export async function recapQueue(app: FastifyInstance) {
      JOIN meetings m ON m.id = ms.meeting_id
      LEFT JOIN contacts c ON c.id = m.contact_id
      LEFT JOIN staff st ON st.id = ms.recap_approved_by_staff_id
-     WHERE ms.client_recap_status IN ('drafted', 'approved')
+     WHERE ms.client_recap_status IN ('drafted', 'approved')${scope.clause}
      ORDER BY m.started_at DESC NULLS LAST
-     LIMIT 50`
+     LIMIT 50`,
+    scope.params
   );
   const armed = await isAutomationEnabled(app, 'session_recaps');
   return { recaps: rows, automationArmed: armed };
