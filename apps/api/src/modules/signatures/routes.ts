@@ -8,9 +8,7 @@ import { makeDocusealAdapter } from './docuseal.ts';
 import {
   completeEnvelopeBySubmission,
   createEnvelope,
-  resolveKba,
   sendEnvelope,
-  startRemote8879,
   templateKeyFor,
 } from './service.ts';
 
@@ -86,24 +84,19 @@ export function registerSignatureRoutes(app: FastifyInstance): void {
   });
 
   // Remote 8879: KBA first, Docuseal only after a pass (MP compliance flow).
-  app.post<{ Params: { id: string } }>('/tax-engagements/:id/signatures/remote-8879', manage, async (request, reply) => {
-    const id = z.uuid().parse(request.params.id);
-    const result = await startRemote8879(app, { id: request.staff!.id, label: request.staff!.fullName }, id);
-    return reply.code(201).send(result);
+  /*
+   * RETIRED (2026-09-12, Brian's ruling). The remote 8879 e-sign path — KBA vendor, Docuseal
+   * template — never existed as anything but a route: no vendor was ever selected and no 8879
+   * template exists in Docuseal. Form 8879 is wet-signed in office, scanned, and uploaded to the
+   * return under Signed Authorizations (POST /documents with signedOn + preparerPtinHolderId).
+   * That upload is the authorization. The routes below answer 410 so a stale client is told why.
+   */
+  app.post<{ Params: { id: string } }>('/tax-engagements/:id/signatures/remote-8879', manage, async () => {
+    throw new AppError(410, 'remote_8879_retired', 'The remote 8879 path is retired. Upload the wet-signed, scanned 8879 to the return under Signed Authorizations.');
   });
-
-  // Sandbox-only: resolve a KBA session (real vendors resolve via their webhook).
-  app.post<{ Params: { kbaId: string } }>('/kba/:kbaId/simulate', manage, async (request) => {
-    if (app.config.KBA_MODE !== 'sandbox') {
-      throw new AppError(409, 'not_sandbox', 'KBA simulation exists only in sandbox mode.');
-    }
-    const kbaId = z.uuid().parse(request.params.kbaId);
-    const b = SimulateBody.parse(request.body);
-    const result = await resolveKba(app, docuseal, kbaId, b.outcome, b.failureReason);
-    return { status: 'ok', ...result };
+  app.post<{ Params: { kbaId: string } }>('/kba/:kbaId/simulate', manage, async () => {
+    throw new AppError(410, 'remote_8879_retired', 'KBA is retired with the remote 8879 path.');
   });
-
-  // Docuseal webhook: completion → signed PDF to MinIO → gates updated.
   app.post('/webhooks/docuseal', async (request, reply) => {
     const secret = request.headers['x-webhook-secret'];
     if (typeof secret !== 'string' || !secretsMatch(secret, app.config.WEBHOOK_SECRET)) {

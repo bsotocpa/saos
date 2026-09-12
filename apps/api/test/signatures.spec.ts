@@ -1,5 +1,5 @@
 // M11 "Prove it": placeholder-block test (envelopes, not just email),
-// KBA-required test, wet-path test, and the full remote-8879 journey:
+// The 8879 is a wet-signed UPLOAD (2026-09-12): no KBA, no remote envelope. Tests below:
 // start → KBA pass → auto-send → webhook completion → signed PDF in MinIO →
 // M7 gates satisfied. Synthetic data only.
 
@@ -164,116 +164,8 @@ test('§7216 envelope completion records the consent and opens the gate', async 
   assert.ok(consent.rows[0].document_id);
 });
 
-test('KBA REQUIRED: remote 8879 cannot reach Docuseal without a passed KBA; pass auto-sends', async () => {
-  const contact = await makeClient('Sigremote', 'sig-remote@example.test');
-  const te = await makeTaxEngagement(contact);
 
-  const started = await app.inject({
-    method: 'POST', url: `/tax-engagements/${te}/signatures/remote-8879`, headers: auth(ana),
-  });
-  assert.equal(started.statusCode, 201, started.body);
-  const { envelopeId, kbaId, vendor } = started.json();
-  assert.equal(vendor, 'sandbox');
 
-  // The KBA-required test: direct send attempts are refused while pending.
-  const premature = await app.inject({
-    method: 'POST', url: `/signature-envelopes/${envelopeId}/send`, headers: auth(ana),
-  });
-  assert.equal(premature.statusCode, 409, premature.body);
-  assert.equal(premature.json().error, 'kba_required');
-
-  // KBA passes → envelope auto-sends to Docuseal.
-  const passed = await app.inject({
-    method: 'POST', url: `/kba/${kbaId}/simulate`, headers: auth(ana),
-    payload: { outcome: 'passed' },
-  });
-  assert.equal(passed.statusCode, 200, passed.body);
-  assert.equal(passed.json().sent, true);
-  const env = await app.db.query(
-    `SELECT status, docuseal_submission_id, signature_method FROM signature_envelopes WHERE id = $1`,
-    [envelopeId]
-  );
-  assert.equal(env.rows[0].status, 'sent');
-  assert.equal(env.rows[0].signature_method, 'remote_kba');
-
-  // Double-resolution is refused.
-  const again = await app.inject({
-    method: 'POST', url: `/kba/${kbaId}/simulate`, headers: auth(ana),
-    payload: { outcome: 'passed' },
-  });
-  assert.equal(again.statusCode, 409);
-
-  // Completion → f8879 gate fields; the M7 filing gate opens.
-  await docusealComplete(env.rows[0].docuseal_submission_id);
-  const teRow = await app.db.query(
-    `SELECT f8879_signed_at, f8879_signature_method FROM tax_engagements WHERE id = $1`,
-    [te]
-  );
-  assert.ok(teRow.rows[0].f8879_signed_at);
-  assert.equal(teRow.rows[0].f8879_signature_method, 'remote_kba', 'signature method recorded per 8879');
-
-  // Filing is now allowed (fabricate the rest of the pipeline prerequisites).
-  await app.db.query(
-    `UPDATE tax_engagements SET stage = 'ready_to_file', engagement_letter_signed_at = now(), estimate_locked_at = now() WHERE id = $1`,
-    [te]
-  );
-  const filed = await app.inject({
-    method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana),
-    payload: { toStage: 'filed', preparerPtinHolderId: ana.id },
-  });
-  assert.equal(filed.statusCode, 200, filed.body);
-});
-
-test('KBA failure keeps the envelope unsendable', async () => {
-  const contact = await makeClient('Sigfail', 'sig-fail@example.test');
-  const te = await makeTaxEngagement(contact);
-  const started = await app.inject({
-    method: 'POST', url: `/tax-engagements/${te}/signatures/remote-8879`, headers: auth(ana),
-  });
-  const { envelopeId, kbaId } = started.json();
-
-  const failed = await app.inject({
-    method: 'POST', url: `/kba/${kbaId}/simulate`, headers: auth(ana),
-    payload: { outcome: 'failed', failureReason: 'identity questions not answered' },
-  });
-  assert.equal(failed.statusCode, 200, failed.body);
-  assert.equal(failed.json().sent, false);
-
-  const env = await app.db.query(`SELECT status FROM signature_envelopes WHERE id = $1`, [envelopeId]);
-  assert.equal(env.rows[0].status, 'kba_required');
-  const send = await app.inject({ method: 'POST', url: `/signature-envelopes/${envelopeId}/send`, headers: auth(ana) });
-  assert.equal(send.statusCode, 409);
-  assert.equal(send.json().error, 'kba_required');
-});
-
-test('WET PATH: in-office signature records method + completed envelope with the scanned document', async () => {
-  const contact = await makeClient('Sigwet', 'sig-wet@example.test');
-  const te = await makeTaxEngagement(contact);
-
-  // The scanned signed 8879 lands in Signed Authorizations first (M10 path).
-  const scan = await app.db.query<{ id: string }>(
-    `INSERT INTO documents (contact_id, tax_engagement_id, category, filename, minio_bucket, minio_key, uploaded_by_type)
-     VALUES ($1, $2, 'signed_authorizations', 'scanned-8879.pdf', 'saos-signed-docs', 'test/scanned-8879.pdf', 'staff')
-     RETURNING id`,
-    [contact, te]
-  );
-
-  const wet = await app.inject({
-    method: 'POST', url: `/tax-engagements/${te}/signatures/wet`, headers: auth(ana),
-    payload: { type: 'f8879', documentId: scan.rows[0]!.id, note: 'signed in office' },
-  });
-  assert.equal(wet.statusCode, 200, wet.body);
-
-  const env = await app.db.query(
-    `SELECT type, status, signature_method, signed_document_id FROM signature_envelopes
-     WHERE tax_engagement_id = $1 AND type = 'f8879'`,
-    [te]
-  );
-  assert.equal(env.rows.length, 1, 'wet signature leaves an envelope record');
-  assert.equal(env.rows[0].status, 'completed');
-  assert.equal(env.rows[0].signature_method, 'in_person_wet');
-  assert.equal(env.rows[0].signed_document_id, scan.rows[0]!.id);
-});
 
 test('portal Sign Documents list is scoped to the session contact', async () => {
   const mine = await makeClient('Sigmine', 'sig-mine@example.test');
@@ -307,126 +199,86 @@ test('portal Sign Documents list is scoped to the session contact', async () => 
 
 // ── M26 flow 2: entity-group workflow — ONE envelope/KBA, packet, billing ────
 
-test('entity group: one bundled envelope + one KBA signs EVERY group 8879; packet rolls up; consolidated invoice', async () => {
-  const brian = await staffWithToken('brian-group@example.test', 'ceo');
-  const owner = await makeClient('Groupowner', 'group-owner@example.test');
 
-  // Two entities in the group, each with a 2025 return.
-  const bizIds: string[] = [];
-  const teIds: string[] = [];
-  for (const name of ['Synthetic Alpha LLC', 'Synthetic Beta Inc']) {
-    const biz = await app.db.query<{ id: string }>(
-      `INSERT INTO businesses (name) VALUES ($1) RETURNING id`, [name]
-    );
-    bizIds.push(biz.rows[0]!.id);
-    const te = await app.inject({
-      method: 'POST', url: '/tax-engagements', headers: auth(ana),
-      payload: { contactId: owner, businessId: biz.rows[0]!.id, taxYear: 2025, returnType: '1120s' },
-    });
-    assert.equal(te.statusCode, 201, te.body);
-    teIds.push(te.json().id as string);
-    await app.db.query(
-      `UPDATE tax_engagements SET estimated_fee_min_cents = 70000, estimated_fee_max_cents = 90000 WHERE id = $1`,
-      [te.json().id]
-    );
-  }
-  const group = await app.db.query<{ id: string }>(
-    `INSERT INTO entity_groups (name) VALUES ('Synthetic Family Group') RETURNING id`
+/*
+ * THE 8879 IS A DOCUMENT (2026-09-12, Brian's rulings 2 and 3). The remote path is retired.
+ * Uploading the wet-signed scan under Signed Authorizations with the signed date and the
+ * preparer of record IS the authorization — and nothing in SAOS may claim a return is
+ * authorized without that document.
+ */
+test('the wet-signed 8879 upload authorizes the return: date, preparer of record, envelope record, audit', async () => {
+  const contact = await makeClient('Sigwet', 'sig-wet@example.test');
+  const te = await makeTaxEngagement(contact);
+  await app.db.query(`UPDATE tax_engagements SET engagement_letter_signed_at = now(), estimate_locked_at = now(), stage = 'ready_to_file' WHERE id = $1`, [te]);
+
+  // Before: the return is not authorized and cannot file.
+  const early = await app.inject({ method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana), payload: { toStage: 'filed', preparerPtinHolderId: ana.id } });
+  assert.equal(early.statusCode, 409);
+  assert.equal(early.json().error, 'f8879_required');
+
+  // The old wet route no longer stamps an 8879.
+  const old = await app.inject({ method: 'POST', url: `/tax-engagements/${te}/signatures/wet`, headers: auth(ana), payload: { type: 'f8879' } });
+  assert.equal(old.statusCode, 410, old.body);
+
+  // The scan lands under Signed Authorizations and is recorded with its date and PTIN holder.
+  const scan = await app.db.query<{ id: string }>(
+    `INSERT INTO documents (contact_id, tax_engagement_id, category, filename, minio_bucket, minio_key, uploaded_by_type)
+     VALUES ($1, $2, 'signed_authorizations', 'scanned-8879.pdf', 'saos-signed-docs', 'test/scanned-8879.pdf', 'staff') RETURNING id`,
+    [contact, te]
   );
-  const groupId = group.rows[0]!.id;
-  for (const bizId of bizIds) {
-    await app.db.query(`INSERT INTO entity_group_members (group_id, business_id) VALUES ($1, $2)`, [groupId, bizId]);
-  }
-  await app.db.query(
-    `INSERT INTO entity_group_members (group_id, contact_id, member_role) VALUES ($1, $2, 'owner')`,
-    [groupId, owner]
+  const { recordSigned8879 } = await import('../src/modules/tax/signed-8879.ts');
+  await recordSigned8879(app, { staffId: ana.id, label: ana.fullName }, { taxEngagementId: te, documentId: scan.rows[0]!.id, signedOn: '2026-09-10', preparerPtinHolderId: ana.id });
+
+  const row = await app.db.query<{ f8879_signed_at: Date; f8879_signature_method: string; f8879_document_id: string; preparer_ptin_holder_id: string }>(
+    `SELECT f8879_signed_at, f8879_signature_method, f8879_document_id, preparer_ptin_holder_id FROM tax_engagements WHERE id = $1`, [te]);
+  assert.equal(row.rows[0]!.f8879_signature_method, 'in_person_wet');
+  assert.equal(row.rows[0]!.f8879_document_id, scan.rows[0]!.id);
+  assert.equal(row.rows[0]!.preparer_ptin_holder_id, ana.id, 'whose PTIN is on it, recorded at upload');
+  assert.equal(row.rows[0]!.f8879_signed_at.toISOString().slice(0, 10), '2026-09-10');
+
+  const env = await app.db.query(`SELECT status, signature_method, signed_document_id FROM signature_envelopes WHERE tax_engagement_id = $1 AND type = 'f8879'`, [te]);
+  assert.equal(env.rows.length, 1);
+  assert.equal(env.rows[0].status, 'completed');
+  assert.equal(env.rows[0].signed_document_id, scan.rows[0]!.id);
+  const audit = await app.db.query(`SELECT details FROM audit_log WHERE action = 'signature.recorded_wet' AND object_id = $1`, [te]);
+  assert.equal(audit.rows.length, 1);
+
+  // After: the return files.
+  const filed = await app.inject({ method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana), payload: { toStage: 'filed', preparerPtinHolderId: ana.id } });
+  assert.equal(filed.statusCode, 200, filed.body);
+
+  // Twice is refused: one 8879 per return.
+  await assert.rejects(
+    () => recordSigned8879(app, { staffId: ana.id, label: ana.fullName }, { taxEngagementId: te, documentId: scan.rows[0]!.id, signedOn: '2026-09-11', preparerPtinHolderId: ana.id }),
+    /already on file/
+  );
+});
+
+test('nothing may claim a return is authorized without the document: the database refuses a timestamp alone, and so does the gate', async () => {
+  const contact = await makeClient('Sigbare', 'sig-bare@example.test');
+  const te = await makeTaxEngagement(contact);
+  await app.db.query(`UPDATE tax_engagements SET engagement_letter_signed_at = now(), estimate_locked_at = now(), stage = 'ready_to_file' WHERE id = $1`, [te]);
+
+  await assert.rejects(
+    () => app.db.query(`UPDATE tax_engagements SET f8879_signed_at = now() WHERE id = $1`, [te]),
+    /f8879_document_required/,
+    'a signed_at with no document is refused by the database itself'
+  );
+  const still = await app.inject({ method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana), payload: { toStage: 'filed', preparerPtinHolderId: ana.id } });
+  assert.equal(still.statusCode, 409);
+
+  // A document of the wrong category is not an 8879.
+  const wrong = await app.db.query<{ id: string }>(
+    `INSERT INTO documents (contact_id, tax_engagement_id, category, filename, minio_bucket, minio_key, uploaded_by_type)
+     VALUES ($1, $2, 'tax_documents', 'w2.pdf', 'saos-documents', 'test/w2.pdf', 'staff') RETURNING id`, [contact, te]);
+  const { recordSigned8879 } = await import('../src/modules/tax/signed-8879.ts');
+  await assert.rejects(
+    () => recordSigned8879(app, { staffId: ana.id, label: ana.fullName }, { taxEngagementId: te, documentId: wrong.rows[0]!.id, signedOn: '2026-09-10', preparerPtinHolderId: ana.id }),
+    /Signed Authorizations/
   );
 
-  // Packet BEFORE signatures: 2 entities, 2 awaiting 8879, estimates rolled up.
-  const before8879 = await app.inject({
-    method: 'GET', url: `/entity-groups/${groupId}/packet?taxYear=2025`, headers: auth(ana),
-  });
-  assert.equal(before8879.statusCode, 200, before8879.body);
-  assert.equal(before8879.json().rollup.entities, 2);
-  assert.equal(before8879.json().rollup.awaiting8879, 2);
-  assert.equal(before8879.json().rollup.estimatedMinCents, 140000);
-  assert.equal(before8879.json().rollup.estimatedMaxCents, 180000);
-
-  // ONE bundled envelope + ONE KBA for both 8879s.
-  const started = await app.inject({
-    method: 'POST', url: `/entity-groups/${groupId}/f8879-envelope`, headers: auth(ana),
-    payload: { taxYear: 2025 },
-  });
-  assert.equal(started.statusCode, 201, started.body);
-  assert.equal(started.json().covered, 2, 'one envelope covers both entities');
-  const { envelopeId, kbaId } = started.json();
-
-  const passed = await app.inject({
-    method: 'POST', url: `/kba/${kbaId}/simulate`, headers: auth(ana), payload: { outcome: 'passed' },
-  });
-  assert.equal(passed.statusCode, 200, passed.body);
-  const env = await app.db.query<{ docuseal_submission_id: string }>(
-    `SELECT docuseal_submission_id FROM signature_envelopes WHERE id = $1`, [envelopeId]
-  );
-  await docusealComplete(env.rows[0]!.docuseal_submission_id);
-
-  // BOTH engagements stamped by the single completion.
-  for (const teId of teIds) {
-    const row = await app.db.query(
-      `SELECT f8879_signed_at, f8879_signature_method FROM tax_engagements WHERE id = $1`, [teId]
-    );
-    assert.ok(row.rows[0].f8879_signed_at, 'bundled envelope stamps every covered 8879');
-    assert.equal(row.rows[0].f8879_signature_method, 'remote_kba');
-  }
-  const afterPacket = await app.inject({
-    method: 'GET', url: `/entity-groups/${groupId}/packet?taxYear=2025`, headers: auth(ana),
-  });
-  assert.equal(afterPacket.json().rollup.awaiting8879, 0);
-
-  // Nothing left to sign → a second bundle refuses.
-  const again = await app.inject({
-    method: 'POST', url: `/entity-groups/${groupId}/f8879-envelope`, headers: auth(ana),
-    payload: { taxYear: 2025 },
-  });
-  assert.equal(again.statusCode, 400);
-
-  // Billing: per_entity mode refuses the consolidated invoice…
-  const modeSet = await app.inject({
-    method: 'PATCH', url: `/entity-groups/${groupId}`, headers: auth(brian),
-    payload: { billingMode: 'per_entity' },
-  });
-  assert.equal(modeSet.statusCode, 200, modeSet.body);
-  for (const teId of teIds) {
-    await app.db.query(
-      `UPDATE tax_engagements SET stage = 'filed', filed_date = CURRENT_DATE, final_fee_cents = 80000 WHERE id = $1`,
-      [teId]
-    );
-  }
-  const refused = await app.inject({
-    method: 'POST', url: `/entity-groups/${groupId}/invoice`, headers: auth(ana), payload: { taxYear: 2025 },
-  });
-  assert.equal(refused.statusCode, 409);
-
-  // …consolidated mode produces ONE invoice, line-itemed per entity.
-  await app.inject({
-    method: 'PATCH', url: `/entity-groups/${groupId}`, headers: auth(brian),
-    payload: { billingMode: 'consolidated' },
-  });
-  const invoiced = await app.inject({
-    method: 'POST', url: `/entity-groups/${groupId}/invoice`, headers: auth(ana), payload: { taxYear: 2025 },
-  });
-  assert.equal(invoiced.statusCode, 201, invoiced.body);
-  assert.equal(invoiced.json().engagements, 2);
-  assert.equal(invoiced.json().totalCents, 160000, 'sum of both entity final fees');
-  const stamped = await app.db.query<{ n: number }>(
-    `SELECT count(*)::int AS n FROM tax_engagements WHERE id = ANY($1::uuid[]) AND invoice_number = $2`,
-    [teIds, invoiced.json().invoiceNumber]
-  );
-  assert.equal(stamped.rows[0]!.n, 2, 'both engagements share the consolidated invoice number');
-
-  // Idempotence: nothing left to bill.
-  const rebill = await app.inject({
-    method: 'POST', url: `/entity-groups/${groupId}/invoice`, headers: auth(ana), payload: { taxYear: 2025 },
-  });
-  assert.equal(rebill.statusCode, 400);
+  // The retired routes say so.
+  const remote = await app.inject({ method: 'POST', url: `/tax-engagements/${te}/signatures/remote-8879`, headers: auth(ana), payload: {} });
+  assert.equal(remote.statusCode, 410);
+  assert.equal(remote.json().error, 'remote_8879_retired');
 });

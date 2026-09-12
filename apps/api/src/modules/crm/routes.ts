@@ -10,7 +10,7 @@ import { requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
 import { refreshEnrichmentGaps } from './service.ts';
 import { runHealthRefresh } from './health.ts';
-import { startGroupRemote8879 } from '../signatures/service.ts';
+
 import { createInvoice } from '../billing/service.ts';
 
 const ContactCreateBody = z.object({
@@ -525,8 +525,9 @@ export function registerCrmRoutes(app: FastifyInstance): void {
   app.post<{ Params: { id: string } }>('/entity-groups/:id/f8879-envelope', taxManage, async (request, reply) => {
     const id = z.uuid().parse(request.params.id);
     const b = z.object({ taxYear: z.number().int().min(2000).max(2100) }).parse(request.body);
-    const result = await startGroupRemote8879(app, { id: request.staff!.id, label: request.staff!.fullName }, id, b.taxYear);
-    return reply.code(201).send(result);
+    void b; void id; void reply;
+    // RETIRED (2026-09-12): the bundled remote 8879 went with the remote path. Each return's 8879 is a wet-signed upload.
+    throw new AppError(410, 'remote_8879_retired', 'The bundled remote 8879 envelope is retired. Upload each wet-signed 8879 to its return.');
   });
 
   // Consolidated invoice: ONE invoice, line-itemed per entity from each

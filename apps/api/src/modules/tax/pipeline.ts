@@ -63,6 +63,7 @@ interface GateRow {
   stage: TaxStage;
   engagement_letter_signed_at: Date | null;
   f8879_signed_at: Date | null;
+  f8879_document_id: string | null;
   estimate_locked_at: Date | null;
   filed_date: string | null;
   contact_id: string;
@@ -76,7 +77,7 @@ export async function transitionStage(
   opts: { note?: string | undefined; ip?: string | null; userAgent?: string | null; preparerPtinHolderId?: string | undefined } = {}
 ): Promise<{ from: TaxStage; to: TaxStage }> {
   const { rows } = await app.db.query<GateRow>(
-    `SELECT te.id, te.stage, te.engagement_letter_signed_at, te.f8879_signed_at,
+    `SELECT te.id, te.stage, te.engagement_letter_signed_at, te.f8879_signed_at, te.f8879_document_id,
             te.estimate_locked_at, te.filed_date, e.contact_id
      FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
      WHERE te.id = $1`,
@@ -111,8 +112,8 @@ export async function transitionStage(
       'Blocked: the estimated fee range is not locked. Lock the estimate to unlock preparation (automation 8).'
     );
   }
-  // Gate 3 — no return files without a signed 8879.
-  if (toStage === 'filed' && !row.f8879_signed_at) {
+  // Gate 3 — no return files without a signed 8879 ON FILE: the uploaded scan, not a timestamp (2026-09-12).
+  if (toStage === 'filed' && (!row.f8879_signed_at || !row.f8879_document_id)) {
     throw new AppError(
       409,
       'f8879_required',

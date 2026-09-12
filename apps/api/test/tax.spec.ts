@@ -8,7 +8,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import { withTransaction } from '../src/db.ts';
-import { createTestConfig, makeStaff, makeContact, auditRows } from './helpers.ts';
+import { createTestConfig, makeStaff, makeContact, auditRows , signed8879OnFile } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { computeComplexityScore } from '../src/modules/tax/complexity.ts';
 import { recordEfileResult } from '../src/modules/tax/pipeline.ts';
@@ -157,11 +157,7 @@ test('full pipeline march with all three gates enforced', async () => {
   const no8879 = await move(id, 'filed', 409);
   assert.equal((no8879.body as { error: string }).error, 'f8879_required');
 
-  const wet8879 = await app.inject({
-    method: 'POST', url: `/tax-engagements/${id}/signatures/wet`, headers: auth(preparer),
-    payload: { type: 'f8879', note: 'signed in office, scanned' },
-  });
-  assert.equal(wet8879.statusCode, 200, wet8879.body);
+  await signed8879OnFile(app, id, preparer.id);
 
   await move(id, 'filed');
   detail = await app.inject({ method: 'GET', url: `/tax-engagements/${id}`, headers: auth(preparer) });
@@ -257,10 +253,11 @@ test('complexity endpoint stores score + inputs', async () => {
 test('e-file result: accepted completes; rejected re-queues with perfection clock + owned fix task', async () => {
   // Fabricate a filed 1040 (gates satisfied) — the individual lane: 5 days.
   const accepted = await newTaxEngagement();
+  await signed8879OnFile(app, accepted, preparer.id);
   await app.db.query(
     `UPDATE tax_engagements
      SET stage = 'filed', engagement_letter_signed_at = now(), estimate_locked_at = now(),
-         f8879_signed_at = now(), filed_date = '2026-08-01', invoice_number = 'INV-SYNTH-1'
+         filed_date = '2026-08-01', invoice_number = 'INV-SYNTH-1'
      WHERE id = $1`,
     [accepted]
   );
@@ -276,10 +273,11 @@ test('e-file result: accepted completes; rejected re-queues with perfection cloc
 
   // Rejected: 1040 → 5-day perfection window from asOf.
   const rejected = await newTaxEngagement();
+  await signed8879OnFile(app, rejected, preparer.id);
   await app.db.query(
     `UPDATE tax_engagements
      SET stage = 'filed', engagement_letter_signed_at = now(), estimate_locked_at = now(),
-         f8879_signed_at = now(), filed_date = '2026-08-01', invoice_number = 'INV-SYNTH-2'
+         filed_date = '2026-08-01', invoice_number = 'INV-SYNTH-2'
      WHERE id = $1`,
     [rejected]
   );
@@ -430,10 +428,11 @@ test('an accepted return closes its engagement, and the client follows when the 
     const te = await app.db.query<{ id: string }>(
       `INSERT INTO tax_engagements
          (engagement_id, tax_year, return_type, stage, engagement_letter_signed_at,
-          estimate_locked_at, f8879_signed_at)
-       VALUES ($1, $2, '1040', 'filed', now(), now(), now()) RETURNING id`,
+          estimate_locked_at)
+       VALUES ($1, $2, '1040', 'filed', now(), now()) RETURNING id`,
       [eng.rows[0]!.id, year]
     );
+    await signed8879OnFile(app, te.rows[0]!.id, preparer.id);
     return { engagementId: eng.rows[0]!.id, returnId: te.rows[0]!.id };
   };
   const y2024 = await mkYear(2024);
@@ -489,10 +488,11 @@ test('a REJECTED return does not finish anything — it is still open work', asy
   const te = await app.db.query<{ id: string }>(
     `INSERT INTO tax_engagements
        (engagement_id, tax_year, return_type, stage, engagement_letter_signed_at,
-        estimate_locked_at, f8879_signed_at)
-     VALUES ($1, 2025, '1040', 'filed', now(), now(), now()) RETURNING id`,
+        estimate_locked_at)
+     VALUES ($1, 2025, '1040', 'filed', now(), now()) RETURNING id`,
     [eng.rows[0]!.id]
   );
+  await signed8879OnFile(app, te.rows[0]!.id, preparer.id);
 
   await recordEfileResult(app, { staffId: null, label: 'test' }, te.rows[0]!.id, {
     result: 'rejected', rejectCode: 'IND-031-04', rejectReason: 'AGI mismatch',

@@ -28,6 +28,9 @@ const StaffUploadFields = z.object({
   taxYear: z.coerce.number().int().optional(),
   taxEngagementId: z.uuid().optional(),
   businessId: z.uuid().optional(),
+  /** A signed 8879 (category signed_authorizations + taxEngagementId): the date on the signature and whose PTIN is on it. */
+  signedOn: z.iso.date().optional(),
+  preparerPtinHolderId: z.uuid().optional(),
 });
 
 const StatusBody = z.object({
@@ -225,6 +228,18 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
           businessId: fields.businessId,
         }
       );
+      /*
+       * THE SIGNED 8879 (2026-09-12): uploading the scan under Signed Authorizations with the
+       * signed date and the preparer of record IS the authorization. Nothing else stamps it.
+       */
+      let signed8879 = false;
+      if (fields.category === 'signed_authorizations' && fields.taxEngagementId && fields.signedOn && fields.preparerPtinHolderId) {
+        const { recordSigned8879 } = await import('../tax/signed-8879.ts');
+        await recordSigned8879(app, { staffId: staff.id, label: staff.fullName, ip: request.ip, userAgent: request.headers['user-agent'] ?? null }, {
+          taxEngagementId: fields.taxEngagementId, documentId: result.id, signedOn: fields.signedOn, preparerPtinHolderId: fields.preparerPtinHolderId,
+        });
+        signed8879 = true;
+      }
       // Return delivery: notify the client + advance the stage (MP ATX handoff).
       let stageMoved = false;
       if (fields.category === 'return_deliverable' && fields.taxEngagementId) {
@@ -235,7 +250,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         );
         stageMoved = delivered.stageMoved;
       }
-      return reply.code(201).send({ ...result, stageMoved });
+      return reply.code(201).send({ ...result, stageMoved, signed8879 });
     }
   );
 

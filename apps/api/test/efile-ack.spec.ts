@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer, MailMessage } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, signed8879OnFile, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { ingestReport, parseAtxReport, releaseReport, holdRow } from '../src/modules/tax/efile-ack.ts';
 import { transitionStage } from '../src/modules/tax/pipeline.ts';
@@ -46,10 +46,11 @@ async function filedReturn(first: string, last: string, opts: { language?: 'en' 
     [c.id, `${opts.taxYear ?? 2025} return`]
   );
   const te = await app.db.query<{ id: string }>(
-    `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, stage, preparer_id, engagement_letter_signed_at, estimate_locked_at, f8879_signed_at)
-     VALUES ($1, $2, $3::return_type, 'ready_to_file', $4, now(), now(), now()) RETURNING id`,
+    `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, stage, preparer_id, engagement_letter_signed_at, estimate_locked_at)
+     VALUES ($1, $2, $3::return_type, 'ready_to_file', $4, now(), now()) RETURNING id`,
     [eng.rows[0]!.id, opts.taxYear ?? 2025, opts.returnType ?? '1040', ana.id]
   );
+  await signed8879OnFile(app, te.rows[0]!.id, ana.id);
   await transitionStage(app, { staffId: ana.id, label: ana.fullName }, te.rows[0]!.id, 'filed', { preparerPtinHolderId: ana.id });
   return { contactId: c.id, taxEngagementId: te.rows[0]!.id };
 }
@@ -172,23 +173,23 @@ test('two clients with the same name and year is not a match — a task, never a
   assert.match(note.rows[0]!.disposition_note, /2 returns in SAOS could be/);
 });
 
-test('the preparer of record is required at filing and cannot be changed after', async () => {
+test('the preparer of record is set by the 8879 upload, required at filing, and cannot be changed after', async () => {
   const c = await makeContact(app.db, { firstName: 'Ptin', lastName: 'Holder', email: 'ptin@example.test' });
   const eng = await app.db.query<{ id: string }>(`INSERT INTO engagements (contact_id, service_line, title, status) VALUES ($1, 'tax', '2025', 'active') RETURNING id`, [c.id]);
   const te = await app.db.query<{ id: string }>(
-    `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, stage, preparer_id, engagement_letter_signed_at, estimate_locked_at, f8879_signed_at)
-     VALUES ($1, 2025, '1040', 'ready_to_file', $2, now(), now(), now()) RETURNING id`, [eng.rows[0]!.id, ana.id]);
+    `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, stage, preparer_id, engagement_letter_signed_at, estimate_locked_at)
+     VALUES ($1, 2025, '1040', 'ready_to_file', $2, now(), now()) RETURNING id`, [eng.rows[0]!.id, ana.id]);
   const id = te.rows[0]!.id;
 
-  await assert.rejects(
-    () => transitionStage(app, { staffId: ana.id, label: ana.fullName }, id, 'filed', {}),
-    /say whose PTIN is on this filing/,
-    'filing without naming whose PTIN is on it is refused'
-  );
-  await transitionStage(app, { staffId: ana.id, label: ana.fullName }, id, 'filed', { preparerPtinHolderId: ana.id });
+  // No 8879 on file: filing is refused, whoever is named.
+  await assert.rejects(() => transitionStage(app, { staffId: ana.id, label: ana.fullName }, id, 'filed', { preparerPtinHolderId: ana.id }), /8879/);
+
+  // The upload sets the holder and authorizes; filing then goes through.
+  await signed8879OnFile(app, id, ana.id);
   const set = await app.db.query<{ preparer_ptin_holder_id: string; preparer_ptin_holder_set_at: Date | null }>(`SELECT preparer_ptin_holder_id, preparer_ptin_holder_set_at FROM tax_engagements WHERE id = $1`, [id]);
-  assert.equal(set.rows[0]!.preparer_ptin_holder_id, ana.id);
+  assert.equal(set.rows[0]!.preparer_ptin_holder_id, ana.id, 'whose PTIN is on it, recorded at upload');
   assert.ok(set.rows[0]!.preparer_ptin_holder_set_at);
+  await transitionStage(app, { staffId: ana.id, label: ana.fullName }, id, 'filed', {});
 
   const other = await makeStaff(app.db, config, { email: 'other-prep@example.test', name: 'Synthetic Other', role: 'tax_preparer', password: 'tax_preparer-password-5678' });
   await assert.rejects(

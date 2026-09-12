@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff , signed8879OnFile } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { withTransaction } from '../src/db.ts';
 import { drainOutbox, enqueueEffect, MAX_ATTEMPTS } from '../src/outbox.ts';
@@ -372,10 +372,11 @@ async function filedReturn(lastName: string): Promise<{ contactId: string; retur
   const te = await app.db.query<{ id: string }>(
     `INSERT INTO tax_engagements
        (engagement_id, tax_year, return_type, stage, engagement_letter_signed_at,
-        estimate_locked_at, f8879_signed_at)
-     VALUES ($1, 2025, '1040', 'filed', now(), now(), now()) RETURNING id`,
+        estimate_locked_at)
+     VALUES ($1, 2025, '1040', 'filed', now(), now()) RETURNING id`,
     [eng.rows[0]!.id]
   );
+  await signed8879OnFile(app, te.rows[0]!.id, (await app.db.query<{ id: string }>(`SELECT id FROM staff WHERE is_active ORDER BY created_at LIMIT 1`)).rows[0]!.id);
   return { contactId: c.id, returnId: te.rows[0]!.id };
 }
 

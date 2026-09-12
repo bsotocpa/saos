@@ -18,7 +18,6 @@ import { AppError } from '../../types.ts';
 import { record7216Consent } from '../compliance/consent.ts';
 import { uploadDocument } from '../documents/service.ts';
 import type { DocusealAdapter } from './docuseal.ts';
-import { makeKbaVerifier, assertKbaUsable } from './kba.ts';
 
 export type EnvelopeType =
   | 'engagement_letter' | 'consent_7216' | 'f8879' | 'w9' | 'grant_agreement'
@@ -42,7 +41,7 @@ export function templateKeyFor(type: EnvelopeType, _serviceLine?: string | null)
     case 'consent_7216':
       return 'consent_7216_use';
     default:
-      return null; // f8879/W9: IRS forms living in Docuseal, not DB copy
+      return null; // f8879 is a wet-signed upload (2026-09-12); W9/others have no DB template
   }
 }
 
@@ -150,19 +149,9 @@ export async function sendEnvelope(
     }
   }
 
-  // GATE 2 — remote 8879 requires a PASSED KBA (IRS Pub 1345).
-  if (env.type === 'f8879' && env.signature_method === 'remote_kba') {
-    const kba = await app.db.query<{ status: string }>(
-      `SELECT status FROM kba_verifications WHERE envelope_id = $1 ORDER BY created_at DESC LIMIT 1`,
-      [envelopeId]
-    );
-    if (kba.rows[0]?.status !== 'passed') {
-      throw new AppError(
-        409,
-        'kba_required',
-        'Blocked: knowledge-based authentication has not passed for this signer. Remote 8879 signatures require KBA before the envelope is sent.'
-      );
-    }
+  // The remote 8879 path is retired (2026-09-12): an f8879 envelope is never sent from here.
+  if (env.type === 'f8879') {
+    throw new AppError(410, 'remote_8879_retired', 'Form 8879 is wet-signed and uploaded to the return; it is not sent for e-signature.');
   }
 
   // GATE 3 — production never pretends to send.
@@ -189,172 +178,6 @@ export async function sendEnvelope(
 }
 
 /** Start the remote 8879 path: envelope + KBA session (nothing goes to Docuseal yet). */
-export async function startRemote8879(
-  app: FastifyInstance,
-  actor: { id: string; label: string },
-  taxEngagementId: string
-): Promise<{ envelopeId: string; kbaId: string; vendor: string }> {
-  assertKbaUsable(app.config);
-  const { rows } = await app.db.query<{ contact_id: string; email: string | null; first_name: string; last_name: string }>(
-    `SELECT c.id AS contact_id, c.email, c.first_name, c.last_name
-     FROM tax_engagements te
-     JOIN engagements e ON e.id = te.engagement_id
-     JOIN contacts c ON c.id = e.contact_id
-     WHERE te.id = $1`,
-    [taxEngagementId]
-  );
-  const te = rows[0];
-  if (!te) throw new AppError(404, 'not_found', 'Tax engagement not found.');
-  if (!te.email) throw new AppError(400, 'recipient_missing', 'Contact has no email address.');
-
-  const envelope = await createEnvelope(app, { type: 'staff', id: actor.id, label: actor.label }, {
-    contactId: te.contact_id,
-    type: 'f8879',
-    taxEngagementId,
-    signatureMethod: 'remote_kba',
-    status: 'kba_required',
-  });
-
-  const verifier = makeKbaVerifier(app.config);
-  const { vendorRef } = await verifier.start({
-    envelopeId: envelope.id,
-    contactId: te.contact_id,
-    recipientEmail: te.email,
-    recipientName: `${te.first_name} ${te.last_name}`,
-  });
-  const kba = await app.db.query<{ id: string }>(
-    `INSERT INTO kba_verifications (envelope_id, vendor, vendor_ref, status, attempts)
-     VALUES ($1, $2, $3, 'pending', 1) RETURNING id`,
-    [envelope.id, verifier.vendor, vendorRef]
-  );
-  await app.db.query(`UPDATE signature_envelopes SET status = 'kba_pending' WHERE id = $1`, [envelope.id]);
-  await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.label,
-    action: 'kba.started', objectType: 'signature_envelope', objectId: envelope.id,
-    contactId: te.contact_id, details: { vendor: verifier.vendor },
-  });
-  return { envelopeId: envelope.id, kbaId: kba.rows[0]!.id, vendor: verifier.vendor };
-}
-
-/**
- * v4.3 flow 2: ONE bundled envelope + ONE KBA for an entity group's 8879s.
- * The group's signer (member_role 'owner', else the first contact member)
- * verifies once; completion stamps f8879 on EVERY covered engagement.
- */
-export async function startGroupRemote8879(
-  app: FastifyInstance,
-  actor: { id: string; label: string },
-  groupId: string,
-  taxYear: number
-): Promise<{ envelopeId: string; kbaId: string; vendor: string; covered: number }> {
-  assertKbaUsable(app.config);
-  const signer = await app.db.query<{ contact_id: string; email: string | null; first_name: string; last_name: string }>(
-    `SELECT c.id AS contact_id, c.email, c.first_name, c.last_name
-     FROM entity_group_members gm
-     JOIN contacts c ON c.id = gm.contact_id
-     WHERE gm.group_id = $1 AND gm.contact_id IS NOT NULL
-     ORDER BY (gm.member_role = 'owner') DESC, c.created_at
-     LIMIT 1`,
-    [groupId]
-  );
-  const s = signer.rows[0];
-  if (!s) throw new AppError(400, 'no_signer', 'The group has no contact member to sign for it.');
-  if (!s.email) throw new AppError(400, 'recipient_missing', 'The signer has no email address.');
-
-  const engagements = await app.db.query<{ id: string }>(
-    `SELECT te.id
-     FROM tax_engagements te
-     JOIN engagements e ON e.id = te.engagement_id
-     WHERE e.business_id IN (SELECT business_id FROM entity_group_members WHERE group_id = $1 AND business_id IS NOT NULL)
-       AND te.tax_year = $2
-       AND te.f8879_signed_at IS NULL
-       AND te.stage NOT IN ('completed', 'withdrawn')`,
-    [groupId, taxYear]
-  );
-  if (engagements.rows.length === 0) {
-    throw new AppError(400, 'nothing_to_sign', `No ${taxYear} group engagements are awaiting an 8879.`);
-  }
-
-  const envelope = await createEnvelope(app, { type: 'staff', id: actor.id, label: actor.label }, {
-    contactId: s.contact_id,
-    type: 'f8879',
-    signatureMethod: 'remote_kba',
-    status: 'kba_required',
-  });
-  await app.db.query(`UPDATE signature_envelopes SET entity_group_id = $2 WHERE id = $1`, [envelope.id, groupId]);
-  for (const te of engagements.rows) {
-    await app.db.query(
-      `INSERT INTO signature_envelope_items (envelope_id, tax_engagement_id) VALUES ($1, $2)`,
-      [envelope.id, te.id]
-    );
-  }
-
-  const verifier = makeKbaVerifier(app.config);
-  const { vendorRef } = await verifier.start({
-    envelopeId: envelope.id,
-    contactId: s.contact_id,
-    recipientEmail: s.email,
-    recipientName: `${s.first_name} ${s.last_name}`,
-  });
-  const kba = await app.db.query<{ id: string }>(
-    `INSERT INTO kba_verifications (envelope_id, vendor, vendor_ref, status, attempts)
-     VALUES ($1, $2, $3, 'pending', 1) RETURNING id`,
-    [envelope.id, verifier.vendor, vendorRef]
-  );
-  await app.db.query(`UPDATE signature_envelopes SET status = 'kba_pending' WHERE id = $1`, [envelope.id]);
-  await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.label,
-    action: 'kba.started', objectType: 'signature_envelope', objectId: envelope.id,
-    contactId: s.contact_id,
-    details: { vendor: verifier.vendor, entity_group_id: groupId, covered: engagements.rows.length },
-  });
-  return { envelopeId: envelope.id, kbaId: kba.rows[0]!.id, vendor: verifier.vendor, covered: engagements.rows.length };
-}
-
-/** KBA outcome (vendor webhook in production; simulate endpoint in sandbox). Pass → envelope auto-sends. */
-export async function resolveKba(
-  app: FastifyInstance,
-  docuseal: DocusealAdapter,
-  kbaId: string,
-  outcome: 'passed' | 'failed',
-  failureReason?: string
-): Promise<{ envelopeId: string; sent: boolean }> {
-  const { rows } = await app.db.query<{ id: string; envelope_id: string; status: string; contact_id: string }>(
-    `SELECT k.id, k.envelope_id, k.status, se.contact_id
-     FROM kba_verifications k JOIN signature_envelopes se ON se.id = k.envelope_id
-     WHERE k.id = $1`,
-    [kbaId]
-  );
-  const kba = rows[0];
-  if (!kba) throw new AppError(404, 'not_found', 'KBA verification not found.');
-  if (kba.status !== 'pending') throw new AppError(409, 'kba_already_resolved', `KBA is already '${kba.status}'.`);
-
-  await app.db.query(
-    `UPDATE kba_verifications
-     SET status = $2, verified_at = CASE WHEN $2 = 'passed' THEN now() END, failure_reason = $3
-     WHERE id = $1`,
-    [kbaId, outcome, failureReason ?? null]
-  );
-  await writeAudit(app.db, {
-    actorType: 'system', action: `kba.${outcome}`,
-    objectType: 'signature_envelope', objectId: kba.envelope_id, contactId: kba.contact_id,
-  });
-
-  if (outcome === 'passed') {
-    await sendEnvelope(app, docuseal, { type: 'system', label: 'kba passed' }, kba.envelope_id);
-    return { envelopeId: kba.envelope_id, sent: true };
-  }
-  await app.db.query(`UPDATE signature_envelopes SET status = 'kba_required' WHERE id = $1`, [kba.envelope_id]);
-  return { envelopeId: kba.envelope_id, sent: false };
-}
-
-/**
- * Send a PACKET envelope: SAOS generates the document (Master + only this packet's
- * schedules, §7216 consents excluded), then Docuseal signs THAT.
- *
- * Same three gates as sendEnvelope, plus the reason this exists: an engagement
- * packet must never be a pre-built Docuseal template again.
- */
 export async function sendPacketEnvelope(
   app: FastifyInstance,
   docuseal: DocusealAdapter,

@@ -46,7 +46,7 @@
 ## SAOS-Specific Hard Rules (non-negotiable)
 ### Compliance
 - **Placeholder gate**: any document template flagged `PLACEHOLDER` (§7216 consent, engagement letters) must be blocked from sending to any production client. This gate is enforced in code, not convention. Never remove it.
-- **8879 signatures**: remote path requires the KBA step before the Docuseal envelope — pluggable vendor interface, never hardcoded. Record signature method per 8879 (remote-KBA / in-person wet).
+- **8879 signatures** (ruling 2026-09-12): the remote e-sign path is retired — no KBA vendor, no Docuseal template. Form 8879 is wet-signed in office, scanned, and uploaded to the return as a Signed Authorization with the signed date and the PTIN holder recorded. That upload is what authorizes the return; nothing else may stamp it, and the filed gate checks for the document, not a timestamp.
 - **Audit logging**: every document access, download, and permission change is logged. No feature ships that touches client documents without audit coverage.
 - **Documents never travel by SMS or email attachment** — portal upload links only.
 

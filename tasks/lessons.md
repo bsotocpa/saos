@@ -1926,3 +1926,23 @@ each real and each necessary; none of them was this bug. The harness could never
 cache-header defect from inside a fresh browser context, which is the fourth rule: a check that
 starts from a clean cache cannot find what a stale one does. The walk found it because a walk
 has history.
+
+## 2026-09-12 — checks-that-lie: reported a reference as the artifact
+
+The staff report said the 8879 "lives in a Docuseal template outside the repo, and whoever
+configured it decided whose PTIN it shows." Brian: there is no 8879 template in Docuseal. The
+only templates are the legal text package and Docuseal's own sample.
+
+What I had was a column (`signature_envelopes.docuseal_template_id`), a config mode
+(`DOCUSEAL_MODE=http`), and a comment in `templateKeyFor` saying "IRS forms living in Docuseal".
+Three pointers, zero artifacts. I reported the pointers as the thing they pointed at, and added
+"whoever configured it decided" — a story about a decision nobody made, about a file that does
+not exist.
+
+**The rule.** A config value, a foreign key, a URL or a comment that names an external resource
+is evidence that something once intended to refer to it. It is not evidence the resource exists,
+and it is never evidence of what the resource contains. Before reporting an external artifact as
+present: fetch it, list it, or say "I could not verify it exists." The same rule as the green
+harness: a reference is a claim about something, and the claim is on trial until the thing is in
+hand. Checked today: the Docuseal API refuses the token the box holds (401), so even the listing
+could not be verified from here — and that is what the report should have said.

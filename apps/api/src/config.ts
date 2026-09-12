@@ -67,7 +67,6 @@ const schema = z.object({
   DOCUSEAL_API_TOKEN: z.string().optional(),
   // KBA for remote 8879 (IRS Pub 1345). 'sandbox' until Brian picks the
   // vendor; production refuses remote 8879 without a real vendor.
-  KBA_MODE: z.enum(['sandbox', 'vendor']).default('sandbox'),
   // Stripe (approved vendor — payment tokens only). 'stub' for dev/test;
   // 'live' needs the secret key + webhook signing secret. Production
   // checkout refuses stub mode at runtime.

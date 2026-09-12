@@ -48,7 +48,6 @@ interface PresentedPacket {
 function statusKey(status: string): DictKey {
   if (status === 'completed') return 'env_status_completed';
   if (status === 'sent' || status === 'viewed') return 'env_status_sent';
-  if (status.startsWith('kba')) return 'env_status_kba';
   return 'env_status_draft';
 }
 

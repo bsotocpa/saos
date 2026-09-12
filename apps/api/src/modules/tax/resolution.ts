@@ -30,9 +30,10 @@ export function currentTaxYear(today: string = todayChicago()): number {
 }
 
 /**
- * THE HARD RULE (CLAUDE.md): current + 2 prior years go through e-file with
- * remote KBA; anything older is PAPER — wet signature, certified mail. The
- * system derives this from the year; staff never pick.
+ * THE HARD RULE (CLAUDE.md): current + 2 prior years go through e-file; anything
+ * older is PAPER — certified mail. Every 8879, either lane, is wet-signed in office
+ * and uploaded to the return (2026-09-12). The system derives the lane from the
+ * year; staff never pick.
  */
 export function filingLane(taxYear: number, today: string = todayChicago()): FilingLane {
   return currentTaxYear(today) - taxYear <= EFILE_YEAR_SPAN ? 'efile' : 'paper';

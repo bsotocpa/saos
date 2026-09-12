@@ -170,7 +170,8 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     if (q.contactId) { params.push(q.contactId); clauses.push(`e.contact_id = $${params.length}`); }
     const { rows } = await app.db.query(
       `SELECT te.id, te.tax_year, te.return_type, te.stage, te.preparer_id, te.reviewer_id,
-              te.preparer_ptin_holder_id, ptin.full_name AS preparer_of_record,
+              te.preparer_ptin_holder_id, ptin.display_name AS preparer_of_record,
+              te.f8879_document_id, te.f8879_signed_at::date::text AS f8879_signed_on,
               te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
               te.estimated_fee_min_cents, te.estimated_fee_max_cents, te.final_fee_cents,
               te.scope_creep_flag, te.complexity_score, te.extension_filed, te.filed_date,
@@ -189,7 +190,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
   app.get<{ Params: { id: string } }>('/tax-engagements/:id', read, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const { rows } = await app.db.query(
-      `SELECT te.*, e.contact_id, e.business_id, e.price_book_version_id, ptin.full_name AS preparer_of_record
+      `SELECT te.*, e.contact_id, e.business_id, e.price_book_version_id, ptin.display_name AS preparer_of_record
        FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
        LEFT JOIN staff ptin ON ptin.id = te.preparer_ptin_holder_id WHERE te.id = $1`,
       [id]
@@ -308,19 +309,16 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     const b = WetSignatureBody.parse(request.body);
     const te = await loadTaxEngagement(app, id);
 
+    if (b.type === 'f8879') {
+      // 2026-09-12: the signed 8879 is the uploaded document. This route no longer stamps it.
+      throw new AppError(410, 'f8879_is_an_upload', 'Upload the wet-signed, scanned 8879 to the return under Signed Authorizations, with the signed date and the preparer of record. That upload authorizes the return.');
+    }
     if (b.type === 'engagement_letter') {
       await app.db.query(
         `UPDATE tax_engagements SET engagement_letter_signed_at = COALESCE(engagement_letter_signed_at, now()) WHERE id = $1`,
         [id]
       );
       await app.db.query(`UPDATE contacts SET engagement_letter_status = 'signed' WHERE id = $1`, [te.contact_id]);
-    } else {
-      await app.db.query(
-        `UPDATE tax_engagements
-         SET f8879_signed_at = COALESCE(f8879_signed_at, now()), f8879_signature_method = 'in_person_wet'
-         WHERE id = $1`,
-        [id]
-      );
     }
     // Completed envelope record — one queryable source of signature status,
     // wet or remote (the signed scan links in when provided).
@@ -328,7 +326,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       `INSERT INTO signature_envelopes
          (contact_id, tax_engagement_id, type, status, signature_method, signed_document_id, completed_at, created_by_staff_id)
        VALUES ($1, $2, $3::envelope_type, 'completed', 'in_person_wet', $4, now(), $5)`,
-      [te.contact_id, id, b.type === 'f8879' ? 'f8879' : 'engagement_letter', b.documentId ?? null, request.staff!.id]
+      [te.contact_id, id, 'engagement_letter', b.documentId ?? null, request.staff!.id]
     );
     await writeAudit(app.db, {
       actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,

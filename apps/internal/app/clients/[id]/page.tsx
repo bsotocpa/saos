@@ -53,6 +53,7 @@ interface TaxEngagement {
   estimated_fee_max_cents: number | null; final_fee_cents: number | null;
   extension_filed: boolean; filed_date: string | null;
   preparer_of_record?: string | null; federal_accepted_on?: string | null; state_accepted_on?: string | null; state_accepted_code?: string | null;
+  f8879_document_id?: string | null; f8879_signed_on?: string | null;
 }
 interface Doc {
   id: string; category: string; original_filename: string; created_at: string;
@@ -1034,6 +1035,7 @@ export default function ClientPacketPage() {
                 {t.filed_date ? `filed ${formatDate(t.filed_date)}` : 'not filed'}
                 {/* The paid preparer of record (2026-09-12). Filed before it was recorded: say so, never assume. */}
                 {t.filed_date ? ` · preparer of record: ${t.preparer_of_record ?? 'not recorded'}` : ''}
+                {!t.filed_date ? (t.f8879_document_id ? ` · 8879 on file, signed ${formatDate(t.f8879_signed_on ?? '')}` : ' · 8879 not on file') : ''}
                 {t.federal_accepted_on ? ` · IRS accepted ${formatDate(t.federal_accepted_on)}` : ''}
                 {t.state_accepted_on ? ` · ${t.state_accepted_code ?? 'state'} accepted ${formatDate(t.state_accepted_on)}` : ''}
               </span>

@@ -256,7 +256,6 @@ const dict = {
   env_status_draft: ['Being prepared', 'En preparación'],
   env_status_sent: ['Ready to sign — check your email', 'Lista para firmar — revise su correo'],
   env_status_completed: ['Signed', 'Firmado'],
-  env_status_kba: ['Identity verification pending', 'Verificación de identidad pendiente'],
 
   // Invoices
   inv_title: ['Invoices & Payments', 'Facturas y pagos'],
