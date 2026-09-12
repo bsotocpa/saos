@@ -100,8 +100,8 @@ NEW
 ## Password reveal, Jaqueline's six, Docuseal, the wall — 2026-09-12 (Brian's batch after phase 1)
 - [x] 1. Never a password in a report (lesson: a secret in a report). Admin → Staff: one-time reveal with Copy; regenerate is POST /staff/:id/password/regenerate, audited, sessions revoked; PATCH accepts email (audited; sessions keyed by staff id, so no orphaned login); Edit control for names and address.
 - [x] 2. Jaqueline's six: meetings.upload; dashboards.hilo (split from dashboards.executive); events.manage (split from dashboards.executive); meetings.read scoped (own + Hilo); referrals.suggest (phase 1). Migration 0094 audits the grants.
-- [ ] 3a. Schedule C is pending for Rehearsal Client 2 (bookkeeping engagement created through createEngagement, actor Brian via the proof script). Brian accepts on the phone; expect schedule_acceptances + audit schedule.accepted, no envelope row (Master §1).
-- [ ] 3b. Docuseal decommission: only after 3a lands with Docuseal untouched. Footprint mapped (compose, Caddy, env, adapter, webhook, backup volume list, docs).
+- [x] 3a. Schedule C accepted by Brian on the phone 2026-09-12 12:10 UTC: schedule_acceptances (C, portal_acceptance), audit schedule.accepted as client, no envelope row, zero Docuseal requests.
+- [x] 3b. Docuseal decommissioned 2026-09-12: adapter, webhook, config, compose service, Caddy vhost, backup entry, docs; container stopped and removed; DOCUSEAL keys removed from the box .env. KEEP until 2026-10-12, then remove: docker volume saos_saos_docuseal_data and /mnt/saos-data/docuseal. DNS record sign.sotoaccounting.com: Brian pulls it.
 - [x] Rulings 2026-09-12: Rene holds pii.read; Laura uploads only what she may read (entity_filings); event rosters behind events.read (intern does not hold it). Migration 0095.
 - [x] Hook: scripts/green-run.mjs; root npm test records a receipt keyed to the tree hash; deploy.sh and .githooks/pre-push refuse without it or with a dirty tree.
 - [x] Added-schedule notice: template schedule_added EN/ES, outbox effect schedule.added_notice, automation schedule_added_notice OFF. Brian arms it.
