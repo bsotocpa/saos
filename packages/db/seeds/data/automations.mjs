@@ -8,6 +8,12 @@
 
 export const automations = [
   {
+    key: 'schedule_added_notice',
+    name: 'Added-schedule notice ("One more thing to agree to")',
+    description:
+      'When a service is added after the Master Engagement Agreement is signed, its schedule waits in the portal; this emails the client that it is there, EN/ES, with the link to Sign. OFF: the schedule still appears in the portal; no email leaves, and each suppression is audited (schedule.notice_suppressed).',
+  },
+  {
     key: 'escalation_ladder',
     name: 'Escalation ladder (waiting-for-input chase)',
     description:

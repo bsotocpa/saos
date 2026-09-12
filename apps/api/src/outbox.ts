@@ -41,6 +41,8 @@ export const OUTBOX_EFFECTS = [
   'invoice.void_notice',
   /** Email the client that the IRS or a state accepted their return (2026-09-12). Federal and state are separate rows. */
   'efile.ack_notice',
+  /** Email the client that a schedule for an added service is waiting in the portal (2026-09-12). One pending row per client. */
+  'schedule.added_notice',
 ] as const;
 export type OutboxEffect = (typeof OUTBOX_EFFECTS)[number];
 
@@ -194,6 +196,16 @@ async function performEffect(
       const result = await sendEfileAckNotice(app, ackId);
       if (result.sent) return { sent: true };
       if (result.reason === 'already_sent') return { sent: false, skip: 'already sent, or held after release' };
+      if (result.reason === 'suppressed') return { sent: false, hold: 'held — the automation is off (Admin → Automations)' };
+      return { sent: false, retry: humanReason(result.reason) };
+    }
+    case 'schedule.added_notice': {
+      const contactId = String(row.payload.contactId ?? '');
+      if (!contactId) return { sent: false, skip: 'no contactId in the payload' };
+      const { sendAddedScheduleNotice } = await import('./modules/engagements/schedule-notice.ts');
+      const result = await sendAddedScheduleNotice(app, contactId);
+      if (result.sent) return { sent: true };
+      if (result.reason === 'nothing_pending') return { sent: false, skip: 'every schedule was accepted before the notice left' };
       if (result.reason === 'suppressed') return { sent: false, hold: 'held — the automation is off (Admin → Automations)' };
       return { sent: false, retry: humanReason(result.reason) };
     }

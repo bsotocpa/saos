@@ -5,6 +5,7 @@
 // Cristian's attest work stays walled from firm-prepared books.
 
 import type { FastifyInstance } from 'fastify';
+import { queueAddedScheduleNotice } from './schedule-notice.ts';
 import { isOneActivePerPeriodViolation } from './period.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
@@ -162,6 +163,12 @@ export async function createEngagement(
       details: { note: input.independenceOverrideNote },
     });
   }
+
+  /*
+   * A service added after the Master is signed leaves its schedule waiting in the portal; the
+   * client is told (schedule-notice.ts), through the outbox and the schedule_added_notice gate.
+   */
+  await queueAddedScheduleNotice(app, input.contactId);
 
   return { id, independenceOverridden };
 }

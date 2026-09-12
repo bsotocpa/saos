@@ -1000,6 +1000,33 @@ export const templates = [
       '— Soto Accounting',
   },
   {
+    // A service added after the Master is signed (Master §1): its schedule waits in the portal,
+    // and this says so. Deep link to Sign; never an attachment. Admin-editable.
+    key: 'schedule_added',
+    name: 'Added-schedule notice (one more thing to agree to)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'schedules', 'sign_link'],
+    subjectEn: 'One more thing to agree to',
+    subjectEs: 'Un punto más por aceptar',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'We added a service to your engagement, and it has its own schedule: {{schedules}}.\n\n' +
+      'Your agreement is already signed; this is the one schedule to read and accept in your portal, ' +
+      'and it takes about a minute:\n\n' +
+      '{{sign_link}}\n\n' +
+      'If anything in it does not look right, reply and tell us before you accept it.\n\n' +
+      '— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Agregamos un servicio a su contrato, y tiene su propio anexo: {{schedules}}.\n\n' +
+      'Su contrato ya está firmado; este es el único anexo que debe leer y aceptar en su portal, ' +
+      'y toma alrededor de un minuto:\n\n' +
+      '{{sign_link}}\n\n' +
+      'Si algo no le parece correcto, respóndanos antes de aceptarlo.\n\n' +
+      '— Soto Accounting',
+  },
+  {
     // Session recap notification (v4.2 #6). The recap ITSELF lives on the portal
     // thread — this email is a short pointer, so replies land in the thread where
     // the conversation belongs rather than in a mailbox nobody is watching.
