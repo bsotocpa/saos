@@ -67,6 +67,13 @@ async function currentVersion(app: FastifyInstance): Promise<{ id: string }> {
  * Build a quote from explicit line items or from a bundle slug. Nothing is
  * sent yet — a draft quote is safe to rebuild as often as the UI likes.
  */
+/**
+ * THE BUSINESS LINES (2026-09-12, Brian's late ruling 1). A quote carrying any of these names the
+ * business it is for; the builder refuses otherwise. Individual tax, deposits and the
+ * specialized-CPA items (penalty abatement, an installment agreement) can be a person's own.
+ */
+const BUSINESS_LINES = new Set(['business_tax', 'recurring_accounting', 'attest', 'setup_conversion', 'entity_services', 'software_passthrough', 'coo']);
+
 export async function createQuote(
   app: FastifyInstance,
   input: {
@@ -173,6 +180,32 @@ export async function createQuote(
     });
   }
 
+  /*
+   * A BUSINESS LINE NAMES ITS BUSINESS (2026-09-12, late ruling 1). The person building the
+   * quote has the client in front of them; this is where the business is chosen, and when the
+   * contact has no primary business yet, that choice is it. No guessing from the membership list.
+   */
+  const serviceLines = await app.db.query<{ item_code: string; service_line: string }>(
+    `SELECT item_code, service_line::text AS service_line FROM price_book_items WHERE version_id = $1 AND item_code = ANY($2)`,
+    [version.id, lines.map((l) => l.itemCode)]
+  );
+  const lineOf = new Map(serviceLines.rows.map((r) => [r.item_code, r.service_line]));
+  const businessItems = lines.filter((l) => l.chosen && BUSINESS_LINES.has(lineOf.get(l.itemCode) ?? '')).map((l) => l.itemCode);
+  if (businessItems.length > 0 && !input.businessId) {
+    throw new AppError(400, 'business_required', `Choose the business this quote is for: ${businessItems.join(', ')} is business work.`);
+  }
+  let setsPrimary = false;
+  if (input.businessId) {
+    const member = await app.db.query<{ has_primary: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM business_members p WHERE p.contact_id = $1 AND p.is_primary) AS has_primary
+         FROM business_members m JOIN businesses b ON b.id = m.business_id
+        WHERE m.contact_id = $1 AND m.business_id = $2 AND NOT b.is_archived`,
+      [input.contactId, input.businessId]
+    );
+    if (!member.rows[0]) throw new AppError(404, 'business_not_on_contact', 'That business is not on this contact\'s record, or it is archived.');
+    setsPrimary = !member.rows[0].has_primary;
+  }
+
   // Pass-throughs (software subscriptions) are shown but never revenue.
   const counted = lines.filter((l) => l.chosen && !l.isPassThrough);
   const subtotalCents = counted.reduce(
@@ -254,8 +287,16 @@ export async function createQuote(
       actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'quote.created', objectType: 'quote', objectId: quoteId,
       contactId: input.contactId,
-      details: { bundle: input.bundleSlug ?? null, total_cents: totalCents, lines: lines.length },
+      details: { bundle: input.bundleSlug ?? null, total_cents: totalCents, lines: lines.length, business_id: input.businessId ?? null },
     });
+    if (setsPrimary && input.businessId) {
+      await app.db.query(`UPDATE business_members SET is_primary = true WHERE contact_id = $1 AND business_id = $2`, [input.contactId, input.businessId]);
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+        action: 'business.primary_set', objectType: 'business', objectId: input.businessId,
+        contactId: input.contactId, details: { reason: 'chosen on the quote; no primary was set', quote_id: quoteId },
+      });
+    }
     return { id: quoteId, totalCents, rangeMinCents, rangeMaxCents };
   });
 }

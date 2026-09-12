@@ -13,7 +13,7 @@ import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
 import type { StripeAdapter } from '../src/modules/billing/stripe.ts';
 import { mapStripeEvent } from '../src/modules/billing/stripe.ts';
-import { createTestConfig, makeContact, makeStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { executiveDashboard } from '../src/modules/dashboards/service.ts';
 import { REPORTS, runReport } from '../src/modules/reports/service.ts';
@@ -89,7 +89,7 @@ test('6e: a real client whose deposit is paid then fully refunded moves zero rev
   const baseline = await everyNumber();
 
   // Accept a quote with a deposit; pay the deposit (as the webhook would); it now moves numbers.
-  const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await depositItem() }] }, actor);
+  const q = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItem() }] }, actor);
   const s = await sendQuote(app, q.id, actor);
   const accepted = await acceptQuote(app, s.url.split('/').pop()!, {});
   const invoiceId = accepted.depositInvoiceId!;
@@ -124,7 +124,7 @@ test('6e: a real client whose deposit is paid then fully refunded moves zero rev
   // status filter to do the work): collected must rise by paid minus refunded, not by paid.
   const c2 = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Partialnet', email: 'partialnet@example.test' });
   await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c2.id]);
-  const q2 = await createQuote(app, { contactId: c2.id, lines: [{ itemCode: await depositItem() }] }, actor);
+  const q2 = await createQuote(app, { contactId: c2.id, businessId: await businessFor(app.db, c2.id), lines: [{ itemCode: await depositItem() }] }, actor);
   const s2 = await sendQuote(app, q2.id, actor);
   const acc2 = await acceptQuote(app, s2.url.split('/').pop()!, {});
   const inv2 = acc2.depositInvoiceId!;

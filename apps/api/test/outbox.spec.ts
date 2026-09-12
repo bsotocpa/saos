@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff , signed8879OnFile } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff , signed8879OnFile, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { withTransaction } from '../src/db.ts';
 import { drainOutbox, enqueueEffect, MAX_ATTEMPTS } from '../src/outbox.ts';
@@ -156,7 +156,7 @@ test('#48: accepting a quote queues the deposit email, and the drain sends it', 
     firstName: 'Synthetic', lastName: 'Queued', email: 'queued@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
   );
   const s = await sendQuote(app, quote.id, staffActor(await ceoId()));
   sent = []; // the quote email itself is not what this test is about
@@ -210,7 +210,7 @@ test('#48: a client with no address is retried, then abandoned with a P1 task na
     firstName: 'Synthetic', lastName: 'Noaddress', email: 'noaddress-outbox@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
   );
   const s = await sendQuote(app, quote.id, staffActor(await ceoId()));
   await app.db.query(`UPDATE contacts SET email = NULL WHERE id = $1`, [c.id]);
@@ -250,7 +250,7 @@ test('#48: an invoice already sent by hand retires its row quietly, with no alar
     firstName: 'Synthetic', lastName: 'Byhand', email: 'byhand@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
   );
   const s = await sendQuote(app, quote.id, staffActor(await ceoId()));
   const accepted = await acceptQuote(app, s.url.split('/').pop()!, {});
@@ -490,7 +490,7 @@ test('one pass of the fast lane performs a queued deposit email, without the res
     firstName: 'Synthetic', lastName: 'Fastlane', email: 'fastlane@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
   );
   const s = await sendQuote(app, quote.id, staffActor(await ceoId()));
   sent = [];

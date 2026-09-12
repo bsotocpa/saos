@@ -147,3 +147,43 @@ test('3: two businesses merge the way two contacts do: rows move, one audit row 
   const page = await pageBusinesses(c.id);
   assert.deepEqual(page.map((b) => b.id), [winner]);
 });
+
+// ── The quote builder names the business (late ruling 1) ────────────────────────────────────
+
+test('a business line is quoted for a named business, and that choice becomes the primary when none is set', async () => {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Quoted', email: 'quoted-bizparity@example.test' });
+  const one = await addBusiness(c.id, 'Synthetic Quoted One LLC');
+  const two = await addBusiness(c.id, 'Synthetic Quoted Two LLC');
+  // Nobody has chosen yet: clear the default primary so the record reads "no primary business set".
+  const cleared = await app.inject({ method: 'POST', url: `/contacts/${c.id}/primary-business`, headers: auth(brian), payload: { businessId: null } });
+  assert.equal(cleared.statusCode, 200, cleared.body);
+
+  const bare = await app.inject({ method: 'POST', url: '/quotes', headers: auth(brian), payload: { contactId: c.id, lines: [{ itemCode: 'ACCT_MONTHLY' }] } });
+  assert.equal(bare.statusCode, 400, bare.body);
+  assert.equal(bare.json().error, 'business_required');
+  assert.match(bare.json().message, /ACCT_MONTHLY/);
+
+  const personal = await app.inject({ method: 'POST', url: '/quotes', headers: auth(brian), payload: { contactId: c.id, lines: [{ itemCode: 'IND_BASE_SINGLE' }] } });
+  assert.equal(personal.statusCode, 201, 'a person\'s own return needs no business');
+  assert.deepEqual((await pageBusinesses(c.id)).map((b) => b.is_primary), [false, false], 'and sets no primary');
+
+  const stranger = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Stranger', email: 'stranger-bizparity@example.test' });
+  const elses = await addBusiness(stranger.id, 'Synthetic Elsewhere LLC');
+  const wrong = await app.inject({ method: 'POST', url: '/quotes', headers: auth(brian), payload: { contactId: c.id, businessId: elses, lines: [{ itemCode: 'ACCT_MONTHLY' }] } });
+  assert.equal(wrong.statusCode, 404, wrong.body);
+  assert.equal(wrong.json().error, 'business_not_on_contact');
+
+  const chosen = await app.inject({ method: 'POST', url: '/quotes', headers: auth(brian), payload: { contactId: c.id, businessId: two, lines: [{ itemCode: 'ACCT_MONTHLY' }] } });
+  assert.equal(chosen.statusCode, 201, chosen.body);
+  const page = await pageBusinesses(c.id);
+  assert.deepEqual(page.map((b) => [b.id, b.is_primary]), [[two, true], [one, false]], 'the business chosen on the quote is the primary now');
+  const audit = await app.db.query<{ details: { reason: string; quote_id: string } }>(`SELECT details FROM audit_log WHERE action = 'business.primary_set' AND object_id = $1`, [two]);
+  assert.equal(audit.rows.length, 1);
+  assert.match(audit.rows[0]!.details.reason, /chosen on the quote/);
+  assert.equal(audit.rows[0]!.details.quote_id, chosen.json().id);
+
+  // A later quote for the other business does not move the primary: a person chooses that.
+  const later = await app.inject({ method: 'POST', url: '/quotes', headers: auth(brian), payload: { contactId: c.id, businessId: one, lines: [{ itemCode: 'ACCT_QUARTERLY' }] } });
+  assert.equal(later.statusCode, 201, later.body);
+  assert.deepEqual((await pageBusinesses(c.id)).map((b) => [b.id, b.is_primary]), [[two, true], [one, false]]);
+});

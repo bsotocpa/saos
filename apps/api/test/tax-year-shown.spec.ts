@@ -9,7 +9,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, type TestStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { createQuote, sendQuote, acceptQuote } from '../src/modules/pricing/quotes.ts';
 import { defaultTaxYear } from '../src/modules/engagements/period.ts';
@@ -66,7 +66,7 @@ test('the default tax year is the prior calendar year, and it is shown in the bu
   // 2. The quote — staff view and the client's public view — names the period per line.
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Taxyear', email: 'taxyear@example.test' });
   await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c.id]);
-  const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await taxItem() }] }, actor());
+  const q = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItem() }] }, actor());
   const staffView = await app.inject({ method: 'GET', url: `/quotes/${q.id}`, headers: auth(ceo) });
   assert.equal(staffView.statusCode, 200, staffView.body);
   assert.deepEqual(staffView.json().periods, [{ serviceLine: 'tax', periodKey: year, source: 'default' }]);
@@ -87,7 +87,7 @@ test('the default tax year is the prior calendar year, and it is shown in the bu
 test('an interview that names the year wins over the default', async () => {
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Namedyear', email: 'namedyear@example.test' });
   await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c.id]);
-  const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await taxItem() }], interviewAnswers: { tax_year: 2023 } }, actor());
+  const q = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItem() }], interviewAnswers: { tax_year: 2023 } }, actor());
   const view = await app.inject({ method: 'GET', url: `/quotes/${q.id}`, headers: auth(ceo) });
   assert.deepEqual(view.json().periods, [{ serviceLine: 'tax', periodKey: '2023', source: 'interview' }], 'an interview answer with no builder marker is the interview\x27s');
   const sent = await sendQuote(app, q.id, actor());
@@ -99,7 +99,7 @@ test('an interview that names the year wins over the default', async () => {
 test('item 13c: a year chosen in the builder is marked chosen; the default left in place is marked default; the proposal and title read whatever was chosen', async () => {
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Chosenyear', email: 'chosenyear@example.test' });
   await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c.id]);
-  const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await taxItem() }], interviewAnswers: { tax_year: 2024, tax_year_source: 'chosen' } }, actor());
+  const q = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItem() }], interviewAnswers: { tax_year: 2024, tax_year_source: 'chosen' } }, actor());
   const view = await app.inject({ method: 'GET', url: `/quotes/${q.id}`, headers: auth(ceo) });
   assert.deepEqual(view.json().periods, [{ serviceLine: 'tax', periodKey: '2024', source: 'chosen' }]);
   const sent = await sendQuote(app, q.id, actor());

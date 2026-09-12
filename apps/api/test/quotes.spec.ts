@@ -19,7 +19,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, type TestStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { runQuoteExpiryJob } from '../src/modules/pricing/quotes.ts';
 import { pipelineMetrics, setLeadStage } from '../src/modules/pricing/pipeline.ts';
@@ -77,7 +77,7 @@ test('a quote composes from the price book only — unknown codes are refused', 
 
   const bogus = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: lead.id, lines: [{ itemCode: 'MADE_UP_SERVICE' }] },
+    payload: { contactId: lead.id, businessId: await businessFor(app.db, lead.id), lines: [{ itemCode: 'MADE_UP_SERVICE' }] },
   });
   assert.equal(bogus.statusCode, 400, bogus.body);
   assert.equal(bogus.json().error, 'unknown_price_items');
@@ -86,7 +86,7 @@ test('a quote composes from the price book only — unknown codes are refused', 
   const good = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
     payload: {
-      contactId: lead.id,
+      contactId: lead.id, businessId: await businessFor(app.db, lead.id),
       lines: [{ itemCode: 'IND_BASE_SINGLE' }, { itemCode: 'IND_SCH_C' }],
     },
   });
@@ -98,7 +98,7 @@ test('one-time work quotes as a RANGE whose width is a setting, not a literal', 
   const lead = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Ranged', email: 'ranged@example.test' });
   const res = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: lead.id, lines: [{ itemCode: 'IND_BASE_MFJ' }], asRange: true },
+    payload: { contactId: lead.id, businessId: await businessFor(app.db, lead.id), lines: [{ itemCode: 'IND_BASE_MFJ' }], asRange: true },
   });
   assert.equal(res.statusCode, 201, res.body);
   const q = res.json();
@@ -110,7 +110,7 @@ test('one-time work quotes as a RANGE whose width is a setting, not a literal', 
   await app.db.query(`UPDATE app_settings SET value = '25'::jsonb WHERE key = 'pricing.estimate_band_percent'`);
   const wider = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: lead.id, lines: [{ itemCode: 'IND_BASE_MFJ' }], asRange: true },
+    payload: { contactId: lead.id, businessId: await businessFor(app.db, lead.id), lines: [{ itemCode: 'IND_BASE_MFJ' }], asRange: true },
   });
   assert.equal(wider.json().rangeMaxCents, 25000, 'the band is admin-tunable');
   await app.db.query(`UPDATE app_settings SET value = '15'::jsonb WHERE key = 'pricing.estimate_band_percent'`);
@@ -120,7 +120,7 @@ test('sending pins the price-book version and stores only the token hash', async
   const lead = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Pinned', email: 'pinned@example.test' });
   const created = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: lead.id, lines: [{ itemCode: 'IND_BASE_SINGLE' }], expiresInDays: 30 },
+    payload: { contactId: lead.id, businessId: await businessFor(app.db, lead.id), lines: [{ itemCode: 'IND_BASE_SINGLE' }], expiresInDays: 30 },
   });
   const quoteId = created.json().id as string;
 
@@ -158,7 +158,7 @@ test('a failed send rolls the quote back to draft instead of stranding the link'
   const lead = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Undeliverable', email: 'undeliverable@example.test' });
   const created = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: lead.id, lines: [{ itemCode: 'IND_BASE_SINGLE' }] },
+    payload: { contactId: lead.id, businessId: await businessFor(app.db, lead.id), lines: [{ itemCode: 'IND_BASE_SINGLE' }] },
   });
   const quoteId = created.json().id as string;
 
@@ -188,7 +188,7 @@ test('the public link needs no account, and a wrong token is a 404', async () =>
   const lead = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Reader', email: 'reader@example.test', language: 'es' });
   const created = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: lead.id, language: 'es', lines: [{ itemCode: 'IND_BASE_HOH' }] },
+    payload: { contactId: lead.id, businessId: await businessFor(app.db, lead.id), language: 'es', lines: [{ itemCode: 'IND_BASE_HOH' }] },
   });
   const { token } = (await app.inject({
     method: 'POST', url: `/quotes/${created.json().id}/send`, headers: auth(ana),
@@ -212,7 +212,7 @@ test('accepting converts to an engagement + deposit invoice with zero re-entry',
   const created = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
     payload: {
-      contactId: lead.id,
+      contactId: lead.id, businessId: await businessFor(app.db, lead.id),
       lines: [
         { itemCode: 'IND_BASE_MFJ' },                          // $200
         { itemCode: 'IND_SCH_E_RENTAL', quantity: 2 },          // $180 × 2
@@ -266,7 +266,7 @@ test('a later price change does not re-price a quote already in the client’s h
   const lead = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Locked', email: 'locked@example.test' });
   const created = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: lead.id, lines: [{ itemCode: 'IND_BASE_SINGLE' }] },
+    payload: { contactId: lead.id, businessId: await businessFor(app.db, lead.id), lines: [{ itemCode: 'IND_BASE_SINGLE' }] },
   });
   const quoteId = created.json().id as string;
   const { token } = (await app.inject({ method: 'POST', url: `/quotes/${quoteId}/send`, headers: auth(ana) })).json();
@@ -297,7 +297,7 @@ test('a bundle quote is still only price-book references', async () => {
   const lead = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Bundled', email: 'bundled@example.test' });
   const res = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: lead.id, bundleSlug: 's-corp-conversion' },
+    payload: { contactId: lead.id, businessId: await businessFor(app.db, lead.id), bundleSlug: 's-corp-conversion' },
   });
   assert.equal(res.statusCode, 201, res.body);
   const quoteId = res.json().id as string;
@@ -325,7 +325,7 @@ test('declining returns the lead to the pipeline WITH a reason, and tasks it to 
   const lead = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Decliner', email: 'decliner@example.test' });
   const created = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: lead.id, lines: [{ itemCode: 'BIZ_1120S' }] },
+    payload: { contactId: lead.id, businessId: await businessFor(app.db, lead.id), lines: [{ itemCode: 'BIZ_1120S' }] },
   });
   const quoteId = created.json().id as string;
   const { token } = (await app.inject({ method: 'POST', url: `/quotes/${quoteId}/send`, headers: auth(ana) })).json();
@@ -357,7 +357,7 @@ test('expiry is date-guarded, records a reason, and runs once per day', async ()
   const lead = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Expired', email: 'expired@example.test' });
   const created = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: lead.id, lines: [{ itemCode: 'IND_BASE_SINGLE' }] },
+    payload: { contactId: lead.id, businessId: await businessFor(app.db, lead.id), lines: [{ itemCode: 'IND_BASE_SINGLE' }] },
   });
   const quoteId = created.json().id as string;
   const { token } = (await app.inject({ method: 'POST', url: `/quotes/${quoteId}/send`, headers: auth(ana) })).json();
@@ -391,7 +391,7 @@ test('an expired-at-read quote closes itself instead of converting', async () =>
   const lead = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Stale', email: 'stale@example.test' });
   const created = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(ana),
-    payload: { contactId: lead.id, lines: [{ itemCode: 'IND_BASE_SINGLE' }] },
+    payload: { contactId: lead.id, businessId: await businessFor(app.db, lead.id), lines: [{ itemCode: 'IND_BASE_SINGLE' }] },
   });
   const { token } = (await app.inject({
     method: 'POST', url: `/quotes/${created.json().id}/send`, headers: auth(ana),

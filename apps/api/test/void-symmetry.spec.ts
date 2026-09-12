@@ -13,7 +13,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, type TestStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { createQuote, sendQuote, acceptQuote, overrideQuoteDeposit } from '../src/modules/pricing/quotes.ts';
 import { voidInvoice } from '../src/modules/billing/void.ts';
@@ -56,7 +56,7 @@ async function accepted() {
   seq += 1;
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: `Voidsym${seq}`, email: `voidsym-${seq}@example.test` });
   await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c.id]);
-  const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await depositItem() }] }, actor());
+  const q = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItem() }] }, actor());
   const s = await sendQuote(app, q.id, actor());
   const acc = await acceptQuote(app, s.url.split('/').pop()!, {});
   await app.db.query(`UPDATE invoices SET status = 'sent', sent_at = now() WHERE id = $1 AND status = 'draft'`, [acc.depositInvoiceId!]);
@@ -141,7 +141,7 @@ test('a WAIVED deposit never issued an invoice: the stamp says waived, and a res
   seq += 1;
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: `Waived${seq}`, email: `waived-${seq}@example.test` });
   await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c.id]);
-  const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await depositItem() }] }, actor());
+  const q = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItem() }] }, actor());
   await overrideQuoteDeposit(app, q.id, { amountCents: 0, reason: 'symmetry test: waived for a returning client' }, actor());
   const s = await sendQuote(app, q.id, actor());
   const acc = await acceptQuote(app, s.url.split('/').pop()!, {});

@@ -18,7 +18,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, auditRows, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, auditRows, type TestStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { EXPLICIT_ONLY_PERMISSIONS } from '../src/plugins/auth.ts';
 import { runReport } from '../src/modules/reports/service.ts';
@@ -54,7 +54,7 @@ async function quoteWithDeposit(label: string): Promise<{ quoteId: string; conta
   });
   const res = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(brian),
-    payload: { contactId: c.id, lines: [{ itemCode: DEPOSIT_LINE }] },
+    payload: { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: DEPOSIT_LINE }] },
   });
   assert.equal(res.statusCode, 201, res.body);
   return { quoteId: res.json().id as string, contactId: c.id };

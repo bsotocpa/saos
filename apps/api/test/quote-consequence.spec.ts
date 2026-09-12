@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, businessFor } from './helpers.ts';
 import { createQuote, sendQuote, acceptQuote, quoteByToken } from '../src/modules/pricing/quotes.ts';
 import { schedulesImpliedByQuote, coveredSchedules } from '../src/modules/pricing/quote-coverage.ts';
 import { AppError } from '../src/types.ts';
@@ -117,7 +117,7 @@ test('THE BUG: acceptance produces a visible task even when NOBODY holds the rou
   });
   const quote = await createQuote(
     app,
-    { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] },
+    { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }] },
     staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
@@ -151,7 +151,7 @@ test('the acceptance task names the schedule the quote covers', async () => {
   });
   const quote = await createQuote(
     app,
-    { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] },
+    { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }] },
     staffActor(await ceoId())
   );
 
@@ -189,7 +189,7 @@ test('SEND is blocked when the client already accepted that schedule', async () 
 
   const quote = await createQuote(
     app,
-    { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] },
+    { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }] },
     staffActor(await ceoId())
   );
 
@@ -229,7 +229,7 @@ test('declaring the intent lets it through, and the answer is RECORDED', async (
   );
   const quote = await createQuote(
     app,
-    { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] },
+    { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }] },
     staffActor(await ceoId())
   );
 
@@ -269,7 +269,7 @@ test('a quote with no overlap sends with no intent and records none', async () =
   });
   const quote = await createQuote(
     app,
-    { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] },
+    { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }] },
     staffActor(await ceoId())
   );
   await sendQuote(app, quote.id, staffActor(await ceoId()));
@@ -313,7 +313,7 @@ test('#19: a bookkeeping quote sends, and accepts into a BOOKKEEPING engagement'
 
   const quote = await createQuote(
     app,
-    { contactId: c.id, lines: [{ itemCode: bk.rows[0]!.item_code }] },
+    { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: bk.rows[0]!.item_code }] },
     staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
@@ -360,7 +360,7 @@ test('#19: a quote spanning two service lines creates two DISTINCT engagements',
 
   const quote = await createQuote(
     app,
-    { contactId: c.id, lines: [{ itemCode: await taxItemCode() }, { itemCode: other.rows[0]!.item_code }] },
+    { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }, { itemCode: other.rows[0]!.item_code }] },
     staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
@@ -424,7 +424,7 @@ test('schedule resolution PINS the price-book version — a reclassification is 
   const itemCode = await taxItemCode();
 
   // A quote against the version in force today.
-  const before = await createQuote(app, { contactId: c.id, lines: [{ itemCode }] }, staffActor(await ceoId()));
+  const before = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode }] }, staffActor(await ceoId()));
   assert.deepEqual(await schedulesImpliedByQuote(app, before.id), ['A']);
 
   // Now reclassify that very item in a NEW version, the way GATE 2 did.
@@ -484,7 +484,7 @@ test('#47: acceptance snapshots each engagement scope, split along the same line
   const taxCode = await taxItemCode();
   const quote = await createQuote(
     app,
-    { contactId: c.id, lines: [{ itemCode: taxCode }, { itemCode: other.rows[0]!.item_code }] },
+    { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: taxCode }, { itemCode: other.rows[0]!.item_code }] },
     staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
@@ -532,7 +532,7 @@ test('#47: editing the quote line afterwards does NOT rewrite what was agreed', 
     firstName: 'Synthetic', lastName: 'Frozen', email: 'frozen-scope@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
   const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
@@ -566,7 +566,7 @@ test('#47: the snapshot refuses to be updated at all', async () => {
     firstName: 'Synthetic', lastName: 'Immutable', email: 'immutable-scope@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
   const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
@@ -641,7 +641,7 @@ test('#48: two simultaneous acceptances produce ONE set of engagements, not two'
     firstName: 'Synthetic', lastName: 'Doubletap', email: 'doubletap@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
   const token = sent.url.split('/').pop()!;
@@ -681,7 +681,7 @@ test('#48: the claim is what stops it — the quote leaves "sent" before any wor
     firstName: 'Synthetic', lastName: 'Claimed', email: 'claimed@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
   await acceptQuote(app, sent.url.split('/').pop()!, {});
@@ -720,7 +720,7 @@ test('#48: acceptance itself sends nothing, and queues the delivery instead', as
     firstName: 'Synthetic', lastName: 'Postcommit', email: 'postcommit@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
   const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
@@ -789,7 +789,7 @@ test('#48b: a failure at the LAST write leaves absolutely nothing behind', async
     firstName: 'Synthetic', lastName: 'Rollback', email: 'rollback-48@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
   const token = sent.url.split('/').pop()!;
@@ -849,7 +849,7 @@ test('#48b: the rolled-back acceptance is LOUD — the client tried to buy and s
     firstName: 'Synthetic', lastName: 'Loudrollback', email: 'loudrollback-48@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
 
@@ -886,7 +886,7 @@ test('#48b: after a failed acceptance the client can simply try again', async ()
     firstName: 'Synthetic', lastName: 'Retryable', email: 'retryable-48@example.test',
   });
   const quote = await createQuote(
-    app, { contactId: c.id, lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
   );
   const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
   const token = sent.url.split('/').pop()!;

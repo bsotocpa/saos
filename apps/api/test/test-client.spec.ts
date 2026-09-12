@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { REPORTS, runReport } from '../src/modules/reports/service.ts';
 import { executiveDashboard } from '../src/modules/dashboards/service.ts';
@@ -83,7 +83,7 @@ test('a test client with money, work and a pipeline stage changes no report and 
     [c.id]
   );
   const actor = { id: staffId, email: 'ceo-testclient@example.test', fullName: 'Synthetic CEO', roleKey: 'ceo' as const, permissions: ['*'], sessionId: 'test' };
-  const quote = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await quotableItem() }] }, actor);
+  const quote = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await quotableItem() }] }, actor);
   await sendQuote(app, quote.id, actor);
   await app.db.query(`UPDATE quotes SET status = 'accepted', accepted_at = now() WHERE id = $1`, [quote.id]);
   await app.db.query(

@@ -16,7 +16,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, type TestStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { deriveTaxQuote, interviewQuestions } from '../src/modules/pricing/tax-interview.ts';
 import { createQuote } from '../src/modules/pricing/quotes.ts';
@@ -162,7 +162,7 @@ test('a quote built from the interview stores the answers and narrows its own ra
   const quote = await createQuote(
     app,
     {
-      contactId: c.id,
+      contactId: c.id, businessId: await businessFor(app.db, c.id),
       lines: derived.lines.map((l) => ({ itemCode: l.itemCode, quantity: l.quantity })),
       asRange: true,
       rangeBasis: 'base_only',

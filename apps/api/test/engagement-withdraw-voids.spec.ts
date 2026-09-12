@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { createQuote, sendQuote, acceptQuote } from '../src/modules/pricing/quotes.ts';
 import { closeEngagement } from '../src/modules/engagements/close.ts';
@@ -37,7 +37,7 @@ async function acceptedUnpaid() {
   seq += 1;
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: `Withdrawvoid${seq}`, email: `withdrawvoid-${seq}@example.test` });
   await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c.id]);
-  const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await depositItem() }] }, actor());
+  const q = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItem() }] }, actor());
   const s = await sendQuote(app, q.id, actor());
   const acc = await acceptQuote(app, s.url.split('/').pop()!, {});
   return { contactId: c.id, engagementId: acc.engagementId, depositInvoiceId: acc.depositInvoiceId! };

@@ -8,7 +8,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, type TestStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { createQuote, sendQuote } from '../src/modules/pricing/quotes.ts';
 
@@ -51,9 +51,9 @@ after(async () => {
 test('the quotes list says who started a draft; 31 days old is stale, 29 is not; withdrawing needs a reason and only takes a draft', async () => {
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Quotedrafts', email: 'quotedrafts@example.test' });
   await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c.id]);
-  const old = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await anyItem() }] }, actor());
-  const fresh = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await anyItem() }] }, actor());
-  const sentOne = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await anyItem() }] }, actor());
+  const old = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await anyItem() }] }, actor());
+  const fresh = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await anyItem() }] }, actor());
+  const sentOne = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await anyItem() }] }, actor());
   await sendQuote(app, sentOne.id, actor());
   await app.db.query(`UPDATE quotes SET created_at = now() - interval '31 days' WHERE id = $1`, [old.id]);
   await app.db.query(`UPDATE quotes SET created_at = now() - interval '29 days' WHERE id = $1`, [fresh.id]);

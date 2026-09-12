@@ -10,7 +10,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, type TestStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { createQuote, sendQuote, acceptQuote } from '../src/modules/pricing/quotes.ts';
 import { closeEngagement } from '../src/modules/engagements/close.ts';
@@ -51,7 +51,7 @@ async function clientWithPaidDeposit() {
   seq += 1;
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: `Stranded${seq}`, email: `stranded-${seq}@example.test` });
   await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [c.id]);
-  const q = await createQuote(app, { contactId: c.id, lines: [{ itemCode: await depositItem() }] }, actor());
+  const q = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItem() }] }, actor());
   const s = await sendQuote(app, q.id, actor());
   const acc = await acceptQuote(app, s.url.split('/').pop()!, {});
   await app.db.query(`UPDATE invoices SET status = 'paid', amount_paid_cents = total_cents, paid_at = now(), stripe_payment_intent_id = $2 WHERE id = $1`, [acc.depositInvoiceId!, `pi_stranded_${seq}`]);
@@ -129,7 +129,7 @@ test('7b: the transfer route is billing.manage, refuses another client’s engag
 
 test('decision 1 route: setting a period that collides with another active engagement is refused by the index', async () => {
   const x = await clientWithPaidDeposit();
-  const legacy = await createEngagement(app, actor(), { contactId: x.contactId, serviceLine: 'tax', title: 'Legacy, no period', status: 'active' }, {});
+  const legacy = await createEngagement(app, actor(), { contactId: x.contactId, businessId: await businessFor(app.db, x.contactId), serviceLine: 'tax', title: 'Legacy, no period', status: 'active' }, {});
   await app.db.query(`UPDATE engagements SET period_key = NULL WHERE id = $1`, [legacy.id]);
   const period = (await app.db.query<{ p: string }>(`SELECT period_key AS p FROM engagements WHERE id = $1`, [x.engagementId])).rows[0]!.p;
   const clash = await app.inject({ method: 'PATCH', url: `/engagements/${legacy.id}/period`, headers: auth(ceo),

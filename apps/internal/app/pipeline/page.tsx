@@ -30,6 +30,9 @@ interface CatalogItem {
 }
 interface CatalogBundle { slug: string; name_en: string; component_count: number }
 interface Contact { id: string; first_name: string; last_name: string; email: string | null }
+interface ContactBusiness { id: string; name: string; is_primary: boolean; status?: string | null }
+/** Lines that are business work (mirrors BUSINESS_LINES in pricing/quotes.ts; the API is the gate). */
+const BUSINESS_LINES = new Set(['business_tax', 'recurring_accounting', 'attest', 'setup_conversion', 'entity_services', 'software_passthrough', 'coo']);
 
 interface BoardRow {
   id: string;
@@ -130,6 +133,14 @@ export default function PipelinePage() {
   const [search, setSearch] = useState('');
   const [matches, setMatches] = useState<Contact[]>([]);
   const [contact, setContact] = useState<Contact | null>(null);
+  /*
+   * A BUSINESS LINE NAMES ITS BUSINESS (2026-09-12, Brian). The builder asks for it here, with
+   * the client in front of the person; when the contact has no primary business, this choice
+   * becomes it. The API refuses a business line without one, so this is the honest control, not
+   * the only guard.
+   */
+  const [businesses, setBusinesses] = useState<ContactBusiness[]>([]);
+  const [businessId, setBusinessId] = useState('');
   const [language, setLanguage] = useState<'en' | 'es'>('en');
   const [bundleSlug, setBundleSlug] = useState('');
   const [picked, setPicked] = useState<Array<{ itemCode: string; quantity: number; isOptional: boolean }>>([]);
@@ -217,6 +228,14 @@ export default function PipelinePage() {
    * him the first had gone through in a way that stuck. Selecting a client now
    * surfaces any quote already out with them, before the builder will send another.
    */
+  useEffect(() => {
+    setBusinessId('');
+    if (!contact) { setBusinesses([]); return; }
+    void api<{ businesses: ContactBusiness[] }>(`/contacts/${contact.id}`)
+      .then((r) => setBusinesses(r.businesses ?? []))
+      .catch(() => setBusinesses([]));
+  }, [contact]);
+
   const loadOpenQuotes = useCallback(async (contactId: string) => {
     setDupAcknowledged(false);
     try {
@@ -334,7 +353,7 @@ export default function PipelinePage() {
   };
 
   const resetBuilder = () => {
-    setContact(null); setSearch(''); setBundleSlug(''); setPicked([]);
+    setContact(null); setSearch(''); setBundleSlug(''); setPicked([]); setBusinessId('');
     setNotes(''); setSentLink(''); setItemFilter('');
     setDraftQuoteId(''); setDraftDeposit(null); setOverrideForm(null); setOverrideError('');
   };
@@ -449,6 +468,7 @@ export default function PipelinePage() {
         method: 'POST',
         body: {
           contactId: contact.id,
+          ...(businessId ? { businessId } : {}),
           language,
           ...(bundleSlug ? { bundleSlug } : { lines: picked }),
           ...(bundleSlug ? { includeOptional: picked.filter((p) => p.isOptional).map((p) => p.itemCode) } : {}),
@@ -678,6 +698,24 @@ export default function PipelinePage() {
                 </div>
               ) : null}
 
+              {contact ? (
+                <label className="field">
+                  Business{picked.some((p) => BUSINESS_LINES.has(catalog.find((i) => i.item_code === p.itemCode)?.service_line ?? '')) || bundleSlug ? <span className="muted small"> (required for business work)</span> : <span className="muted small"> (optional)</span>}
+                  {businesses.length === 0 ? (
+                    <span className="muted small">No business on this record. Add one on the client page before quoting business work.</span>
+                  ) : (
+                    <select value={businessId} onChange={(e) => setBusinessId(e.target.value)}>
+                      <option value="">— none —</option>
+                      {businesses.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}{b.is_primary ? ' (primary)' : ''}{b.status === 'dissolved' ? ' (dissolved)' : ''}</option>
+                      ))}
+                    </select>
+                  )}
+                  {businesses.length > 0 && !businesses.some((b) => b.is_primary) ? (
+                    <span className="muted small">No primary business set; the business chosen here becomes it.</span>
+                  ) : null}
+                </label>
+              ) : null}
               <div className="grid2">
                 <label className="field">
                   Language

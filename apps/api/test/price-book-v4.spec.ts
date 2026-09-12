@@ -19,7 +19,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, type TestStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { resolveDeposit } from '../src/modules/pricing/quotes.ts';
 
@@ -55,7 +55,7 @@ async function draftQuote(
   });
   const res = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(brian),
-    payload: { contactId: c.id, lines, ...extra },
+    payload: { contactId: c.id, businessId: await businessFor(app.db, c.id), lines, ...extra },
   });
   assert.equal(res.statusCode, 201, res.body);
   return res.json().id as string;

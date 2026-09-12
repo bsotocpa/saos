@@ -101,6 +101,23 @@ export async function makeContact(
   return { id: rows[0]!.id, email: opts.email };
 }
 
+/**
+ * The business a fixture quote is for (2026-09-12, Brian): a business line on a quote names its
+ * business, so a synthetic contact quoting one gets a synthetic business, once, primary if none.
+ */
+export async function businessFor(db: Db, contactId: string): Promise<string> {
+  const have = await db.query<{ business_id: string }>(
+    `SELECT m.business_id FROM business_members m JOIN businesses b ON b.id = m.business_id
+      WHERE m.contact_id = $1 AND NOT b.is_archived ORDER BY m.is_primary DESC LIMIT 1`, [contactId]);
+  if (have.rows[0]) return have.rows[0].business_id;
+  const biz = await db.query<{ id: string }>(
+    `INSERT INTO businesses (name, entity_type, state) VALUES ('Synthetic Fixture LLC ' || left($1::text, 8), 'llc', 'IL') RETURNING id`, [contactId]);
+  await db.query(
+    `INSERT INTO business_members (business_id, contact_id, member_role, is_primary)
+     VALUES ($1, $2, 'owner', NOT EXISTS (SELECT 1 FROM business_members WHERE contact_id = $2 AND is_primary))`, [biz.rows[0]!.id, contactId]);
+  return biz.rows[0]!.id;
+}
+
 /** Build a multipart/form-data payload for fastify.inject (fields + one file). */
 export function multipartBody(
   fields: Record<string, string>,

@@ -9,7 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer, MailMessage } from '../src/mailer.ts';
 import { generateToken } from '../src/crypto.ts';
-import { createTestConfig, makeStaff, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeStaff, type TestStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { createQuote, sendQuote, acceptQuote } from '../src/modules/pricing/quotes.ts';
 import { drainOutbox } from '../src/outbox.ts';
@@ -74,7 +74,7 @@ test('the portal checkout refuses a draft: nothing was issued', async () => {
 
 test('acceptance issues the deposit invoice in its own transaction: sent before the email, payable at once, emailed once', async () => {
   const pia = await makeClient('Draftacc', 'draftacc@example.test');
-  const q = await createQuote(app, { contactId: pia.contactId, lines: [{ itemCode: await depositItem() }] }, actor());
+  const q = await createQuote(app, { contactId: pia.contactId, businessId: await businessFor(app.db, pia.contactId), lines: [{ itemCode: await depositItem() }] }, actor());
   const s = await sendQuote(app, q.id, actor());
   sent.length = 0;
   const acc = await acceptQuote(app, s.url.split('/').pop()!, {});

@@ -17,7 +17,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeStaff, multipartBody, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeStaff, multipartBody, type TestStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import type { AuthedStaff } from '../src/types.ts';
 import { createQuote } from '../src/modules/pricing/quotes.ts';
@@ -112,7 +112,7 @@ before(async () => {
   const item = await app.db.query<{ item_code: string }>(
     `SELECT pbi.item_code FROM price_book_items pbi JOIN price_book_versions v ON v.id = pbi.version_id
       WHERE pbi.is_active AND pbi.amount_cents > 0 AND pbi.display_on_quote ORDER BY pbi.item_code LIMIT 1`);
-  const q = await createQuote(app, { contactId: walled, lines: [{ itemCode: item.rows[0]!.item_code }], interviewAnswers: { dependents: 2, note: INTERVIEW } }, actorOf(brian, 'ceo', ['*']));
+  const q = await createQuote(app, { contactId: walled, businessId: await businessFor(app.db, walled), lines: [{ itemCode: item.rows[0]!.item_code }], interviewAnswers: { dependents: 2, note: INTERVIEW } }, actorOf(brian, 'ceo', ['*']));
   quoteId = q.id;
   const te = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(ana), payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: walled, taxYear: 2025, returnType: '1040' } });
   assert.equal(te.statusCode, 201, te.body);

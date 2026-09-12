@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff , signed8879OnFile } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff , signed8879OnFile, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { createQuote } from '../src/modules/pricing/quotes.ts';
 import { recordEfileResult } from '../src/modules/tax/pipeline.ts';
@@ -117,10 +117,11 @@ test('#48: a quote that cannot be fully written is not written at all', async ()
   // The audit row is the LAST write in createQuote — so the header and both lines are already
   // in before this fires.
   const quoteActor = staffActor(await ceoId());
+  const businessId = await businessFor(app.db, c.id);
   await breakInsert('audit_log', 'action', 'quote.created');
   try {
     await assert.rejects(
-      () => createQuote(app, { contactId: c.id, lines: items.map((itemCode) => ({ itemCode })) }, quoteActor),
+      () => createQuote(app, { contactId: c.id, businessId, lines: items.map((itemCode) => ({ itemCode })) }, quoteActor),
       /synthetic failure at the last write/
     );
   } finally {
@@ -138,7 +139,7 @@ test('#48: a quote that cannot be fully written is not written at all', async ()
 
   // And the ordinary path still works, with every line present.
   const ok = await createQuote(
-    app, { contactId: c.id, lines: items.map((itemCode) => ({ itemCode })) }, staffActor(await ceoId())
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: items.map((itemCode) => ({ itemCode })) }, staffActor(await ceoId())
   );
   const lines = await app.db.query<{ n: number }>(
     `SELECT count(*)::int AS n FROM quote_line_items WHERE quote_id = $1`, [ok.id]

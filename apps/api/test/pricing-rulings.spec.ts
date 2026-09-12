@@ -15,7 +15,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, type TestStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { createInvoice } from '../src/modules/billing/service.ts';
 import { runReport } from '../src/modules/reports/service.ts';
@@ -223,7 +223,7 @@ test('RULING 3: a component can never reach a quote, an invoice, or the builder'
 
   const quoted = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(brian),
-    payload: { contactId: client.id, lines: [{ itemCode: 'CPA_SESSION' }] },
+    payload: { contactId: client.id, businessId: await businessFor(app.db, client.id), lines: [{ itemCode: 'CPA_SESSION' }] },
   });
   assert.equal(quoted.statusCode, 400, quoted.body);
   assert.equal(quoted.json().error, 'not_quotable');
@@ -232,7 +232,7 @@ test('RULING 3: a component can never reach a quote, an invoice, or the builder'
   // A component smuggled in beside legitimate lines still kills the quote.
   const mixed = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(brian),
-    payload: { contactId: client.id, lines: [{ itemCode: 'IND_BASE_SINGLE' }, { itemCode: 'ACCT_PREP_MONTHLY' }] },
+    payload: { contactId: client.id, businessId: await businessFor(app.db, client.id), lines: [{ itemCode: 'IND_BASE_SINGLE' }, { itemCode: 'ACCT_PREP_MONTHLY' }] },
   });
   assert.equal(mixed.statusCode, 400);
   assert.equal(mixed.json().error, 'not_quotable');
@@ -242,7 +242,7 @@ test('RULING 3: a component can never reach a quote, an invoice, or the builder'
   // The bundled plan IS quotable — that is the entire point of the two layers.
   const ok = await app.inject({
     method: 'POST', url: '/quotes', headers: auth(brian),
-    payload: { contactId: client.id, lines: [{ itemCode: 'ACCT_MONTHLY' }] },
+    payload: { contactId: client.id, businessId: await businessFor(app.db, client.id), lines: [{ itemCode: 'ACCT_MONTHLY' }] },
   });
   assert.equal(ok.statusCode, 201, ok.body);
   assert.equal(ok.json().totalCents, 25000);
@@ -319,7 +319,7 @@ test('the builder catalog carries deposit_cents, and it is the number acceptance
   const line = withDeposit[0]!;
   const quote = await createQuote(
     app,
-    { contactId: c.id, lines: [{ itemCode: line.item_code }] },
+    { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: line.item_code }] },
     { id: brian.id, email: brian.email, fullName: 'Synthetic ceo', roleKey: 'ceo' as const, permissions: ['*'], sessionId: 'test' }
   );
   const resolved = await resolveDeposit(app, null, null, quote.id);

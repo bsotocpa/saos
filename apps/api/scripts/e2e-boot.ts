@@ -98,7 +98,10 @@ const WALL = {
   transcript: 'HARNESS-CPA-TRANSCRIPT-MARKER',
   summary: 'HARNESS-CPA-SUMMARY-MARKER',
 };
-const q1 = await createQuote(app, { contactId: contact.id, lines: [{ itemCode: await depositItem() }], interviewAnswers: { dependents: 2, note: WALL.interview } }, actor);
+// A business line names its business (2026-09-12): the harness client has one, and the quote says so.
+const harnessBiz = await app.db.query<{ id: string }>(`INSERT INTO businesses (name, entity_type, state) VALUES ('Harness Books LLC', 'llc', 'IL') RETURNING id`);
+await app.db.query(`INSERT INTO business_members (business_id, contact_id, member_role, is_primary) VALUES ($1, $2, 'owner', true)`, [harnessBiz.rows[0]!.id, contact.id]);
+const q1 = await createQuote(app, { contactId: contact.id, businessId: harnessBiz.rows[0]!.id, lines: [{ itemCode: await depositItem() }], interviewAnswers: { dependents: 2, note: WALL.interview } }, actor);
 const s1 = await sendQuote(app, q1.id, actor);
 const acc1 = await acceptQuote(app, s1.url.split('/').pop()!, {});
 await drainOutbox(app); // the deposit email leaves; the send log has a row

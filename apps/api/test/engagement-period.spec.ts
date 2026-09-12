@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, businessFor } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { createQuote, sendQuote, acceptQuote } from '../src/modules/pricing/quotes.ts';
 import { periodKeyFor, defaultTaxYear, legacyEngagementsWithoutPeriod } from '../src/modules/engagements/period.ts';
@@ -45,7 +45,7 @@ async function client() {
 }
 
 async function sentQuote(contactId: string, itemCode: string, opts: { changeOrderOf?: string } = {}) {
-  const q = await createQuote(app, { contactId, lines: [{ itemCode }] }, actor);
+  const q = await createQuote(app, { contactId, businessId: await businessFor(app.db, contactId), lines: [{ itemCode }] }, actor);
   const s = await sendQuote(app, q.id, actor, opts);
   return { id: q.id, token: s.url.split('/').pop()! };
 }
@@ -106,7 +106,7 @@ test('SEND GATE: a plain quote for a line with active work cannot be sent; namin
   await acceptQuote(app, first.token, {});
   const [active] = await engagements(c.id);
 
-  const plain = await createQuote(app, { contactId: c.id, lines: [{ itemCode: item }] }, actor);
+  const plain = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: item }] }, actor);
   await assert.rejects(
     sendQuote(app, plain.id, actor),
     (err: unknown) => err instanceof AppError && err.code === 'change_order_required' && JSON.stringify(err).includes(active!.id),
@@ -154,7 +154,7 @@ test('DIFFERENT PERIODS coexist: a 2024 return and a 2025 return are two legitim
   const q1 = await sentQuote(c.id, item);
   await acceptQuote(app, q1.token, {});
   // A second quote that names its year explicitly (interview answer).
-  const q2 = await createQuote(app, { contactId: c.id, lines: [{ itemCode: item }], interviewAnswers: { tax_year: 2024 } }, actor);
+  const q2 = await createQuote(app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: item }], interviewAnswers: { tax_year: 2024 } }, actor);
   const s2 = await sendQuote(app, q2.id, actor);
   await acceptQuote(app, s2.url.split('/').pop()!, {});
   const eng = await engagements(c.id);
