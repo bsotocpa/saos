@@ -72,8 +72,8 @@ export async function makeStaff(
   const role = await db.query<{ id: string }>(`SELECT id FROM roles WHERE key = $1`, [opts.role]);
   if (!role.rows[0]) throw new Error(`role ${opts.role} not seeded`);
   const { rows } = await db.query<{ id: string }>(
-    `INSERT INTO staff (full_name, email, role_id, password_hash, totp_secret_enc, totp_enabled)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    `INSERT INTO staff (legal_name, display_name, email, role_id, password_hash, totp_secret_enc, totp_enabled)
+     VALUES ($1, $1, $2, $3, $4, $5, $6) RETURNING id`,
     [
       opts.name,
       opts.email,
@@ -131,4 +131,30 @@ export async function auditRows(db: Db, action: string, actorLabel?: string): Pr
     actorLabel ? [action, actorLabel] : [action]
   );
   return rows[0]!.n;
+}
+
+/**
+ * THE SIGNED 8879 ON FILE (2026-09-12). A return cannot be authorized without the uploaded scan
+ * — the database refuses a timestamp with no document. Fixtures that need a return past that
+ * gate put a synthetic Signed Authorization on file through the real recorder.
+ */
+export async function signed8879OnFile(
+  app: { db: Db },
+  taxEngagementId: string,
+  staffId: string,
+  signedOn = '2026-09-01'
+): Promise<string> {
+  const te = await app.db.query<{ contact_id: string }>(
+    `SELECT e.contact_id FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`, [taxEngagementId]);
+  const doc = await app.db.query<{ id: string }>(
+    `INSERT INTO documents (contact_id, tax_engagement_id, category, filename, minio_bucket, minio_key, uploaded_by_type)
+     VALUES ($1, $2, 'signed_authorizations', 'synthetic-signed-8879.pdf', 'saos-signed-docs', 'test/' || gen_random_uuid()::text || '.pdf', 'staff')
+     RETURNING id`,
+    [te.rows[0]!.contact_id, taxEngagementId]
+  );
+  const { recordSigned8879 } = await import('../src/modules/tax/signed-8879.ts');
+  await recordSigned8879(app as never, { staffId, label: 'Synthetic Preparer' }, {
+    taxEngagementId, documentId: doc.rows[0]!.id, signedOn, preparerPtinHolderId: staffId,
+  });
+  return doc.rows[0]!.id;
 }

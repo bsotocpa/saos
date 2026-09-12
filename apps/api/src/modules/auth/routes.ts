@@ -38,11 +38,13 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         return reply.code(423).send({ error: 'account_locked', until: result.until.toISOString() });
       case 'totp_required':
         return reply.code(401).send({ error: 'totp_required' });
+      case 'temp_password_expired':
+        return reply.code(401).send({ error: 'temp_password_expired', message: 'That temporary password has expired (72 hours, or already used). Ask the CEO for a new one.' });
       case 'mfa_setup_required':
         return reply.code(200).send({ status: 'mfa_setup_required', setupToken: result.setupToken });
       case 'ok':
         setSessionCookie(reply, result.token);
-        return reply.code(200).send({ status: 'ok', token: result.token });
+        return reply.code(200).send({ status: 'ok', token: result.token, mustChangePassword: result.mustChangePassword });
     }
   });
 
@@ -53,9 +55,9 @@ export function registerAuthRoutes(app: FastifyInstance): void {
 
   app.post('/auth/mfa/verify', async (request, reply) => {
     const body = MfaVerifyBody.parse(request.body);
-    const { token } = await auth.mfaVerify(app.db, app.config, body.setupToken, body.code, meta(request));
+    const { token, mustChangePassword } = await auth.mfaVerify(app.db, app.config, body.setupToken, body.code, meta(request));
     setSessionCookie(reply, token);
-    return { status: 'ok', token };
+    return { status: 'ok', token, mustChangePassword };
   });
 
   app.post('/auth/logout', { preHandler: [app.authenticate] }, async (request, reply) => {

@@ -258,7 +258,7 @@ test('RBAC: intern is refused staff management; CEO is allowed; role change audi
     method: 'POST',
     url: '/staff',
     headers: { authorization: `Bearer ${ceoToken}` },
-    payload: { email: 'promotee@example.test', fullName: 'Synthetic Promotee', roleKey: 'intern' },
+    payload: { email: 'promotee@example.test', legalName: 'Synthetic Promotee', roleKey: 'intern' },
   });
   assert.equal(created.statusCode, 201, created.body);
   assert.ok(created.json().tempPassword);
@@ -272,7 +272,8 @@ test('RBAC: intern is refused staff management; CEO is allowed; role change audi
     payload: { roleKey: 'client_success' },
   });
   assert.equal(promoted.statusCode, 200, promoted.body);
-  assert.equal(await auditRows(app.db, 'permission.change'), 1);
+  // Migration 0092 writes its own permission.change rows as 'system' on every fresh database (2026-09-12); count the person's.
+  assert.equal((await app.db.query<{ n: string }>(`SELECT count(*) AS n FROM audit_log WHERE action = 'permission.change' AND actor_type = 'staff'`)).rows[0]!.n, '1');
 });
 
 test('deactivating a staff member revokes their live sessions', async () => {

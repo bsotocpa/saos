@@ -39,7 +39,8 @@ try {
 
   const password = values.password ?? randomBytes(15).toString('base64url');
   const inserted = await db.query<{ id: string }>(
-    `INSERT INTO staff (full_name, email, role_id, password_hash) VALUES ($1, $2, $3, $4) RETURNING id`,
+    `INSERT INTO staff (legal_name, display_name, email, role_id, password_hash, temp_password_expires_at, must_change_password)
+     VALUES ($1, $1, $2, $3, $4, now() + interval '72 hours', true) RETURNING id`,
     [values.name, values.email, role.rows[0].id, await argon2.hash(password)]
   );
 

@@ -4,6 +4,7 @@
 // absolute lifetime set at login.
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { AppError } from '../types.ts';
 import { hashToken } from '../crypto.ts';
 import { STAFF_SESSION_COOKIE } from '../cookies.ts';
 import type { AuthedStaff } from '../types.ts';
@@ -12,7 +13,7 @@ interface SessionRow {
   session_id: string;
   staff_id: string;
   email: string;
-  full_name: string;
+  full_name: string; must_change_password: boolean;
   role_key: string;
   permissions: string[];
 }
@@ -31,7 +32,7 @@ export function buildAuthenticate(app: FastifyInstance) {
     }
 
     const { rows } = await app.db.query<SessionRow>(
-      `SELECT s.id AS session_id, st.id AS staff_id, st.email, st.full_name, r.key AS role_key,
+      `SELECT s.id AS session_id, st.id AS staff_id, st.email, st.display_name AS full_name, st.must_change_password, r.key AS role_key,
               COALESCE(array_agg(rp.permission) FILTER (WHERE rp.permission IS NOT NULL), '{}') AS permissions
        FROM staff_sessions s
        JOIN staff st ON st.id = s.staff_id
@@ -66,6 +67,13 @@ export function buildAuthenticate(app: FastifyInstance) {
       permissions: row.permissions,
       sessionId: row.session_id,
     };
+    /*
+     * A SESSION THAT STILL OWES A PASSWORD (2026-09-12, ruling 1). The temporary password was
+     * spent on sign-in; until the person sets their own, the session reaches /auth/* only.
+     */
+    if (row.must_change_password && !request.url.startsWith('/auth/')) {
+      throw new AppError(403, 'password_change_required', 'Set your own password before doing anything else (Account → Password).');
+    }
     request.staff = staff;
   };
 }

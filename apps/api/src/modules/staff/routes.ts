@@ -11,7 +11,10 @@ import { AppError } from '../../types.ts';
 
 const CreateStaffBody = z.object({
   email: z.email(),
-  fullName: z.string().min(1),
+  /** The person's legal name. Client-facing and contractual. */
+  legalName: z.string().min(1),
+  /** What the team calls them. Defaults to the legal name. */
+  displayName: z.string().min(1).optional(),
   roleKey: z.string().min(1),
   phone: z.string().optional(),
 });
@@ -67,9 +70,10 @@ export function registerStaffRoutes(app: FastifyInstance): void {
     // forced on first login before any real session exists.
     const tempPassword = randomBytes(15).toString('base64url');
     const { rows } = await app.db.query<{ id: string }>(
-      `INSERT INTO staff (full_name, email, phone, role_id, password_hash)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [body.fullName, body.email, body.phone ?? null, role.id, await argon2.hash(tempPassword)]
+      // Ruling 1 (2026-09-12): the temporary password dies at 72 hours or first use; ruling 9: legal and display names.
+      `INSERT INTO staff (legal_name, display_name, email, phone, role_id, password_hash, temp_password_expires_at, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, now() + interval '72 hours', true) RETURNING id`,
+      [body.legalName, body.displayName ?? body.legalName, body.email, body.phone ?? null, role.id, await argon2.hash(tempPassword)]
     );
     const staffId = rows[0]!.id;
 

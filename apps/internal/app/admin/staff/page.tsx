@@ -12,7 +12,7 @@ interface Role { key: string; name: string; permissions: string[] }
 export default function StaffAdminPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [form, setForm] = useState({ email: '', fullName: '', roleKey: 'intern' });
+  const [form, setForm] = useState({ email: '', legalName: '', displayName: '', roleKey: 'intern' });
   const [tempPassword, setTempPassword] = useState('');
   const [message, setMessage] = useState('');
 
@@ -86,7 +86,11 @@ export default function StaffAdminPage() {
           <h2>Add staff</h2>
           <label className="field">
             Full name
-            <input value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
+            <input value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} placeholder="Legal name (contracts, anything client-facing)" />
+          </label>
+          <label className="field">
+            Display name
+            <input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} placeholder="What the team calls them (defaults to the legal name)" />
           </label>
           <label className="field">
             Email
@@ -106,11 +110,11 @@ export default function StaffAdminPage() {
           <button
             className="btn"
             type="button"
-            disabled={!form.email || !form.fullName}
+            disabled={!form.email || !form.legalName}
             onClick={async () => {
-              const res = await api<{ tempPassword: string }>('/staff', { method: 'POST', body: form });
+              const res = await api<{ tempPassword: string }>('/staff', { method: 'POST', body: { email: form.email, legalName: form.legalName, displayName: form.displayName || undefined, roleKey: form.roleKey } });
               setTempPassword(res.tempPassword);
-              setForm({ email: '', fullName: '', roleKey: 'intern' });
+              setForm({ email: '', legalName: '', displayName: '', roleKey: 'intern' });
               await load();
             }}
           >

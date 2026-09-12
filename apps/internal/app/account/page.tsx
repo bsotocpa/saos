@@ -8,6 +8,9 @@ import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
 
 export default function AccountPage() {
+  // Read after mount: useSearchParams needs a Suspense boundary at build time, and the harness builds for production.
+  const [mustSet, setMustSet] = useState(false);
+  useEffect(() => { setMustSet(new URLSearchParams(window.location.search).get('set-password') === '1'); }, []);
   const router = useRouter();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -51,6 +54,8 @@ export default function AccountPage() {
   return (
     <div className="card" style={{ maxWidth: 440 }}>
       <h1>Account security</h1>
+      {/* A first sign-in owes a password (2026-09-12): the temporary one is spent, and the API refuses everything but /auth until this is done. */}
+      {mustSet ? <p className="alert warn" role="status">Set your own password to continue. The temporary one you signed in with is spent, and nothing else works until you do.</p> : null}
       <p className="muted small">
         Changing your password signs out every other active session. Your authenticator (MFA)
         enrollment is unaffected.

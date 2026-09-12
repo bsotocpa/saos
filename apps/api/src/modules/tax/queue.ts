@@ -61,7 +61,7 @@ export async function preparerQueue(
             te.stage::text, te.extension_filed, te.docs_requested_at, te.docs_received_at,
             COALESCE(te.extended_deadline, te.original_deadline)::text AS effective_deadline,
             te.perfection_deadline::text AS perfection_deadline,
-            ptin.full_name AS preparer_of_record,
+            ptin.display_name AS preparer_of_record,
             te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
             (SELECT count(*)::int FROM document_requests dr
              WHERE dr.tax_engagement_id = te.id AND dr.completed_at IS NULL) AS open_doc_requests,

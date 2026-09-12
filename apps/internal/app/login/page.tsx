@@ -24,14 +24,14 @@ export default function LoginPage() {
     setBusy(true);
     setError('');
     try {
-      const res = await api<{ status?: string; setupToken?: string }>('/auth/login', {
+      const res = await api<{ status?: string; setupToken?: string; mustChangePassword?: boolean }>('/auth/login', {
         method: 'POST',
         body: { email, password, ...(totp ? { totp } : {}) },
       });
       if (res.status === 'ok') {
-        // The session itself arrived as an httpOnly cookie.
+        // The session itself arrived as an httpOnly cookie. A first sign-in owes a password.
         markAuthed();
-        router.push('/');
+        router.push(res.mustChangePassword ? '/account?set-password=1' : '/');
       } else if (res.status === 'mfa_setup_required' && res.setupToken) {
         setSetupToken(res.setupToken);
         const setup = await api<{ secret: string }>('/auth/mfa/setup', {
@@ -53,11 +53,12 @@ export default function LoginPage() {
     setBusy(true);
     setError('');
     try {
-      await api('/auth/mfa/verify', {
+      const verified = await api<{ mustChangePassword?: boolean }>('/auth/mfa/verify', {
         method: 'POST',
         body: { setupToken, code: totp },
       });
       markAuthed();
+      if (verified.mustChangePassword) { router.push('/account?set-password=1'); return; }
       router.push('/');
     } catch {
       setError('Code did not match — try the next one from your app.');

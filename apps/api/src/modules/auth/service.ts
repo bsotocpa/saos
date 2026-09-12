@@ -31,8 +31,9 @@ export type LoginResult =
   | { status: 'invalid' }
   | { status: 'locked'; until: Date }
   | { status: 'totp_required' }
+  | { status: 'temp_password_expired' }
   | { status: 'mfa_setup_required'; setupToken: string }
-  | { status: 'ok'; token: string; staffId: string };
+  | { status: 'ok'; token: string; staffId: string; mustChangePassword: boolean };
 
 interface StaffAuthRow {
   id: string;
@@ -42,6 +43,8 @@ interface StaffAuthRow {
   password_hash: string | null;
   totp_secret_enc: Buffer | null;
   totp_enabled: boolean;
+  temp_password_expires_at?: Date | null;
+  must_change_password?: boolean;
   failed_login_count: number;
   locked_until: Date | null;
 }
@@ -117,7 +120,7 @@ export async function login(
 ): Promise<LoginResult> {
   const { rows } = await db.query<StaffAuthRow>(
     `SELECT id, email, full_name, is_active, password_hash, totp_secret_enc,
-            totp_enabled, failed_login_count, locked_until
+            totp_enabled, failed_login_count, locked_until, temp_password_expires_at, must_change_password
      FROM staff WHERE email = $1`,
     [email]
   );
@@ -143,6 +146,15 @@ export async function login(
   const passwordOk = await argon2.verify(staff.password_hash, password);
   if (!passwordOk) {
     return recordFailure(db, config, staff, 'bad_password', meta);
+  }
+  /*
+   * TEMPORARY PASSWORDS EXPIRE (2026-09-12, ruling 1): 72 hours from creation, or the first
+   * successful sign-in, whichever comes first. An expired one is refused even when it is right,
+   * and the admin has to mint a new account password. It is consumed in mfaVerify (first sign-in
+   * always enrols MFA) and in login for an account that somehow already has MFA.
+   */
+  if (staff.must_change_password && staff.temp_password_expires_at && staff.temp_password_expires_at < new Date()) {
+    return { status: 'temp_password_expired' };
   }
 
   if (!staff.totp_enabled) {
@@ -186,7 +198,7 @@ export async function login(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-  return { status: 'ok', token, staffId: staff.id };
+  return { status: 'ok', token, staffId: staff.id, mustChangePassword: Boolean(staff.must_change_password) };
 }
 
 /** Step 1 of enrollment: generate + store the (encrypted) secret, return provisioning info. */
@@ -217,7 +229,7 @@ export async function mfaVerify(
   setupToken: string,
   code: string,
   meta: RequestMeta
-): Promise<{ token: string }> {
+): Promise<{ token: string; mustChangePassword: boolean }> {
   const staffId = verifyScopedToken(config.APP_ENCRYPTION_KEY, setupToken, MFA_SETUP_PURPOSE);
   if (!staffId) throw new AppError(401, 'invalid_setup_token', 'MFA setup token is invalid or expired.');
 
@@ -235,7 +247,12 @@ export async function mfaVerify(
   const delta = totpFor(secret, staff.email).validate({ token: code, window: 1 });
   if (delta === null) throw new AppError(401, 'invalid_totp', 'Authenticator code did not match.');
 
-  await db.query(`UPDATE staff SET totp_enabled = true, last_login_at = now() WHERE id = $1`, [staffId]);
+  // First sign-in: MFA is on, and the temporary password is spent. must_change_password stays
+  // true until /auth/password succeeds; the session can reach /auth/* and nothing else.
+  await db.query(
+    `UPDATE staff SET totp_enabled = true, last_login_at = now(),
+            temp_password_expires_at = CASE WHEN must_change_password THEN now() ELSE temp_password_expires_at END
+      WHERE id = $1`, [staffId]);
   await writeAudit(db, {
     actorType: 'staff',
     actorId: staffId,
@@ -244,8 +261,9 @@ export async function mfaVerify(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
+  const owes = await db.query<{ must_change_password: boolean }>(`SELECT must_change_password FROM staff WHERE id = $1`, [staffId]);
   const token = await createSession(db, config, staffId, meta);
-  return { token };
+  return { token, mustChangePassword: Boolean(owes.rows[0]?.must_change_password) };
 }
 
 export async function logout(db: Db, sessionId: string, staffId: string, actorLabel: string, meta: RequestMeta): Promise<void> {
@@ -278,7 +296,7 @@ export async function changePassword(
   if (!hash || !(await argon2.verify(hash, currentPassword))) {
     throw new AppError(401, 'invalid_password', 'Current password is incorrect.');
   }
-  await db.query(`UPDATE staff SET password_hash = $2 WHERE id = $1`, [staffId, await argon2.hash(newPassword)]);
+  await db.query(`UPDATE staff SET password_hash = $2 , must_change_password = false, temp_password_expires_at = NULL WHERE id = $1`, [staffId, await argon2.hash(newPassword)]);
   // Revoke every other session — a changed password invalidates old logins.
   await db.query(
     `UPDATE staff_sessions SET revoked_at = now() WHERE staff_id = $1 AND id <> $2 AND revoked_at IS NULL`,
