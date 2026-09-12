@@ -6,7 +6,9 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
-import { holds, requirePermission } from '../../plugins/auth.ts';
+import { holds, requireAnyPermission, requirePermission } from '../../plugins/auth.ts';
+import { reasonText } from '../../reasons.ts';
+import { mergeContacts } from './merge.ts';
 import { AppError } from '../../types.ts';
 import { refreshEnrichmentGaps } from './service.ts';
 import { runHealthRefresh } from './health.ts';
@@ -58,7 +60,10 @@ const BusinessBody = z.object({
   memberRole: z.string().default('owner'),
 });
 
-const BusinessUpdateBody = BusinessBody.omit({ memberRole: true }).partial();
+const BusinessUpdateBody = BusinessBody.omit({ memberRole: true }).partial().extend({
+  /** active or dissolved (2026-09-12): a fact the firm knows, beside the Secretary of State's observation. */
+  status: z.enum(['active', 'dissolved']).optional(),
+});
 
 const GroupBody = z.object({ name: z.string().min(1), notes: z.string().optional() });
 const GroupMemberBody = z
@@ -84,6 +89,20 @@ export function registerCrmRoutes(app: FastifyInstance): void {
   const read = { preHandler: [app.authenticate, requirePermission('contacts.read')] };
   const write = { preHandler: [app.authenticate, requirePermission('contacts.write')] };
   const taxManage = { preHandler: [app.authenticate, requirePermission('engagements.tax.manage')] };
+  // Merging two records is a money-adjacent act (invoices move): billing.manage, or the CEO.
+  const merge = { preHandler: [app.authenticate, requireAnyPermission('billing.manage')] };
+
+  /**
+   * CONTACT MERGE (2026-09-12). The winner keeps its identity; the losers' rows move to it, one
+   * audit row per object; the losers are archived pointing at the winner. Refused when both sides
+   * hold active work on the same line, period and entity. crm/merge.ts.
+   */
+  app.post<{ Params: { id: string } }>('/contacts/:id/merge', merge, async (request) => {
+    const winnerId = z.uuid().parse(request.params.id);
+    const b = z.object({ loserIds: z.array(z.uuid()).min(1).max(10), reason: reasonText(10, 1000) }).parse(request.body);
+    const actor = request.staff!;
+    return mergeContacts(app, winnerId, b.loserIds, b.reason, { id: actor.id, email: actor.email, fullName: actor.fullName }, meta(request));
+  });
 
   // ── Contacts ────────────────────────────────────────────────────────────
   app.get('/contacts', read, async (request) => {
@@ -255,7 +274,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
 
     const businesses = await app.db.query(
       `SELECT b.id, b.name, b.ein, b.entity_type, b.industry, b.naics_code, b.state,
-              b.fiscal_year_end_month, b.il_sos_status, m.member_role, m.is_primary
+              b.fiscal_year_end_month, b.il_sos_status, b.status::text AS status, m.member_role, m.is_primary
        FROM businesses b JOIN business_members m ON m.business_id = b.id
        WHERE m.contact_id = $1 ORDER BY m.is_primary DESC, b.name`,
       [id]
@@ -390,6 +409,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       irs_activity_code: b.irsActivityCode, years_in_business: b.yearsInBusiness,
       revenue_range: b.revenueRange, employees_range: b.employeesRange, zip: b.zip, state: b.state,
       fiscal_year_end_month: b.fiscalYearEndMonth,
+      status: b.status,
     };
     for (const [col, val] of Object.entries(map)) {
       if (val !== undefined) {
