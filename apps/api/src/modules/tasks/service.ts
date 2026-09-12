@@ -12,7 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { isAutomationEnabled } from '../../automations.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole, notifyOnce } from '../../staffing.ts';
+import { notifyOnce, firstActiveByRole, alertRecipientForRole } from '../../staffing.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { sendSms } from '../comms/send-sms.ts';
 import { addDays, daysBetween } from '../tax/deadlines.ts';
@@ -733,7 +733,9 @@ export async function runLadderJob(
   const pausedHeld = held.rows[0]!.n;
 
   const rungs = [0, 0, 0, 0];
-  const rene = await firstActiveByRole(app.db, 'comms_billing');
+  // The day-14 call goes to the billing role; an unfilled role is audited and falls back to the
+  // CEO (staffing.ts, 2026-09-12), and the call task is created either way, unassigned if need be.
+  const rene = await alertRecipientForRole(app.db, 'comms_billing', 'ladder_day14_call');
   const brian = await firstActiveByRole(app.db, 'ceo');
 
   for (const t of rows) {
@@ -766,10 +768,10 @@ export async function runLadderJob(
           vars: { first_name: t.first_name, item: t.title, portal_link: app.config.PORTAL_BASE_URL },
         });
       }
-    } else if (target === 3 && rene) {
+    } else if (target === 3) {
       await createTask(app, {
         title: `Call ${t.first_name} ${t.last_name} — waiting ${t.waiting_days} days: ${t.title}`,
-        assignedStaffId: rene,
+        ...(rene ? { assignedStaffId: rene } : {}),
         contactId: t.contact_id,
         priority: 1,
         source: 'automation',

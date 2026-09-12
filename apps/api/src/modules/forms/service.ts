@@ -6,7 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
+import { notifyOnce, ownerForRole, alertRecipientForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { ensurePortalUser, issueMagicLink } from '../portal-auth/service.ts';
 import { refreshEnrichmentGaps } from '../crm/service.ts';
@@ -544,24 +544,27 @@ export async function processServiceOnboarding(
         (flag.when.numberGte !== undefined && Number(value) >= flag.when.numberGte);
       if (!hit) continue;
       fired.push(flag.flagKey);
-      const staffId = await firstActiveByRole(app.db, flag.routeToRole);
+      // The flag names its role as DATA (routeToRole), which the static guard cannot see. An
+      // unfilled role is audited and falls back to the CEO (staffing.ts, 2026-09-12); the task is
+      // created regardless, unassigned if need be.
+      const staffId = await alertRecipientForRole(app.db, flag.routeToRole, `onboarding_flag:${flag.flagKey}`);
       if (staffId) {
         await notifyOnce(app.db, {
           staffId, type: `onboarding_flag_${flag.flagKey}`, severity: 'warning',
           title: `Onboarding flag: ${flag.flagKey.replace(/_/g, ' ')} (${m.key})`,
           contactId, relatedObjectType: 'contact', relatedObjectId: contactId,
         });
-        // M25: the flag's follow-up is a routed work item.
-        await createTask(app, {
-          title: `Onboarding flag: ${flag.flagKey.replace(/_/g, ' ')} (${m.key})`,
-          assignedStaffId: staffId,
-          contactId,
-          priority: 1,
-          source: 'automation',
-          sourceType: 'onboarding_flag',
-          sourceId: `${contactId}:${flag.flagKey}`,
-        });
       }
+      // M25: the flag's follow-up is a routed work item.
+      await createTask(app, {
+        title: `Onboarding flag: ${flag.flagKey.replace(/_/g, ' ')} (${m.key})`,
+        ...(staffId ? { assignedStaffId: staffId } : {}),
+        contactId,
+        priority: 1,
+        source: 'automation',
+        sourceType: 'onboarding_flag',
+        sourceId: `${contactId}:${flag.flagKey}`,
+      });
     }
   }
 

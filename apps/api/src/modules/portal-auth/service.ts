@@ -8,7 +8,7 @@ import { writeAudit } from '../../audit.ts';
 import { generateToken, hashToken } from '../../crypto.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
+import { notifyOnce, ownerForRole, alertRecipientForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 
 interface RequestMeta {
@@ -284,7 +284,8 @@ export async function recordUnknownSignInAttempt(
     return { known: false };
   }
 
-  const rene = await firstActiveByRole(app.db, 'comms_billing');
+  // An unfilled role is audited and falls back to the CEO (staffing.ts, 2026-09-12); the task is created either way.
+  const rene = await alertRecipientForRole(app.db, 'comms_billing', 'portal_access_blocked');
   const why = contact.has_user
     ? 'Their portal account is on a DIFFERENT email address than the one they tried.'
     : 'They have no portal account yet.';

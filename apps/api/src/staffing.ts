@@ -3,6 +3,7 @@
 // Routing is ALWAYS by role, never by name — people change, roles persist.
 
 import type { Db } from './db.ts';
+import { writeAudit } from './audit.ts';
 
 /** Oldest active staff member holding the role (deterministic default assignee). */
 export async function firstActiveByRole(db: Db, roleKey: string): Promise<string | null> {
@@ -86,4 +87,28 @@ export async function notifyOnce(
     ]
   );
   return true;
+}
+
+/**
+ * WHO GETS AN ALERT ROUTED TO A ROLE, and what happens when nobody holds it (2026-09-12,
+ * reconciliation: "null recipients fail loudly").
+ *
+ * Four alert sites and one variable-role-key site used firstActiveByRole directly, so an
+ * unfilled role meant the alert was silently skipped: a portal message, a portal file, a blocked
+ * sign-in, the day-14 call, an onboarding flag, each disappearing without a trace the day the
+ * role holder left. Now an unfilled role is a RECORDED fact (staffing.role_unfilled, with the
+ * role and the site that asked) and the alert falls back to the CEO, so it still reaches a
+ * person. Null only when the firm has no active CEO either, and that is audited too.
+ */
+export async function alertRecipientForRole(db: Db, roleKey: string, context: string): Promise<string | null> {
+  const holder = await firstActiveByRole(db, roleKey);
+  if (holder) return holder;
+  const ceo = roleKey === 'ceo' ? null : await firstActiveByRole(db, 'ceo');
+  await writeAudit(db, {
+    actorType: 'system',
+    actorLabel: 'staffing',
+    action: 'staffing.role_unfilled',
+    details: { role: roleKey, context, fell_back_to: ceo ? 'ceo' : 'nobody' },
+  });
+  return ceo;
 }

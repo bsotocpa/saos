@@ -10,7 +10,7 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { makeMinioClient } from './storage.ts';
 import { afterReturnDelivered, downloadDocument, runDocumentChaseJob, uploadDocument } from './service.ts';
-import { firstActiveByRole } from '../../staffing.ts';
+import { alertRecipientForRole } from '../../staffing.ts';
 import { canReadCategory, readableCategories } from './wall.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 
@@ -158,7 +158,8 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       [threadId]
     );
 
-    const rene = await firstActiveByRole(app.db, 'comms_billing');
+    // An unfilled role is audited and falls back to the CEO (staffing.ts, 2026-09-12): never a silent skip.
+    const rene = await alertRecipientForRole(app.db, 'comms_billing', 'portal_file_message');
     if (rene) {
       await app.db.query(
         `INSERT INTO notifications (staff_id, type, severity, title, contact_id, related_object_type, related_object_id)

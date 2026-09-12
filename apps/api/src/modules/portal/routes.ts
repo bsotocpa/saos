@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
+import { alertRecipientForRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { refreshEnrichmentGaps } from '../crm/service.ts';
 import { cascadeUnblock, createTask } from '../tasks/service.ts';
 import { computeQuote } from '../pricing/service.ts';
@@ -534,7 +534,8 @@ export function registerPortalRoutes(app: FastifyInstance): void {
       [threadId, b.body, client.language]
     );
     await app.db.query(`UPDATE message_threads SET last_message_at = now(), status = 'open' WHERE id = $1`, [threadId]);
-    const rene = await firstActiveByRole(app.db, 'comms_billing');
+    // An unfilled role is audited and falls back to the CEO (staffing.ts, 2026-09-12): never a silent skip.
+    const rene = await alertRecipientForRole(app.db, 'comms_billing', 'portal_message');
     if (rene) {
       await app.db.query(
         `INSERT INTO notifications (staff_id, type, severity, title, contact_id, related_object_type, related_object_id)
