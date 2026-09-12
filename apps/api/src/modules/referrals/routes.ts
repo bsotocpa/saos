@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import {
@@ -31,7 +31,18 @@ const TransitionSubmitBody = z.object({
 export function registerReferralRoutes(app: FastifyInstance): void {
   // Referral work spans both entities — contacts.write covers the staff who
   // drive it; approval taps are one-tap from Jackson/Brian ('*' roles).
-  const staff = { preHandler: [app.authenticate, requirePermission('contacts.write')] };
+  /*
+   * SUGGESTING A REFERRAL (2026-09-12). ed_coo lost the wildcard and never held contacts.write,
+   * but the Hilo attribution rule depends on Jaqueline being the suggester. referrals.suggest is
+   * the named grant for exactly that; contacts.write holders keep it too.
+   */
+  const staff = {
+    preHandler: [app.authenticate, async (request: FastifyRequest, reply: FastifyReply) => {
+      const p = request.staff?.permissions ?? [];
+      if (p.includes('*') || p.includes('referrals.suggest') || p.includes('contacts.write')) return;
+      await reply.code(403).send({ error: 'forbidden', permission: 'referrals.suggest' });
+    }],
+  };
   const approve = { preHandler: [app.authenticate, requirePermission('referrals.approve')] };
 
   app.post('/referrals', staff, async (request, reply) => {

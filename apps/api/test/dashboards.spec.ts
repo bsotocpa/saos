@@ -160,7 +160,8 @@ test('executive dashboard aggregates trace to the scenario rows; leadership-only
 });
 
 test('hilo dashboard: statuses, sessions, queues, summaries, funder metrics (pro bono valued from the price book)', async () => {
-  const res = await app.inject({ method: 'GET', url: '/dashboards/hilo', headers: auth(jackson) });
+  // 2026-09-12: dashboards.executive is CEO-only by omission; Jackson's Hilo dashboard access is a phase-2 grant question.
+  const res = await app.inject({ method: 'GET', url: '/dashboards/hilo', headers: auth(brian) });
   assert.equal(res.statusCode, 200, res.body);
   const d = res.json();
 

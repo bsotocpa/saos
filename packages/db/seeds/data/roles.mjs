@@ -21,8 +21,8 @@ export const roles = [
   {
     key: 'ed_coo',
     name: 'ED Hilo / Fractional COO',
-    description: 'Jackson. Equal to Brian; independent on all Hilo-side decisions.',
-    permissions: ['*'],
+    description: 'Jaqueline Flores, display name Jackson. Executive Director of Hilo NFP; delivers paid COO/HR work under Soto Accounting. Named grants only (2026-09-12): the client book for RELATIONSHIP data. No return contents, no SSNs, no tax documents, no IRS notices except on engagements she is assigned to — the §7216 wall, phase 2.',
+    permissions: ['contacts.read', 'engagements.read', 'tasks.read', 'tasks.manage', 'referrals.suggest'],
   },
   {
     key: 'tax_preparer',
@@ -66,14 +66,13 @@ export const roles = [
   {
     key: 'comms_billing',
     name: 'Phone/Text Handler / Sales Tax / Payroll / Billing',
-    description: 'Rene. Unified comms inbox, Stripe billing queue, sales tax + payroll workflows, magic-link bounce follow-ups.',
+    description: 'Rene. Front desk, unified comms inbox, AR chasing, full billing (void, refund, deposit transfer — every money action lands on the CEO\'s daily digest), plus bookkeeping scope for sales tax and payroll, granted directly (2026-09-12).',
     permissions: [
       'contacts.read',
       'contacts.write',
       'inbox.manage',
       'billing.manage',
-      'sales_tax.manage',
-      'payroll.manage',
+      'bookkeeping.assigned.manage',
       'magic_links.manage',
       'tasks.read',
       'tasks.manage',
@@ -117,6 +116,7 @@ export const roles = [
 
 export async function seedRoles(client) {
   let grants = 0;
+  let revoked = 0;
   for (const role of roles) {
     const { rows } = await client.query(
       `INSERT INTO roles (key, name, description)
@@ -134,6 +134,16 @@ export async function seedRoles(client) {
       );
       grants += res.rowCount;
     }
+    /*
+     * THE SEED RECONCILES (2026-09-12). It used to only insert, so a permission removed from
+     * this file stayed granted on every database that already had it — which is how ed_coo
+     * would have kept '*' forever. A grant that is not in this file is not a grant.
+     */
+    const gone = await client.query(
+      `DELETE FROM role_permissions WHERE role_id = $1 AND NOT (permission = ANY($2::text[])) RETURNING permission`,
+      [roleId, role.permissions]
+    );
+    revoked += gone.rowCount;
   }
-  return `${roles.length} roles, ${grants} new permission grants`;
+  return `${roles.length} roles, ${grants} new permission grants, ${revoked} revoked`;
 }

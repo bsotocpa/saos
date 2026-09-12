@@ -85,9 +85,9 @@ after(async () => {
 test('deposits.override is Brian ONLY — a wildcard role does not inherit it', async () => {
   assert.ok(EXPLICIT_ONLY_PERMISSIONS.has('deposits.override'));
 
-  // Jackson genuinely holds '*' — that is the premise of the test.
+  // 2026-09-12: ed_coo holds NAMED grants now (ruling 3), no wildcard — and still not the override.
   const jacksonMe = await app.inject({ method: 'GET', url: '/auth/me', headers: auth(jackson) });
-  assert.ok(jacksonMe.json().permissions.includes('*'), 'ed_coo holds the wildcard');
+  assert.ok(!jacksonMe.json().permissions.includes('*'), 'ed_coo holds no wildcard');
   assert.ok(
     !jacksonMe.json().permissions.includes('deposits.override'),
     'and is NOT granted the deposit override by name'

@@ -17,6 +17,7 @@ import type { Summarizer } from '../src/modules/meetings/adapters.ts';
 let app: FastifyInstance;
 let config: Config;
 let jackson: TestStaff & { token: string }; // ed_coo — records Hilo sessions
+let brian: TestStaff & { token: string };   // ceo — 2026-09-12: ed_coo holds named grants and no longer meetings.upload/jobs.run in this spec
 let ana: TestStaff & { token: string };     // tax_preparer — meetings.upload
 
 const WAV = Buffer.concat([
@@ -91,6 +92,7 @@ before(async () => {
   app = buildServer(config);
   await app.ready();
   jackson = await staffWithToken('jackson-meet@example.test', 'ed_coo');
+  brian = await staffWithToken('brian-meet@example.test', 'ceo');
   ana = await staffWithToken('ana-meet@example.test', 'tax_preparer');
 });
 
@@ -107,7 +109,7 @@ test('voice memo → transcript → summary → tasks → referral queue → pro
   );
   const res = await app.inject({
     method: 'POST', url: '/meetings/upload',
-    headers: { ...auth(jackson), ...up.headers }, payload: up.payload,
+    headers: { ...auth(brian), ...up.headers }, payload: up.payload,
   });
   assert.equal(res.statusCode, 201, res.body);
   const meetingId = res.json().id as string;
@@ -144,7 +146,7 @@ test('voice memo → transcript → summary → tasks → referral queue → pro
        FROM tasks
       WHERE source_type = 'meeting_action_item' AND source_id LIKE $1 || ':%'
         AND assigned_staff_id = $2`,
-    [meetingId, jackson.id]
+    [meetingId, brian.id]
   );
   assert.equal(tasks.rows[0]!.n, 2);
   assert.equal(tasks.rows[0]!.distinct_ids, 2, 'each action item is its own work item, not deduped into one');
@@ -218,13 +220,13 @@ test('upload guards: contact required; non-audio refused; RBAC enforced', async 
 
   const noContact = multipartBody({ type: 'phone' }, { field: 'file', filename: 's.wav', contentType: 'audio/wav', data: WAV });
   const r1 = await app.inject({
-    method: 'POST', url: '/meetings/upload', headers: { ...auth(jackson), ...noContact.headers }, payload: noContact.payload,
+    method: 'POST', url: '/meetings/upload', headers: { ...auth(brian), ...noContact.headers }, payload: noContact.payload,
   });
   assert.equal(r1.statusCode, 400);
 
   const badMime = multipartBody({ contactId: contact, type: 'phone' }, { field: 'file', filename: 'x.pdf', contentType: 'application/pdf', data: WAV });
   const r2 = await app.inject({
-    method: 'POST', url: '/meetings/upload', headers: { ...auth(jackson), ...badMime.headers }, payload: badMime.payload,
+    method: 'POST', url: '/meetings/upload', headers: { ...auth(brian), ...badMime.headers }, payload: badMime.payload,
   });
   assert.equal(r2.statusCode, 415);
 
@@ -266,7 +268,7 @@ test('recovery sweep re-enqueues stuck recordings', async () => {
     { field: 'file', filename: 'stuck.wav', contentType: 'audio/wav', data: WAV }
   );
   const res = await app.inject({
-    method: 'POST', url: '/meetings/upload', headers: { ...auth(jackson), ...up.headers }, payload: up.payload,
+    method: 'POST', url: '/meetings/upload', headers: { ...auth(brian), ...up.headers }, payload: up.payload,
   });
   const meetingId = res.json().id as string;
   await waitForStatus(meetingId, ['ready']);
@@ -275,7 +277,7 @@ test('recovery sweep re-enqueues stuck recordings', async () => {
   await backdate(meetingId, '10 minutes');
   await app.db.query(`DELETE FROM time_entries WHERE meeting_id = $1`, [meetingId]);
 
-  const sweep = await app.inject({ method: 'POST', url: '/jobs/meeting-recovery', headers: auth(jackson) });
+  const sweep = await app.inject({ method: 'POST', url: '/jobs/meeting-recovery', headers: auth(brian) });
   assert.equal(sweep.statusCode, 200, sweep.body);
   assert.ok(sweep.json().recovered >= 1);
   const status = await waitForStatus(meetingId, ['ready']);
@@ -298,7 +300,7 @@ test('recovery sweep rescues a session abandoned MID-processing, not just one ne
     { field: 'file', filename: 'midflight.wav', contentType: 'audio/wav', data: WAV }
   );
   const res = await app.inject({
-    method: 'POST', url: '/meetings/upload', headers: { ...auth(jackson), ...up.headers }, payload: up.payload,
+    method: 'POST', url: '/meetings/upload', headers: { ...auth(brian), ...up.headers }, payload: up.payload,
   });
   const meetingId = res.json().id as string;
   await waitForStatus(meetingId, ['ready']);
@@ -310,7 +312,7 @@ test('recovery sweep rescues a session abandoned MID-processing, not just one ne
   await app.db.query(`UPDATE meetings SET status = 'transcribing' WHERE id = $1`, [meetingId]);
   await backdate(meetingId, '2 days');
 
-  const sweep = await app.inject({ method: 'POST', url: '/jobs/meeting-recovery', headers: auth(jackson) });
+  const sweep = await app.inject({ method: 'POST', url: '/jobs/meeting-recovery', headers: auth(brian) });
   assert.equal(sweep.statusCode, 200, sweep.body);
   assert.ok(sweep.json().recovered >= 1, 'the mid-flight session was picked up');
 
@@ -327,7 +329,7 @@ test('a session still genuinely in flight is left alone', async () => {
     { field: 'file', filename: 'inflight.wav', contentType: 'audio/wav', data: WAV }
   );
   const res = await app.inject({
-    method: 'POST', url: '/meetings/upload', headers: { ...auth(jackson), ...up.headers }, payload: up.payload,
+    method: 'POST', url: '/meetings/upload', headers: { ...auth(brian), ...up.headers }, payload: up.payload,
   });
   const meetingId = res.json().id as string;
   await waitForStatus(meetingId, ['ready']);
@@ -336,7 +338,7 @@ test('a session still genuinely in flight is left alone', async () => {
   await app.db.query(`UPDATE meetings SET status = 'transcribing' WHERE id = $1`, [meetingId]);
   await backdate(meetingId, '10 minutes');
 
-  const sweep = await app.inject({ method: 'POST', url: '/jobs/meeting-recovery', headers: auth(jackson) });
+  const sweep = await app.inject({ method: 'POST', url: '/jobs/meeting-recovery', headers: auth(brian) });
   assert.equal(sweep.statusCode, 200, sweep.body);
   const still = await app.db.query<{ status: string }>(
     `SELECT status::text AS status FROM meetings WHERE id = $1`, [meetingId]);
@@ -350,7 +352,7 @@ test('the client record lists sessions with their summaries; the transcript is s
     { field: 'file', filename: 'record.wav', contentType: 'audio/wav', data: WAV }
   );
   const res = await app.inject({
-    method: 'POST', url: '/meetings/upload', headers: { ...auth(jackson), ...up.headers }, payload: up.payload,
+    method: 'POST', url: '/meetings/upload', headers: { ...auth(brian), ...up.headers }, payload: up.payload,
   });
   const meetingId = res.json().id as string;
   await waitForStatus(meetingId, ['ready']);
@@ -425,7 +427,7 @@ test('a placeholder action item does not become a task nobody can act on', async
   try {
     const secret = new OTPAuth.Secret({ size: 20 }).base32;
     const st = await makeStaff(app2.db, cfg, {
-      email: 'ph-meet@example.test', name: 'Synthetic ED', role: 'ed_coo',
+      email: 'ph-meet@example.test', name: 'Synthetic ED', role: 'ceo', // 2026-09-12: ed_coo no longer holds meetings.upload
       password: 'ph-password-123456', totpSecret: secret,
     });
     const code = new OTPAuth.TOTP({
@@ -477,7 +479,7 @@ test('a stalled session is NAMED as stalled, not left looking busy', async () =>
     { field: 'file', filename: 'stalled.wav', contentType: 'audio/wav', data: WAV }
   );
   const res = await app.inject({
-    method: 'POST', url: '/meetings/upload', headers: { ...auth(jackson), ...up.headers }, payload: up.payload,
+    method: 'POST', url: '/meetings/upload', headers: { ...auth(brian), ...up.headers }, payload: up.payload,
   });
   const meetingId = res.json().id as string;
   await waitForStatus(meetingId, ['ready']);

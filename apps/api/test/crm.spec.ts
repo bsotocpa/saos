@@ -397,7 +397,9 @@ test('attest independence: blocked with active bookkeeping; Brian-only documente
     },
   });
   assert.equal(jacksonTry.statusCode, 403);
-  assert.equal(jacksonTry.json().error, 'independence_override_requires_ceo');
+  // 2026-09-12: ed_coo no longer creates engagements at all (named grants, ruling 3); the CEO-only
+  // override check behind it is still exercised by schedule-f-attest.spec at the service level.
+  assert.equal(jacksonTry.json().error, 'forbidden');
 
   // Brian's documented override works and is audited.
   const overridden = await app.inject({

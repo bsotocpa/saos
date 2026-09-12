@@ -31,7 +31,8 @@ async function makeActive(contactId: string) {
 
 let app: FastifyInstance;
 let config: Config;
-let jackson: TestStaff & { token: string }; // ed_coo — suggests + approves
+let jackson: TestStaff & { token: string }; // ed_coo — suggests (referrals.suggest, 2026-09-12)
+let brian: TestStaff & { token: string };   // ceo — approves (ruling 7, 2026-09-12)
 let rene: TestStaff & { token: string };    // comms_billing — creates referrals
 
 const sentMail: MailMessage[] = [];
@@ -104,7 +105,7 @@ before(async () => {
   jackson = await staffWithToken('jackson-ref@example.test', 'ed_coo');
   rene = await staffWithToken('rene-ref@example.test', 'comms_billing');
   // Downstream automation targets exist:
-  await staffWithToken('brian-ref@example.test', 'ceo');
+  brian = await staffWithToken('brian-ref@example.test', 'ceo');
   await staffWithToken('ana-ref@example.test', 'tax_preparer');
 });
 
@@ -131,9 +132,10 @@ test('soto→hilo is ALWAYS §7216-gated: blocked without consent, flows with it
   const referralId = created.json().id as string;
 
   // One-tap approve + send the warm Hilo intro.
-  const approved = await app.inject({ method: 'POST', url: `/referrals/${referralId}/approve`, headers: auth(jackson) });
+  // Ruling 7 (2026-09-12): approvals stay with the CEO.
+  const approved = await app.inject({ method: 'POST', url: `/referrals/${referralId}/approve`, headers: auth(brian) });
   assert.equal(approved.statusCode, 200, approved.body);
-  const sent = await app.inject({ method: 'POST', url: `/referrals/${referralId}/send`, headers: auth(jackson) });
+  const sent = await app.inject({ method: 'POST', url: `/referrals/${referralId}/send`, headers: auth(brian) });
   assert.equal(sent.statusCode, 200, sent.body);
 
   const row = await app.db.query(`SELECT status, sent_at FROM referrals WHERE id = $1`, [referralId]);
@@ -175,8 +177,8 @@ test('full transition journey: approve → link → disclosure REQUIRED → conv
     payload: { contactId: luz, direction: 'hilo_to_soto', source: 'session_summary' },
   });
   const referralId = created.json().id as string;
-  await app.inject({ method: 'POST', url: `/referrals/${referralId}/approve`, headers: auth(jackson) });
-  const sent = await app.inject({ method: 'POST', url: `/referrals/${referralId}/send`, headers: auth(jackson) });
+  await app.inject({ method: 'POST', url: `/referrals/${referralId}/approve`, headers: auth(brian) });
+  const sent = await app.inject({ method: 'POST', url: `/referrals/${referralId}/send`, headers: auth(brian) });
   assert.equal(sent.statusCode, 200, sent.body);
 
   // Warm handoff (Spanish) with the transition link.
