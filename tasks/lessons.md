@@ -2019,3 +2019,15 @@ no trigger, no check, no route logic. Had I only hidden the control as asked, th
 been a button's absence. The floor is a trigger now (0096), the API turns it into a 409 that names
 the rule, and the control is gone. Same rule as the green harness and the Docuseal template: a
 stated guard is on trial until the code or the database is in hand.
+
+## 2026-09-12 — a chained background command that dies early looks exactly like a long one
+
+Brian asked what was taking so long. The answer: nothing was running. A commit-and-test chain
+launched in the background had failed at its third step (a relative cd, then a path that no
+longer resolved), twenty minutes earlier. The notification had arrived; I had not read it, and
+the log file the grep looked for was never created, so the silence read as work in progress.
+
+**The rule.** A background chain gets absolute paths and one purpose. When a notification
+arrives, read its output file before anything else, even if the next step was expected to take
+ten minutes. And when a report waits on a background step, say what step and when it started,
+so a stall is visible to Brian as a stall, not as diligence.
