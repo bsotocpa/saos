@@ -39,6 +39,8 @@ export const OUTBOX_EFFECTS = [
   'invoice.refund_receipt',
   /** Email the client that an invoice they hold a pay link for no longer exists (2026-09-09). */
   'invoice.void_notice',
+  /** Email the client that the IRS or a state accepted their return (2026-09-12). Federal and state are separate rows. */
+  'efile.ack_notice',
 ] as const;
 export type OutboxEffect = (typeof OUTBOX_EFFECTS)[number];
 
@@ -182,6 +184,16 @@ async function performEffect(
       if (result.sent) return { sent: true };
       if (result.reason === 'already_sent') return { sent: false, skip: 'void notice already sent' };
       // Item 9 (2026-09-09): a gated send that is OFF retires — it is a decision, not a fault.
+      if (result.reason === 'suppressed') return { sent: false, hold: 'held — the automation is off (Admin → Automations)' };
+      return { sent: false, retry: humanReason(result.reason) };
+    }
+    case 'efile.ack_notice': {
+      const ackId = String(row.payload.ackId ?? '');
+      if (!ackId) return { sent: false, skip: 'no ackId in the payload' };
+      const { sendEfileAckNotice } = await import('./modules/tax/efile-ack.ts');
+      const result = await sendEfileAckNotice(app, ackId);
+      if (result.sent) return { sent: true };
+      if (result.reason === 'already_sent') return { sent: false, skip: 'already sent, or held after release' };
       if (result.reason === 'suppressed') return { sent: false, hold: 'held — the automation is off (Admin → Automations)' };
       return { sent: false, retry: humanReason(result.reason) };
     }

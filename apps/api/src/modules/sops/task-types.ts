@@ -142,6 +142,8 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   // ── Tax (Ana-Maria) ───────────────────────────────────────────────────────
   irs_notice: { sop: 'ana-notice-playbook' },
   efile_reject: { sop: 'ana-efile-reject' },
+  // 2026-09-12: a row on the ATX acknowledgment report SAOS could not apply (rejected on an unfiled return, unmatched, ambiguous).
+  efile_ack_review: { sop: 'ana-efile-ack-review' },
   extension_batch_review: { sop: 'ana-extension-batch' },
   resolution_year: { sop: 'ana-resolution-year' },
   transcript_request: { sop: 'ana-transcript-request' },

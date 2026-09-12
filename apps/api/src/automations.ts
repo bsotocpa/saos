@@ -38,6 +38,8 @@ export const AUTOMATION_KEYS = [
   'payment_receipt',
   'refund_receipt',
   'void_notice',
+  // 2026-09-12: the client is told the IRS / a state accepted their return, from the ATX report.
+  'efile_acknowledgment',
 ] as const;
 
 export type AutomationKey = (typeof AUTOMATION_KEYS)[number];

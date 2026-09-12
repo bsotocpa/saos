@@ -75,3 +75,12 @@ NEW
 - [x] 7. Pay-link walk item noted as untestable until an open invoice exists.
 - [x] Role resolver audit delivered (table only, no changes). Four live defects found; awaiting rulings.
 - Gate for harness page four: five consecutive green runs of pages one, two and three.
+
+## Staff and e-file batch — 2026-09-12 (Brian's rulings after the 09-10 walk)
+- [x] Item 0 CONFIRMED by Brian: the stale app shell was the cause. Closed on the record in lessons.md.
+- [x] Carry-over: 8 reason rows rewritten to stand alone (0088, listed by name); apps/api/src/reasons.ts refuses conversation artifacts at every staff reason. Sabotage bit on "as discussed".
+- [x] Preparer of record (0089): required at filing, immutable after, "not recorded" on anything filed before. Sabotage bit.
+- [x] E-file acknowledgment automation (0090): ATX report → parse by column name → match or task, never guess → review screen → release (REQUIRED step) → gated send EN/ES, federal and state separately, return records both. Automation `efile_acknowledgment` seeded OFF. Sabotage (1 accepted / 1 rejected / 1 unmatched → 1 queued, 2 tasks, 0 guesses) bit on "never guess".
+- [ ] Staff accounts: REPORT delivered, NO account created. Awaiting Brian's approval of the grant matrix.
+- [ ] Rene's money-action daily digest + executive-view line: not built until the accounts ruling (it is part of that grant).
+- [ ] Multi-role (Rene): staff.role_id is single; ~21 files to change for a staff_roles join. Cost stated in the report; awaiting ruling.

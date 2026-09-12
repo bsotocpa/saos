@@ -11,6 +11,7 @@ const NAV = [
   { href: '/documents', label: 'Documents' },
   { href: '/tasks', label: 'My Tasks' },
   { href: '/queue', label: 'My Queue' },
+  { href: '/efile-acks', label: 'E-file acks' },
   { href: '/inbox', label: 'Inbox' },
   { href: '/pipeline', label: 'Pipeline' },
   { href: '/reports', label: 'Reports' },

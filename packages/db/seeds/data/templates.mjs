@@ -585,6 +585,51 @@ export const templates = [
       'Luego le enviaremos la autorización de presentación electrónica.\n\n— Soto Accounting',
   },
   /*
+   * 2026-09-12: the e-file acknowledgment automation. Two templates because federal and state
+   * acknowledgments arrive on different days and say different things; a client with both gets
+   * both, and each names its jurisdiction. Operational copy: no legal language.
+   */
+  {
+    key: 'efile_accepted_federal',
+    name: 'Federal return accepted by the IRS',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'tax_year', 'return_type', 'acknowledged_on'],
+    subjectEn: 'The IRS has accepted your {{tax_year}} return',
+    subjectEs: 'El IRS aceptó su declaración federal {{tax_year}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Good news: the IRS has accepted your {{tax_year}} {{return_type}} return. ' +
+      'Acceptance means the return was received and passed the IRS’s checks; it is now in their processing queue.\n\n' +
+      'If a state return was filed with it, you will receive a separate note when the state acknowledges it.\n\n' +
+      'Your copy is in your portal under “My Returns”. Nothing else is needed from you.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Buenas noticias: el IRS aceptó su declaración federal {{return_type}} del año {{tax_year}}. ' +
+      'La aceptación significa que la declaración fue recibida y pasó las verificaciones del IRS; ahora está en su cola de procesamiento.\n\n' +
+      'Si se presentó una declaración estatal junto con esta, recibirá un aviso aparte cuando el estado la acepte.\n\n' +
+      'Su copia está en su portal, en “Mis Declaraciones”. No necesita hacer nada más.\n\n— Soto Accounting',
+  },
+  {
+    key: 'efile_accepted_state',
+    name: 'State return accepted',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'tax_year', 'return_type', 'state_code', 'acknowledged_on'],
+    subjectEn: '{{state_code}} has accepted your {{tax_year}} state return',
+    subjectEs: '{{state_code}} aceptó su declaración estatal {{tax_year}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Your {{tax_year}} {{state_code}} state return has been accepted. ' +
+      'Like the federal acceptance, this means the state received the return and passed it into processing.\n\n' +
+      'Your copy is in your portal under “My Returns”. Nothing else is needed from you.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Su declaración estatal de {{state_code}} del año {{tax_year}} fue aceptada. ' +
+      'Igual que la aceptación federal, esto significa que el estado recibió la declaración y la pasó a procesamiento.\n\n' +
+      'Su copia está en su portal, en “Mis Declaraciones”. No necesita hacer nada más.\n\n— Soto Accounting',
+  },
+  /*
    * Replaces `discovery_deposit`, which asked for money at booking and carried a Stripe
    * checkout link. Brian retired that path on 2026-08-14: deposits exist only on
    * accepted quotes. `discovery_deposit` is retired by the seed rather than edited,

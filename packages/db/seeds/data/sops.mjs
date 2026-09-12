@@ -536,6 +536,23 @@ acceptance is.
 2. Fix and re-file inside the window. Re-filing clears the clock.
 3. If the window will pass, tell Brian before it does, not after.
 `),
+  sop('ana-efile-ack-review', 'E-file acknowledgment could not be applied', 'tax_preparer', 'Tax pipeline', `
+## Why you have this task
+You uploaded the ATX acknowledgment report and one row could not be applied on its
+own. SAOS never guesses a match and never emails a client from a row it is unsure of,
+so the row is yours. The task names the row number and the reason.
+
+1. Open the report on the E-file acks screen and find the row.
+2. If the reason is "no return in SAOS": the return exists under a different name,
+   year or type, or it was never created. Find it or create it, then record the
+   acknowledgment on the return by hand.
+3. If the reason is "could be N returns": open each candidate and pick the one whose
+   taxpayer id matches; record the acknowledgment on that one.
+4. If the row is a rejection on a return SAOS does not have at filed: bring the
+   record in line first, then handle the rejection as an e-file rejection.
+5. Close this task with what you did. Nothing was sent to the client; if a
+   confirmation is owed, send it from the return.
+`),
   sop('ana-extension-batch', 'Protective extension batch', 'tax_preparer', 'Tax season', `
 ## Why you have this task
 The sweep window opened (original due date minus the admin offset, default 10

@@ -17,6 +17,7 @@ import { registerCrmRoutes } from './modules/crm/routes.ts';
 import { registerEngagementRoutes } from './modules/engagements/routes.ts';
 import { registerPacketRoutes } from './modules/engagements/packet-routes.ts';
 import { registerTaxRoutes } from './modules/tax/routes.ts';
+import { registerEfileAckRoutes } from './modules/tax/efile-ack-routes.ts';
 import { registerExtensionRoutes } from './modules/tax/extension-routes.ts';
 import { registerNoticeRoutes } from './modules/notices/routes.ts';
 import { registerEntityRoutes } from './modules/entity/routes.ts';
@@ -137,6 +138,7 @@ export function buildServer(
   registerEngagementRoutes(app);
   registerPacketRoutes(app);
   registerTaxRoutes(app);
+  registerEfileAckRoutes(app);
   registerExtensionRoutes(app);
   registerNoticeRoutes(app);
   registerEntityRoutes(app);

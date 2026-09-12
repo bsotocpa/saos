@@ -112,6 +112,12 @@ export const ITEM_9_2026_09_09 = [
     description:
       'Emails the client that an invoice they may hold a pay link for was cancelled. OFF: the invoice still reads Cancelled in the portal, its pay link is dead, and the send log records the hold — but nobody tells the client unless a person does. Registered 2026-09-09 (item 9): the void is a person\u2019s action; the notice was automatic.',
   },
+  {
+    key: 'efile_acknowledgment',
+    name: 'E-file acceptance confirmations (from the ATX report)',
+    description:
+      'When the tax preparer uploads the ATX acknowledgment report and releases it, each client whose return was accepted is emailed, in their language, once per jurisdiction (federal, then each state). Rejections and anything SAOS could not match never email a client; they become tasks. OFF: the release is recorded and every confirmation is held by the automation, nothing goes out.',
+  },
 ];
 automations.push(...ITEM_9_2026_09_09);
 
