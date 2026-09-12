@@ -36,7 +36,7 @@ interface Contact {
   is_test: boolean; test_note: string | null;
 }
 interface Business {
-  id: string; name: string; ein: string | null; entity_type: string | null;
+  id: string; name: string; ein: string | null; entity_type: string | null; status?: string | null;
   industry: string | null; state: string | null; il_sos_status: string | null;
   member_role: string | null; is_primary: boolean;
 }
@@ -92,6 +92,7 @@ interface Invoice {
   has_stripe_payment?: boolean;
   has_open_drift_finding?: boolean;
   stripe_check_waived_at?: string | null; stripe_check_waived_reason?: string | null; stripe_check_waived_by?: string | null;
+  waiver_amendments?: Array<{ body: string; by: string; at: string }>;
   /** Every client-facing notice about this invoice, in its real state (queued / delivered…). */
   notices: NoticeState[];
 }
@@ -583,7 +584,7 @@ export default function ClientPacketPage() {
                 {b.is_primary ? <span className="badge">primary</span> : null}
                 <br />
                 <span className="muted small">
-                  {b.entity_type ?? 'entity type unknown'}
+                  {b.entity_type ?? 'entity type unknown'}{b.status === 'dissolved' ? <> · <span className="badge warn">dissolved</span></> : null}
                   {b.ein ? ` · EIN on file` : ' · no EIN'}
                   {b.state ? ` · ${b.state}` : ''}
                   {b.industry ? ` · ${b.industry}` : ''}
@@ -1182,7 +1183,39 @@ export default function ClientPacketPage() {
                   </button>
                 ) : null}
                 {inv.stripe_check_waived_at ? (
-                  <span className="muted small">Stripe check waived · {inv.stripe_check_waived_reason} · {inv.stripe_check_waived_by ?? ''}</span>
+                  <span className="muted small" style={{ flex: '1 1 100%' }}>
+                    Stripe check waived · {inv.stripe_check_waived_reason} · {inv.stripe_check_waived_by ?? ''}
+                    {(inv.waiver_amendments ?? []).map((a) => (
+                      <span key={a.at} style={{ display: 'block' }}>amended · {a.body} · {a.by} · {dayOf(a.at)}</span>
+                    ))}{' '}
+                    <button
+                      className="btn ghost"
+                      type="button"
+                      disabled={busy}
+                      title="Add a line under the waiver reason; the original is never edited"
+                      onClick={async () => {
+                        const a = await ask({
+                          title: `Amend the waiver reason on ${inv.invoice_number}`,
+                          body: <p>The original line stays as written. Your amendment is added under it, with your name and the time.</p>,
+                          reason: { label: 'The amendment', required: true, placeholder: 'e.g. paid under the Stripe test key on 2026-08-13; the live key cannot see that payment intent' },
+                          choices: [{ key: 'amend', label: 'Add the amendment', tone: 'primary' }],
+                        });
+                        if (!a) return;
+                        setBusy(true);
+                        try {
+                          await api(`/invoices/${inv.id}/waiver-amendments`, { method: 'POST', body: { body: a.reason } });
+                          setActionMsg(`${inv.invoice_number}: waiver reason amended (audited).`);
+                          await load();
+                        } catch (e) {
+                          setActionErr(e instanceof Error ? e.message : 'Could not amend the reason.');
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Amend reason
+                    </button>
+                  </span>
                 ) : null}
                 {/* Only an invoice that can still be paid gets a reminder and a pay link. */}
                 {/* Audit item 3 (2026-09-09): the reminder appears only for sent/overdue, and says the amount it chases. */}

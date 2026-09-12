@@ -190,6 +190,31 @@ export function registerBillingRoutes(app: FastifyInstance): void {
     return waiveStripeCheck(app, id, body.reason, request.staff!);
   });
 
+  /**
+   * A PERMANENT REASON IS AMENDED, NEVER EDITED (Brian, 2026-09-12). A second line, audited, with
+   * its author and time; the original stays as written. reason_amendments is generic by object
+   * and field; the waiver reason is the first user.
+   */
+  app.post<{ Params: { id: string } }>('/invoices/:id/waiver-amendments', billing, async (request, reply) => {
+    const id = z.uuid().parse(request.params.id);
+    const body = z.object({ body: reasonText(5, 1000) }).parse(request.body);
+    const inv = await app.db.query<{ contact_id: string; waived: Date | null }>(`SELECT contact_id, stripe_check_waived_at AS waived FROM invoices WHERE id = $1`, [id]);
+    if (!inv.rows[0]) throw new AppError(404, 'not_found', 'Invoice not found.');
+    if (!inv.rows[0].waived) throw new AppError(409, 'nothing_to_amend', 'This invoice has no waiver reason to amend.');
+    const staff = request.staff!;
+    const { rows } = await app.db.query<{ id: string }>(
+      `INSERT INTO reason_amendments (object_type, object_id, field, body, staff_id) VALUES ('invoice', $1, 'stripe_check_waived_reason', $2, $3) RETURNING id`,
+      [id, body.body, staff.id]
+    );
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: staff.id, actorLabel: staff.fullName,
+      action: 'reason.amended', objectType: 'invoice', objectId: id, contactId: inv.rows[0].contact_id,
+      ip: request.ip, userAgent: request.headers['user-agent'] ?? null,
+      details: { field: 'stripe_check_waived_reason', amendment_id: rows[0]!.id },
+    });
+    return reply.code(201).send({ id: rows[0]!.id });
+  });
+
   app.get('/invoices', billing, async (request) => {
     const q = z.object({ status: z.string().optional(), contactId: z.uuid().optional() }).parse(request.query);
     const clauses: string[] = ['true'];
@@ -207,6 +232,9 @@ export function registerBillingRoutes(app: FastifyInstance): void {
               EXISTS (SELECT 1 FROM tasks t WHERE t.source_type = 'stripe_drift' AND t.source_id = i.id::text
                         AND t.status IN ('not_started', 'in_progress', 'waiting_for_input', 'deferred')) AS has_open_drift_finding,
               i.stripe_check_waived_at, i.stripe_check_waived_reason, ws.display_name AS stripe_check_waived_by,
+              COALESCE((SELECT json_agg(json_build_object('body', ra.body, 'by', st.display_name, 'at', ra.created_at) ORDER BY ra.created_at)
+                          FROM reason_amendments ra JOIN staff st ON st.id = ra.staff_id
+                         WHERE ra.object_type = 'invoice' AND ra.object_id = i.id AND ra.field = 'stripe_check_waived_reason'), '[]'::json) AS waiver_amendments,
               -- The joined staff name when a person did it; the recorded label when a cascade did
               -- (2026-09-10). Never null on a void, so the row never reads "unknown".
               COALESCE(vs.full_name, i.voided_by_label) AS voided_by,
