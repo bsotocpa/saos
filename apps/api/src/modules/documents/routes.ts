@@ -11,7 +11,7 @@ import { AppError } from '../../types.ts';
 import { makeMinioClient } from './storage.ts';
 import { afterReturnDelivered, downloadDocument, runDocumentChaseJob, uploadDocument } from './service.ts';
 import { firstActiveByRole } from '../../staffing.ts';
-import { readableCategories } from './wall.ts';
+import { canReadCategory, readableCategories } from './wall.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 
 const CLIENT_CATEGORIES = ['tax_documents', 'business_records', 'id_verification', 'irs_notices', 'other'] as const;
@@ -215,6 +215,11 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       const staff = request.staff!;
       const { data, buffer } = await readUpload(request);
       const fields = StaffUploadFields.parse(fieldValues(data));
+      // THE WALL, on the way in (Brian, 2026-09-12): you may upload only into a category you may
+      // read. Laura files entity papers and nothing else; a preparer files anything.
+      if (!canReadCategory(staff, fields.category)) {
+        throw new AppError(403, 'category_not_allowed', `Your role does not handle '${fields.category}' documents.`);
+      }
       const result = await uploadDocument(
         app,
         minio,

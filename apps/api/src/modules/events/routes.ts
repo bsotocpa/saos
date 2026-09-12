@@ -40,9 +40,11 @@ const RegistrationBody = z.object({
 export function registerEventRoutes(app: FastifyInstance): void {
   // Hilo events are Jaqueline's: events.manage (2026-09-12, her six), not the firm's executive view.
   const manage = { preHandler: [app.authenticate, requirePermission('events.manage')] };
-  const anyStaff = { preHandler: [app.authenticate] };
+  // The roster is names, emails and phones of the public: events.read (Brian, 2026-09-12), which
+  // an intern does not hold. The list, the door, the survey and the impact numbers sit behind it.
+  const read = { preHandler: [app.authenticate, requirePermission('events.read')] };
 
-  app.get('/events', anyStaff, async () => {
+  app.get('/events', read, async () => {
     const { rows } = await app.db.query(
       `SELECT e.slug, e.title_en, e.program, e.starts_at, e.capacity, e.status::text AS status,
               count(r.id) FILTER (WHERE r.status IN ('confirmed', 'attended'))::int AS confirmed,
@@ -69,18 +71,18 @@ export function registerEventRoutes(app: FastifyInstance): void {
   });
 
   /** The check-in list — staff only, obviously. */
-  app.get<{ Params: { slug: string } }>('/events/:slug/check-in', anyStaff, async (request) => {
+  app.get<{ Params: { slug: string } }>('/events/:slug/check-in', read, async (request) => {
     const slug = z.string().max(80).parse(request.params.slug);
     return checkInList(app, slug);
   });
 
-  app.post<{ Params: { id: string } }>('/event-registrations/:id/check-in', anyStaff, async (request) => {
+  app.post<{ Params: { id: string } }>('/event-registrations/:id/check-in', read, async (request) => {
     const id = z.uuid().parse(request.params.id);
     await checkIn(app, id, request.staff!);
     return { checkedIn: true };
   });
 
-  app.post<{ Params: { id: string } }>('/event-registrations/:id/survey', anyStaff, async (request) => {
+  app.post<{ Params: { id: string } }>('/event-registrations/:id/survey', read, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const b = z
       .object({
@@ -101,7 +103,7 @@ export function registerEventRoutes(app: FastifyInstance): void {
   });
 
   /** Funder-report numbers for one event. */
-  app.get<{ Params: { slug: string } }>('/events/:slug/impact', anyStaff, async (request) => {
+  app.get<{ Params: { slug: string } }>('/events/:slug/impact', read, async (request) => {
     const slug = z.string().max(80).parse(request.params.slug);
     return eventImpact(app, slug);
   });

@@ -124,13 +124,15 @@ after(async () => { await app.close(); });
 test('the grants: her six on ed_coo, the entity scope on va_entity, the preparer inside the wall', async () => {
   assert.deepEqual(await grants('ed_coo'), [
     'contacts.read', 'dashboards.hilo', 'documents.read', 'documents.read.relationship', 'engagements.read',
-    'events.manage', 'meetings.read', 'meetings.upload', 'referrals.suggest', 'tasks.manage', 'tasks.read',
+    'events.manage', 'events.read', 'meetings.read', 'meetings.upload', 'referrals.suggest', 'tasks.manage', 'tasks.read',
   ]);
   const va = await grants('va_entity');
   assert.ok(va.includes('documents.read') && va.includes('documents.read.entity') && !va.includes('documents.read.all'));
   const prep = await grants('tax_preparer');
   for (const p of ['documents.read.all', 'meetings.read.all', 'pii.read', 'interviews.read']) assert.ok(prep.includes(p), `tax_preparer holds ${p}`);
   assert.ok((await grants('bookkeeper')).includes('documents.read.all'), 'Marian reaches what she reached before');
+  assert.ok((await grants('comms_billing')).includes('pii.read'), 'Rene verifies callers by SSN: inside the firm');
+  assert.ok(!(await grants('intern')).includes('events.read'), 'an intern does not see event rosters');
 });
 
 test('documents, Laura: holds documents.read; sees entity filings and nothing else, in the list, the overview, and the download', async () => {
@@ -168,10 +170,25 @@ test('documents, Jaqueline: holds documents.read; the four return-adjacent categ
   assert.equal((await app.inject({ method: 'GET', url: `/documents/${docs.bank}/download`, headers: auth(jackson) })).statusCode, 200);
 });
 
+test('uploads follow reads: Laura files entity papers and nothing else; Rene reads the SSN last-4', async () => {
+  const { payload, headers } = multipartBody({ contactId: walled, category: 'tax_documents' }, { field: 'file', filename: 'WALL-LAURA-TAX-UPLOAD.pdf', contentType: 'application/pdf', data: PDF });
+  const refused = await app.inject({ method: 'POST', url: '/documents', headers: { ...auth(laura), ...headers }, payload });
+  assert.equal(refused.statusCode, 403, refused.body);
+  assert.equal(refused.json().error, 'category_not_allowed');
+  assert.equal((await app.db.query(`SELECT 1 FROM documents WHERE filename = 'WALL-LAURA-TAX-UPLOAD.pdf'`)).rows.length, 0, 'nothing was stored');
+  const ok = multipartBody({ contactId: walled, category: 'entity_filings' }, { field: 'file', filename: 'WALL-LAURA-ANNUAL-REPORT.pdf', contentType: 'application/pdf', data: PDF });
+  const accepted = await app.inject({ method: 'POST', url: '/documents', headers: { ...auth(laura), ...ok.headers }, payload: ok.payload });
+  assert.equal(accepted.statusCode, 201, accepted.body);
+  docs.lauraEntity = (accepted.json() as { id: string }).id;
+  const rene = await staffWithToken('rene-wall@example.test', 'comms_billing');
+  const res = await app.inject({ method: 'GET', url: `/contacts/${walled}`, headers: auth(rene) });
+  assert.equal((res.json() as { contact: { ssn_last4: string } }).contact.ssn_last4, SSN4, 'Rene holds pii.read');
+});
+
 test('documents, inside the wall: Brian and Ana see every category', async () => {
   for (const who of [brian, ana]) {
     const list = await app.inject({ method: 'GET', url: `/documents?contactId=${walled}`, headers: auth(who) });
-    assert.equal((list.json() as { documents: unknown[] }).documents.length, 5, who.email);
+    assert.equal((list.json() as { documents: unknown[] }).documents.length, 6, who.email);
     assert.equal((await app.inject({ method: 'GET', url: `/documents/${docs.tax}/download`, headers: auth(who) })).statusCode, 200);
   }
 });

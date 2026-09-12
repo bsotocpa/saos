@@ -102,4 +102,8 @@ NEW
 - [x] 2. Jaqueline's six: meetings.upload; dashboards.hilo (split from dashboards.executive); events.manage (split from dashboards.executive); meetings.read scoped (own + Hilo); referrals.suggest (phase 1). Migration 0094 audits the grants.
 - [ ] 3a. Schedule C is pending for Rehearsal Client 2 (bookkeeping engagement created through createEngagement, actor Brian via the proof script). Brian accepts on the phone; expect schedule_acceptances + audit schedule.accepted, no envelope row (Master §1).
 - [ ] 3b. Docuseal decommission: only after 3a lands with Docuseal untouched. Footprint mapped (compose, Caddy, env, adapter, webhook, backup volume list, docs).
+- [x] Rulings 2026-09-12: Rene holds pii.read; Laura uploads only what she may read (entity_filings); event rosters behind events.read (intern does not hold it). Migration 0095.
+- [x] Hook: scripts/green-run.mjs; root npm test records a receipt keyed to the tree hash; deploy.sh and .githooks/pre-push refuse without it or with a dirty tree.
+- [x] Added-schedule notice: template schedule_added EN/ES, outbox effect schedule.added_notice, automation schedule_added_notice OFF. Brian arms it.
+- [ ] GAP, co-facilitation: a session records one staffer (meetings.staff_id, the uploader). A session Brian records with Jaqueline in the room is not hers under the wall. Build meeting participants when a real one occurs (Brian, 2026-09-12).
 - [ ] Laura and Jaqueline: Brian creates in Admin → Staff.

@@ -34,6 +34,7 @@ export const roles = [
       'meetings.read',
       'dashboards.hilo',
       'events.manage',
+      'events.read', // 2026-09-12: check-in rosters are behind it; intern does not hold it
       'documents.read',
       'documents.read.relationship',
     ],
@@ -88,6 +89,7 @@ export const roles = [
     permissions: [
       'contacts.read',
       'contacts.write',
+      'pii.read', // 2026-09-12: Rene collects SSNs by phone and verifies callers; inside the firm
       'inbox.manage',
       'billing.manage',
       'bookkeeping.assigned.manage',

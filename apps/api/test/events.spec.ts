@@ -26,6 +26,7 @@ let app: FastifyInstance;
 let config: Config;
 let brian: TestStaff & { token: string };
 let ana: TestStaff & { token: string };
+let jackson: TestStaff & { token: string };
 
 const sent: Array<{ to: string; subject: string; text: string }> = [];
 const capturingMailer: Mailer = {
@@ -86,10 +87,8 @@ before(async () => {
   await app.ready();
   brian = await staffWithToken('brian-ev@example.test', 'ceo');
   ana = await staffWithToken('ana-ev@example.test', 'tax_preparer');
-  await makeStaff(app.db, config, {
-    email: 'jackson-ev@example.test', name: 'Synthetic Jackson', role: 'ed_coo',
-    password: 'ed_coo-password-1234567',
-  });
+  // 2026-09-12: the roster and the door are behind events.read, which ed_coo holds and a preparer does not.
+  jackson = await staffWithToken('jackson-ev@example.test', 'ed_coo');
 });
 
 after(async () => {
@@ -238,8 +237,10 @@ test('check-in: only a seated registrant, and the waitlist cannot be checked in'
   await register('checkin-workshop', 1);
   await register('checkin-workshop', 2); // waitlisted
 
-  const list = await app.inject({ method: 'GET', url: '/events/checkin-workshop/check-in', headers: auth(ana) });
-  assert.equal(list.statusCode, 200, 'any staffer can run the door');
+  const noRoster = await app.inject({ method: 'GET', url: '/events/checkin-workshop/check-in', headers: auth(ana) });
+  assert.equal(noRoster.statusCode, 403, 'the roster is behind events.read: a preparer does not hold it');
+  const list = await app.inject({ method: 'GET', url: '/events/checkin-workshop/check-in', headers: auth(jackson) });
+  assert.equal(list.statusCode, 200, 'the Hilo ED runs the door');
   const regs = list.json().registrations;
   assert.equal(regs.length, 2);
   const seated = regs.find((r: { seat_number: number | null }) => r.seat_number !== null)!;
@@ -248,12 +249,12 @@ test('check-in: only a seated registrant, and the waitlist cannot be checked in'
   assert.equal(seated.in_crm, false, 'a workshop attendee is a member of the public, not a contact');
 
   const ok = await app.inject({
-    method: 'POST', url: `/event-registrations/${seated.id}/check-in`, headers: auth(ana),
+    method: 'POST', url: `/event-registrations/${seated.id}/check-in`, headers: auth(jackson),
   });
   assert.equal(ok.statusCode, 200, ok.body);
 
   const refused = await app.inject({
-    method: 'POST', url: `/event-registrations/${waiting.id}/check-in`, headers: auth(ana),
+    method: 'POST', url: `/event-registrations/${waiting.id}/check-in`, headers: auth(jackson),
   });
   assert.equal(refused.statusCode, 409);
   assert.equal(refused.json().error, 'cannot_check_in');
