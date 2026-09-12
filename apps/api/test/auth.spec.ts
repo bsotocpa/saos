@@ -269,7 +269,8 @@ test('RBAC: intern is refused staff management; CEO is allowed; role change audi
     method: 'PATCH',
     url: `/staff/${newId}`,
     headers: { authorization: `Bearer ${ceoToken}` },
-    payload: { roleKey: 'client_success' },
+    // bookkeeper, not client_success: the two future roles refuse staff since 2026-09-12 (staff-accounts.spec proves it).
+    payload: { roleKey: 'bookkeeper' },
   });
   assert.equal(promoted.statusCode, 200, promoted.body);
   // Migration 0092 writes its own permission.change rows as 'system' on every fresh database (2026-09-12); count the person's.
