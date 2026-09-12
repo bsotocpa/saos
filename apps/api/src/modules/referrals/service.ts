@@ -71,7 +71,8 @@ export async function createReferral(
 
   // The approval queue lives with the receiving side's lead: Jackson approves
   // Hilo→Soto handoffs; the ED/COO role also holds the Soto→Hilo queue.
-  const approver = await ownerForRole(app.db, 'ed_coo');
+  // Ruling 7 (2026-09-12): referral approvals stay with the CEO.
+  const approver = await ownerForRole(app.db, 'ceo');
   /*
    * THE TASK IS UNCONDITIONAL; only the ALERT is gated (Brian's rule, 2026-08-17).
    *

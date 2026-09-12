@@ -338,7 +338,8 @@ export async function invoiceForFiledEngagement(
   if (!te) throw new AppError(404, 'not_found', 'Tax engagement not found.');
   if (te.invoice_number) return { invoiced: false }; // already invoiced — idempotent
 
-  const rene = await ownerForRole(app.db, 'comms_billing');
+  // Ruling 7 (2026-09-12): "set the final fee and invoice" is the preparer's, not billing's.
+  const rene = await ownerForRole(app.db, 'tax_preparer');
 
   if (te.final_fee_cents === null) {
     /*

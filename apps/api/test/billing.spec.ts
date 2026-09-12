@@ -11,7 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer, MailMessage } from '../src/mailer.ts';
 import { generateToken } from '../src/crypto.ts';
-import { createTestConfig, makeStaff, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeStaff, signed8879OnFile, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { todayChicago } from '../src/modules/tax/deadlines.ts';
 
@@ -75,11 +75,12 @@ async function readyToFileEngagement(contactId: string): Promise<string> {
   await app.db.query(
     `UPDATE tax_engagements
      SET stage = 'ready_to_file', engagement_letter_signed_at = now(),
-         estimate_locked_at = now(), f8879_signed_at = now(), f8879_signature_method = 'in_person_wet',
+         estimate_locked_at = now(),
          estimated_fee_min_cents = 30000, estimated_fee_max_cents = 40000
      WHERE id = $1`,
     [id]
   );
+  await signed8879OnFile(app, id, ana.id);
   return id;
 }
 
@@ -164,8 +165,9 @@ test('automation 12: filed with a final fee → invoice + ES portal notice + Ren
   assert.match(mail.text, /\$380\.00/);
 
   const queue = await app.db.query(
+    // Ruling 7 (2026-09-12): "set the final fee and invoice" is the preparer's queue, not billing's.
     `SELECT count(*)::int AS n FROM notifications WHERE type = 'invoice_generated' AND staff_id = $1`,
-    [rene.id]
+    [ana.id]
   );
   assert.equal(queue.rows[0].n, 1, 'Rene sees the new invoice');
 });
@@ -183,7 +185,7 @@ test('automation 12 exception: filed WITHOUT a final fee → no invoice, Rene al
   assert.equal(invoices.rows[0].n, 0);
   const alert = await app.db.query(
     `SELECT count(*)::int AS n FROM notifications WHERE type = 'invoice_needed' AND staff_id = $1 AND contact_id = $2`,
-    [rene.id, mo.contactId]
+    [ana.id, mo.contactId]
   );
   assert.equal(alert.rows[0].n, 1, 'exception routed to Rene — nothing silently skipped');
 });
