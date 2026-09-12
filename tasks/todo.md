@@ -5,7 +5,8 @@ A ruling lands here in the turn it arrives, before any code. Open = ruled and no
 - [ ] Co-facilitation: a session records one staffer (the uploader). Build meeting participants when a real co-facilitated session occurs (Brian, 2026-09-12, ruling 4 on the wall).
 - [ ] Hilo referral discount: a price-book tier applied at quote time, shown on the proposal; Brian supplies the amount in v6 (2026-09-12, ruling 5). Attribution flag unchanged.
 - [ ] Docuseal volume and /mnt/saos-data/docuseal: remove on 2026-10-12.
-- [ ] d) Soto Accounting LLC business record: missing on the box; Brian enters it with the EIN on the merged winner (walk step 1).
+- [ ] d) Soto Accounting LLC business record: missing on the box; Brian enters it with the EIN on the merged winner (walk step 1). His record now holds GORDEETAH LLC only (dissolved, not primary); the page says "No primary business set." until he adds Soto Accounting LLC and chooses it.
+- [ ] Monday's first message re-checks the standing rules (Brian, 2026-09-12 evening).
 - [ ] RULED 2026-09-12 (merge batch): Brian amends the SA-2026-0001 waiver reason himself through the append-only amendment once it ships.
 - [x] RULED 2026-09-12 (evening): BRIAN SOTO LANDSCAPING INC. is Brian's Zoho workflow test; archive the contact and the business as test residue, is_test, note "Brian's Zoho workflow test, 2025-12-19; no real person or entity." Not a merge. SHIPPED: POST /contacts/:id/archive and POST /businesses/:id/archive (isTest + testNote); both archived on the box through the routes.
 - [x] RULED 2026-09-12 (evening): merge route rule: contacts with no shared email, phone or address require an explicit override with a reason; a name match alone never merges. SHIPPED: no_shared_identifier unless identityOverrideReason; the audit row names the shared identifiers or the override.

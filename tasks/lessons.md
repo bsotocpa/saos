@@ -2031,3 +2031,7 @@ the log file the grep looked for was never created, so the silence read as work 
 arrives, read its output file before anything else, even if the next step was expected to take
 ten minutes. And when a report waits on a background step, say what step and when it started,
 so a stall is visible to Brian as a stall, not as diligence.
+
+## A failed shell command can leave a file in the tree; the receipt is keyed to the exact tree (2026-09-12, evening)
+An inline `node -e` edit with `answers->'services'` in it failed on Windows bash, and bash read `>'services'` as a redirect: a zero-byte file named `services` landed in the repo root. The green-run receipt recorded the tree WITH it; after the commits, deploy refused because HEAD's tree differed from the receipt's by that one file. The refusal was right and cost one re-run.
+**Rule:** scripts go through the Write tool, never inline shell with quotes in them (the standing lesson, now with a second reason). After any failed shell command, `git status --short` before the receipt run, and read `??` lines as a question, not noise.
