@@ -261,6 +261,9 @@ export function registerCrmRoutes(app: FastifyInstance): void {
               -- to see it and offer to grant it.
               EXISTS (SELECT 1 FROM portal_users pu WHERE pu.contact_id = c.id AND pu.is_active)
                 AS has_portal_access,
+              -- The address that signs in (2026-09-12, Brian): it can differ from the contact email
+              -- after a merge, and the badge must not let "Signed up" imply it is the same one.
+              (SELECT pu.email FROM portal_users pu WHERE pu.contact_id = c.id LIMIT 1) AS portal_login_email,
               /*
                * #32 — the four states of portal access, derived rather than stored.
                *

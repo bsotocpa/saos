@@ -28,6 +28,7 @@ interface Contact {
   consent_7216_status: string; engagement_letter_status: string;
   has_portal_access: boolean;
   portal_state: string;
+  portal_login_email: string | null;
   portal_last_login_at: string | null;
   portal_link_sent_at: string | null;
   health_score: number | null; health_components: Record<string, unknown> | null;
@@ -520,6 +521,9 @@ export default function ClientPacketPage() {
           <p className="small" style={{ marginTop: 10 }}>
             <span className={`badge ${portalBadge(c.portal_state)}`}>{PORTAL_LABEL[c.portal_state] ?? c.portal_state}</span>{' '}
             Portal access
+            {c.portal_login_email && c.portal_state !== 'not_invited' ? (
+              <span className="muted"> · signs in as / inicia sesión como <strong>{c.portal_login_email}</strong></span>
+            ) : null}
             {c.portal_state === 'active' ? (
               c.portal_last_login_at ? (
                 <span className="muted"> · last signed in {dayOf(c.portal_last_login_at)}</span>

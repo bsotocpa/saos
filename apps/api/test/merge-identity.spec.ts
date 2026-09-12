@@ -78,3 +78,22 @@ test('merge: a shared email, phone or address merges; a name alone never does wi
   assert.deepEqual(phoneAudit.rows[0]!.details.shared_identifiers, ['phone']);
   assert.equal(phoneAudit.rows[0]!.details.identity_override_reason, null);
 });
+
+// ── The badge names the address that signs in (late ruling 2) ───────────────────────────────
+
+test('after a merge the client page says which address signs in, beside the access badge', async () => {
+  const winner = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Twoaddresses', email: 'winner-mergeid@example.test' });
+  const loser = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Twoaddresses', email: 'loser-mergeid@example.test' });
+  await app.db.query(`UPDATE contacts SET phone = '312-555-0190' WHERE id = ANY($1::uuid[])`, [[winner.id, loser.id]]);
+  // Only the loser ever signed in, under its own address.
+  await app.db.query(`INSERT INTO portal_users (contact_id, email, last_login_at) VALUES ($1, $2, now())`, [loser.id, 'loser-mergeid@example.test']);
+  const merged = await app.inject({ method: 'POST', url: `/contacts/${winner.id}/merge`, headers: auth(brian), payload: { loserIds: [loser.id], reason: 'Two records for one person from the import' } });
+  assert.equal(merged.statusCode, 200, merged.body);
+
+  const page = await app.inject({ method: 'GET', url: `/contacts/${winner.id}`, headers: auth(brian) });
+  assert.equal(page.statusCode, 200, page.body);
+  const c = page.json().contact as { email: string; portal_state: string; portal_login_email: string | null };
+  assert.equal(c.email, 'winner-mergeid@example.test');
+  assert.equal(c.portal_state, 'active', 'the sign-in moved with the merge');
+  assert.equal(c.portal_login_email, 'loser-mergeid@example.test', 'and the page says which address it is, not the contact email');
+});
