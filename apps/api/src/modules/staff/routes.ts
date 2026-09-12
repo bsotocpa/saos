@@ -23,9 +23,12 @@ const UpdateStaffBody = z
   .object({
     roleKey: z.string().min(1).optional(),
     isActive: z.boolean().optional(),
+    /** Ruling 9 (2026-09-12): names are editable after creation, because a legal name is a fact to get right, not a guess to live with. */
+    legalName: z.string().min(1).optional(),
+    displayName: z.string().min(1).optional(),
   })
-  .refine((b) => b.roleKey !== undefined || b.isActive !== undefined, {
-    message: 'Provide roleKey and/or isActive.',
+  .refine((b) => b.roleKey !== undefined || b.isActive !== undefined || b.legalName !== undefined || b.displayName !== undefined, {
+    message: 'Provide roleKey, isActive, legalName and/or displayName.',
   });
 
 function meta(request: FastifyRequest) {
@@ -119,6 +122,18 @@ export function registerStaffRoutes(app: FastifyInstance): void {
       });
     }
 
+    if (body.legalName !== undefined || body.displayName !== undefined) {
+      const before = await app.db.query<{ legal_name: string; display_name: string }>(`SELECT legal_name, display_name FROM staff WHERE id = $1`, [targetId]);
+      await app.db.query(
+        `UPDATE staff SET legal_name = COALESCE($2, legal_name), display_name = COALESCE($3, display_name) WHERE id = $1`,
+        [targetId, body.legalName ?? null, body.displayName ?? null]
+      );
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+        action: 'staff.renamed', objectType: 'staff', objectId: targetId,
+        details: { from: before.rows[0], to: { legal_name: body.legalName ?? before.rows[0]?.legal_name, display_name: body.displayName ?? before.rows[0]?.display_name } },
+      });
+    }
     if (body.isActive !== undefined && body.isActive !== target.is_active) {
       await app.db.query(`UPDATE staff SET is_active = $2 WHERE id = $1`, [targetId, body.isActive]);
       if (!body.isActive) {

@@ -190,3 +190,16 @@ test('ruling 10: a void by anyone other than the CEO is on the executive view im
   const again = await runMoneyDigestJob(app, tomorrow.toISOString().slice(0, 10));
   assert.equal(again.skipped, true, 'once per day');
 });
+
+test('ruling 9: names are editable after creation, and the change is audited', async () => {
+  const created = await app.inject({ method: 'POST', url: '/staff', headers: auth(ceoToken), payload: { email: 'rename@example.test', legalName: 'Synthetic Firstonly', roleKey: 'intern' } });
+  const { id } = created.json() as { id: string };
+  const patched = await app.inject({ method: 'PATCH', url: `/staff/${id}`, headers: auth(ceoToken), payload: { legalName: 'Synthetic Firstonly Surname', displayName: 'Firsty' } });
+  assert.equal(patched.statusCode, 200, patched.body);
+  const row = await app.db.query<{ legal_name: string; display_name: string; full_name: string }>(`SELECT legal_name, display_name, full_name FROM staff WHERE id = $1`, [id]);
+  assert.equal(row.rows[0]!.legal_name, 'Synthetic Firstonly Surname');
+  assert.equal(row.rows[0]!.display_name, 'Firsty');
+  assert.equal(row.rows[0]!.full_name, 'Synthetic Firstonly Surname');
+  const audit = await app.db.query(`SELECT 1 FROM audit_log WHERE action = 'staff.renamed' AND object_id = $1`, [id]);
+  assert.equal(audit.rows.length, 1);
+});

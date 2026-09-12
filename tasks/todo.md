@@ -84,3 +84,14 @@ NEW
 - [ ] Staff accounts: REPORT delivered, NO account created. Awaiting Brian's approval of the grant matrix.
 - [ ] Rene's money-action daily digest + executive-view line: not built until the accounts ruling (it is part of that grant).
 - [ ] Multi-role (Rene): staff.role_id is single; ~21 files to change for a staff_roles join. Cost stated in the report; awaiting ruling.
+
+## Staff accounts, phase 1 — 2026-09-12 (approved; built in Brian's order)
+- [x] Wildcard off ed_coo; named grants + referrals.suggest (my call, to keep ruling 5's attribution true). Seed reconciles; migration 0092 audited.
+- [x] bookkeeping.assigned.manage on comms_billing; sales_tax.manage / payroll.manage deleted.
+- [x] Money digest (daily to ceo) + same-day line on the executive view. Sabotage bit.
+- [x] legal_name / display_name; temp password 72h or first use; session owes a password until set; names editable by PATCH.
+- [x] Session recap signs as the firm EN/ES.
+- [x] Owner routing: referral approvals → ceo; final fee → tax_preparer.
+- [x] 8879: remote path retired (routes 410, KBA gone); the wet-signed upload is the authorization; DB trigger refuses a timestamp without the document. Lesson: reported a reference as the artifact.
+- [ ] Phase 2: the §7216 wall (documents category filter per role, pii.read real, interview answers behind a permission), harness page for Laura/Jaqueline, then their accounts. NOT started.
+- Phase-2 grant questions surfaced by the wildcard removal: Jaqueline's recorder uploads (meetings.upload/read), her Hilo dashboard (dashboards.executive is CEO-only by omission), her event completion.
