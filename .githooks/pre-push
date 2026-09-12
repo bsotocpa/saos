@@ -1,0 +1,3 @@
+#!/bin/sh
+# The push refuses without a green root-suite run on this exact tree (scripts/green-run.mjs).
+exec node scripts/green-run.mjs require

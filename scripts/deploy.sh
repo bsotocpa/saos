@@ -13,6 +13,11 @@ export MSYS_NO_PATHCONV=1
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO"
+
+# THE PUSH REFUSES WITHOUT A GREEN ROOT-SUITE RUN ON THIS EXACT TREE (Brian, 2026-09-12). Twice in
+# one week "ran only the spec" reached the box. scripts/green-run.mjs: the root `npm test` writes a
+# receipt keyed to the tree hash; this refuses without one, or with a dirty tree (deploy ships HEAD).
+node scripts/green-run.mjs require
 IP="$(sed -n 's/^SERVER_IPV4=//p' .env.production | tr -d '[:space:]')"
 [ -n "$IP" ] || { echo "deploy: no SERVER_IPV4 in .env.production — run provision-hetzner first."; exit 1; }
 SSH_KEY="$HOME/.ssh/saos_hetzner_ed25519"

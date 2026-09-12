@@ -13,6 +13,8 @@ dist/
 
 # Test artifacts
 coverage/
+# Green-run receipts (scripts/green-run.mjs): machine-local proof that the root suite passed on a tree.
+.green-runs/
 
 # Backup status (written by scripts/backup.sh — no client data, but machine-local)
 backups/
