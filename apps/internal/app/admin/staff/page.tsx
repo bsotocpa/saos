@@ -22,7 +22,7 @@ interface Staff {
   id: string; full_name: string; legal_name: string; display_name: string; email: string; role: string;
   is_active: boolean; totp_enabled: boolean; last_login_at: string | null; must_change_password: boolean;
 }
-interface Role { key: string; name: string; permissions: string[] }
+interface Role { key: string; name: string; permissions: string[]; accepts_staff?: boolean }
 interface Reveal { password: string; whose: string; how: 'created' | 'regenerated' }
 interface EditDraft { legalName: string; displayName: string; email: string }
 
@@ -40,6 +40,8 @@ export default function StaffAdminPage() {
   const ask = useAsk();
 
   const roleName = (key: string) => roles.find((r) => r.key === key)?.name ?? key;
+  /** Roles a person can hold. The two future roles exist for their permission levels only (2026-09-12). */
+  const holdable = roles.filter((r) => r.accepts_staff !== false);
   const activeCeos = staff.filter((s) => s.role === 'ceo' && s.is_active).length;
   /** The floor (0096): the only active CEO cannot be deactivated or moved off the role. */
   const isLastActiveCeo = (s: Staff) => s.role === 'ceo' && s.is_active && activeCeos <= 1;
@@ -162,7 +164,7 @@ export default function StaffAdminPage() {
                         })}
                       >
                         <option value="">Change role…</option>
-                        {roles.filter((r) => r.key !== s.role).map((r) => (
+                        {holdable.filter((r) => r.key !== s.role).map((r) => (
                           <option key={r.key} value={r.key}>{r.name}</option>
                         ))}
                       </select>
@@ -233,7 +235,7 @@ export default function StaffAdminPage() {
             Role
             <select value={form.roleKey} onChange={(e) => setForm({ ...form, roleKey: e.target.value })}>
               <option value="">Select a role</option>
-              {roles.map((r) => (
+              {holdable.map((r) => (
                 <option key={r.key} value={r.key}>{r.name} ({r.key})</option>
               ))}
             </select>

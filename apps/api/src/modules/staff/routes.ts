@@ -51,9 +51,11 @@ function meta(request: FastifyRequest) {
 }
 
 async function roleIdByKey(app: FastifyInstance, key: string): Promise<{ id: string; key: string }> {
-  const { rows } = await app.db.query<{ id: string; key: string }>(`SELECT id, key FROM roles WHERE key = $1`, [key]);
+  const { rows } = await app.db.query<{ id: string; key: string; accepts_staff: boolean }>(`SELECT id, key, accepts_staff FROM roles WHERE key = $1`, [key]);
   if (!rows[0]) throw new AppError(400, 'unknown_role', `Role '${key}' does not exist.`);
-  return rows[0];
+  // "Nobody is provisioned into client_success or advisory_manager" (Brian, 2026-09-12): a rule, so a refusal.
+  if (!rows[0].accepts_staff) throw new AppError(409, 'role_not_provisionable', `Nobody is provisioned into '${key}'; it exists so its permission level does.`);
+  return { id: rows[0].id, key: rows[0].key };
 }
 
 export function registerStaffRoutes(app: FastifyInstance): void {

@@ -1,4 +1,15 @@
-# TODO — 2026-09-09 morning batch (Brian's rulings). One commit per item; suite + one sabotage per run; red blocks deploy.
+# TODO
+
+## OPEN RULINGS — read first; every report lists this section at the top (Brian, 2026-09-12)
+A ruling lands here in the turn it arrives, before any code. Open = ruled and not yet shipped, or deferred with a reason.
+- [ ] Co-facilitation: a session records one staffer (the uploader). Build meeting participants when a real co-facilitated session occurs (Brian, 2026-09-12, ruling 4 on the wall).
+- [ ] Hilo referral discount: a price-book tier applied at quote time, shown on the proposal; Brian supplies the amount in v6 (2026-09-12, ruling 5). Attribution flag unchanged.
+- [ ] 8821 / 2848 have no signing path since the vendor left (finding, 2026-09-12): the 8879 shape, a wet-signed upload, when the resolution lane needs it. Awaiting a ruling.
+- [ ] Docuseal volume and /mnt/saos-data/docuseal: remove on 2026-10-12.
+- [ ] sign.sotoaccounting.com DNS record: Brian pulls it.
+- [ ] Laura's row: Brian corrects legal name and email in Admin → Staff.
+- [ ] Drift waiver on SA-2026-0001: the control ships 2026-09-12; Brian taps it (real route, his actor).
+- [ ] DECISION-PENDING since 09-09: completing an engagement with an unpaid invoice stays allowed (the collection tail); the 0085 invariant covers withdrawn only.
 
 FIRST — walk failures
 - [x] A. SA-2026-0003 paid again: prove writer; state-machine trigger (refunded→paid illegal w/o payment; void terminal; paid→refunded only via refund row; reconcile touches sent/overdue only); sabotage: trigger detached; nightly Stripe drift check → task; lessons instance.
@@ -115,3 +126,11 @@ NEW
 - [x] 3. No floor existed. Migration 0096: the last active CEO cannot be deactivated or moved off the role; the API answers 409 last_active_ceo; the control is not offered on that row.
 - [x] admin@sotoaccounting.com: only Laura's staff row carried it; no contact, portal user, setting, template, audit row, env key, or file in the repo names it. Brian is correcting the row himself.
 - RULE (standing, from the lesson): every ruling lands in this file in the turn it is given.
+
+## Ruling reconciliation — 2026-09-12 (Brian: two rulings never shipped from one prompt)
+- [x] Reconciliation table delivered (prompt date · ruling · status · evidence): every numbered ruling since 2026-09-09 verified against git and this file.
+- [x] Unfilled roles fail loudly: the four no-fallback alert sites and the variable-role-key site go through alertRecipientForRole, which audits staffing.role_unfilled and falls back to the CEO. Never a ruling in any prompt; raised as my finding on 09-11; built now.
+- [x] Drift waiver: POST /invoices/:id/waive-stripe-check with a reason (billing.manage); the nightly check skips a waived invoice and counts it; open stripe_drift tasks close; Ops control on the invoice card. Never a ruling in any prompt; my finding on 09-11, item 6; built now. Brian applies it to SA-2026-0001.
+- [x] client_success and advisory_manager refuse staff: roles.accepts_staff (0097); POST /staff and PATCH refuse with 409; Admin → Staff does not offer them. From the 09-12 07:44 rule "Nobody is provisioned into client_success or advisory_manager"; never enforced; built now.
+- [x] 3. The CEO floor test covers deactivate via PATCH, move-off-role via PATCH, a direct UPDATE, and the lift by a second active CEO (staff-accounts.spec.ts).
+- RULE: the morning report opens with the OPEN RULINGS section at the top of this file.

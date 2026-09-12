@@ -125,12 +125,14 @@ export const roles = [
     key: 'client_success',
     name: 'Client Success (future)',
     description: 'Future hire. Client communication + portal support.',
+    acceptsStaff: false, // 2026-09-12: nobody is provisioned into this role; the staff routes refuse it
     permissions: ['contacts.read', 'inbox.manage', 'tasks.read', 'tasks.manage', 'time.log'],
   },
   {
     key: 'advisory_manager',
     name: 'Advisory Manager (future)',
     description: 'Future hire. Advisory/COO engagement delivery.',
+    acceptsStaff: false, // 2026-09-12: nobody is provisioned into this role; the staff routes refuse it
     permissions: ['contacts.read', 'engagements.read', 'advisory.manage', 'tasks.read', 'tasks.manage', 'time.log'],
   },
 ];
@@ -140,11 +142,11 @@ export async function seedRoles(client) {
   let revoked = 0;
   for (const role of roles) {
     const { rows } = await client.query(
-      `INSERT INTO roles (key, name, description)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description
+      `INSERT INTO roles (key, name, description, accepts_staff)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, accepts_staff = EXCLUDED.accepts_staff
        RETURNING id`,
-      [role.key, role.name, role.description]
+      [role.key, role.name, role.description, role.acceptsStaff !== false]
     );
     const roleId = rows[0].id;
     for (const permission of role.permissions) {

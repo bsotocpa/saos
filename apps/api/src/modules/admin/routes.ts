@@ -434,7 +434,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // ── Roles (for the staff admin UI) ────────────────────────────────────────
   app.get('/admin/roles', admin, async () => {
     const { rows } = await app.db.query(
-      `SELECT r.key, r.name, r.description,
+      `SELECT r.key, r.name, r.description, r.accepts_staff,
               COALESCE(array_agg(rp.permission ORDER BY rp.permission) FILTER (WHERE rp.permission IS NOT NULL), '{}') AS permissions
        FROM roles r LEFT JOIN role_permissions rp ON rp.role_id = r.id
        GROUP BY r.id ORDER BY r.key`

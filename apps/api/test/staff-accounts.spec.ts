@@ -292,10 +292,27 @@ test('the CEO floor (0096): the only active CEO cannot be deactivated or moved o
 
   // A second active CEO lifts the floor for the first.
   const second = await makeStaff(app.db, config, { email: 'ceo2-accounts@example.test', name: 'Synthetic Second CEO', role: 'ceo', password: 'ceo2-password-12345678' });
-  const ok = await app.inject({ method: 'PATCH', url: `/staff/${ceo.id}`, headers: auth(ceoToken), payload: { isActive: false } });
-  assert.equal(ok.statusCode, 200, ok.body);
-  // Put it back so the rest of this file keeps its CEO; the second one is now the floor.
+  // With two active, the first may go (proven in SQL, so this suite's own session is not revoked by the route)...
+  const firstMayGo = await app.db.query(`UPDATE staff SET is_active = false WHERE id = $1`, [ceo.id]);
+  assert.equal(firstMayGo.rowCount, 1, 'with two active, the first may go');
   await app.db.query(`UPDATE staff SET is_active = true WHERE id = $1`, [ceo.id]);
-  const lastNow = await app.db.query(`UPDATE staff SET is_active = false WHERE id = $1`, [second.id]);
-  assert.equal(lastNow.rowCount, 1, 'with two active, either one may go');
+  // ...and the second may go through the route.
+  const ok = await app.inject({ method: 'PATCH', url: `/staff/${second.id}`, headers: auth(ceoToken), payload: { isActive: false } });
+  assert.equal(ok.statusCode, 200, ok.body);
+});
+
+test('nobody is provisioned into client_success or advisory_manager: creation and role change refuse, and the roles say so', async () => {
+  for (const roleKey of ['client_success', 'advisory_manager']) {
+    const created = await app.inject({ method: 'POST', url: '/staff', headers: auth(ceoToken), payload: { email: `${roleKey}@example.test`, legalName: 'Synthetic Future', roleKey } });
+    assert.equal(created.statusCode, 409, created.body);
+    assert.equal(created.json().error, 'role_not_provisionable');
+  }
+  const intern = await app.inject({ method: 'POST', url: '/staff', headers: auth(ceoToken), payload: { email: 'future-move@example.test', legalName: 'Synthetic Mover', roleKey: 'intern' } });
+  const moved = await app.inject({ method: 'PATCH', url: `/staff/${intern.json().id}`, headers: auth(ceoToken), payload: { roleKey: 'advisory_manager' } });
+  assert.equal(moved.statusCode, 409);
+  const roles = await app.inject({ method: 'GET', url: '/admin/roles', headers: auth(ceoToken) });
+  const byKey = Object.fromEntries((roles.json() as { roles: { key: string; accepts_staff: boolean }[] }).roles.map((r) => [r.key, r.accepts_staff]));
+  assert.equal(byKey.client_success, false);
+  assert.equal(byKey.advisory_manager, false);
+  assert.equal(byKey.va_entity, true);
 });
