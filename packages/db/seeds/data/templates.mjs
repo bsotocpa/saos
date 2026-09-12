@@ -1018,7 +1018,7 @@ export const templates = [
       '{{portal_link}}\n\n' +
       'Reply on that thread if I got anything wrong or left something out. It is easier to ' +
       'fix now than at filing time.\n\n' +
-      '— Brian Soto, CPA · Soto Accounting',
+      '— Soto Accounting',
     bodyEs:
       'Hola {{first_name}}:\n\n' +
       'El resumen de nuestra sesión ya está publicado — lo que cubrimos, lo que necesitamos ' +
@@ -1026,7 +1026,7 @@ export const templates = [
       '{{portal_link}}\n\n' +
       'Responda en ese hilo si algo quedó mal o si faltó algo. Es más fácil corregirlo ahora ' +
       'que al momento de declarar.\n\n' +
-      '— Brian Soto, CPA · Soto Accounting',
+      '— Soto Accounting',
   },
   {
     key: 'invoice_pay_link_sms',
