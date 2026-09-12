@@ -272,3 +272,30 @@ test('a changed sign-in address does not orphan the login: the open session surv
   const taken = await app.inject({ method: 'PATCH', url: `/staff/${who.id}`, headers: auth(ceoToken), payload: { email: ceo.email } });
   assert.equal(taken.statusCode, 409, 'an address another account holds is refused, not a 500');
 });
+
+test('the CEO floor (0096): the only active CEO cannot be deactivated or moved off the role; the database refuses, the API says why, a second CEO lifts it', async () => {
+  // This suite's CEO is the only active one in its database.
+  const refused = await app.inject({ method: 'PATCH', url: `/staff/${ceo.id}`, headers: auth(ceoToken), payload: { isActive: false } });
+  assert.equal(refused.statusCode, 409, refused.body);
+  assert.equal(refused.json().error, 'last_active_ceo');
+  assert.match(refused.json().message, /at least one active CEO/);
+  const demoted = await app.inject({ method: 'PATCH', url: `/staff/${ceo.id}`, headers: auth(ceoToken), payload: { roleKey: 'intern' } });
+  assert.equal(demoted.statusCode, 409, demoted.body);
+  assert.equal(demoted.json().error, 'last_active_ceo');
+  const still = await app.db.query<{ is_active: boolean; key: string }>(`SELECT st.is_active, r.key FROM staff st JOIN roles r ON r.id = st.role_id WHERE st.id = $1`, [ceo.id]);
+  assert.deepEqual(still.rows[0], { is_active: true, key: 'ceo' }, 'nothing moved');
+  const me = await app.inject({ method: 'GET', url: '/auth/me', headers: auth(ceoToken) });
+  assert.equal(me.statusCode, 200, 'and the session was not revoked on the way to the refusal');
+
+  // The database is the floor, not the route: a direct UPDATE is refused the same way.
+  await assert.rejects(() => app.db.query(`UPDATE staff SET is_active = false WHERE id = $1`, [ceo.id]), /last_active_ceo/);
+
+  // A second active CEO lifts the floor for the first.
+  const second = await makeStaff(app.db, config, { email: 'ceo2-accounts@example.test', name: 'Synthetic Second CEO', role: 'ceo', password: 'ceo2-password-12345678' });
+  const ok = await app.inject({ method: 'PATCH', url: `/staff/${ceo.id}`, headers: auth(ceoToken), payload: { isActive: false } });
+  assert.equal(ok.statusCode, 200, ok.body);
+  // Put it back so the rest of this file keeps its CEO; the second one is now the floor.
+  await app.db.query(`UPDATE staff SET is_active = true WHERE id = $1`, [ceo.id]);
+  const lastNow = await app.db.query(`UPDATE staff SET is_active = false WHERE id = $1`, [second.id]);
+  assert.equal(lastNow.rowCount, 1, 'with two active, either one may go');
+});

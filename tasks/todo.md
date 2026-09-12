@@ -107,3 +107,11 @@ NEW
 - [x] Added-schedule notice: template schedule_added EN/ES, outbox effect schedule.added_notice, automation schedule_added_notice OFF. Brian arms it.
 - [ ] GAP, co-facilitation: a session records one staffer (meetings.staff_id, the uploader). A session Brian records with Jaqueline in the room is not hers under the wall. Build meeting participants when a real one occurs (Brian, 2026-09-12).
 - [ ] Laura and Jaqueline: Brian creates in Admin → Staff.
+
+## Admin → Staff defects and the Docuseal export — 2026-09-12 (Brian, after creating the accounts)
+- [x] Export SOTO_Legal_Text_Package_FINAL_v3 as PDF to docs/legal/ from the retained Docuseal store (sha256 and Docuseal's md5 matched). The container had already been stopped before the message arrived; the store was intact.
+- [x] 1. Add staff defaulted Role to intern since M20; the ruling never shipped and was never recorded. Now: no default, explicit selection, submit disabled without one. Lesson written.
+- [x] 2. The Role column shows the role name; changing it is a separate control with a placeholder.
+- [x] 3. No floor existed. Migration 0096: the last active CEO cannot be deactivated or moved off the role; the API answers 409 last_active_ceo; the control is not offered on that row.
+- [x] admin@sotoaccounting.com: only Laura's staff row carried it; no contact, portal user, setting, template, audit row, env key, or file in the repo names it. Brian is correcting the row himself.
+- RULE (standing, from the lesson): every ruling lands in this file in the turn it is given.

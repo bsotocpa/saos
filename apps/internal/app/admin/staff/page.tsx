@@ -8,6 +8,11 @@
 // not in the staff list, not in any later response, not in a report. Regenerating one is a
 // separate, audited action. Names and the sign-in address are editable here so the audit row
 // for a correction carries the person who made it.
+//
+// THREE DEFECTS (Brian, 2026-09-12): Add staff preselected intern since M20 (a role is chosen, never
+// defaulted); the Role column was a bare select (the table shows the role NAME, and changing it is
+// a separate control); Deactivate was offered on the last active CEO (the database refuses it,
+// migration 0096, and the control is not there).
 
 import { useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
@@ -24,7 +29,8 @@ interface EditDraft { legalName: string; displayName: string; email: string }
 export default function StaffAdminPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [form, setForm] = useState({ email: '', legalName: '', displayName: '', roleKey: 'intern' });
+  // roleKey starts EMPTY: a role is an explicit choice, never a default.
+  const [form, setForm] = useState({ email: '', legalName: '', displayName: '', roleKey: '' });
   const [reveal, setReveal] = useState<Reveal | null>(null);
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -32,6 +38,11 @@ export default function StaffAdminPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const ask = useAsk();
+
+  const roleName = (key: string) => roles.find((r) => r.key === key)?.name ?? key;
+  const activeCeos = staff.filter((s) => s.role === 'ceo' && s.is_active).length;
+  /** The floor (0096): the only active CEO cannot be deactivated or moved off the role. */
+  const isLastActiveCeo = (s: Staff) => s.role === 'ceo' && s.is_active && activeCeos <= 1;
 
   const load = async () => {
     const [s, r] = await Promise.all([
@@ -135,18 +146,27 @@ export default function StaffAdminPage() {
                     )}
                   </td>
                   <td>
-                    <select
-                      value={s.role}
-                      onChange={(e) => act(async () => {
-                        await api(`/staff/${s.id}`, { method: 'PATCH', body: { roleKey: e.target.value } });
-                        setMessage(`${s.display_name} → ${e.target.value} (audited as permission.change).`);
-                        await load();
-                      })}
-                    >
-                      {roles.map((r) => (
-                        <option key={r.key} value={r.key}>{r.key}</option>
-                      ))}
-                    </select>
+                    <span data-testid="role-name">{roleName(s.role)}</span>
+                    {isLastActiveCeo(s) ? (
+                      <><br /><span className="muted small">the only active CEO</span></>
+                    ) : (
+                      <select
+                        aria-label={`Change role for ${s.display_name}`}
+                        value=""
+                        onChange={(e) => act(async () => {
+                          const next = e.target.value;
+                          if (!next) return;
+                          await api(`/staff/${s.id}`, { method: 'PATCH', body: { roleKey: next } });
+                          setMessage(`${s.display_name} → ${roleName(next)} (audited as permission.change).`);
+                          await load();
+                        })}
+                      >
+                        <option value="">Change role…</option>
+                        {roles.filter((r) => r.key !== s.role).map((r) => (
+                          <option key={r.key} value={r.key}>{r.name}</option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td>{s.totp_enabled ? <span className="badge ok">on</span> : <span className="badge warn">pending</span>}</td>
                   <td>{s.is_active ? <span className="badge ok">active</span> : <span className="badge danger">off</span>}</td>
@@ -175,16 +195,18 @@ export default function StaffAdminPage() {
                       >
                         New temp password
                       </button>
-                      <button
-                        className="btn ghost"
-                        type="button"
-                        onClick={() => act(async () => {
-                          await api(`/staff/${s.id}`, { method: 'PATCH', body: { isActive: !s.is_active } });
-                          await load();
-                        })}
-                      >
-                        {s.is_active ? 'Deactivate' : 'Reactivate'}
-                      </button>
+                      {isLastActiveCeo(s) ? null : (
+                        <button
+                          className="btn ghost"
+                          type="button"
+                          onClick={() => act(async () => {
+                            await api(`/staff/${s.id}`, { method: 'PATCH', body: { isActive: !s.is_active } });
+                            await load();
+                          })}
+                        >
+                          {s.is_active ? 'Deactivate' : 'Reactivate'}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -210,25 +232,26 @@ export default function StaffAdminPage() {
           <label className="field">
             Role
             <select value={form.roleKey} onChange={(e) => setForm({ ...form, roleKey: e.target.value })}>
+              <option value="">Select a role</option>
               {roles.map((r) => (
-                <option key={r.key} value={r.key}>{r.key} — {r.name}</option>
+                <option key={r.key} value={r.key}>{r.name} ({r.key})</option>
               ))}
             </select>
           </label>
           <p className="muted small">
-            Permissions: {roles.find((r) => r.key === form.roleKey)?.permissions.join(', ') || '—'}
+            Permissions: {form.roleKey ? roles.find((r) => r.key === form.roleKey)?.permissions.join(', ') || '—' : 'choose a role to see its grants'}
           </p>
           <button
             className="btn"
             type="button"
-            disabled={!form.email || !form.legalName}
+            disabled={!form.email || !form.legalName || !form.roleKey}
             onClick={() => act(async () => {
               const whose = form.displayName || form.legalName;
               const res = await api<{ tempPassword: string }>('/staff', { method: 'POST', body: { email: form.email, legalName: form.legalName, displayName: form.displayName || undefined, roleKey: form.roleKey } });
               setCopied(false);
               setReveal({ password: res.tempPassword, whose, how: 'created' });
               setMessage('');
-              setForm({ email: '', legalName: '', displayName: '', roleKey: 'intern' });
+              setForm({ email: '', legalName: '', displayName: '', roleKey: '' });
               await load();
             })}
           >

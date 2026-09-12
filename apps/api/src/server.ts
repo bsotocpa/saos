@@ -114,6 +114,21 @@ export function buildServer(
       if (err.code === '23505') {
         return reply.code(409).send({ error: 'conflict', constraint: err.constraint });
       }
+      /*
+       * A CHECK or a trigger refusing a write is a rule, not a fault (2026-09-12). Our triggers
+       * raise 'rule_code: sentence' with ERRCODE check_violation, so the code and the sentence
+       * reach the person who pressed the button; a bare CHECK constraint names itself.
+       */
+      if (err.code === '23514') {
+        const raw = (err as unknown as { message?: unknown }).message;
+        const message = typeof raw === 'string' ? raw : '';
+        const named = /^([a-z0-9_]+):\s+(.*)$/s.exec(message);
+        return reply.code(409).send(
+          named
+            ? { error: named[1], message: named[2] }
+            : { error: 'check_violation', constraint: err.constraint, message: message || 'The database refused this change.' }
+        );
+      }
       return reply.code(500).send({ error: 'internal_error' });
     }
     // Fastify-native errors (body parse, 404 handled elsewhere) keep their status.

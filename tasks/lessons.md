@@ -1997,3 +1997,25 @@ git hash; deploy.sh and the pre-push hook refuse without one, or with a dirty tr
 is a guard that makes the shortcut unable to reach the box. Same as the build guards: a rule with
 no guard is a convention (2026-09-06), and conventions hold until someone's model differs, including
 mine under a long session.
+
+
+## 2026-09-12 — a ruling that is not in todo.md the day it is made does not exist
+
+Brian: "Add staff still defaults Role to intern. Ruling 5 from three days ago: no default, explicit
+selection required. Did it ship? If so, it regressed." It never shipped. The default dates from
+M20 and every edit since, including my rewrite of the page this morning, carried it forward.
+Nothing in todo.md, lessons.md, or any commit records the ruling, so when I rebuilt the form I
+had no way to know it existed, and I preserved the defect with care.
+
+**The rule.** Every ruling lands in tasks/todo.md in the turn it is given, as a checkable item,
+before any code. A ruling that lives only in a conversation is one compaction away from gone.
+When Brian asks whether something shipped, the answer comes from todo.md and git, and "no
+record" is the answer to give, not a guess either way.
+
+## 2026-09-12 — "the DB refuses it" is a claim to verify, not a premise to build on
+
+The same message said the database refuses deactivating the last CEO under the floor. It did not:
+no trigger, no check, no route logic. Had I only hidden the control as asked, the floor would have
+been a button's absence. The floor is a trigger now (0096), the API turns it into a 409 that names
+the rule, and the control is gone. Same rule as the green harness and the Docuseal template: a
+stated guard is on trial until the code or the database is in hand.
