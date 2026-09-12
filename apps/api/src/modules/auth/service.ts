@@ -44,6 +44,8 @@ interface StaffAuthRow {
   totp_secret_enc: Buffer | null;
   totp_enabled: boolean;
   temp_password_expires_at?: Date | null;
+  /** Computed in the SELECT against Postgres now(): one clock (lessons.md, two clocks, 2026-09-09 and 2026-09-12). */
+  temp_password_expired?: boolean;
   must_change_password?: boolean;
   failed_login_count: number;
   locked_until: Date | null;
@@ -120,7 +122,8 @@ export async function login(
 ): Promise<LoginResult> {
   const { rows } = await db.query<StaffAuthRow>(
     `SELECT id, email, full_name, is_active, password_hash, totp_secret_enc,
-            totp_enabled, failed_login_count, locked_until, temp_password_expires_at, must_change_password
+            totp_enabled, failed_login_count, locked_until, temp_password_expires_at, must_change_password,
+            (temp_password_expires_at IS NOT NULL AND temp_password_expires_at < now()) AS temp_password_expired
      FROM staff WHERE email = $1`,
     [email]
   );
@@ -153,7 +156,8 @@ export async function login(
    * and the admin has to mint a new account password. It is consumed in mfaVerify (first sign-in
    * always enrols MFA) and in login for an account that somehow already has MFA.
    */
-  if (staff.must_change_password && staff.temp_password_expires_at && staff.temp_password_expires_at < new Date()) {
+  // Expiry is decided by the database clock that stamped it, never by comparing to this host's.
+  if (staff.must_change_password && staff.temp_password_expired === true) {
     return { status: 'temp_password_expired' };
   }
 

@@ -79,9 +79,9 @@ test('ruling 1: the temporary password dies at 72 hours or first use, and the se
   assert.equal(verified.statusCode, 200, verified.body);
   assert.equal(verified.json().mustChangePassword, true, 'the session knows it owes a password');
   const token = verified.json().token as string;
-  const spent = await app.db.query<{ temp_password_expires_at: Date }>(`SELECT temp_password_expires_at FROM staff WHERE id = $1`, [id]);
-  // Postgres now() vs Node's clock: the container can sit a few ms ahead, which is not a finding.
-  assert.ok(spent.rows[0]!.temp_password_expires_at.getTime() <= Date.now() + 5_000, 'consumed on first use');
+  const spent = await app.db.query<{ spent: boolean }>(`SELECT temp_password_expires_at <= now() AS spent FROM staff WHERE id = $1`, [id]);
+  // ONE CLOCK (Brian, 2026-09-12): expiry and spend are both database timestamps; compare them there.
+  assert.equal(spent.rows[0]!.spent, true, 'consumed on first use');
 
   // Until the password is set, nothing but /auth works.
   const blocked = await app.inject({ method: 'GET', url: '/tasks/mine', headers: auth(token) });

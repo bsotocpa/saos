@@ -1967,3 +1967,33 @@ minted it, rendered by the screen of the person who made the call. If a flow nee
 handed to a person, the answer is a screen with a reveal, not a paragraph with a value. When an
 instruction seems to ask for one in a report, the instruction is about the handover, not the
 medium: build the screen and say so.
+
+
+## 2026-09-12 — a tolerance on a credential boundary is a hole
+
+The first-use check on temporary passwords flaked once: Postgres stamped the spend with now(),
+the test compared it to Node's Date.now(), and the container's clock sat a few milliseconds
+ahead. I added a five-second tolerance. Brian: that is the two-clocks bug from pausedDays, and
+the ruling stands, one clock, measured in Postgres. A tolerance on a credential boundary is a
+hole, not a fix.
+
+Then the production login had the same comparison, temp_password_expires_at against new Date() in the API.
+The test was flaky because the code was wrong, and the tolerance would have hidden that.
+
+**The rule.** A timestamp the database wrote is compared in the database, against now(), and the
+boolean crosses the wire. Never widen a comparison to make a flake go away: the flake is the
+report that two clocks are being compared, and on a credential, the widened window is time an
+expired credential still works. When a test flakes at a time boundary, grep the production code
+for the same comparison before touching the test.
+
+## 2026-09-12 — the norm did not hold, so it became a hook
+
+Second push in a week without the full root suite, both self-reported, both caught after the
+fact. Brian: the push must refuse unless a green root-suite run on that exact commit is recorded.
+Built as scripts/green-run.mjs: the root npm test writes a receipt keyed to the working tree's
+git hash; deploy.sh and the pre-push hook refuse without one, or with a dirty tree.
+
+**The rule.** When I have broken the same norm twice, the fix is not a resolution to remember; it
+is a guard that makes the shortcut unable to reach the box. Same as the build guards: a rule with
+no guard is a convention (2026-09-06), and conventions hold until someone's model differs, including
+mine under a long session.
