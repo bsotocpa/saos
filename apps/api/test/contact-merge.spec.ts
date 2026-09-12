@@ -71,9 +71,9 @@ test('merge: every row moves to the winner, one audit row per object, the loser 
   // Creating the business raised an enrichment task too, so tasks is at least one.
   assert.ok(before.engagements === 1 && before.invoices === 1 && before.documents === 1 && (before.tasks ?? 0) >= 1 && before.portal_users === 1 && before.business_members === 1 && before.consents === 1, JSON.stringify(before));
 
-  const refused = await app.inject({ method: 'POST', url: `/contacts/${winner.id}/merge`, headers: auth(laura), payload: { loserIds: [loser.id], reason: 'The same person was imported twice from Dubsado.' } });
+  const refused = await app.inject({ method: 'POST', url: `/contacts/${winner.id}/merge`, headers: auth(laura), payload: { loserIds: [loser.id], reason: 'The same person was imported twice from Dubsado.', identityOverrideReason: 'The client confirmed both records are theirs; the import gave each a different address' } });
   assert.equal(refused.statusCode, 403, 'Laura does not hold billing.manage');
-  const res = await app.inject({ method: 'POST', url: `/contacts/${winner.id}/merge`, headers: auth(rene), payload: { loserIds: [loser.id], reason: 'The same person was imported twice from Dubsado.' } });
+  const res = await app.inject({ method: 'POST', url: `/contacts/${winner.id}/merge`, headers: auth(rene), payload: { loserIds: [loser.id], reason: 'The same person was imported twice from Dubsado.', identityOverrideReason: 'The client confirmed both records are theirs; the import gave each a different address' } });
   assert.equal(res.statusCode, 200, res.body);
   const r = res.json() as { losers: Array<{ moved: Record<string, number> }> };
   assert.equal(r.losers[0]!.moved.engagements, 1);
@@ -107,7 +107,7 @@ test('two sign-ins: the winner\'s stays, the loser\'s is retired on the record; 
   const l = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Twologinsl', email: 'twologinsl@example.test' });
   await app.db.query(`INSERT INTO portal_users (contact_id, email) VALUES ($1, $2)`, [w.id, w.email]);
   const lpu = await app.db.query<{ id: string }>(`INSERT INTO portal_users (contact_id, email) VALUES ($1, $2) RETURNING id`, [l.id, l.email]);
-  const res = await app.inject({ method: 'POST', url: `/contacts/${w.id}/merge`, headers: auth(brian), payload: { loserIds: [l.id], reason: 'The same person signed up twice with two addresses.' } });
+  const res = await app.inject({ method: 'POST', url: `/contacts/${w.id}/merge`, headers: auth(brian), payload: { loserIds: [l.id], reason: 'The same person signed up twice with two addresses.', identityOverrideReason: 'The client confirmed both records are theirs; the import gave each a different address' } });
   assert.equal(res.statusCode, 200, res.body);
   assert.equal((res.json() as { losers: Array<{ portalUserRetired: boolean }> }).losers[0]!.portalUserRetired, true);
   assert.equal((await app.db.query(`SELECT 1 FROM portal_users WHERE id = $1`, [lpu.rows[0]!.id])).rows.length, 0, 'the second sign-in is gone');
@@ -120,7 +120,7 @@ test('merge refuses active work on both sides for the same line, period and enti
   const b = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Conflictb', email: 'conflictb@example.test' });
   await createEngagement(app, actorOf(brian), { contactId: a.id, serviceLine: 'bookkeeping', title: 'Books', status: 'active', periodKey: 'ongoing' }, {});
   await createEngagement(app, actorOf(brian), { contactId: b.id, serviceLine: 'bookkeeping', title: 'Books', status: 'active', periodKey: 'ongoing' }, {});
-  const res = await app.inject({ method: 'POST', url: `/contacts/${a.id}/merge`, headers: auth(brian), payload: { loserIds: [b.id], reason: 'The same person was imported twice from Dubsado.' } });
+  const res = await app.inject({ method: 'POST', url: `/contacts/${a.id}/merge`, headers: auth(brian), payload: { loserIds: [b.id], reason: 'The same person was imported twice from Dubsado.', identityOverrideReason: 'The client confirmed both records are theirs; the import gave each a different address' } });
   assert.equal(res.statusCode, 409, res.body);
   assert.equal(res.json().error, 'merge_conflict');
   assert.equal((await app.db.query<{ is_archived: boolean }>(`SELECT is_archived FROM contacts WHERE id = $1`, [b.id])).rows[0]!.is_archived, false, 'nothing changed');

@@ -9,6 +9,7 @@ import { writeAudit } from '../../audit.ts';
 import { holds, requireAnyPermission, requirePermission } from '../../plugins/auth.ts';
 import { reasonText } from '../../reasons.ts';
 import { mergeContacts } from './merge.ts';
+import { archiveContact } from './lifecycle.ts';
 import { AppError } from '../../types.ts';
 import { refreshEnrichmentGaps } from './service.ts';
 import { runHealthRefresh } from './health.ts';
@@ -65,6 +66,13 @@ const BusinessUpdateBody = BusinessBody.omit({ memberRole: true }).partial().ext
   status: z.enum(['active', 'dissolved']).optional(),
 });
 
+/** Archive, never delete (2026-09-12): a reason always; a test flag with its note when the record was never real. */
+const ArchiveBody = z.object({
+  reason: reasonText(10, 1000),
+  isTest: z.boolean().optional(),
+  testNote: z.string().trim().min(10).max(500).optional(),
+});
+
 const GroupBody = z.object({ name: z.string().min(1), notes: z.string().optional() });
 const GroupMemberBody = z
   .object({ businessId: z.uuid().optional(), contactId: z.uuid().optional(), memberRole: z.string().optional() })
@@ -99,9 +107,35 @@ export function registerCrmRoutes(app: FastifyInstance): void {
    */
   app.post<{ Params: { id: string } }>('/contacts/:id/merge', merge, async (request) => {
     const winnerId = z.uuid().parse(request.params.id);
-    const b = z.object({ loserIds: z.array(z.uuid()).min(1).max(10), reason: reasonText(10, 1000) }).parse(request.body);
+    const b = z.object({
+      loserIds: z.array(z.uuid()).min(1).max(10),
+      reason: reasonText(10, 1000),
+      /** Records sharing no email, phone or address merge only with this (2026-09-12): a name match alone never merges. */
+      identityOverrideReason: reasonText(10, 1000).optional(),
+    }).parse(request.body);
     const actor = request.staff!;
-    return mergeContacts(app, winnerId, b.loserIds, b.reason, { id: actor.id, email: actor.email, fullName: actor.fullName }, meta(request));
+    return mergeContacts(app, winnerId, b.loserIds, b.reason, { id: actor.id, email: actor.email, fullName: actor.fullName }, meta(request), { identityOverrideReason: b.identityOverrideReason });
+  });
+
+  /**
+   * CONTACT ARCHIVE (2026-09-12): the one lifecycle state a person sets. Never a delete. Refused
+   * while the contact holds active work (migration 0099, at the database). A record that was never
+   * a real person is flagged test with the note saying what it was.
+   */
+  app.post<{ Params: { id: string } }>('/contacts/:id/archive', write, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = ArchiveBody.parse(request.body);
+    const actor = request.staff!;
+    if (b.isTest && !b.testNote) throw new AppError(400, 'test_note_required', 'A test flag carries a note saying what the test was.');
+    const row = await app.db.query<{ contact_status: string }>(`SELECT contact_status::text AS contact_status FROM contacts WHERE id = $1`, [id]);
+    if (!row.rows[0]) throw new AppError(404, 'not_found', 'Contact not found.');
+    if (row.rows[0].contact_status === 'archived') throw new AppError(409, 'already_archived', 'This contact is already archived.');
+    if (b.isTest) {
+      await app.db.query(`UPDATE contacts SET is_test = true, test_note = $2 WHERE id = $1`, [id, b.testNote]);
+    }
+    await archiveContact(app, id, b.reason, { id: actor.id, email: actor.email, fullName: actor.fullName });
+    await app.db.query(`UPDATE contacts SET is_archived = true WHERE id = $1`, [id]);
+    return { status: 'ok', archived: true, isTest: b.isTest ?? false };
   });
 
   // ── Contacts ────────────────────────────────────────────────────────────

@@ -93,16 +93,52 @@ export interface MergeResult {
   losers: Array<{ id: string; moved: Record<string, number>; portalUserRetired: boolean; duplicateAcceptancesDropped: string[] }>;
 }
 
+/**
+ * THE IDENTITY RULE (2026-09-12, Brian): two records merge when they share an email, a phone or
+ * an address. A name match alone never merges; a person who knows they are one record says so,
+ * with a reason, and the audit row carries which it was.
+ */
+export async function sharedIdentifiers(app: FastifyInstance, a: string, b: string): Promise<Array<'email' | 'phone' | 'address'>> {
+  const { rows } = await app.db.query<{ email: boolean; phone: boolean; address: boolean }>(
+    `SELECT (x.email IS NOT NULL AND y.email IS NOT NULL AND x.email = y.email) AS email,
+            (length(regexp_replace(COALESCE(x.phone, ''), '\\D', '', 'g')) >= 10
+              AND right(regexp_replace(COALESCE(x.phone, ''), '\\D', '', 'g'), 10) = right(regexp_replace(COALESCE(y.phone, ''), '\\D', '', 'g'), 10)) AS phone,
+            (x.address_line1 IS NOT NULL AND x.zip IS NOT NULL AND lower(btrim(x.address_line1)) = lower(btrim(COALESCE(y.address_line1, ''))) AND btrim(x.zip) = btrim(COALESCE(y.zip, ''))) AS address
+       FROM contacts x, contacts y WHERE x.id = $1 AND y.id = $2`,
+    [a, b]
+  );
+  const r = rows[0];
+  if (!r) return [];
+  const out: Array<'email' | 'phone' | 'address'> = [];
+  if (r.email) out.push('email');
+  if (r.phone) out.push('phone');
+  if (r.address) out.push('address');
+  return out;
+}
+
 export async function mergeContacts(
   app: FastifyInstance,
   winnerId: string,
   loserIds: string[],
   reason: string,
   actor: MergeActor,
-  meta: { ip?: string | null; userAgent?: string | null } = {}
+  meta: { ip?: string | null; userAgent?: string | null } = {},
+  options: { identityOverrideReason?: string | undefined } = {}
 ): Promise<MergeResult> {
   const ids = [...new Set(loserIds)].filter((id) => id !== winnerId);
   if (ids.length === 0) throw new AppError(400, 'no_losers', 'Name at least one other record to merge into this one.');
+  const identity = new Map<string, { shared: string[]; override: string | null }>();
+  for (const id of ids) {
+    const shared = await sharedIdentifiers(app, winnerId, id);
+    if (shared.length === 0 && !options.identityOverrideReason) {
+      throw new AppError(
+        409,
+        'no_shared_identifier',
+        'These records share no email, phone or address. A name match alone never merges; if you know they are one person, say why (identityOverrideReason).'
+      );
+    }
+    identity.set(id, { shared, override: shared.length === 0 ? options.identityOverrideReason ?? null : null });
+  }
   const contacts = await app.db.query<{ id: string; first_name: string; last_name: string; is_archived: boolean; contact_status: string }>(
     `SELECT id, first_name, last_name, is_archived, contact_status::text AS contact_status FROM contacts WHERE id = ANY($1::uuid[])`,
     [[winnerId, ...ids]]
@@ -220,7 +256,7 @@ export async function mergeContacts(
       await writeAudit(app.db, {
         actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
         action: 'contact.merged', objectType: 'contact', objectId: loserId, contactId: winnerId, ...meta,
-        details: { winner: winnerId, loser: loserId, loser_name: `${loser.first_name} ${loser.last_name}`, reason, moved, portal_user_retired: portalUserRetired, duplicate_acceptances_dropped: duplicateAcceptancesDropped },
+        details: { winner: winnerId, loser: loserId, loser_name: `${loser.first_name} ${loser.last_name}`, reason, moved, portal_user_retired: portalUserRetired, duplicate_acceptances_dropped: duplicateAcceptancesDropped, shared_identifiers: identity.get(loserId)!.shared, identity_override_reason: identity.get(loserId)!.override },
       });
       result.losers.push({ id: loserId, moved, portalUserRetired, duplicateAcceptancesDropped });
     }
