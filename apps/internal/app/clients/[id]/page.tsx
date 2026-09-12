@@ -89,6 +89,8 @@ interface Invoice {
   amount_refunded_cents?: number | null;
   void_reason?: string | null; voided_by?: string | null; voided_at?: string | null;
   refunded_at?: string | null;
+  has_stripe_payment?: boolean;
+  stripe_check_waived_at?: string | null; stripe_check_waived_reason?: string | null; stripe_check_waived_by?: string | null;
   /** Every client-facing notice about this invoice, in its real state (queued / delivered…). */
   notices: NoticeState[];
 }
@@ -1147,6 +1149,39 @@ export default function ClientPacketPage() {
                   >
                     Re-sync from Stripe
                   </button>
+                ) : null}
+                {/* The drift waiver (2026-09-12): a payment Stripe cannot see from this key is not a daily task. */}
+                {inv.has_stripe_payment && !inv.stripe_check_waived_at && ['paid', 'refunded', 'partially_refunded', 'disputed'].includes(inv.status) ? (
+                  <button
+                    className="btn ghost"
+                    type="button"
+                    disabled={busy}
+                    title="Record that the nightly Stripe check cannot see this payment and should stop raising it"
+                    onClick={async () => {
+                      const a = await ask({
+                        title: `Waive the Stripe check on ${inv.invoice_number}?`,
+                        body: <p>The nightly drift check will skip this invoice from now on and its open drift tasks close. Nothing about the money changes. Say why, for the next reader.</p>,
+                        reason: { label: 'Why the check is waived', required: true, placeholder: 'e.g. paid under the test key on 08-13; the live key cannot see that payment' },
+                        choices: [{ key: 'waive', label: 'Waive the check', tone: 'primary' }],
+                      });
+                      if (!a) return;
+                      setBusy(true);
+                      try {
+                        await api(`/invoices/${inv.id}/waive-stripe-check`, { method: 'POST', body: { reason: a.reason } });
+                        setActionMsg(`${inv.invoice_number}: Stripe check waived (audited).`);
+                        await load();
+                      } catch (e) {
+                        setActionErr(e instanceof Error ? e.message : 'Could not waive the check.');
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Waive Stripe check
+                  </button>
+                ) : null}
+                {inv.stripe_check_waived_at ? (
+                  <span className="muted small">Stripe check waived · {inv.stripe_check_waived_reason} · {inv.stripe_check_waived_by ?? ''}</span>
                 ) : null}
                 {/* Only an invoice that can still be paid gets a reminder and a pay link. */}
                 {/* Audit item 3 (2026-09-09): the reminder appears only for sent/overdue, and says the amount it chases. */}

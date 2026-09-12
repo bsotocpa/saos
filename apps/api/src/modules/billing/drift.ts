@@ -56,6 +56,9 @@ export async function runStripeDriftCheckJob(
        FROM invoices i
       WHERE i.stripe_payment_intent_id IS NOT NULL
         AND i.status IN ('paid', 'refunded', 'partially_refunded', 'disputed')
+        -- A waived invoice (a payment Stripe cannot see from this key, decided by a person with a
+        -- reason) is skipped and counted, never re-raised (2026-09-12).
+        AND i.stripe_check_waived_at IS NULL
       ORDER BY i.paid_at DESC NULLS LAST
       LIMIT $1`,
     [opts.limit ?? 200]
@@ -122,11 +125,15 @@ export async function runStripeDriftCheckJob(
     if (task.created) tasksCreated++;
   }
 
+  const waived = await app.db.query<{ n: number; numbers: string[] }>(
+    `SELECT count(*)::int AS n, COALESCE(array_agg(invoice_number ORDER BY invoice_number), '{}') AS numbers
+       FROM invoices WHERE stripe_payment_intent_id IS NOT NULL AND stripe_check_waived_at IS NOT NULL`
+  );
   await writeAudit(app.db, {
     actorType: 'system',
     actorLabel: 'stripe drift check',
     action: 'ops.stripe_drift_checked',
-    details: { day: today, checked: rows.length, drifted: drifted.map((d) => d.invoiceNumber), unverifiable },
+    details: { day: today, checked: rows.length, drifted: drifted.map((d) => d.invoiceNumber), unverifiable, waived: waived.rows[0]!.numbers },
   });
   if (drifted.length > 0) app.log.warn({ drifted }, 'Stripe and SAOS disagree about money');
   if (unverifiable.length > 0) app.log.warn({ unverifiable }, 'Stripe could not verify a payment under the current key');
@@ -175,4 +182,39 @@ export async function resyncRefundsFromStripe(
     });
     return result;
   });
+}
+
+/**
+ * THE WAIVER (2026-09-12). A payment the current Stripe key cannot see (SA-2026-0001, taken under
+ * the test key) raised a drift task nobody could resolve, every day. A person with billing.manage
+ * records that the record is right and Stripe simply cannot see it, with a reason. The nightly
+ * check skips the invoice from then on and counts it; the open drift tasks for it close; the
+ * decision is audited with the reason. It does not touch the invoice's money fields.
+ */
+export async function waiveStripeCheck(
+  app: FastifyInstance,
+  invoiceId: string,
+  reason: string,
+  actor: { id: string; fullName: string }
+): Promise<{ waived: true; invoiceNumber: string }> {
+  const { rows } = await app.db.query<{ id: string; invoice_number: string; contact_id: string; stripe_payment_intent_id: string | null; waived_at: Date | null }>(
+    `SELECT id, invoice_number, contact_id, stripe_payment_intent_id, stripe_check_waived_at AS waived_at FROM invoices WHERE id = $1`,
+    [invoiceId]
+  );
+  const inv = rows[0];
+  if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
+  if (!inv.stripe_payment_intent_id) throw new AppError(409, 'nothing_to_waive', 'This invoice has no Stripe payment; there is no check to waive.');
+  if (inv.waived_at) throw new AppError(409, 'already_waived', 'The Stripe check on this invoice is already waived.');
+  await app.db.query(
+    `UPDATE invoices SET stripe_check_waived_at = now(), stripe_check_waived_by_staff_id = $2, stripe_check_waived_reason = $3 WHERE id = $1`,
+    [invoiceId, actor.id, reason]
+  );
+  const { closeTasksForSource } = await import('../tasks/service.ts');
+  await closeTasksForSource(app, 'stripe_drift', invoiceId, `Stripe check waived by ${actor.fullName}: ${reason}`);
+  await writeAudit(app.db, {
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+    action: 'invoice.stripe_check_waived', objectType: 'invoice', objectId: invoiceId, contactId: inv.contact_id,
+    details: { invoice_number: inv.invoice_number, reason },
+  });
+  return { waived: true, invoiceNumber: inv.invoice_number };
 }
