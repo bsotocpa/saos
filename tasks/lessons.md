@@ -1912,3 +1912,17 @@ the cause, and saying otherwise would be the same kind of lie as the green harne
 uses, through the events a finger generates. Any one of those three substituted for convenience
 turns the check into a claim about something nobody ships. And when a walk and a green check
 disagree, the walk is right until proven otherwise — the check is the thing on trial.
+
+### Confirmed (2026-09-12): the stale shell was the cause
+Brian: "Withdraw opens the modal on my iPhone after the no-store deploy." The mechanism named
+above as fixed-but-unconfirmed is confirmed. A phone that had loaded the Ops app shell before a
+deploy held a document naming chunk hashes the deploy had deleted; the page rendered from the
+old shell and the new data, and the code that made its buttons work never arrived. Two deploys
+went out the day of the walk. The document is `no-store, must-revalidate` now, so a shell cannot
+outlive the build it names.
+
+The three harness gaps closed on the way (dev artifact, Chromium phone, dispatched clicks) were
+each real and each necessary; none of them was this bug. The harness could never have seen a
+cache-header defect from inside a fresh browser context, which is the fourth rule: a check that
+starts from a clean cache cannot find what a stale one does. The walk found it because a walk
+has history.

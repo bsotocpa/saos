@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { reasonText } from '../../reasons.ts';
 import { requirePermission } from '../../plugins/auth.ts';
 import { createEngagement } from './service.ts';
 import { configureRecurringEngagement, configuratorOptions, enterMaintenanceMode } from './configurator.ts';
@@ -21,7 +22,7 @@ const CloseBody = z.object({
   // Item 7a (2026-09-09): what happens to a paid, unapplied deposit on withdrawal.
   depositAction: z.enum(['transfer', 'refund']).optional(),
   transferToEngagementId: z.uuid().nullable().optional(),
-  reason: z.string().max(2000).optional(),
+  reason: reasonText(1, 2000).optional(),
   endedOn: z.iso.date().optional(),
 });
 
@@ -190,7 +191,7 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
     { preHandler: [app.authenticate, requirePermission('billing.manage')] },
     async (request) => {
       const toEngagementId = z.uuid().parse(request.params.id);
-      const b = z.object({ invoiceId: z.uuid(), reason: z.string().trim().min(5).max(1000) }).parse(request.body);
+      const b = z.object({ invoiceId: z.uuid(), reason: reasonText(5, 1000) }).parse(request.body);
       const { transferDeposit } = await import('./deposits.ts');
       return transferDeposit(app, { invoiceId: b.invoiceId, toEngagementId, reason: b.reason }, {
         type: 'staff', id: request.staff!.id, label: request.staff!.fullName,
@@ -222,14 +223,14 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
   // decides which invoices and deposits belong to which year's work.
   app.patch<{ Params: { id: string } }>('/engagements/:id/period', { preHandler: [app.authenticate, requirePermission('billing.manage')] }, async (request) => {
     const id = z.uuid().parse(request.params.id);
-    const b = z.object({ periodKey: z.string().trim().min(2).max(40), reason: z.string().trim().min(5).max(1000) }).parse(request.body);
+    const b = z.object({ periodKey: z.string().trim().min(2).max(40), reason: reasonText(5, 1000) }).parse(request.body);
     const { setEngagementPeriod } = await import('./period-set.ts');
     return setEngagementPeriod(app, id, b, { type: 'staff', id: request.staff!.id, label: request.staff!.fullName });
   });
 
   app.post<{ Params: { id: string } }>('/engagements/:id/pause', closeGate, async (request) => {
     const id = z.uuid().parse(request.params.id);
-    const b = z.object({ reason: z.string().min(1).max(2000) }).parse(request.body);
+    const b = z.object({ reason: reasonText(1, 2000) }).parse(request.body);
     return pauseEngagement(app, id, { reason: b.reason }, {
       type: 'staff', id: request.staff!.id, label: request.staff!.fullName,
     });

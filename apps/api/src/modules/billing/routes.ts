@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { reasonText } from '../../reasons.ts';
 import { requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
@@ -175,7 +176,7 @@ export function registerBillingRoutes(app: FastifyInstance): void {
   app.post<{ Params: { id: string } }>('/invoices/:id/void', billing, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const body = z
-      .object({ reason: z.string().trim().min(5, 'Say why in at least a few words — this is the record.').max(1000) })
+      .object({ reason: reasonText(5, 1000) })
       .parse(request.body);
     const { voidInvoice } = await import('./void.ts');
     return voidInvoice(app, id, body, request.staff!);

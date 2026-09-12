@@ -65,7 +65,7 @@ NEW
 - Gate for harness page three: five consecutive green runs of pages one and two — met 2026-09-10.
 
 ## Phone walk findings — 2026-09-10 evening (Brian's rulings on the 09-10 walk)
-- [x] 0. Harness vs device. Three gaps closed: it ran `next dev` (now build+start), its phone was Chromium (now WebKit), it dispatched clicks instead of tapping (now hit-tested). None reproduces the dead Withdraw. App-shell cache header fixed (no-store; only /_next/static immutable). Lesson written under checks-that-lie: "green harness, dead button". NOT root-caused — see the report.
+- [x] 0. Harness vs device. Three gaps closed: it ran `next dev` (now build+start), its phone was Chromium (now WebKit), it dispatched clicks instead of tapping (now hit-tested). None reproduces the dead Withdraw. App-shell cache header fixed (no-store; only /_next/static immutable). Lesson written under checks-that-lie: "green harness, dead button". CONFIRMED 2026-09-12 by Brian: Withdraw opens on the iPhone after the no-store deploy. The stale shell was the cause.
 - [x] 1. One modal shell: opaque panel, backdrop, scroll lock, focus in, escape and click-out. All three modals converted. Harness asserts the contract at both viewports.
 - [x] 2. No money record reads unknown. invoices.voided_by_label; cascades record mechanism + person. SA-2026-0004 backfilled.
 - [x] 3. Reasons stand alone. SA-2026-0004 rewritten; the cascade prefix is a sentence.

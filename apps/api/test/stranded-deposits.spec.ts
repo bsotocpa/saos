@@ -98,7 +98,7 @@ test('7a/7b: "transfer" moves the deposit to the named open engagement; credit f
   const x = await clientWithPaidDeposit();
   const successor = await createEngagement(app, actor(), { contactId: x.contactId, serviceLine: 'bookkeeping', title: 'Successor', status: 'active' }, {});
   const r = await closeEngagement(app, x.engagementId, {
-    outcome: 'withdrawn', reason: 'superseded — rehearsal', depositAction: 'transfer', transferToEngagementId: successor.id,
+    outcome: 'withdrawn', reason: 'Superseded by the engagement that remains open.', depositAction: 'transfer', transferToEngagementId: successor.id,
   }, { type: 'system', label: 'test' });
   assert.equal(r.depositsMoved, 1);
   assert.deepEqual((await availableDepositCredit(app, x.engagementId)), [], 'the old engagement has no credit');

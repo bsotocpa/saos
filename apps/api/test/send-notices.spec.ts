@@ -106,7 +106,7 @@ after(async () => {
 
 test('void says "queued" while the worker has not run, then "delivered" with the time once it has', async () => {
   const inv = await invoice('sent');
-  const res = await app.inject({ method: 'POST', url: `/invoices/${inv.id}/void`, headers: auth(rene), payload: { reason: 'Superseded — rehearsal' } });
+  const res = await app.inject({ method: 'POST', url: `/invoices/${inv.id}/void`, headers: auth(rene), payload: { reason: 'Superseded by the corrected invoice.' } });
   assert.equal(res.statusCode, 200, res.body);
   const notice = res.json().notice;
   assert.equal(notice.kind, 'void_notice');
@@ -168,7 +168,7 @@ test('the payment receipt is sent inline, so it reads delivered at once — and 
 
 test('two overlapping drains perform an effect ONCE — the claim is a lease', async () => {
   const inv = await invoice('sent');
-  await app.inject({ method: 'POST', url: `/invoices/${inv.id}/void`, headers: auth(rene), payload: { reason: 'Lease test — rehearsal' } });
+  await app.inject({ method: 'POST', url: `/invoices/${inv.id}/void`, headers: auth(rene), payload: { reason: 'Superseded by the corrected invoice.' } });
   sentMail.length = 0;
   let release!: () => void;
   holdSends = new Promise<void>((resolve) => { release = resolve; });

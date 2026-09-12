@@ -9,6 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { z } from 'zod';
+import { reasonText } from '../../reasons.ts';
 import { requirePermission } from '../../plugins/auth.ts';
 import {
   acceptQuote, createQuote, declineQuote, overrideQuoteDeposit, quoteByToken, sendQuote,
@@ -143,7 +144,7 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
         .object({
           // null = revert to the price-book deposit.
           amountCents: z.number().int().min(0).nullable(),
-          reason: z.string().trim().min(10, 'Say why in at least a few words — this is the record.').max(1000),
+          reason: reasonText(10, 1000),
         })
         .parse(request.body);
       return overrideQuoteDeposit(app, id, b, request.staff!);

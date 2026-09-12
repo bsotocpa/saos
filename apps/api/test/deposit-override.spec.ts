@@ -382,7 +382,7 @@ test('the STAFF view of a quote carries the server-resolved deposit, so the buil
   const reducedTo = Math.round(standard / 10);
   const r = await app.inject({
     method: 'POST', url: `/quotes/${quoteId}/deposit-override`, headers: auth(brian),
-    payload: { amountCents: reducedTo, reason: 'Rehearsal — keep the real-card charge small.' },
+    payload: { amountCents: reducedTo, reason: 'Keep the real-card charge small for this client.' },
   });
   assert.equal(r.statusCode, 200, r.body);
 
@@ -390,5 +390,5 @@ test('the STAFF view of a quote carries the server-resolved deposit, so the buil
   assert.equal(after.json().deposit.treatment, 'reduced');
   assert.equal(after.json().deposit.chargeCents, reducedTo, 'the staff view shows what the client will be invoiced');
   assert.equal(after.json().deposit.standardCents, standard, 'and still knows the standard it was reduced from');
-  assert.equal(after.json().deposit.reason, 'Rehearsal — keep the real-card charge small.', 'staff see the reason; it is theirs');
+  assert.equal(after.json().deposit.reason, 'Keep the real-card charge small for this client.', 'staff see the reason; it is theirs');
 });
