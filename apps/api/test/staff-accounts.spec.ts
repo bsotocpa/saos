@@ -203,3 +203,70 @@ test('ruling 9: names are editable after creation, and the change is audited', a
   const audit = await app.db.query(`SELECT 1 FROM audit_log WHERE action = 'staff.renamed' AND object_id = $1`, [id]);
   assert.equal(audit.rows.length, 1);
 });
+
+test('password reveal (2026-09-12): regenerate is a separate audited action; the old password and its sessions die, the new one is shown once', async () => {
+  const created = await app.inject({ method: 'POST', url: '/staff', headers: auth(ceoToken), payload: { email: 'regen@example.test', legalName: 'Synthetic Regen', roleKey: 'intern' } });
+  const { id, tempPassword: first } = created.json() as { id: string; tempPassword: string };
+  // The first password works at the door (it is consumed by MFA setup; the login step is what we prove here).
+  const firstLogin = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'regen@example.test', password: first } });
+  assert.equal(firstLogin.statusCode, 200, firstLogin.body);
+  // An open session, so there is something to revoke.
+  await app.db.query(`INSERT INTO staff_sessions (staff_id, token_hash, expires_at) VALUES ($1, 'regen-test-hash', now() + interval '1 hour')`, [id]);
+
+  const regen = await app.inject({ method: 'POST', url: `/staff/${id}/password/regenerate`, headers: auth(ceoToken) });
+  assert.equal(regen.statusCode, 200, regen.body);
+  const { tempPassword: second } = regen.json() as { tempPassword: string };
+  assert.ok(second && second !== first, 'a new password, not the old one again');
+
+  const oldRefused = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'regen@example.test', password: first } });
+  assert.equal(oldRefused.statusCode, 401, 'the old password is dead');
+  const newAccepted = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'regen@example.test', password: second } });
+  assert.equal(newAccepted.statusCode, 200, newAccepted.body);
+
+  const row = await app.db.query<{ must_change_password: boolean; temp_password_expires_at: Date }>(`SELECT must_change_password, temp_password_expires_at FROM staff WHERE id = $1`, [id]);
+  assert.equal(row.rows[0]!.must_change_password, true, 'the session owes a password again');
+  const hours = (row.rows[0]!.temp_password_expires_at.getTime() - Date.now()) / 3_600_000;
+  assert.ok(hours > 71.9 && hours <= 72.1, `72 hours again, got ${hours.toFixed(2)}`);
+  const live = await app.db.query(`SELECT 1 FROM staff_sessions WHERE staff_id = $1 AND revoked_at IS NULL`, [id]);
+  assert.equal(live.rows.length, 0, 'every session the old credential opened is revoked');
+
+  const audit = await app.db.query<{ details: { sessions_revoked: number } }>(`SELECT details FROM audit_log WHERE action = 'staff.password_regenerated' AND object_id = $1`, [id]);
+  assert.equal(audit.rows.length, 1, 'regenerate is audited');
+  assert.equal(audit.rows[0]!.details.sessions_revoked, 1);
+  // No route ever hands the password back: the list carries no password field of any kind.
+  const list = await app.inject({ method: 'GET', url: '/staff', headers: auth(ceoToken) });
+  assert.ok(!JSON.stringify(list.json()).toLowerCase().includes('password_hash'), 'no hash in the list');
+  assert.ok(!list.body.includes(second), 'the password is not in the list');
+
+  const inactive = await app.inject({ method: 'PATCH', url: `/staff/${id}`, headers: auth(ceoToken), payload: { isActive: false } });
+  assert.equal(inactive.statusCode, 200);
+  const refused = await app.inject({ method: 'POST', url: `/staff/${id}/password/regenerate`, headers: auth(ceoToken) });
+  assert.equal(refused.statusCode, 409, 'an inactive account is not issued a password');
+});
+
+test('a changed sign-in address does not orphan the login: the open session survives, the new address signs in, the old one does not, and the change is audited', async () => {
+  const who = await makeStaff(app.db, config, { email: 'oldaddress@example.test', name: 'Synthetic Mover', role: 'intern', password: 'mover-password-12345678', totpSecret: CEO_TOTP });
+  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: who.email, password: who.password, totp: totp(CEO_TOTP) } });
+  assert.equal(login.statusCode, 200, login.body);
+  const moverToken = login.json().token as string;
+
+  const patched = await app.inject({ method: 'PATCH', url: `/staff/${who.id}`, headers: auth(ceoToken), payload: { email: 'newaddress@example.test' } });
+  assert.equal(patched.statusCode, 200, patched.body);
+
+  const stillIn = await app.inject({ method: 'GET', url: '/auth/me', headers: auth(moverToken) });
+  assert.equal(stillIn.statusCode, 200, 'the open session is keyed by staff id, not by address');
+  assert.equal((stillIn.json() as { email: string }).email, 'newaddress@example.test');
+
+  const oldDoor = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'oldaddress@example.test', password: who.password, totp: totp(CEO_TOTP) } });
+  assert.equal(oldDoor.statusCode, 401, 'the old address no longer signs in');
+  const newDoor = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'newaddress@example.test', password: who.password, totp: totp(CEO_TOTP) } });
+  assert.equal(newDoor.statusCode, 200, newDoor.body);
+
+  const audit = await app.db.query<{ details: { from: string; to: string } }>(`SELECT details FROM audit_log WHERE action = 'staff.email_changed' AND object_id = $1`, [who.id]);
+  assert.equal(audit.rows.length, 1, 'the address change is audited');
+  assert.equal(audit.rows[0]!.details.from, 'oldaddress@example.test');
+  assert.equal(audit.rows[0]!.details.to, 'newaddress@example.test');
+
+  const taken = await app.inject({ method: 'PATCH', url: `/staff/${who.id}`, headers: auth(ceoToken), payload: { email: ceo.email } });
+  assert.equal(taken.statusCode, 409, 'an address another account holds is refused, not a 500');
+});

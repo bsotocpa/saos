@@ -1946,3 +1946,24 @@ present: fetch it, list it, or say "I could not verify it exists." The same rule
 harness: a reference is a claim about something, and the claim is on trial until the thing is in
 hand. Checked today: the Docuseal API refuses the token the box holds (401), so even the listing
 could not be verified from here — and that is what the report should have said.
+
+## 2026-09-12 — a secret in a report
+
+The phase-1 report carried three temporary passwords in clear, because Brian had asked for them
+"once, in the report" and I took the sentence literally. He corrected it: never return a password
+in a report again. The reveal belongs in Admin → Staff, once, to the person who minted it, with a
+copy control, and then nowhere.
+
+Why the literal reading was wrong: a report is a document. It is in this transcript, in a
+Dropbox folder, in whatever Brian pastes it into, for as long as any of those live. A password
+shown on a screen and copied is gone when the screen is; a password in a report is a credential
+with an unbounded retention period and no audit row for who read it. "Once" cannot be satisfied
+by a medium that keeps everything.
+
+**The rule.** No credential, token, key or password appears in a report, a commit message, a
+lessons entry, a todo item, a log line, or a console printout, including the output of a script I
+run on the box. The only place a minted secret may appear is the response to the call that
+minted it, rendered by the screen of the person who made the call. If a flow needs a secret
+handed to a person, the answer is a screen with a reveal, not a paragraph with a value. When an
+instruction seems to ask for one in a report, the instruction is about the handover, not the
+medium: build the screen and say so.

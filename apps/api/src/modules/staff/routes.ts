@@ -26,10 +26,25 @@ const UpdateStaffBody = z
     /** Ruling 9 (2026-09-12): names are editable after creation, because a legal name is a fact to get right, not a guess to live with. */
     legalName: z.string().min(1).optional(),
     displayName: z.string().min(1).optional(),
+    /**
+     * The sign-in address is editable too (2026-09-12). Sessions are keyed by staff id, not by
+     * address, so a change never orphans a live login: the open session keeps working and the
+     * next sign-in uses the new address. The change is audited with both values.
+     */
+    email: z.email().optional(),
   })
-  .refine((b) => b.roleKey !== undefined || b.isActive !== undefined || b.legalName !== undefined || b.displayName !== undefined, {
-    message: 'Provide roleKey, isActive, legalName and/or displayName.',
+  .refine((b) => b.roleKey !== undefined || b.isActive !== undefined || b.legalName !== undefined || b.displayName !== undefined || b.email !== undefined, {
+    message: 'Provide roleKey, isActive, legalName, displayName and/or email.',
   });
+
+/**
+ * A temporary password is shown exactly once, to the person who minted it, in the response to the
+ * call that minted it. It is never stored in clear, never logged, never emailed, and never
+ * returned by any other route. 20 characters of base64url from 15 random bytes.
+ */
+function mintTempPassword(): string {
+  return randomBytes(15).toString('base64url');
+}
 
 function meta(request: FastifyRequest) {
   return { ip: request.ip, userAgent: request.headers['user-agent'] ?? null };
@@ -56,7 +71,8 @@ export function registerStaffRoutes(app: FastifyInstance): void {
 
   app.get('/staff', guarded, async () => {
     const { rows } = await app.db.query(
-      `SELECT st.id, st.full_name, st.email, st.is_active, st.totp_enabled, st.last_login_at, r.key AS role
+      `SELECT st.id, st.full_name, st.legal_name, st.display_name, st.email, st.is_active, st.totp_enabled, st.last_login_at,
+              st.must_change_password, r.key AS role
        FROM staff st JOIN roles r ON r.id = st.role_id
        ORDER BY st.full_name`
     );
@@ -71,7 +87,7 @@ export function registerStaffRoutes(app: FastifyInstance): void {
     // Temporary password: returned exactly once, to the admin who created the
     // account, for out-of-band handover. Never emailed. MFA enrollment is
     // forced on first login before any real session exists.
-    const tempPassword = randomBytes(15).toString('base64url');
+    const tempPassword = mintTempPassword();
     const { rows } = await app.db.query<{ id: string }>(
       // Ruling 1 (2026-09-12): the temporary password dies at 72 hours or first use; ruling 9: legal and display names.
       `INSERT INTO staff (legal_name, display_name, email, phone, role_id, password_hash, temp_password_expires_at, must_change_password)
@@ -131,7 +147,18 @@ export function registerStaffRoutes(app: FastifyInstance): void {
       await writeAudit(app.db, {
         actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
         action: 'staff.renamed', objectType: 'staff', objectId: targetId,
+        ...meta(request),
         details: { from: before.rows[0], to: { legal_name: body.legalName ?? before.rows[0]?.legal_name, display_name: body.displayName ?? before.rows[0]?.display_name } },
+      });
+    }
+    if (body.email !== undefined && body.email.toLowerCase() !== target.email.toLowerCase()) {
+      // citext UNIQUE on staff.email: a collision surfaces as the server's 409, not a 500.
+      await app.db.query(`UPDATE staff SET email = $2 WHERE id = $1`, [targetId, body.email]);
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+        action: 'staff.email_changed', objectType: 'staff', objectId: targetId,
+        ...meta(request),
+        details: { from: target.email, to: body.email },
       });
     }
     if (body.isActive !== undefined && body.isActive !== target.is_active) {
@@ -155,5 +182,40 @@ export function registerStaffRoutes(app: FastifyInstance): void {
     }
 
     return { status: 'ok' };
+  });
+
+  /**
+   * REGENERATE (Brian, 2026-09-12): a separate, audited action. Mints a fresh temporary password
+   * under the same rules as creation (72 hours or first use, session owes a password), revokes
+   * every live session the old credential opened, and returns the new password once, to the
+   * admin who asked. The previous password is dead the moment this returns. MFA enrollment is
+   * untouched: losing a password is not losing the phone.
+   */
+  app.post<{ Params: { id: string } }>('/staff/:id/password/regenerate', guarded, async (request) => {
+    const actor = request.staff!;
+    const targetId = z.uuid().parse(request.params.id);
+    const { rows } = await app.db.query<{ id: string; is_active: boolean; display_name: string }>(
+      `SELECT id, is_active, display_name FROM staff WHERE id = $1`, [targetId]
+    );
+    const target = rows[0];
+    if (!target) throw new AppError(404, 'not_found', 'Staff member not found.');
+    if (!target.is_active) throw new AppError(409, 'staff_inactive', 'Reactivate the account before issuing it a password.');
+
+    const tempPassword = mintTempPassword();
+    await app.db.query(
+      `UPDATE staff SET password_hash = $2, temp_password_expires_at = now() + interval '72 hours', must_change_password = true
+        WHERE id = $1`,
+      [targetId, await argon2.hash(tempPassword)]
+    );
+    const revoked = await app.db.query(
+      `UPDATE staff_sessions SET revoked_at = now() WHERE staff_id = $1 AND revoked_at IS NULL`, [targetId]
+    );
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+      action: 'staff.password_regenerated', objectType: 'staff', objectId: targetId,
+      ...meta(request),
+      details: { sessions_revoked: revoked.rowCount ?? 0, expires_in_hours: 72 },
+    });
+    return { id: targetId, tempPassword };
   });
 }
