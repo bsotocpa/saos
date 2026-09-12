@@ -4,7 +4,7 @@
 // value, revenue MTD/YTD, A/R aging, health distribution, staff capacity,
 // deadline countdown. Exception-based: the point is what needs attention.
 
-import { formatDate } from '../lib/dates';
+import { formatDate, formatTime } from '../lib/dates';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -13,6 +13,7 @@ import { api, formatMoney, isAuthed } from '../lib/api';
 interface Executive {
   openReturnsByStage: Array<{ stage: string; count: number; value_cents: string }>;
   revenue: { mtdCents: number; ytdCents: number };
+  moneyActionsToday: Array<{ at: string; action: string; actor: string; client: string | null; contactId: string | null; invoiceNumber: string | null; amountCents: number | null; reason: string | null }>;
   mrr: { cents: number; note: string };
   arAging: Array<{ bucket: string; count: number; owed_cents: string }>;
   healthDistribution: Array<{ band: string; count: number }>;
@@ -205,6 +206,21 @@ export default function ExecutivePage() {
             </div>
           </div>
           <p className="muted small">{data.mrr.note}</p>
+          {/* Ruling 10 (2026-09-12): money actions today by anyone other than the CEO. Detection, not a gate. */}
+          <h3 style={{ marginTop: 10 }} data-testid="money-actions-today">Money actions today by staff: {data.moneyActionsToday.length}</h3>
+          {data.moneyActionsToday.length === 0 ? <p className="muted small">None so far today.</p> : (
+            <ul className="list small">
+              {data.moneyActionsToday.map((m, i) => (
+                <li key={i}>
+                  <span className="grow">
+                    <strong>{m.action}</strong>{m.amountCents !== null ? ` · ${formatMoney(m.amountCents)}` : ''} · {m.client ?? '—'} · {m.invoiceNumber ?? '—'} · by {m.actor}
+                    {m.reason ? <><br /><span className="muted">{m.reason}</span></> : null}
+                  </span>
+                  <span className="muted">{formatTime(m.at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <section className="card">

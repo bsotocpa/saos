@@ -3,6 +3,7 @@
 // including immediately after a restart — without double-sending anything.
 
 import type { FastifyInstance } from 'fastify';
+import { runMoneyDigestJob } from '../modules/billing/money-digest.ts';
 import { writeAudit } from '../audit.ts';
 import { todayChicago } from '../modules/tax/deadlines.ts';
 import { runEstimateReminderJob, runExtensionDecisionListJob, runSummerChaseJob } from '../modules/tax/extension.ts';
@@ -62,6 +63,8 @@ export interface DailyJob {
 }
 
 export const DAILY_JOBS: DailyJob[] = [
+  // Ruling 10 (2026-09-12): yesterday's money actions by anyone but the CEO, to the CEO.
+  { name: 'money_digest', run: runMoneyDigestJob },
   { name: 'extension_decision_list', run: runExtensionDecisionListJob },
   { name: 'summer_chase', run: runSummerChaseJob },
   { name: 'estimate_reminder', run: runEstimateReminderJob },

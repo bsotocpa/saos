@@ -5,6 +5,7 @@
 // cycles → Phase 2/3) — never silently invented numbers.
 
 import type { FastifyInstance } from 'fastify';
+import { moneyActionsToday } from '../billing/money-digest.ts';
 import { deadlineDashboard } from '../tax/extension.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import { retirementReadiness } from '../admin/dubsado-retirement.ts';
@@ -88,6 +89,8 @@ export async function executiveDashboard(app: FastifyInstance) {
   return {
     openReturnsByStage: byStage.rows,
     revenue: { mtdCents: Number(revenue.rows[0]!.mtd_cents), ytdCents: Number(revenue.rows[0]!.ytd_cents) },
+    // Ruling 10 (2026-09-12): every money action today by anyone other than the CEO, live.
+    moneyActionsToday: await moneyActionsToday(app, todayChicago()),
     mrr: { note: 'Stripe Billing subscriptions land in Phase 3', cents: 0 },
     arAging: ar.rows,
     healthDistribution: health.rows,
