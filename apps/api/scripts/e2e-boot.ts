@@ -12,7 +12,9 @@
 import { buildServer } from '../src/server.ts';
 import { createTestConfig, makeContact, makeStaff } from '../test/helpers.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createQuote, sendQuote, acceptQuote } from '../src/modules/pricing/quotes.ts';
+import { createQuote, sendQuote, acceptQuote, overrideQuoteDeposit } from '../src/modules/pricing/quotes.ts';
+import { createPacket } from '../src/modules/engagements/packet.ts';
+import { generateToken } from '../src/crypto.ts';
 import { createInvoice, markInvoicePaid } from '../src/modules/billing/service.ts';
 import { voidInvoice } from '../src/modules/billing/void.ts';
 import { handleStripeEvent } from '../src/modules/billing/refunds.ts';
@@ -217,6 +219,42 @@ if (granted.statusCode >= 300) throw new Error(`portal access was refused: ${gra
 await drainOutbox(app);
 
 /*
+ * PAGE FIVE (2026-09-12): the first real-data run rehearsed, an S corporation's 1120S. Through the
+ * routes and services a person uses: the business on the owner's record, a business-tax quote
+ * against it with the deposit overridden to $0, sent and accepted (the acceptance creates the
+ * return record, so Schedule B resolves), the packet assembled, the business onboarding
+ * questionnaire submitted from a portal session, and documents filed. Page five reads the Ops
+ * client page and asks the API what the page would.
+ */
+const scorpOwner = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Scorpowner', email: 'scorpowner@example.test' });
+await app.db.query(`UPDATE contacts SET soto_status = 'active', is_test = true, test_note = 'Harness fixture: the S corporation rehearsal.' WHERE id = $1`, [scorpOwner.id]);
+const scorpBiz = await app.inject({
+  method: 'POST', url: `/contacts/${scorpOwner.id}/businesses`, headers: { authorization: `Bearer ${staffToken}` },
+  payload: { name: 'Harness S Corp, LLC', ein: '55-5555555', entityType: 's_corp', state: 'IL' },
+});
+if (scorpBiz.statusCode !== 201) throw new Error(`the S corp business was refused: ${scorpBiz.statusCode} ${scorpBiz.body}`);
+const scorpBusinessId = (scorpBiz.json() as { id: string }).id;
+const scorpQuote = await createQuote(app, { contactId: scorpOwner.id, businessId: scorpBusinessId, lines: [{ itemCode: 'BIZ_1120S' }] }, actor);
+await overrideQuoteDeposit(app, scorpQuote.id, { amountCents: 0, reason: 'Harness: the firm files its own return; no deposit is collected.' }, { ...actor, permissions: ['*', 'deposits.override'] });
+const scorpSent = await sendQuote(app, scorpQuote.id, actor);
+const scorpAccepted = await acceptQuote(app, scorpSent.url.split('/').pop()!, {});
+await drainOutbox(app);
+const scorpTe = await app.db.query<{ id: string; return_type: string }>(`SELECT id, return_type::text AS return_type FROM tax_engagements WHERE engagement_id = $1`, [scorpAccepted.engagements[0]!.id]);
+if (scorpTe.rows[0]?.return_type !== '1120s') throw new Error('the accepted business-tax quote did not create an 1120S return record');
+const scorpPacket = await createPacket(app, scorpOwner.id, actor);
+if (!scorpPacket.scheduleCodes.includes('B')) throw new Error(`the S corp packet carries ${scorpPacket.scheduleCodes.join(',')}, not Schedule B`);
+// The business onboarding questionnaire, submitted from the client's own portal session.
+const scorpUser = await app.db.query<{ id: string }>(`INSERT INTO portal_users (contact_id, email) VALUES ($1, $2) RETURNING id`, [scorpOwner.id, scorpOwner.email]);
+const scorpSession = generateToken();
+await app.db.query(`INSERT INTO portal_sessions (portal_user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval '1 day')`, [scorpUser.rows[0]!.id, scorpSession.hash]);
+const scorpForm = await app.inject({
+  method: 'POST', url: '/portal/service-onboarding/submit', headers: { authorization: `Bearer ${scorpSession.token}` },
+  payload: { answers: { harness: 'the S corp questionnaire, submitted' } },
+});
+if (scorpForm.statusCode >= 300) throw new Error(`the business onboarding form was refused: ${scorpForm.statusCode} ${scorpForm.body}`);
+const scorpDoc = await uploadDocument(app, minio, { type: 'staff', id: staff.id, label: staff.fullName }, { contactId: scorpOwner.id, category: 'business_records', filename: 'HARNESS-SCORP-BANK-STATEMENT.pdf', mimeType: 'application/pdf', buffer: PDF });
+
+/*
  * A MAGIC LINK IS SINGLE USE, and the harness runs page two once per viewport. So each project
  * gets its own, requested through the public route a client uses. Two more, plus the one 'Grant
  * access' already sent, sits under the three-per-ten-minutes throttle in portal-auth/service.ts.
@@ -235,6 +273,12 @@ console.log('E2E_READY ' + JSON.stringify({
   engagementWithDeposit: acc1.engagementId,
   staff: { email: staff.email, password: 'walker-synthetic-2026', totpSecret: TOTP_SECRET },
   portalMagicTokens: magicTokens.slice(-2),
+  scorp: {
+    contactId: scorpOwner.id, businessId: scorpBusinessId, quoteId: scorpQuote.id,
+    engagementId: scorpAccepted.engagements[0]!.id, taxEngagementId: scorpTe.rows[0]!.id,
+    packetCodes: scorpPacket.scheduleCodes, documentId: scorpDoc.id,
+    markers: { business: 'Harness S Corp', document: 'HARNESS-SCORP-BANK-STATEMENT.pdf' },
+  },
   wall: {
     laura: { email: laura.email, password: 'laura-synthetic-2026', totpSecret: TOTP_SECRET },
     jaqueline: { email: jaqueline.email, password: 'jaqueline-synthetic-2026', totpSecret: TOTP_SECRET },

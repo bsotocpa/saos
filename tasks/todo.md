@@ -4,12 +4,10 @@
 A ruling lands here in the turn it arrives, before any code. Open = ruled and not yet shipped, or deferred with a reason.
 - [ ] Co-facilitation: a session records one staffer (the uploader). Build meeting participants when a real co-facilitated session occurs (Brian, 2026-09-12, ruling 4 on the wall).
 - [ ] Hilo referral discount: a price-book tier applied at quote time, shown on the proposal; Brian supplies the amount in v6 (2026-09-12, ruling 5). Attribution flag unchanged.
-- [ ] 8821 / 2848 have no signing path since the vendor left (finding, 2026-09-12): the 8879 shape, a wet-signed upload, when the resolution lane needs it. Awaiting a ruling.
 - [ ] Docuseal volume and /mnt/saos-data/docuseal: remove on 2026-10-12.
-- [ ] sign.sotoaccounting.com DNS record: Brian pulls it.
-- [ ] Laura's row: Brian corrects legal name and email in Admin → Staff.
-- [ ] Drift waiver on SA-2026-0001: the control ships 2026-09-12; Brian taps it (real route, his actor).
-- [ ] DECISION-PENDING since 09-09: completing an engagement with an unpaid invoice stays allowed (the collection tail); the 0085 invariant covers withdrawn only.
+- [ ] RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks the document, same category check). Build when the resolution lane first needs it; not before.
+- [x] Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12).
+- [ ] FIRST REAL-DATA RUN (Brian, 2026-09-12): Soto Accounting LLC's own 1120S, due 2026-09-15. Rule: ATX is the critical path; SAOS never delays the filing; a block is a finding, not a delay. Checks a–f confirmed or built in this batch; phone walk list for Monday and Tuesday delivered.
 
 FIRST — walk failures
 - [x] A. SA-2026-0003 paid again: prove writer; state-machine trigger (refunded→paid illegal w/o payment; void terminal; paid→refunded only via refund row; reconcile touches sent/overdue only); sabotage: trigger detached; nightly Stripe drift check → task; lessons instance.
@@ -134,3 +132,12 @@ NEW
 - [x] client_success and advisory_manager refuse staff: roles.accepts_staff (0097); POST /staff and PATCH refuse with 409; Admin → Staff does not offer them. From the 09-12 07:44 rule "Nobody is provisioned into client_success or advisory_manager"; never enforced; built now.
 - [x] 3. The CEO floor test covers deactivate via PATCH, move-off-role via PATCH, a direct UPDATE, and the lift by a second active CEO (staff-accounts.spec.ts).
 - RULE: the morning report opens with the OPEN RULINGS section at the top of this file.
+
+## First real-data run, 1120S — 2026-09-12 (Brian's checks a–f)
+- [x] Closures: "completing with an unpaid invoice stays allowed" was ruled 09-10 and shipped in a57d6f7 (cleared); DNS pulled; Laura's row corrected; SA-2026-0003 drift task closed through the task service with the ruled reason, audit row confirmed.
+- [x] a) CONFIRMED: an 1120S runs intake → filed → completed through the real transitions (first-1120s.spec.ts). BUILT: an accepted quote now creates the return record (tax/return-type.ts); the preparer's POST /tax-engagements attaches to the accepted engagement or names the existing return (409 return_exists).
+- [x] b) BUILT: entity-name column aliases; a business return matches by folded entity name only ("Soto Accounting, LLC" = "SOTO ACCOUNTING LLC"), never by the owner's name; the EIN last-4 must agree with the record. Return type "1120S" already parsed.
+- [x] c) CONFIRMED: recordSigned8879 checks category = signed_authorizations and nothing about the file name; a scan named "Form 8879-CORP" under business_records is refused, under Signed Authorizations it authorizes (first-1120s.spec.ts).
+- [ ] d) MISSING on the box: no business named Soto Accounting exists. Brian has THREE non-test contact records (brian@sotoaccounting.com migrated/inactive holding GORDEETAH LLC; a lead with no email holding BRIAN SOTO LANDSCAPING INC.; brian3712@gmail.com from Zoho, ARCHIVED yet holding the active 2025 1040). Brian picks the record, adds Soto Accounting LLC with its EIN in Ops (walk step 1); the EIN is his, not guessed.
+- [x] e) BUILT and walked: harness page five (ops-scorp.spec.ts) builds the S corp through the routes (business, BIZ_1120S quote, $0 deposit override, send, accept → 1120S return record, Schedule B packet, portal questionnaire submitted, document) and reads the Ops client page. Migration 0098: the entity joins the one-active-per-period key so the owner's 1040 and the entity's 1120S coexist in one year.
+- [x] f) CONFIRMED: the IL row is a state jurisdiction; state_accepted_on and state_accepted_code = IL land beside the federal acceptance (first-1120s.spec.ts).

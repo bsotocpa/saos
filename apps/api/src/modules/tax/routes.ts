@@ -115,24 +115,51 @@ export function registerTaxRoutes(app: FastifyInstance): void {
   app.post('/tax-engagements', manage, async (request, reply) => {
     const b = CreateBody.parse(request.body);
     const actor = request.staff!;
-    const parent = await createEngagement(
-      app,
-      actor,
-      {
-        contactId: b.contactId,
-        businessId: b.businessId,
-        serviceLine: 'tax',
-        title: b.title ?? `${b.taxYear} ${b.returnType.toUpperCase()}`,
-        status: 'active',
-        leadStaffId: b.preparerId,
-      },
-      meta(request)
+    /*
+     * THE ACCEPTED QUOTE ALREADY MADE THE ENGAGEMENT (2026-09-12, the first 1120S). A tax line on
+     * an accepted quote creates the engagement for that year, and since today the return record
+     * with it. A preparer opening a return by hand must not collide with it (the one-active-per-
+     * line-period index would refuse, and the preparer would be stuck), nor make a second one:
+     * an active tax engagement for this client and year with no return record is attached to;
+     * one that already has its return is named.
+     */
+    const existing = await app.db.query<{ id: string; te_id: string | null }>(
+      `SELECT e.id, te.id AS te_id FROM engagements e LEFT JOIN tax_engagements te ON te.engagement_id = e.id
+        WHERE e.contact_id = $1 AND e.service_line = 'tax' AND e.status IN ('active', 'on_hold', 'draft') AND e.period_key = $2
+          AND COALESCE(e.business_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE($3::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+        ORDER BY e.created_at LIMIT 1`,
+      [b.contactId, String(b.taxYear), b.businessId ?? null]
     );
+    if (existing.rows[0]?.te_id) {
+      throw new AppError(409, 'return_exists', `This client already has a ${b.taxYear} return record (tax engagement ${existing.rows[0].te_id}); open that one.`);
+    }
+    let parentId: string;
+    if (existing.rows[0]) {
+      parentId = existing.rows[0].id;
+      if (b.businessId) await app.db.query(`UPDATE engagements SET business_id = COALESCE(business_id, $2) WHERE id = $1`, [parentId, b.businessId]);
+    } else {
+      const parent = await createEngagement(
+        app,
+        actor,
+        {
+          contactId: b.contactId,
+          businessId: b.businessId,
+          serviceLine: 'tax',
+          title: b.title ?? `${b.taxYear} ${b.returnType.toUpperCase()}`,
+          status: 'active',
+          leadStaffId: b.preparerId,
+          periodKey: String(b.taxYear),
+        },
+        meta(request)
+      );
+      parentId = parent.id;
+    }
     const { rows } = await app.db.query<{ id: string }>(
       `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, client_type, preparer_id, reviewer_id)
        VALUES ($1, $2, $3::return_type, $4::tax_client_type, $5, $6) RETURNING id`,
-      [parent.id, b.taxYear, b.returnType, b.clientType ?? null, b.preparerId ?? null, b.reviewerId ?? null]
+      [parentId, b.taxYear, b.returnType, b.clientType ?? null, b.preparerId ?? null, b.reviewerId ?? null]
     );
+    const parent = { id: parentId };
     const id = rows[0]!.id;
     await app.db.query(
       `INSERT INTO engagement_stage_history (tax_engagement_id, stage, changed_by_staff_id, waiting_on, note)

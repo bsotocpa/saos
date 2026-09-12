@@ -64,7 +64,8 @@ export interface ParsedAckRow {
  * headers it did find, so the person can see what ATX actually produced.
  */
 const COLUMN_ALIASES: Record<string, string[]> = {
-  clientName: ['client name', 'taxpayer name', 'name', 'client', 'taxpayer'],
+  // The business report names the entity, not a person (2026-09-12, the first 1120S).
+  clientName: ['client name', 'taxpayer name', 'name', 'client', 'taxpayer', 'entity name', 'business name', 'company name', 'company', 'entity', 'taxpayer/entity', 'client/entity'],
   taxYear: ['tax year', 'year', 'ty'],
   returnType: ['return type', 'form', 'return', 'type'],
   agency: ['agency', 'jurisdiction', 'taxing authority', 'authority', 'state', 'fed/state', 'fed state'],
@@ -173,7 +174,22 @@ export function parseAtxReport(text: string): { headers: string[]; rows: ParsedA
   return { headers, rows, skipped };
 }
 
-interface Candidate { id: string; contact_id: string; stage: string; first_name: string; last_name: string; language: 'en' | 'es'; email: string | null; ssn_last4: string | null }
+interface Candidate {
+  id: string; contact_id: string; stage: string; first_name: string; last_name: string; language: 'en' | 'es'; email: string | null; ssn_last4: string | null;
+  /** The entity on a business return, joined through the engagement (2026-09-12). */
+  business_name: string | null; ein_last4: string | null;
+}
+
+/** Legal suffixes and punctuation do not make two names two entities: "Soto Accounting, LLC" is "Soto Accounting LLC". */
+export function foldEntityName(s: string): string {
+  return s
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\b(llc|l l c|inc|incorporated|corp|corporation|co|company|ltd|limited|pllc|pc|lp|llp|the)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 /**
  * Exactly one return, or nothing. Name matching is on the FULL name, both orders, case and
@@ -184,25 +200,35 @@ export async function matchRow(app: FastifyInstance, row: ParsedAckRow): Promise
   if (!row.taxYear) return { te: null, why: 'the row has no tax year' };
   if (!row.returnType) return { te: null, why: 'the row has no return type' };
   const { rows } = await app.db.query<Candidate>(
-    `SELECT te.id, e.contact_id, te.stage::text AS stage, c.first_name, c.last_name, c.language, c.email, c.ssn_last4
+    `SELECT te.id, e.contact_id, te.stage::text AS stage, c.first_name, c.last_name, c.language, c.email, c.ssn_last4,
+            b.name AS business_name, right(regexp_replace(COALESCE(b.ein, ''), '[^0-9]', '', 'g'), 4) AS ein_last4
        FROM tax_engagements te
        JOIN engagements e ON e.id = te.engagement_id
        JOIN contacts c ON c.id = e.contact_id
+       LEFT JOIN businesses b ON b.id = e.business_id
       WHERE te.tax_year = $1 AND te.return_type::text = $2
         AND te.stage NOT IN ('withdrawn')`,
     [row.taxYear, row.returnType]
   );
   const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim();
   const want = fold(row.clientName);
+  const wantEntity = foldEntityName(row.clientName);
   const byName = rows.filter((c) => {
     const a = fold(`${c.first_name} ${c.last_name}`);
     const b = fold(`${c.last_name} ${c.first_name}`);
     const bc = fold(`${c.last_name}, ${c.first_name}`);
+    // A business return is acknowledged under the ENTITY'S name and nothing else: the owner's own name
+    // on a report row is a different return (their 1040), never this one.
+    if (c.business_name) return foldEntityName(c.business_name) === wantEntity;
     return want === a || want === b || want === bc;
   });
   if (byName.length === 0) return { te: null, why: `no ${row.taxYear} ${row.returnType.toUpperCase()} return in SAOS for "${row.clientName}"` };
+  // The taxpayer id on the report is an SSN for a person and an EIN for an entity; whichever the record holds must agree.
   const byId = row.taxpayerLast4
-    ? byName.filter((c) => !c.ssn_last4 || c.ssn_last4 === row.taxpayerLast4)
+    ? byName.filter((c) => {
+        const held = c.business_name ? c.ein_last4 || null : c.ssn_last4;
+        return !held || held === row.taxpayerLast4;
+      })
     : byName;
   if (byId.length === 0) return { te: null, why: `"${row.clientName}" matched by name, but the taxpayer id on the report does not agree with the record` };
   if (byId.length > 1) return { te: null, why: `${byId.length} returns in SAOS could be "${row.clientName}" ${row.taxYear} ${row.returnType.toUpperCase()}; a person has to choose` };

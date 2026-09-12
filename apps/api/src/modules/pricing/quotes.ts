@@ -18,9 +18,10 @@ import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { createEngagement } from '../engagements/service.ts';
+import { returnTypeForItems } from '../tax/return-type.ts';
 import { createInvoice } from '../billing/service.ts';
 import { addDays, todayChicago } from '../tax/deadlines.ts';
-import { periodKeyFor } from '../engagements/period.ts';
+import { periodKeyFor , defaultTaxYear } from '../engagements/period.ts';
 import {
   assertChangeOrderIfActive, finishSupersession, quoteTaxYear, withdrawForChangeOrder,
 } from '../engagements/change-order.ts';
@@ -865,6 +866,33 @@ async function convertAcceptedQuote(
       app, created.id, quote.id, row.price_book_version_id, line.scope
     );
     warnIfScopeless(app.log, created.id, captured);
+
+    /*
+     * THE RETURN RECORD (2026-09-12, the first 1120S). A tax line's base item says which return
+     * this is; the record that carries the stages, the 8879 gate, the filing and the
+     * acknowledgments is created here, with the engagement, so the preparer opens an accepted
+     * return rather than creating a colliding one, and the schedule resolver reads a business
+     * return as Schedule B instead of defaulting to A. Add-ons alone name no return: nothing is
+     * created and the log says so.
+     */
+    if (line.serviceLine === 'tax') {
+      const quoted = returnTypeForItems(line.scope.map((i) => i.itemCode));
+      if (quoted) {
+        const te = await app.db.query<{ id: string }>(
+          `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, client_type)
+           VALUES ($1, $2, $3::return_type, $4::tax_client_type) RETURNING id`,
+          // The quote's own year when the interview named one; otherwise the same default the period key used.
+          [created.id, taxYear ?? defaultTaxYear(todayIso), quoted.returnType, quoted.clientType]
+        );
+        await app.db.query(
+          `INSERT INTO engagement_stage_history (tax_engagement_id, stage, waiting_on, note)
+           VALUES ($1, 'intake_started', 'staff', 'created by quote acceptance')`,
+          [te.rows[0]!.id]
+        );
+      } else {
+        app.log.warn({ engagementId: created.id, quoteId: quote.id }, 'tax line accepted with no base return item; no return record created');
+      }
+    }
 
     /*
      * (3b) — AN ANNUAL-REPORT SERVICE LINE ACTIVATING ENROLS THE ENTITY (Brian, 2026-08-17).

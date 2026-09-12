@@ -38,6 +38,9 @@ async function staffToken(email: string, role: string): Promise<{ token: string;
 }
 
 async function newTaxEngagement(): Promise<string> {
+  // One return per client per year per entity (2026-09-12): every fixture return is its own client.
+  const fresh = await app.db.query<{ id: string }>(`INSERT INTO contacts (first_name, last_name, email, soto_status) VALUES ('Synthetic', 'Return' || substr(gen_random_uuid()::text, 1, 8), 'ret-' || substr(gen_random_uuid()::text, 1, 8) || '@example.test', 'active') RETURNING id`);
+  const contactId = fresh.rows[0]!.id;
   const res = await app.inject({
     method: 'POST', url: '/tax-engagements', headers: auth(preparer),
     payload: { contactId, taxYear: 2025, returnType: '1040', clientType: 'individual' },
@@ -122,7 +125,8 @@ test('full pipeline march with all three gates enforced', async () => {
     payload: { type: 'engagement_letter' },
   });
   assert.equal(wetLetter.statusCode, 200, wetLetter.body);
-  const contactRow = await app.db.query(`SELECT engagement_letter_status FROM contacts WHERE id = $1`, [contactId]);
+  const contactRow = await app.db.query(
+    `SELECT c.engagement_letter_status FROM contacts c JOIN engagements e ON e.contact_id = c.id JOIN tax_engagements te ON te.engagement_id = e.id WHERE te.id = $1`, [id]);
   assert.equal(contactRow.rows[0].engagement_letter_status, 'signed');
 
   // Automation 4 side-effect: document request → pending_client_response.
