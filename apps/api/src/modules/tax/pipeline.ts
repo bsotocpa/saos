@@ -73,7 +73,7 @@ export async function transitionStage(
   actor: { staffId: string | null; label: string },
   taxEngagementId: string,
   toStage: TaxStage,
-  opts: { note?: string | undefined; ip?: string | null; userAgent?: string | null } = {}
+  opts: { note?: string | undefined; ip?: string | null; userAgent?: string | null; preparerPtinHolderId?: string | undefined } = {}
 ): Promise<{ from: TaxStage; to: TaxStage }> {
   const { rows } = await app.db.query<GateRow>(
     `SELECT te.id, te.stage, te.engagement_letter_signed_at, te.f8879_signed_at,
@@ -120,12 +120,29 @@ export async function transitionStage(
     );
   }
 
+  /*
+   * THE PREPARER OF RECORD (2026-09-12, Brian's correction). A return does not move to filed
+   * without naming whose PTIN is on it. Set once, here, by the person filing; the database
+   * refuses any later change. A return re-filed after a rejection keeps the holder it had.
+   */
+  if (toStage === 'filed') {
+    const held = await app.db.query<{ preparer_ptin_holder_id: string | null }>(
+      `SELECT preparer_ptin_holder_id FROM tax_engagements WHERE id = $1`, [taxEngagementId]);
+    if (!held.rows[0]?.preparer_ptin_holder_id && !opts.preparerPtinHolderId) {
+      throw new AppError(
+        409,
+        'preparer_of_record_required',
+        'Blocked: say whose PTIN is on this filing (the paid preparer of record) before marking it filed.'
+      );
+    }
+  }
   await app.db.query(
     `UPDATE tax_engagements
      SET stage = $2::tax_stage,
-         filed_date = CASE WHEN $2 = 'filed' THEN COALESCE(filed_date, CURRENT_DATE) ELSE filed_date END
+         filed_date = CASE WHEN $2 = 'filed' THEN COALESCE(filed_date, CURRENT_DATE) ELSE filed_date END,
+         preparer_ptin_holder_id = CASE WHEN $2 = 'filed' THEN COALESCE(preparer_ptin_holder_id, $3::uuid) ELSE preparer_ptin_holder_id END
      WHERE id = $1`,
-    [taxEngagementId, toStage]
+    [taxEngagementId, toStage, opts.preparerPtinHolderId ?? null]
   );
   await app.db.query(
     `INSERT INTO engagement_stage_history (tax_engagement_id, stage, changed_by_staff_id, waiting_on, note)

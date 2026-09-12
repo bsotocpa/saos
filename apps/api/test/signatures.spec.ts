@@ -219,7 +219,7 @@ test('KBA REQUIRED: remote 8879 cannot reach Docuseal without a passed KBA; pass
   );
   const filed = await app.inject({
     method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana),
-    payload: { toStage: 'filed' },
+    payload: { toStage: 'filed', preparerPtinHolderId: ana.id },
   });
   assert.equal(filed.statusCode, 200, filed.body);
 });

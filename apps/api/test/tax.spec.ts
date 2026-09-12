@@ -15,13 +15,13 @@ import { recordEfileResult } from '../src/modules/tax/pipeline.ts';
 
 let app: FastifyInstance;
 let config: Config;
-let preparer: { token: string };
+let preparer: { token: string; id: string };
 let intern: { token: string };
 let contactId: string;
 
 const auth = (t: { token: string }) => ({ authorization: `Bearer ${t.token}` });
 
-async function staffToken(email: string, role: string): Promise<{ token: string }> {
+async function staffToken(email: string, role: string): Promise<{ token: string; id: string }> {
   const secret = new OTPAuth.Secret({ size: 20 }).base32;
   const staff = await makeStaff(app.db, config, {
     email, name: `Synthetic ${role}`, role, password: `${role}-password-123456`, totpSecret: secret,
@@ -34,7 +34,7 @@ async function staffToken(email: string, role: string): Promise<{ token: string 
     payload: { email: staff.email, password: staff.password, totp: code },
   });
   assert.equal(res.statusCode, 200, res.body);
-  return { token: res.json().token as string };
+  return { token: res.json().token as string, id: staff.id };
 }
 
 async function newTaxEngagement(): Promise<string> {
@@ -49,7 +49,8 @@ async function newTaxEngagement(): Promise<string> {
 async function move(id: string, toStage: string, expect = 200): Promise<{ statusCode: number; body: unknown }> {
   const res = await app.inject({
     method: 'POST', url: `/tax-engagements/${id}/transition`, headers: auth(preparer),
-    payload: { toStage },
+    // A move to filed names the paid preparer of record (2026-09-12); the fixture preparer signs.
+    payload: toStage === 'filed' ? { toStage, preparerPtinHolderId: preparer.id } : { toStage },
   });
   assert.equal(res.statusCode, expect, `→ ${toStage}: ${res.body}`);
   return { statusCode: res.statusCode, body: res.json() };

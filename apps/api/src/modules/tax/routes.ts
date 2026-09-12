@@ -34,6 +34,8 @@ const CreateBody = z.object({
 const TransitionBody = z.object({
   toStage: z.enum(TAX_STAGES),
   note: z.string().optional(),
+  /** Required when toStage is 'filed': the staff member whose PTIN is on the filing. */
+  preparerPtinHolderId: z.uuid().optional(),
 });
 
 const EstimateBody = z.object({
@@ -168,12 +170,15 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     if (q.contactId) { params.push(q.contactId); clauses.push(`e.contact_id = $${params.length}`); }
     const { rows } = await app.db.query(
       `SELECT te.id, te.tax_year, te.return_type, te.stage, te.preparer_id, te.reviewer_id,
+              te.preparer_ptin_holder_id, ptin.full_name AS preparer_of_record,
+              te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
               te.estimated_fee_min_cents, te.estimated_fee_max_cents, te.final_fee_cents,
               te.scope_creep_flag, te.complexity_score, te.extension_filed, te.filed_date,
               e.contact_id, c.first_name, c.last_name
        FROM tax_engagements te
        JOIN engagements e ON e.id = te.engagement_id
        JOIN contacts c ON c.id = e.contact_id
+       LEFT JOIN staff ptin ON ptin.id = te.preparer_ptin_holder_id
        WHERE ${clauses.join(' AND ')}
        ORDER BY te.created_at DESC LIMIT 200`,
       params
@@ -184,8 +189,9 @@ export function registerTaxRoutes(app: FastifyInstance): void {
   app.get<{ Params: { id: string } }>('/tax-engagements/:id', read, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const { rows } = await app.db.query(
-      `SELECT te.*, e.contact_id, e.business_id, e.price_book_version_id
-       FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`,
+      `SELECT te.*, e.contact_id, e.business_id, e.price_book_version_id, ptin.full_name AS preparer_of_record
+       FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
+       LEFT JOIN staff ptin ON ptin.id = te.preparer_ptin_holder_id WHERE te.id = $1`,
       [id]
     );
     if (!rows[0]) throw new AppError(404, 'not_found', 'Tax engagement not found.');
@@ -200,7 +206,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
   app.post<{ Params: { id: string } }>('/tax-engagements/:id/transition', manage, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const b = TransitionBody.parse(request.body);
-    const result = await transitionStage(app, actorOf(request), id, b.toStage, { note: b.note, ...meta(request) });
+    const result = await transitionStage(app, actorOf(request), id, b.toStage, { note: b.note, preparerPtinHolderId: b.preparerPtinHolderId, ...meta(request) });
     return { status: 'ok', ...result };
   });
 

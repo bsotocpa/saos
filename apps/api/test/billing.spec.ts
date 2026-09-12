@@ -107,7 +107,7 @@ test('automation 12: filed with a final fee → invoice + ES portal notice + Ren
 
   const filed = await app.inject({
     method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana),
-    payload: { toStage: 'filed' },
+    payload: { toStage: 'filed', preparerPtinHolderId: ana.id },
   });
   assert.equal(filed.statusCode, 200, filed.body);
 
@@ -175,7 +175,7 @@ test('automation 12 exception: filed WITHOUT a final fee → no invoice, Rene al
   const te = await readyToFileEngagement(mo.contactId);
   const filed = await app.inject({
     method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana),
-    payload: { toStage: 'filed' },
+    payload: { toStage: 'filed', preparerPtinHolderId: ana.id },
   });
   assert.equal(filed.statusCode, 200, filed.body);
 
@@ -198,7 +198,7 @@ test('portal Pay Now: own invoices listed, checkout session created, foreign inv
   });
   await app.inject({
     method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana),
-    payload: { toStage: 'filed' },
+    payload: { toStage: 'filed', preparerPtinHolderId: ana.id },
   });
 
   const list = await app.inject({ method: 'GET', url: '/portal/invoices', headers: auth(pia) });
@@ -234,7 +234,7 @@ test('payment webhook: authenticated, marks paid + receipt + TE rollup, idempote
   assert.equal(fee.statusCode, 200, fee.body);
   await app.inject({
     method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana),
-    payload: { toStage: 'filed' },
+    payload: { toStage: 'filed', preparerPtinHolderId: ana.id },
   });
   const inv = await app.db.query<{ id: string }>(`SELECT id FROM invoices WHERE tax_engagement_id = $1`, [te]);
   const invoiceId = inv.rows[0]!.id;

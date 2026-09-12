@@ -29,6 +29,10 @@ interface QueueRow {
   blockedBy: number;
   rejected: boolean;
   perfectionDeadline: string | null;
+  preparerOfRecord: string | null;
+  federalAcceptedOn: string | null;
+  stateAcceptedOn: string | null;
+  stateAcceptedCode: string | null;
 }
 
 const DOC_LABEL: Record<QueueRow['docState'], string> = {
@@ -125,6 +129,7 @@ export default function QueuePage() {
                   <br />
                   <span className="muted small">
                     {r.stage.replaceAll('_', ' ')} · {DOC_LABEL[r.docState]}
+                    {r.stage === 'filed' || r.stage === 'rejected' ? ` · preparer of record: ${r.preparerOfRecord ?? 'not recorded'}` : ''}
                     {r.openDocRequests > 0 ? ` (${r.openDocRequests} open request${r.openDocRequests === 1 ? '' : 's'})` : ''}
                   </span>
                   <br />

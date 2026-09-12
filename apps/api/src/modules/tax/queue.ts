@@ -31,6 +31,11 @@ export interface QueueRow {
   blockedBy: number;
   rejected: boolean;
   perfectionDeadline: string | null;
+  /** The staff member whose PTIN is on the filing; null reads "not recorded", never assumed. */
+  preparerOfRecord: string | null;
+  federalAcceptedOn: string | null;
+  stateAcceptedOn: string | null;
+  stateAcceptedCode: string | null;
 }
 
 /**
@@ -50,11 +55,14 @@ export async function preparerQueue(
     docs_requested_at: Date | null; docs_received_at: Date | null;
     effective_deadline: string | null; perfection_deadline: string | null;
     open_doc_requests: number; blocked_by: number;
+    preparer_of_record: string | null; federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null;
   }>(
     `SELECT te.id, e.contact_id, c.first_name, c.last_name, te.tax_year, te.return_type,
             te.stage::text, te.extension_filed, te.docs_requested_at, te.docs_received_at,
             COALESCE(te.extended_deadline, te.original_deadline)::text AS effective_deadline,
             te.perfection_deadline::text AS perfection_deadline,
+            ptin.full_name AS preparer_of_record,
+            te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
             (SELECT count(*)::int FROM document_requests dr
              WHERE dr.tax_engagement_id = te.id AND dr.completed_at IS NULL) AS open_doc_requests,
             (SELECT count(*)::int FROM tasks t
@@ -65,6 +73,7 @@ export async function preparerQueue(
      FROM tax_engagements te
      JOIN engagements e ON e.id = te.engagement_id
      JOIN contacts c ON c.id = e.contact_id
+     LEFT JOIN staff ptin ON ptin.id = te.preparer_ptin_holder_id
      WHERE te.preparer_id = $1
        AND te.stage NOT IN ('completed', 'withdrawn')
      ORDER BY COALESCE(te.extended_deadline, te.original_deadline) NULLS LAST, c.last_name`,
@@ -91,6 +100,10 @@ export async function preparerQueue(
       blockedBy: r.blocked_by,
       rejected: r.stage === 'rejected',
       perfectionDeadline: r.perfection_deadline,
+      preparerOfRecord: r.preparer_of_record,
+      federalAcceptedOn: r.federal_accepted_on,
+      stateAcceptedOn: r.state_accepted_on,
+      stateAcceptedCode: r.state_accepted_code,
     };
   });
 
