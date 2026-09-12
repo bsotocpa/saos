@@ -152,7 +152,7 @@ test('price lock: a lock that expired yesterday and one that expires tomorrow bo
 test('tax deadlines: the extension decision list fires for a deadline exactly 21 days out and not for 20', async () => {
   const c = await client();
   const mk = async (deadline: string) => {
-    const res = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(preparer), payload: { contactId: (await client()).id, taxYear: 2025, returnType: '1040', clientType: 'individual' } });
+    const res = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(preparer), payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: (await client()).id, taxYear: 2025, returnType: '1040', clientType: 'individual' } });
     assert.equal(res.statusCode, 201, res.body);
     const id = res.json().id as string;
     await app.db.query(`UPDATE tax_engagements SET original_deadline = $2::date WHERE id = $1`, [id, deadline]);
@@ -171,7 +171,7 @@ test('tax deadlines: the extension decision list fires for a deadline exactly 21
 test('perfection clock: a deadline that passed yesterday counts as overdue, one two days out warns, one ten days out does neither', async () => {
   const c = await client();
   const mk = async (deadline: string) => {
-    const res = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(preparer), payload: { contactId: (await client()).id, taxYear: 2025, returnType: '1040', clientType: 'individual' } });
+    const res = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(preparer), payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: (await client()).id, taxYear: 2025, returnType: '1040', clientType: 'individual' } });
     assert.equal(res.statusCode, 201, res.body);
     const id = res.json().id as string;
     await withTransaction(app.db, async () => {

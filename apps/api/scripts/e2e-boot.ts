@@ -204,7 +204,7 @@ const staffToken = loggedIn.json().token as string;
 const taxEngagement = await app.inject({
   method: 'POST', url: '/tax-engagements',
   headers: { authorization: `Bearer ${staffToken}` },
-  payload: { contactId: contact.id, taxYear: 2024, returnType: '1040', title: 'Harness wall: 2024 return' },
+  payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: contact.id, taxYear: 2024, returnType: '1040', title: 'Harness wall: 2024 return' },
 });
 if (taxEngagement.statusCode !== 201) throw new Error(`the tax engagement was refused: ${taxEngagement.statusCode} ${taxEngagement.body}`);
 const taxEngagementId = (taxEngagement.json() as { id: string }).id;

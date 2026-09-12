@@ -34,6 +34,44 @@ export type CloseOutcome = 'completed' | 'withdrawn';
 const TERMINAL_TAX_STAGES = ['completed', 'withdrawn'] as const;
 
 /**
+ * Stages before a return is filed. A return here needs an open engagement (migration 0100),
+ * so an engagement withdrawing takes every one of these with it; a filed or rejected return
+ * has left the building and is not re-labelled by the engagement ending.
+ */
+export const PRE_FILED_STAGES = [
+  'intake_started', 'scheduled', 'documents_requested', 'pending_client_response',
+  'in_preparation', 'internal_review', 'client_review', 'ready_to_file', 'on_hold',
+] as const;
+
+/**
+ * THE CASCADE (2026-09-12, Brian's ruling 2c). Withdrawing an engagement withdraws every unfiled
+ * return on it, with a stage-history line saying so, in the same transaction; the database
+ * refuses the engagement's status change while one is left (0100), so detaching this makes the
+ * withdrawal fail rather than leave an orphan. Change-order supersession calls the same function.
+ */
+export async function withdrawUnfiledReturns(
+  app: FastifyInstance,
+  engagementId: string,
+  note: string,
+  changedByStaffId: string | null
+): Promise<string[]> {
+  const { rows } = await app.db.query<{ id: string; stage: string }>(
+    `UPDATE tax_engagements SET stage = 'withdrawn'
+      WHERE engagement_id = $1 AND stage = ANY($2::tax_stage[])
+      RETURNING id, stage`,
+    [engagementId, [...PRE_FILED_STAGES]]
+  );
+  for (const r of rows) {
+    await app.db.query(
+      `INSERT INTO engagement_stage_history (tax_engagement_id, stage, changed_by_staff_id, waiting_on, note)
+       VALUES ($1, 'withdrawn', $2, 'staff', $3)`,
+      [r.id, changedByStaffId, note]
+    );
+  }
+  return rows.map((r) => r.id);
+}
+
+/**
  * Close an engagement. Refuses if it is already terminal, so a second click cannot
  * silently overwrite the outcome or the date someone recorded.
  *
@@ -129,8 +167,12 @@ async function closeEngagementInTransaction(
    * status change at the database if anything payable is still attached.
    */
   let retired = { voided: [] as string[], deleted: [] as string[] };
+  let returnsWithdrawn: string[] = [];
   if (input.outcome === 'withdrawn') {
     retired = await retirePayableInvoices(app, engagementId, input.reason?.trim() ?? '', actor);
+    returnsWithdrawn = await withdrawUnfiledReturns(
+      app, engagementId, `engagement withdrawn: ${input.reason?.trim() ?? ''}`, actor.type === 'staff' ? actor.id ?? null : null
+    );
   }
 
   await app.db.query(
@@ -152,7 +194,7 @@ async function closeEngagementInTransaction(
     contactId: eng.contact_id,
     details: {
       outcome: input.outcome, reason: input.reason ?? null, service_line: eng.service_line,
-      invoices_voided: retired.voided, drafts_deleted: retired.deleted,
+      invoices_voided: retired.voided, drafts_deleted: retired.deleted, returns_withdrawn: returnsWithdrawn,
     },
   });
 

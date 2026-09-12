@@ -44,7 +44,7 @@ async function makeClient(last: string, email: string): Promise<string> {
 async function makeTaxEngagement(contactId: string): Promise<string> {
   const res = await app.inject({
     method: 'POST', url: '/tax-engagements', headers: auth(ana),
-    payload: { contactId, taxYear: 2025, returnType: '1040' },
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId, taxYear: 2025, returnType: '1040' },
   });
   assert.equal(res.statusCode, 201, res.body);
   return res.json().id as string;

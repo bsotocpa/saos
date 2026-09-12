@@ -43,7 +43,7 @@ async function newTaxEngagement(): Promise<string> {
   const contactId = fresh.rows[0]!.id;
   const res = await app.inject({
     method: 'POST', url: '/tax-engagements', headers: auth(preparer),
-    payload: { contactId, taxYear: 2025, returnType: '1040', clientType: 'individual' },
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId, taxYear: 2025, returnType: '1040', clientType: 'individual' },
   });
   assert.equal(res.statusCode, 201, res.body);
   return res.json().id as string;
@@ -99,7 +99,7 @@ test('complexity score: table-driven per the MP formula, capped at L5', () => {
 test('RBAC: intern cannot create tax engagements; preparer can (history row written)', async () => {
   const refused = await app.inject({
     method: 'POST', url: '/tax-engagements', headers: auth(intern),
-    payload: { contactId, taxYear: 2025, returnType: '1040' },
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId, taxYear: 2025, returnType: '1040' },
   });
   assert.equal(refused.statusCode, 403);
 

@@ -179,7 +179,7 @@ test('itemized request: initial ES email, per-item fulfillment, completion stamp
   const dora = await makeClient('Docdora', 'doc-dora@example.test', 'es');
   const eng = await app.inject({
     method: 'POST', url: '/tax-engagements', headers: auth(ana),
-    payload: { contactId: dora.contactId, taxYear: 2025, returnType: '1040' },
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: dora.contactId, taxYear: 2025, returnType: '1040' },
   });
   const teId = eng.json().id as string;
   await app.inject({
@@ -241,7 +241,7 @@ test('chase job: recurring reminders + one-time 7-day non-response alert (automa
   const eli = await makeClient('Docchase', 'doc-chase@example.test');
   const eng = await app.inject({
     method: 'POST', url: '/tax-engagements', headers: auth(ana),
-    payload: { contactId: eli.contactId, taxYear: 2025, returnType: '1040' },
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: eli.contactId, taxYear: 2025, returnType: '1040' },
   });
   const teId = eng.json().id as string;
   await app.inject({ method: 'POST', url: `/tax-engagements/${teId}/transition`, headers: auth(ana), payload: { toStage: 'scheduled' } });
@@ -310,7 +310,7 @@ test('return delivery: staff uploads the ATX PDF → stage moves to client_revie
   const fern = await makeClient('Docreturn', 'doc-return@example.test');
   const eng = await app.inject({
     method: 'POST', url: '/tax-engagements', headers: auth(ana),
-    payload: { contactId: fern.contactId, taxYear: 2025, returnType: '1040' },
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: fern.contactId, taxYear: 2025, returnType: '1040' },
   });
   const teId = eng.json().id as string;
   // Fabricate mid-pipeline state (letter + estimate satisfied, at internal review).

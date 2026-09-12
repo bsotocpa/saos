@@ -45,6 +45,11 @@ const CreateBody = z.object({
   leadStaffId: z.uuid().optional(),
   status: z.enum(['draft', 'active']).optional(),
   independenceOverrideNote: z.string().min(10, 'Document the override reason (min 10 chars).').optional(),
+  /**
+   * GATED (2026-09-12, ruling 2b): an engagement is made by an accepted quote. Opening one by
+   * hand is the exception, and the exception says why, on the record.
+   */
+  reason: reasonText(10, 1000),
 });
 
 const ListQuery = z.object({ contactId: z.uuid().optional() });
@@ -54,8 +59,8 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
     '/engagements',
     { preHandler: [app.authenticate, requirePermission('engagements.create')] },
     async (request, reply) => {
-      const body = CreateBody.parse(request.body);
-      const result = await createEngagement(app, request.staff!, body, {
+      const { reason, ...body } = CreateBody.parse(request.body);
+      const result = await createEngagement(app, request.staff!, { ...body, origin: { via: 'staff', reason } }, {
         ip: request.ip,
         userAgent: request.headers['user-agent'] ?? null,
       });

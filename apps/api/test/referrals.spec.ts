@@ -230,11 +230,16 @@ test('full transition journey: approve → link → disclosure REQUIRED → conv
   assert.equal(contact.rows[0].br3_referred_by_jackson, true, 'suggested by the ED/COO role');
   assert.match(contact.rows[0].br6_referring_staff, /ed_coo/);
 
+  // The intake opens no engagement (ruling 2b, 2026-09-12): what was asked for is on the submission,
+  // and the accepted quote makes the engagement. The automation ran: the contact and the submission exist.
   const te = await app.db.query(
-    `SELECT count(*)::int AS n FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE e.contact_id = $1`,
+    `SELECT count(*)::int AS n FROM engagements e WHERE e.contact_id = $1`,
     [luz]
   );
-  assert.equal(te.rows[0].n, 1, 'intake automation ran (tax engagement created)');
+  assert.equal(te.rows[0].n, 0, 'intake asserts no agreement');
+  const asked = await app.db.query<{ services: string[] }>(
+    `SELECT answers->'services' AS services FROM form_submissions WHERE contact_id = $1 AND form_key = 'soto_transition' AND status = 'submitted'`, [luz]);
+  assert.deepEqual(asked.rows[0]!.services, ['tax_personal'], 'intake automation ran; the service asked for is on the submission');
 
   const audit = await app.db.query(
     `SELECT details FROM audit_log WHERE action = 'referral.converted' AND object_id = $1`,

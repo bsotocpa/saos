@@ -170,18 +170,23 @@ test('Form 1 full branch: F&B owner, ES, IRS letters, SSN by phone, co-owned ent
   );
   assert.ok(group.rows[0].n >= 3, 'entity group links contact + both businesses');
 
-  // Tax engagement created at intake_started; envelopes queued as drafts.
-  const te = await app.db.query(
-    `SELECT te.stage FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE e.contact_id = $1`,
-    [c.id]
+  /*
+   * THE INTAKE OPENS NO ENGAGEMENT (2026-09-12, Brian's ruling 2b). Until today this asserted a
+   * tax engagement at intake_started with an engagement-letter envelope hung on it: an agreement
+   * nobody had made. The accepted quote makes the engagement and the return; the intake records
+   * what was asked for and queues the §7216 consent only.
+   */
+  const eng = await app.db.query(`SELECT id FROM engagements WHERE contact_id = $1`, [c.id]);
+  assert.equal(eng.rows.length, 0, 'intake asserts no agreement');
+  const asked = await app.db.query<{ services: string[] }>(
+    `SELECT answers->'services' AS services FROM form_submissions WHERE contact_id = $1 AND form_key = 'soto_intake'`, [c.id]
   );
-  assert.equal(te.rows.length, 1);
-  assert.equal(te.rows[0].stage, 'intake_started');
+  assert.deepEqual(asked.rows[0]!.services.sort(), ['tax_business', 'tax_personal'], 'what they came for is on the submission');
   const envelopes = await app.db.query(
     `SELECT type, status FROM signature_envelopes WHERE contact_id = $1 ORDER BY type`,
     [c.id]
   );
-  assert.deepEqual(envelopes.rows.map((r: { type: string }) => r.type).sort(), ['consent_7216', 'engagement_letter']);
+  assert.deepEqual(envelopes.rows.map((r: { type: string }) => r.type), ['consent_7216']);
   assert.ok(envelopes.rows.every((r: { status: string }) => r.status === 'draft'), 'queued, not sent — placeholder gate governs sending');
 
   // ONE welcome (ES), carrying the link; Rene + Ana notifications; SSN task.
@@ -363,6 +368,12 @@ test('Module I → PLLC auto-flag: licensed therapist + LLC + IL creates the con
   });
   const contact = await app.db.query<{ id: string }>(`SELECT id FROM contacts WHERE email = 'therapist-forms@example.test'`);
   const contactId = contact.rows[0]!.id;
+  // The intake opens no return (ruling 2b, 2026-09-12); the accepted quote does. Stand in for it so
+  // the questionnaire's Module F answer has the return record it feeds.
+  const stood = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, status, title, period_key) VALUES ($1, 'tax', 'active', '2025 1120S', '2025') RETURNING id`, [contactId]);
+  await app.db.query(
+    `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, client_type) VALUES ($1, 2025, '1120s', 'business')`, [stood.rows[0]!.id]);
 
   const session = await clientSessionFor(contactId, 'therapist-forms@example.test');
   const modules = await app.inject({

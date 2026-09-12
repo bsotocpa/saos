@@ -111,7 +111,7 @@ test('spawning a case: one engagement per year + reconstruction pairs, chained o
 
   const spawned = await app.inject({
     method: 'POST', url: '/resolution/cases', headers: auth(ana),
-    payload: {
+    payload: { reason: 'Unfiled years found at the first meeting; the client asked us to bring them current',
       contactId: nino.id,
       asOf: TODAY,
       years: [
@@ -195,7 +195,7 @@ test('representation gate: 8821 is not a POA — abatement work needs a 2848 cov
   const rep = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Represent', email: 'represent@example.test' });
   const spawned = await app.inject({
     method: 'POST', url: '/resolution/cases', headers: auth(ana),
-    payload: { contactId: rep.id, asOf: TODAY, years: [{ taxYear: 2021, returnType: '1040' }, { taxYear: 2022, returnType: '1040' }] },
+    payload: { reason: 'Unfiled years found at the first meeting; the client asked us to bring them current', contactId: rep.id, asOf: TODAY, years: [{ taxYear: 2021, returnType: '1040' }, { taxYear: 2022, returnType: '1040' }] },
   });
   const caseId = spawned.json().caseId as string;
 
@@ -233,7 +233,7 @@ test('paper lane: certified mailing requires tracking and is refused on an e-fil
   const mail = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Papermail', email: 'papermail@example.test' });
   const spawned = await app.inject({
     method: 'POST', url: '/resolution/cases', headers: auth(ana),
-    payload: { contactId: mail.id, asOf: TODAY, years: [{ taxYear: 2020, returnType: '1040' }, { taxYear: 2025, returnType: '1040' }] },
+    payload: { reason: 'Unfiled years found at the first meeting; the client asked us to bring them current', contactId: mail.id, asOf: TODAY, years: [{ taxYear: 2020, returnType: '1040' }, { taxYear: 2025, returnType: '1040' }] },
   });
   const ids = spawned.json().engagements as Array<{ taxEngagementId: string; taxYear: number }>;
   const paperTe = ids.find((e) => e.taxYear === 2020)!.taxEngagementId;

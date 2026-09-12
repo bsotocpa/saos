@@ -43,7 +43,7 @@ async function staffWithToken(email: string, role: string): Promise<TestStaff & 
 async function recurringEngagement(contactId: string): Promise<string> {
   const res = await app.inject({
     method: 'POST', url: '/engagements', headers: auth(brian),
-    payload: { contactId, serviceLine: 'bookkeeping', status: 'active', title: 'Synthetic recurring' },
+    payload: { reason: 'Engagement opened by hand for the fixture; the client engaged by phone and the quote follows', contactId, serviceLine: 'bookkeeping', status: 'active', title: 'Synthetic recurring' },
   });
   assert.equal(res.statusCode, 201, res.body);
   return res.json().id as string;

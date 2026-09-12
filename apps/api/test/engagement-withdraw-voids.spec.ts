@@ -85,6 +85,19 @@ test('withdrawing voids the attached sent invoice with the withdrawal reason, de
 
 test('the invariant is the database\'s: a raw status change to withdrawn with a sent invoice attached is refused, and a payable invoice cannot land on withdrawn work', async () => {
   const x = await acceptedUnpaid();
+  /*
+   * Two of the database's rules now stand in the way of this raw change: the payable invoice
+   * (0085) and, since 2026-09-12, the unfiled return the acceptance created (0100). Whichever the
+   * database reaches first, the change is refused and the message names the rule.
+   */
+  await assert.rejects(
+    app.db.query(`UPDATE engagements SET status = 'withdrawn' WHERE id = $1`, [x.engagementId]),
+    (err: { code?: string; constraint?: string; message: string }) =>
+      err.code === '23514' &&
+      ((err.constraint === 'engagements_withdrawn_no_payable' && /payable invoices point at it/.test(err.message)) || /^return_without_engagement:/.test(err.message))
+  );
+  // The invoice rule on its own, once the return has been withdrawn the way the route would.
+  await app.db.query(`UPDATE tax_engagements SET stage = 'withdrawn' WHERE engagement_id = $1`, [x.engagementId]);
   await assert.rejects(
     app.db.query(`UPDATE engagements SET status = 'withdrawn' WHERE id = $1`, [x.engagementId]),
     (err: { constraint?: string; message: string }) => err.constraint === 'engagements_withdrawn_no_payable' && /payable invoices point at it/.test(err.message)

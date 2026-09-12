@@ -122,6 +122,9 @@ export async function withdrawForChangeOrder(
   // the change order issues its own. Same transaction as the acceptance.
   const { retirePayableInvoices } = await import('./retire-invoices.ts');
   await retirePayableInvoices(app, oldEngagementId, `superseded by change order ${quoteId}`, { id: null, label: 'change order accepted by the client' });
+  // The returns go first: migration 0100 refuses an engagement closing over an unfiled return.
+  const { withdrawUnfiledReturns } = await import('./close.ts');
+  await withdrawUnfiledReturns(app, oldEngagementId, `superseded by change order ${quoteId}`, null);
   const { rows } = await app.db.query<{ id: string; service_line: string; period_key: string | null }>(
     `UPDATE engagements
         SET status = 'withdrawn', ended_on = CURRENT_DATE,
@@ -138,11 +141,6 @@ export async function withdrawForChangeOrder(
       'The engagement this change order replaces is no longer active. Nothing was changed.'
     );
   }
-  // The return under it would otherwise dangle in the preparer queue (migration 0061's rule).
-  await app.db.query(
-    `UPDATE tax_engagements SET stage = 'withdrawn' WHERE engagement_id = $1 AND stage <> 'withdrawn'`,
-    [oldEngagementId]
-  );
   return { engagementId: old.id, serviceLine: old.service_line, periodKey: old.period_key ?? '' };
 }
 

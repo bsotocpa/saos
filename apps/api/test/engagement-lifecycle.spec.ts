@@ -378,7 +378,7 @@ test('an ON HOLD bookkeeping engagement still blocks an attest engagement', asyn
 
   const res = await app.inject({
     method: 'POST', url: '/engagements', headers: auth(brian),
-    payload: { contactId, serviceLine: 'attest' },
+    payload: { reason: 'Engagement opened by hand for the fixture; the client engaged by phone and the quote follows', contactId, serviceLine: 'attest' },
   });
   assert.equal(res.statusCode, 409, 'the paused bookkeeping engagement is still a conflict');
   assert.match(res.json().message, /independence/i);

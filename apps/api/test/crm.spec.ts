@@ -383,7 +383,7 @@ test('attest independence: blocked with active bookkeeping; Brian-only documente
   // Blocked without an override.
   const blocked = await app.inject({
     method: 'POST', url: '/engagements', headers: auth(brian),
-    payload: { contactId, serviceLine: 'attest', title: 'FY26 review' },
+    payload: { reason: 'Engagement opened by hand for the fixture; the client engaged by phone and the quote follows', contactId, serviceLine: 'attest', title: 'FY26 review' },
   });
   assert.equal(blocked.statusCode, 409, blocked.body);
   assert.equal(blocked.json().error, 'independence_conflict');
@@ -391,7 +391,7 @@ test('attest independence: blocked with active bookkeeping; Brian-only documente
   // Jackson (equal access, but not the CPA) cannot override.
   const jacksonTry = await app.inject({
     method: 'POST', url: '/engagements', headers: auth(jackson),
-    payload: {
+    payload: { reason: 'Engagement opened by hand for the fixture; the client engaged by phone and the quote follows',
       contactId, serviceLine: 'attest', title: 'FY26 review',
       independenceOverrideNote: 'attempting override as ED/COO',
     },
@@ -404,7 +404,7 @@ test('attest independence: blocked with active bookkeeping; Brian-only documente
   // Brian's documented override works and is audited.
   const overridden = await app.inject({
     method: 'POST', url: '/engagements', headers: auth(brian),
-    payload: {
+    payload: { reason: 'Engagement opened by hand for the fixture; the client engaged by phone and the quote follows',
       contactId, serviceLine: 'attest', title: 'FY26 review',
       independenceOverrideNote: 'Safeguards documented per firm policy; bookkeeping performed by separate staff.',
     },
@@ -429,7 +429,7 @@ test('attest independence: blocked with active bookkeeping; Brian-only documente
   });
   const cleanAttest = await app.inject({
     method: 'POST', url: '/engagements', headers: auth(brian),
-    payload: { contactId: clean.json().id, serviceLine: 'attest', title: 'FY26 audit' },
+    payload: { reason: 'Engagement opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: clean.json().id, serviceLine: 'attest', title: 'FY26 audit' },
   });
   assert.equal(cleanAttest.statusCode, 201);
   assert.equal(cleanAttest.json().independenceOverridden, false);

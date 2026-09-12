@@ -98,11 +98,6 @@ export async function loadDefinition(app: FastifyInstance, key: string): Promise
 
 // ── Form 1: Soto intake (automation #1) ──────────────────────────────────────
 
-const SERVICE_LINE_MAP: Record<string, string> = {
-  bookkeeping: 'bookkeeping', payroll: 'payroll', sales_tax: 'sales_tax',
-  entity: 'entity', cfo_advisory: 'advisory',
-};
-
 /**
  * TCPA/A2P evidence trail (launch gate): the intake checkbox is the opt-in
  * the privacy page and the A2P campaign registration reference, so a
@@ -285,58 +280,16 @@ export async function processSotoIntake(app: FastifyInstance, submissionId: stri
   const { refreshContactStatus } = await import('../crm/lifecycle.ts');
   await refreshContactStatus(app, contactId, 'intake_submitted');
 
-  // Service-line opportunities: tax → tax engagement; others → draft engagements.
-  const services = Array.isArray(a.services) ? (a.services as string[]) : [];
   /*
-   * Was `new Date().getFullYear() - 1` — the SERVER's year, computed in UTC, next to a
-   * shared currentTaxYear() that computes it in Chicago. They disagree for six hours
-   * every New Year's Eve, so an intake submitted on 31 December after 6pm Chicago would
-   * have created a tax engagement stamped with the wrong year. One definition now.
+   * THE INTAKE OPENS NO ENGAGEMENT (2026-09-12, Brian's ruling 2b). Until today this inserted an
+   * active tax engagement with a return record, and a draft engagement per other service, the
+   * moment the public form was submitted: an agreement nobody had made, and the side door that
+   * left a "2025 intake" engagement and its orphaned return on Brian's own record. The services
+   * asked for stay on the submission (form_submissions.answers.services), where the onboarding
+   * modules read them; the accepted quote makes the engagement and the return with it, and the
+   * engagement letter rides with that acceptance rather than being queued here against nothing.
    */
-  const taxYear = currentTaxYear();
-  if (services.includes('tax_personal') || services.includes('tax_business')) {
-    const eng = await app.db.query<{ id: string }>(
-      `INSERT INTO engagements (contact_id, business_id, service_line, status, title)
-       VALUES ($1, $2, 'tax', 'active', $3) RETURNING id`,
-      [contactId, services.includes('tax_business') ? businessId : null, `${taxYear} intake`]
-    );
-    const te = await app.db.query<{ id: string }>(
-      `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, client_type)
-       VALUES ($1, $2, $3::return_type, $4::tax_client_type) RETURNING id`,
-      [eng.rows[0]!.id, taxYear, services.includes('tax_business') && businessId ? '1120s' : '1040',
-       services.includes('tax_business') ? 'business' : 'individual']
-    );
-    await app.db.query(
-      `INSERT INTO engagement_stage_history (tax_engagement_id, stage, waiting_on, note)
-       VALUES ($1, 'intake_started', 'staff', 'created by intake')`,
-      [te.rows[0]!.id]
-    );
-    // Queue engagement letter + §7216 into the portal checklist (drafts — the
-    // placeholder gate governs actual sending, M11).
-    await createEnvelope(app, { type: 'system', label: 'intake' }, {
-      contactId, type: 'engagement_letter', engagementId: eng.rows[0]!.id,
-      taxEngagementId: te.rows[0]!.id, templateKey: templateKeyFor('engagement_letter', 'tax'),
-    });
-  } else if (services.some((s) => SERVICE_LINE_MAP[s])) {
-    // No tax: the letter attaches to the first non-tax service line.
-    const first = services.find((s) => SERVICE_LINE_MAP[s])!;
-    const eng = await app.db.query<{ id: string }>(
-      `INSERT INTO engagements (contact_id, business_id, service_line, status) VALUES ($1, $2, $3::service_line, 'draft') RETURNING id`,
-      [contactId, businessId, SERVICE_LINE_MAP[first]]
-    );
-    await createEnvelope(app, { type: 'system', label: 'intake' }, {
-      contactId, type: 'engagement_letter', engagementId: eng.rows[0]!.id,
-      templateKey: templateKeyFor('engagement_letter', SERVICE_LINE_MAP[first]),
-    });
-  }
-  for (const s of services) {
-    if (SERVICE_LINE_MAP[s] && !(s === services.find((x) => SERVICE_LINE_MAP[x]) && !services.includes('tax_personal') && !services.includes('tax_business'))) {
-      await app.db.query(
-        `INSERT INTO engagements (contact_id, business_id, service_line, status) VALUES ($1, $2, $3::service_line, 'draft')`,
-        [contactId, businessId, SERVICE_LINE_MAP[s]]
-      );
-    }
-  }
+  const services = Array.isArray(a.services) ? (a.services as string[]) : [];
   await createEnvelope(app, { type: 'system', label: 'intake' }, {
     contactId, type: 'consent_7216', templateKey: templateKeyFor('consent_7216'),
   });
@@ -495,6 +448,17 @@ export async function assembleModules(app: FastifyInstance, contactId: string): 
   const serviceLines = new Set(services.rows.map((r) => r.service_line));
   // Map engagement service lines back to intake service slugs for triggers.
   const serviceSlugs = new Set<string>();
+  /*
+   * The services the client ASKED FOR at intake fire modules too (ruling 2b, 2026-09-12): the
+   * intake no longer opens engagements, so before a quote is accepted the submission is the only
+   * record of what they came for.
+   */
+  const asked = await app.db.query<{ services: unknown }>(
+    `SELECT answers->'services' AS services FROM form_submissions
+      WHERE form_key IN ('soto_intake', 'soto_transition') AND contact_id = $1 AND status = 'submitted' ORDER BY submitted_at DESC NULLS LAST LIMIT 1`,
+    [contactId]
+  );
+  if (Array.isArray(asked.rows[0]?.services)) for (const s of asked.rows[0]!.services as unknown[]) if (typeof s === 'string') serviceSlugs.add(s);
   if (serviceLines.has('tax')) { serviceSlugs.add('tax_personal'); serviceSlugs.add('tax_business'); }
   if (serviceLines.has('bookkeeping')) serviceSlugs.add('bookkeeping');
   if (serviceLines.has('payroll')) serviceSlugs.add('payroll');

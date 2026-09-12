@@ -48,7 +48,7 @@ async function staffWithToken(email: string, role: string): Promise<TestStaff & 
 async function engagementFor(contactId: string): Promise<string> {
   const res = await app.inject({
     method: 'POST', url: '/engagements', headers: auth(brian),
-    payload: { contactId, serviceLine: 'bookkeeping', status: 'active', title: 'Synthetic recurring' },
+    payload: { reason: 'Engagement opened by hand for the fixture; the client engaged by phone and the quote follows', contactId, serviceLine: 'bookkeeping', status: 'active', title: 'Synthetic recurring' },
   });
   assert.equal(res.statusCode, 201, res.body);
   return res.json().id as string;
@@ -228,7 +228,7 @@ test('the S election is detected from a 1120-S filing too, not just entity_type'
   // But they file an 1120-S.
   const taxEng = await app.inject({
     method: 'POST', url: '/engagements', headers: auth(brian),
-    payload: { contactId: client.id, serviceLine: 'tax', status: 'active' },
+    payload: { reason: 'Engagement opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: client.id, serviceLine: 'tax', status: 'active' },
   });
   await app.db.query(
     `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, stage)
@@ -300,7 +300,7 @@ test('tax engagements have no cadence dials', async () => {
   const client = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'TaxOnly', email: 'taxonly-cfg@example.test' });
   const taxEng = await app.inject({
     method: 'POST', url: '/engagements', headers: auth(brian),
-    payload: { contactId: client.id, serviceLine: 'tax', status: 'active' },
+    payload: { reason: 'Engagement opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: client.id, serviceLine: 'tax', status: 'active' },
   });
   const res = await app.inject({
     method: 'POST', url: `/engagements/${taxEng.json().id}/configure`, headers: auth(brian),

@@ -6,6 +6,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { reasonText } from '../../reasons.ts';
 import { requirePermission } from '../../plugins/auth.ts';
 import { todayChicago } from './deadlines.ts';
 import { lookbackYears, planResolution } from './resolution.ts';
@@ -78,12 +79,14 @@ export function registerResolutionRoutes(app: FastifyInstance): void {
       preparerId: z.uuid().optional(),
       lookbackYears: z.number().int().min(1).max(20).optional(),
       asOf: z.iso.date().optional(),
+      /** GATED (2026-09-12, ruling 2b): a resolution case opens engagements outside quote acceptance; say why. */
+      reason: reasonText(10, 1000),
     }).parse(request.body);
     const result = await spawnResolutionCase(
       app,
       {
         contactId: b.contactId, businessId: b.businessId ?? null, years: b.years,
-        preparerId: b.preparerId ?? null, lookbackYears: b.lookbackYears,
+        preparerId: b.preparerId ?? null, lookbackYears: b.lookbackYears, reason: b.reason,
       },
       request.staff!,
       b.asOf ?? todayChicago()

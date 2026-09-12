@@ -848,6 +848,7 @@ async function convertAcceptedQuote(
         // the same line and period is refused by the database and rolls this whole
         // acceptance back (engagement_exists).
         periodKey,
+        origin: { via: 'quote_acceptance' },
       },
       {}
     );
@@ -888,6 +889,15 @@ async function convertAcceptedQuote(
           `INSERT INTO engagement_stage_history (tax_engagement_id, stage, waiting_on, note)
            VALUES ($1, 'intake_started', 'staff', 'created by quote acceptance')`,
           [te.rows[0]!.id]
+        );
+        // The onboarding questionnaire's state count (Module F) fed the return record at intake
+        // time; the intake opens no return now (ruling 2b), so the answer is carried here.
+        await app.db.query(
+          `UPDATE tax_engagements te SET complexity_inputs = te.complexity_inputs || jsonb_build_object('states', jsonb_array_length(s.answers->'F4'))
+             FROM (SELECT answers FROM form_submissions WHERE form_key = 'service_onboarding' AND contact_id = $2 AND status = 'submitted'
+                     AND jsonb_typeof(answers->'F4') = 'array' ORDER BY submitted_at DESC NULLS LAST LIMIT 1) s
+            WHERE te.id = $1 AND NOT (te.complexity_inputs ? 'states')`,
+          [te.rows[0]!.id, row.contact_id]
         );
       } else {
         app.log.warn({ engagementId: created.id, quoteId: quote.id }, 'tax line accepted with no base return item; no return record created');

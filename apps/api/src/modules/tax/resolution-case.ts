@@ -41,6 +41,8 @@ export async function spawnResolutionCase(
     years: SpawnYearInput[];
     preparerId?: string | null | undefined;
     lookbackYears?: number | undefined;
+    /** Why these engagements open outside quote acceptance (ruling 2b); on every engagement's audit row. */
+    reason: string;
   },
   actor: AuthedStaff,
   today: string = todayChicago()
@@ -67,7 +69,7 @@ export async function spawnResolutionCase(
     // Reconstruction FIRST for the year — the return cannot be right without it.
     if (year.needsReconstruction) {
       const recon = await createResolutionEngagement(app, actor, {
-        contactId: input.contactId, businessId: input.businessId ?? null, caseId,
+        contactId: input.contactId, businessId: input.businessId ?? null, caseId, reason: input.reason,
         taxYear: year.taxYear, returnType: year.returnType, lane: year.lane,
         isReconstruction: true, booksExist: year.booksExist,
         statuteExpiry: year.refundStatuteExpiry, preparerId: bookkeeper ?? preparer,
@@ -75,7 +77,7 @@ export async function spawnResolutionCase(
       spawned.push({ ...recon, taxYear: year.taxYear, kind: 'reconstruction', lane: year.lane });
     }
     const ret = await createResolutionEngagement(app, actor, {
-      contactId: input.contactId, businessId: input.businessId ?? null, caseId,
+      contactId: input.contactId, businessId: input.businessId ?? null, caseId, reason: input.reason,
       taxYear: year.taxYear, returnType: year.returnType, lane: year.lane,
       isReconstruction: false, booksExist: year.booksExist,
       statuteExpiry: year.refundStatuteExpiry, preparerId: preparer,
@@ -131,7 +133,7 @@ async function createResolutionEngagement(
   app: FastifyInstance,
   actor: AuthedStaff,
   input: {
-    contactId: string; businessId: string | null; caseId: string;
+    contactId: string; businessId: string | null; caseId: string; reason: string;
     taxYear: number; returnType: DeadlineReturnType; lane: 'efile' | 'paper';
     isReconstruction: boolean; booksExist: string; statuteExpiry: string | null;
     preparerId: string | null;
@@ -151,6 +153,7 @@ async function createResolutionEngagement(
       title: label,
       status: 'active',
       ...(input.preparerId ? { leadStaffId: input.preparerId } : {}),
+      origin: { via: 'resolution_case', reason: `resolution case ${input.caseId}: ${input.reason}` },
     },
     {}
   );

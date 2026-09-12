@@ -5,6 +5,7 @@
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { reasonText } from '../../reasons.ts';
 import { writeAudit } from '../../audit.ts';
 import { holds, requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
@@ -29,6 +30,13 @@ const CreateBody = z.object({
   preparerId: z.uuid().optional(),
   reviewerId: z.uuid().optional(),
   title: z.string().optional(),
+  /**
+   * GATED (2026-09-12, ruling 2b): the accepted quote makes the engagement and the return with
+   * it. Opening a return by hand where no engagement exists is the exception, and the exception
+   * says why; when an active engagement for the year exists, the return attaches and no reason
+   * is needed.
+   */
+  reason: reasonText(10, 1000).optional(),
 });
 
 const TransitionBody = z.object({
@@ -125,7 +133,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
      */
     const existing = await app.db.query<{ id: string; te_id: string | null }>(
       `SELECT e.id, te.id AS te_id FROM engagements e LEFT JOIN tax_engagements te ON te.engagement_id = e.id
-        WHERE e.contact_id = $1 AND e.service_line = 'tax' AND e.status IN ('active', 'on_hold', 'draft') AND e.period_key = $2
+        WHERE e.contact_id = $1 AND e.service_line = 'tax' AND e.status IN ('active', 'on_hold') AND e.period_key = $2
           AND COALESCE(e.business_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE($3::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
         ORDER BY e.created_at LIMIT 1`,
       [b.contactId, String(b.taxYear), b.businessId ?? null]
@@ -138,6 +146,13 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       parentId = existing.rows[0].id;
       if (b.businessId) await app.db.query(`UPDATE engagements SET business_id = COALESCE(business_id, $2) WHERE id = $1`, [parentId, b.businessId]);
     } else {
+      if (!b.reason) {
+        throw new AppError(
+          409,
+          'no_engagement_for_year',
+          `This client has no active tax engagement for ${b.taxYear}. An accepted quote creates one, with the return record; to open one by hand, say why (reason).`
+        );
+      }
       const parent = await createEngagement(
         app,
         actor,
@@ -149,6 +164,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
           status: 'active',
           leadStaffId: b.preparerId,
           periodKey: String(b.taxYear),
+          origin: { via: 'staff', reason: b.reason },
         },
         meta(request)
       );

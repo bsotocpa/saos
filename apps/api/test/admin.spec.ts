@@ -55,7 +55,7 @@ test('THE prove-it: price edit → new version; pinned engagements keep v1; calc
   );
   const created = await app.inject({
     method: 'POST', url: '/tax-engagements', headers: auth(ana),
-    payload: { contactId: contact.rows[0]!.id, taxYear: 2025, returnType: '1040' },
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: contact.rows[0]!.id, taxYear: 2025, returnType: '1040' },
   });
   const teId = created.json().id as string;
   const quoted = await app.inject({

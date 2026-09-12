@@ -61,6 +61,13 @@ export async function deriveLifecycle(app: FastifyInstance, contactId: string): 
   const f = rows[0]!;
   if (f.master_signed && f.open_engagements > 0) return 'active';
   if (f.ever_engaged && f.open_engagements === 0) return 'dormant';
+  /*
+   * THE INVARIANT (2026-09-12, Brian's ruling 2a): an active or on-hold engagement means the
+   * contact is onboarding at least. Migration 0100 refuses lead/dormant next to open work at
+   * the database and moves the contact up when the engagement lands; this rule is the same
+   * fact stated where the ladder is computed, so the two cannot disagree.
+   */
+  if (f.open_engagements > 0) return 'onboarding';
   if (f.accepted_quote) return 'onboarding';
 
   /*
@@ -90,7 +97,14 @@ export async function deriveLifecycle(app: FastifyInstance, contactId: string): 
 export async function refreshContactStatus(
   app: FastifyInstance,
   contactId: string,
-  because: string
+  because: string,
+  /**
+   * The status the caller saw BEFORE the event. Migration 0100 moves a contact to onboarding
+   * the moment an engagement lands, below this function; passing what it was beforehand lets
+   * the move be written to the audit log as the event it was, instead of looking like nothing
+   * happened because the row had already moved by the time this read it.
+   */
+  opts: { previous?: ContactLifecycle | null | undefined } = {}
 ): Promise<ContactLifecycle | null> {
   const current = await app.db.query<{ contact_status: ContactLifecycle }>(
     `SELECT contact_status FROM contacts WHERE id = $1`,
@@ -101,6 +115,16 @@ export async function refreshContactStatus(
 
   const next = await deriveLifecycle(app, contactId);
   if (next === current.rows[0].contact_status) {
+    if (opts.previous && opts.previous !== next) {
+      await writeAudit(app.db, {
+        actorType: 'system',
+        action: 'contact.status_changed',
+        objectType: 'contact',
+        objectId: contactId,
+        contactId,
+        details: { from: opts.previous, to: next, because },
+      });
+    }
     /*
      * The lifecycle has not moved — but the MIRROR still might be stale, and this is the
      * only place allowed to repair it. Contacts get created outside this ladder (the
@@ -137,6 +161,12 @@ export async function refreshContactStatus(
     details: { from: current.rows[0].contact_status, to: next, because },
   });
   return next;
+}
+
+/** What the ladder says right now, for a caller about to cause an event. */
+export async function currentLifecycle(app: FastifyInstance, contactId: string): Promise<ContactLifecycle | null> {
+  const { rows } = await app.db.query<{ contact_status: ContactLifecycle }>(`SELECT contact_status FROM contacts WHERE id = $1`, [contactId]);
+  return rows[0]?.contact_status ?? null;
 }
 
 /**

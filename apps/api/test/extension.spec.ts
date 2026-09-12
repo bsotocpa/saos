@@ -62,7 +62,7 @@ async function makeTaxEngagement(
 ): Promise<string> {
   const res = await app.inject({
     method: 'POST', url: '/tax-engagements', headers: auth(preparer),
-    payload: {
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows',
       contactId, taxYear, returnType, preparerId: preparer.id,
       ...(opts.businessId ? { businessId: opts.businessId } : {}),
     },

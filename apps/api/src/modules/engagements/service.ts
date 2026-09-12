@@ -41,6 +41,12 @@ export interface CreateEngagementInput {
   status?: 'draft' | 'active' | undefined;
   /** Attest only: Brian's documented independence override. */
   independenceOverrideNote?: string | undefined;
+  /**
+   * Why this engagement exists when no accepted quote made it (2026-09-12, ruling 2b). The
+   * acceptance path and change-order supersession pass 'quote_acceptance'; every other door
+   * carries a person's reason, and the audit row records which it was.
+   */
+  origin?: { via: 'quote_acceptance' } | { via: 'staff' | 'resolution_case'; reason: string } | undefined;
 }
 
 async function currentPriceBookVersionId(app: FastifyInstance): Promise<string | null> {
@@ -99,6 +105,9 @@ export async function createEngagement(
   }
 
   const versionId = await currentPriceBookVersionId(app);
+  // 2a: read the standing before the row lands, so the move it causes is audited as this event.
+  const { currentLifecycle, refreshContactStatus } = await import('../crm/lifecycle.ts');
+  const lifecycleBefore = await currentLifecycle(app, input.contactId);
   let rows: Array<{ id: string }>;
   try {
     rows = (await app.db.query<{ id: string }>(
@@ -147,8 +156,18 @@ export async function createEngagement(
     contactId: input.contactId,
     ip: meta.ip,
     userAgent: meta.userAgent,
-    details: { service_line: input.serviceLine },
+    details: {
+      service_line: input.serviceLine,
+      origin: input.origin?.via ?? 'unstated',
+      ...(input.origin && input.origin.via !== 'quote_acceptance' ? { reason: input.origin.reason } : {}),
+    },
   });
+  /*
+   * ENGAGEMENT CREATION ALWAYS EMITS THE LIFECYCLE EVENT (2026-09-12, ruling 2a). The database
+   * has already moved a lead or dormant contact to onboarding (migration 0100); this settles
+   * the mirror column and writes the move to the audit log under this event's name.
+   */
+  await refreshContactStatus(app, input.contactId, 'engagement_created', { previous: lifecycleBefore });
   if (independenceOverridden) {
     await writeAudit(app.db, {
       actorType: 'staff',

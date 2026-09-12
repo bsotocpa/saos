@@ -97,7 +97,7 @@ test('d, e, a, c, b, f: the S corp, quoted, accepted, prepared, authorized by th
   assert.ok(!preview.codes.includes('A'), 'no Schedule A for a business-only client');
 
   // The preparer opening "the return" by hand does not collide and does not duplicate.
-  const dup = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(ana), payload: { contactId: owner.id, businessId, taxYear: te.rows[0]!.tax_year, returnType: '1120s', clientType: 'business' } });
+  const dup = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(ana), payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: owner.id, businessId, taxYear: te.rows[0]!.tax_year, returnType: '1120s', clientType: 'business' } });
   assert.equal(dup.statusCode, 409, dup.body);
   assert.equal(dup.json().error, 'return_exists');
   assert.match(dup.json().message, new RegExp(teId));
@@ -167,7 +167,7 @@ test('b) an EIN that does not agree with the record refuses the match, and a per
   const owner = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Mismatch', email: 'mismatch-1120s@example.test' });
   const biz = await app.inject({ method: 'POST', url: `/contacts/${owner.id}/businesses`, headers: auth(brian), payload: { name: 'Mismatch Holdings LLC', ein: '12-1111111', entityType: 's_corp' } });
   const businessId = (biz.json() as { id: string }).id;
-  const created = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(ana), payload: { contactId: owner.id, businessId, taxYear: 2030, returnType: '1120s', clientType: 'business' } });
+  const created = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(ana), payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: owner.id, businessId, taxYear: 2030, returnType: '1120s', clientType: 'business' } });
   assert.equal(created.statusCode, 201, created.body);
   const teId = (created.json() as { id: string }).id;
   await app.db.query(`UPDATE tax_engagements SET stage = 'filed', engagement_letter_signed_at = now(), estimate_locked_at = now() WHERE id = $1`, [teId]);

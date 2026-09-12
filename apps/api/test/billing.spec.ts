@@ -69,7 +69,7 @@ async function makeClient(last: string, email: string, language: 'en' | 'es' = '
 async function readyToFileEngagement(contactId: string): Promise<string> {
   const created = await app.inject({
     method: 'POST', url: '/tax-engagements', headers: auth(ana),
-    payload: { contactId, taxYear: 2025, returnType: '1040' },
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId, taxYear: 2025, returnType: '1040' },
   });
   const id = created.json().id as string;
   await app.db.query(

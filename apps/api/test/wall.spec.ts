@@ -114,7 +114,7 @@ before(async () => {
       WHERE pbi.is_active AND pbi.amount_cents > 0 AND pbi.display_on_quote ORDER BY pbi.item_code LIMIT 1`);
   const q = await createQuote(app, { contactId: walled, lines: [{ itemCode: item.rows[0]!.item_code }], interviewAnswers: { dependents: 2, note: INTERVIEW } }, actorOf(brian, 'ceo', ['*']));
   quoteId = q.id;
-  const te = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(ana), payload: { contactId: walled, taxYear: 2025, returnType: '1040' } });
+  const te = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(ana), payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: walled, taxYear: 2025, returnType: '1040' } });
   assert.equal(te.statusCode, 201, te.body);
   taxEngagementId = (te.json() as { id: string }).id;
   await app.db.query(`UPDATE tax_engagements SET complexity_inputs = $2::jsonb WHERE id = $1`, [taxEngagementId, JSON.stringify({ states: 1, note: COMPLEXITY })]);
