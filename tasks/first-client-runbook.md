@@ -86,6 +86,8 @@ it is not in the audience at all.
 2. **Docuseal first-boot** → done 2026-08-10. One step remains: A1b below.
 3. **Deposit path** → $0 override.
 
+> **Retired 2026-09-12.** Docuseal is decommissioned: the Master and schedules are signed in the portal, consents are recorded there, the 8879 is a wet-signed upload. A1, A1b and B3 below are history, kept as the record of the rehearsal.
+
 ### A1. Docuseal first-boot — ✅ DONE 2026-08-10
 
 Admin created, template uploaded with signature and date fields.

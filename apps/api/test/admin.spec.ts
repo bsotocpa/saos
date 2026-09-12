@@ -158,18 +158,14 @@ test('template editor: edits bump versions; clearing PLACEHOLDER opens the M11 e
     `UPDATE templates SET is_placeholder = true, version = 1 WHERE key = 'engagement_master'`
   );
 
-  // A draft engagement-letter envelope blocked by the placeholder gate.
+  // The packet is where the Master actually leaves (portal-native since 2026-09-12; the e-sign
+  // vendor is gone). While the Master is flagged, nothing can be papered.
   const contact = await app.db.query<{ id: string }>(
     `INSERT INTO contacts (first_name, last_name, email) VALUES ('Synthetic', 'Gateopen', 'gateopen@example.test') RETURNING id`
   );
-  const envelope = await app.inject({
-    method: 'POST', url: '/signature-envelopes', headers: auth(ana),
-    payload: { contactId: contact.rows[0]!.id, type: 'engagement_letter', serviceLine: 'tax' },
-  });
-  const envId = envelope.json().id as string;
-  const blocked = await app.inject({ method: 'POST', url: `/signature-envelopes/${envId}/send`, headers: auth(ana) });
-  assert.equal(blocked.statusCode, 409);
-  assert.equal(blocked.json().error, 'template_placeholder_blocked');
+  const blocked = await app.inject({ method: 'POST', url: `/contacts/${contact.rows[0]!.id}/packet/preview`, headers: auth(ana) });
+  assert.equal(blocked.statusCode, 409, blocked.body);
+  assert.equal(blocked.json().error, 'master_not_final');
 
   // Ana cannot edit templates.
   const refused = await app.inject({
@@ -200,9 +196,9 @@ test('template editor: edits bump versions; clearing PLACEHOLDER opens the M11 e
   assert.equal(template.rows[0].is_placeholder, false);
   assert.equal(template.rows[0].version, 2);
 
-  // The envelope now sends — copy change, zero deploy.
-  const sends = await app.inject({ method: 'POST', url: `/signature-envelopes/${envId}/send`, headers: auth(ana) });
-  assert.equal(sends.statusCode, 200, sends.body);
+  // The packet can be papered now — copy change, zero deploy.
+  const opens = await app.inject({ method: 'POST', url: `/contacts/${contact.rows[0]!.id}/packet/preview`, headers: auth(ana) });
+  assert.equal(opens.statusCode, 200, opens.body);
 });
 
 test('settings: value updates carry old/new in the audit trail; unknown keys 404', async () => {

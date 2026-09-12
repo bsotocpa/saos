@@ -204,6 +204,7 @@ it warns about.
 
 `KBA_MODE=sandbox`, `KBA_VENDOR` and `KBA_API_KEY` empty. Per CLAUDE.md the remote 8879 path
 requires the KBA step before the Docuseal envelope, so **remote e-file signature is unavailable**.
+(Superseded 2026-09-12: the remote 8879 path is retired by ruling and Docuseal is decommissioned; the 8879 is a wet-signed upload.)
 In-person wet signature is a documented, compliant alternative and is unaffected — so this blocks
 a remote-signing client, not every client.
 

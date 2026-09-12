@@ -1,7 +1,5 @@
-// M11 "Prove it": placeholder-block test (envelopes, not just email),
-// The 8879 is a wet-signed UPLOAD (2026-09-12): no KBA, no remote envelope. Tests below:
-// start → KBA pass → auto-send → webhook completion → signed PDF in MinIO →
-// M7 gates satisfied. Synthetic data only.
+// Signature envelopes after the vendor (2026-09-12): drafting is a record, sending is a 410,
+// the 8879 is a wet-signed UPLOAD, the portal list is scoped. Synthetic data only.
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,7 +7,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import { generateToken } from '../src/crypto.ts';
-import { createTestConfig, makeStaff, auditRows, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeStaff, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 
 let app: FastifyInstance;
@@ -52,16 +50,6 @@ async function makeTaxEngagement(contactId: string): Promise<string> {
   return res.json().id as string;
 }
 
-async function docusealComplete(submissionId: string): Promise<void> {
-  const res = await app.inject({
-    method: 'POST', url: '/webhooks/docuseal',
-    headers: { 'x-webhook-secret': config.WEBHOOK_SECRET },
-    payload: { event_type: 'form.completed', data: { submission_id: submissionId } },
-  });
-  assert.equal(res.statusCode, 200, res.body);
-  assert.equal(res.json().matched, true);
-}
-
 before(async () => {
   config = await createTestConfig('sig');
   app = buildServer(config);
@@ -73,15 +61,15 @@ after(async () => {
   await app.close();
 });
 
-test('PLACEHOLDER BLOCK: envelope with a flagged template is unsendable; finalized copy sends', async () => {
+/*
+ * THE E-SIGN VENDOR IS RETIRED (2026-09-12, Brian's ruling 3b). An envelope can still be
+ * drafted as a record; sending it answers 410 for every type, and the vendor's completion
+ * webhook is gone. The placeholder gate for legal copy lives where copy actually leaves: the
+ * templated email and the portal packet (packet-send.spec, master-schedules.spec).
+ */
+test('no e-sign vendor: drafting is a record, sending is a 410 with the real path named, and the webhook is gone', async () => {
   const contact = await makeClient('Sigletter', 'sig-letter@example.test');
   const te = await makeTaxEngagement(contact);
-
-  // v3 loaded final text, so the Master is not flagged in a fresh database. Flag
-  // it deliberately — the gate must hold for ANY flagged template, whatever the
-  // current launch state happens to be.
-  await app.db.query(`UPDATE templates SET is_placeholder = true WHERE key = 'engagement_master'`);
-
   const envelope = await app.inject({
     method: 'POST', url: '/signature-envelopes', headers: auth(ana),
     payload: { contactId: contact, type: 'engagement_letter', taxEngagementId: te, serviceLine: 'tax' },
@@ -89,83 +77,29 @@ test('PLACEHOLDER BLOCK: envelope with a flagged template is unsendable; finaliz
   assert.equal(envelope.statusCode, 201, envelope.body);
   const envId = envelope.json().id as string;
 
-  // Drafting/queueing is allowed — SENDING is the gated act.
-  const blocked = await app.inject({
-    method: 'POST', url: `/signature-envelopes/${envId}/send`, headers: auth(ana),
-  });
-  assert.equal(blocked.statusCode, 409, blocked.body);
-  assert.equal(blocked.json().error, 'template_placeholder_blocked');
+  const sent = await app.inject({ method: 'POST', url: `/signature-envelopes/${envId}/send`, headers: auth(ana) });
+  assert.equal(sent.statusCode, 410, sent.body);
+  assert.equal(sent.json().error, 'esign_vendor_retired');
+  assert.match(sent.json().message, /client portal/);
+  const row = await app.db.query(`SELECT status, sent_at, docuseal_submission_id FROM signature_envelopes WHERE id = $1`, [envId]);
+  assert.equal(row.rows[0].status, 'draft', 'nothing was marked sent');
+  assert.equal(row.rows[0].docuseal_submission_id, null);
 
-  // Brian finalizes the legal text in admin (simulated) → the gate opens.
-  await app.db.query(`UPDATE templates SET is_placeholder = false WHERE key = 'engagement_master'`);
-  const sent = await app.inject({
-    method: 'POST', url: `/signature-envelopes/${envId}/send`, headers: auth(ana),
-  });
-  assert.equal(sent.statusCode, 200, sent.body);
-  const submissionId = sent.json().submissionId as string;
-  assert.ok(submissionId);
-
-  // Completion webhook: signed PDF stored, gate fields set, M7 unblocked.
-  await docusealComplete(submissionId);
-  const env = await app.db.query(
-    `SELECT status, signed_document_id FROM signature_envelopes WHERE id = $1`,
-    [envId]
-  );
-  assert.equal(env.rows[0].status, 'completed');
-  assert.ok(env.rows[0].signed_document_id, 'signed PDF filed');
-  const doc = await app.db.query(`SELECT category, minio_bucket FROM documents WHERE id = $1`, [
-    env.rows[0].signed_document_id,
-  ]);
-  assert.equal(doc.rows[0].category, 'signed_authorizations');
-  assert.equal(doc.rows[0].minio_bucket, 'saos-signed-docs');
-
-  const teRow = await app.db.query(`SELECT engagement_letter_signed_at FROM tax_engagements WHERE id = $1`, [te]);
-  assert.ok(teRow.rows[0].engagement_letter_signed_at, 'M7 letter gate satisfied by webhook');
-
-  // The pipeline actually unblocks: scheduled → documents_requested now works.
-  await app.inject({ method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana), payload: { toStage: 'scheduled' } });
-  const advance = await app.inject({
-    method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana),
-    payload: { toStage: 'documents_requested' },
-  });
-  assert.equal(advance.statusCode, 200, advance.body);
-  assert.ok((await auditRows(app.db, 'signature.completed')) >= 1);
-
-  // Webhook replays are idempotent.
-  await docusealComplete(submissionId);
-  const docs = await app.db.query(
-    `SELECT count(*)::int AS n FROM documents WHERE contact_id = $1 AND category = 'signed_authorizations'`,
-    [contact]
-  );
-  assert.equal(docs.rows[0].n, 1, 'replayed webhook stores nothing twice');
-});
-
-test('§7216 envelope completion records the consent and opens the gate', async () => {
-  const contact = await makeClient('Sigconsent', 'sig-consent@example.test');
-  await app.db.query(`UPDATE templates SET is_placeholder = false WHERE key = 'consent_7216_use'`);
-
-  const envelope = await app.inject({
+  const consent = await app.inject({
     method: 'POST', url: '/signature-envelopes', headers: auth(ana),
     payload: { contactId: contact, type: 'consent_7216' },
   });
-  const envId = envelope.json().id as string;
-  const sent = await app.inject({ method: 'POST', url: `/signature-envelopes/${envId}/send`, headers: auth(ana) });
-  assert.equal(sent.statusCode, 200, sent.body);
-  await docusealComplete(sent.json().submissionId);
+  const consentSend = await app.inject({ method: 'POST', url: `/signature-envelopes/${consent.json().id}/send`, headers: auth(ana) });
+  assert.equal(consentSend.statusCode, 410);
 
-  const contactRow = await app.db.query(`SELECT consent_7216_status FROM contacts WHERE id = $1`, [contact]);
-  assert.equal(contactRow.rows[0].consent_7216_status, 'signed');
-  const consent = await app.db.query(
-    `SELECT method, envelope_id, document_id FROM consents WHERE contact_id = $1 AND type = '7216_use'`,
-    [contact]
-  );
-  assert.equal(consent.rows[0].method, 'docuseal');
-  assert.equal(consent.rows[0].envelope_id, envId);
-  assert.ok(consent.rows[0].document_id);
+  const webhook = await app.inject({
+    method: 'POST', url: '/webhooks/docuseal',
+    headers: { 'x-webhook-secret': config.WEBHOOK_SECRET },
+    payload: { event_type: 'form.completed', data: { submission_id: 'anything' } },
+  });
+  assert.equal(webhook.statusCode, 404, 'the vendor webhook no longer exists');
+  assert.equal((await app.db.query(`SELECT count(*)::int AS n FROM signature_envelopes WHERE status = 'completed'`)).rows[0].n, 0);
 });
-
-
-
 
 test('portal Sign Documents list is scoped to the session contact', async () => {
   const mine = await makeClient('Sigmine', 'sig-mine@example.test');

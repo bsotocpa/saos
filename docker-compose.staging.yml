@@ -25,10 +25,6 @@ services:
       - "${STAGING_MINIO_PORT:-10000}:9000"
       - "${STAGING_MINIO_CONSOLE_PORT:-10001}:9001"
 
-  docuseal:
-    ports: !override
-      - "${STAGING_DOCUSEAL_PORT:-4002}:3000"
-
   whisper:
     ports: !override
       - "${STAGING_WHISPER_PORT:-10010}:9000"

@@ -1,16 +1,8 @@
-import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
-import { makeMinioClient } from '../documents/storage.ts';
-import { makeDocusealAdapter } from './docuseal.ts';
-import {
-  completeEnvelopeBySubmission,
-  createEnvelope,
-  sendEnvelope,
-  templateKeyFor,
-} from './service.ts';
+import { createEnvelope, sendEnvelope, templateKeyFor } from './service.ts';
 
 const CreateBody = z.object({
   contactId: z.uuid(),
@@ -18,23 +10,9 @@ const CreateBody = z.object({
   engagementId: z.uuid().optional(),
   taxEngagementId: z.uuid().optional(),
   serviceLine: z.string().optional(), // picks the engagement-letter variant
-  docusealTemplateId: z.string().optional(),
 });
-
-const SimulateBody = z.object({
-  outcome: z.enum(['passed', 'failed']),
-  failureReason: z.string().optional(),
-});
-
-function secretsMatch(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return ab.length === bb.length && timingSafeEqual(ab, bb);
-}
 
 export function registerSignatureRoutes(app: FastifyInstance): void {
-  const docuseal = makeDocusealAdapter(app.config);
-  const minio = makeMinioClient(app.config);
   const manage = { preHandler: [app.authenticate, requirePermission('engagements.tax.manage')] };
 
   // Create (draft — intake and staff queue these; sending is the gated step).
@@ -49,21 +27,15 @@ export function registerSignatureRoutes(app: FastifyInstance): void {
         engagementId: b.engagementId,
         taxEngagementId: b.taxEngagementId,
         templateKey: templateKeyFor(b.type, b.serviceLine ?? null),
-        docusealTemplateId: b.docusealTemplateId,
       }
     );
     return reply.code(201).send(result);
   });
 
+  // RETIRED (2026-09-12, ruling 3b): no e-sign vendor. Answers 410 naming where signatures happen now.
   app.post<{ Params: { id: string } }>('/signature-envelopes/:id/send', manage, async (request) => {
     const id = z.uuid().parse(request.params.id);
-    const result = await sendEnvelope(
-      app,
-      docuseal,
-      { type: 'staff', id: request.staff!.id, label: request.staff!.fullName },
-      id
-    );
-    return { status: 'ok', ...result };
+    await sendEnvelope(app, id);
   });
 
   app.get('/signature-envelopes', manage, async (request) => {
@@ -97,25 +69,7 @@ export function registerSignatureRoutes(app: FastifyInstance): void {
   app.post<{ Params: { kbaId: string } }>('/kba/:kbaId/simulate', manage, async () => {
     throw new AppError(410, 'remote_8879_retired', 'KBA is retired with the remote 8879 path.');
   });
-  app.post('/webhooks/docuseal', async (request, reply) => {
-    const secret = request.headers['x-webhook-secret'];
-    if (typeof secret !== 'string' || !secretsMatch(secret, app.config.WEBHOOK_SECRET)) {
-      return reply.code(401).send({ error: 'unauthorized' });
-    }
-    const body = z
-      .object({
-        event_type: z.string(),
-        data: z.looseObject({ submission_id: z.union([z.string(), z.number()]).optional(), id: z.union([z.string(), z.number()]).optional() }),
-      })
-      .parse(request.body);
-    if (body.event_type !== 'form.completed' && body.event_type !== 'submission.completed') {
-      return { status: 'ignored' };
-    }
-    const submissionId = String(body.data.submission_id ?? body.data.id ?? '');
-    if (!submissionId) return { status: 'ignored' };
-    const result = await completeEnvelopeBySubmission(app, docuseal, minio, submissionId);
-    return { status: 'ok', matched: result !== null };
-  });
+  // The vendor completion webhook (POST /webhooks/docuseal) is gone with the vendor (2026-09-12).
 
   // Portal: the client's "Sign Documents" list — scoped to the session contact.
   app.get('/portal/signature-envelopes', { preHandler: [app.authenticateClient] }, async (request) => {

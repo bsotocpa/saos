@@ -171,7 +171,6 @@ provision: DNS records to create at the registrar (all A -> ${ip4}, AAAA -> ${ip
   portal.sotoaccounting.com    (client portal)
   api.sotoaccounting.com       (API + webhooks)
   ops.sotoaccounting.com       (internal app)
-  sign.sotoaccounting.com      (Docuseal)
   book.sotoaccounting.com      (Cal.com)
   ntfy.sotoaccounting.com      (push)
   vault.sotoaccounting.com     (Vaultwarden)

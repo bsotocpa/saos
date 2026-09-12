@@ -51,5 +51,5 @@ mountpoint -q "$MOUNT" || mount "/dev/mapper/$MAPPER" "$MOUNT"
 grep -q "^$MAPPER " /etc/crypttab 2>/dev/null || echo "$MAPPER $DEVICE $KEYFILE luks" >> /etc/crypttab
 grep -q "/dev/mapper/$MAPPER" /etc/fstab || echo "/dev/mapper/$MAPPER $MOUNT ext4 defaults,nofail 0 2" >> /etc/fstab
 
-mkdir -p "$MOUNT"/{postgres,minio,docuseal,vaultwarden}
-echo "setup-luks: encrypted volume mounted at $MOUNT (postgres/minio/docuseal/vaultwarden subdirs ready)."
+mkdir -p "$MOUNT"/{postgres,minio,vaultwarden}
+echo "setup-luks: encrypted volume mounted at $MOUNT (postgres/minio/vaultwarden subdirs ready)."

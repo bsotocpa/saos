@@ -13,7 +13,7 @@ working directory.
 | drill   | created/destroyed by `scripts/restore-drill.sh` | `saos-restore-drill_` |
 
 Staging is a full clone with host ports shifted +1000 (postgres 6432, MinIO
-10000/10001, Docuseal 4002, ntfy 9093, Uptime Kuma 4006, Vaultwarden 9094,
+10000/10001, ntfy 9093, Uptime Kuma 4006, Vaultwarden 9094,
 Cal.com 4003). It shares **nothing** with the primary stack — separate
 volumes, separate network. Point a staging API at it with a separate `.env`
 (different `DATABASE_URL`/ports); never reuse the primary `DATABASE_URL`.
@@ -36,7 +36,6 @@ Canonical monitor list (add each as an HTTP(s)/TCP monitor, 60s interval,
 | Internal app   | HTTP | http://host.docker.internal:3005              |
 | PostgreSQL     | TCP  | postgres:5432                                 |
 | MinIO          | HTTP | http://minio:9000/minio/health/live           |
-| Docuseal       | HTTP | http://docuseal:3000                          |
 | ntfy           | HTTP | http://ntfy:80/v1/health                      |
 | Vaultwarden    | HTTP | http://vaultwarden:80/alive                   |
 | Cal.com        | HTTP | http://calcom:3000 (when booking profile runs)|
@@ -66,9 +65,9 @@ Vaultwarden admin token, Uptime Kuma admin login, B2 keys, Stripe keys.
 ```
 
 What it captures, per run:
-1. `pg_dumpall` (every database: saos, docuseal-adjacent, calcom; test DBs excluded)
+1. `pg_dumpall` (every database: saos, calcom; test DBs excluded)
 2. `mc mirror` of the four MinIO buckets (documents, returns, signed-docs, recordings)
-3. tarballs of the Docuseal / Vaultwarden / Uptime Kuma / ntfy volumes
+3. tarballs of the Vaultwarden / Uptime Kuma / ntfy volumes
 4. `manifest.tsv` — row/object counts the restore drill verifies against
 5. restic snapshot → `RESTIC_REPOSITORY`, then retention prune
    (14 daily / 8 weekly / 12 monthly)

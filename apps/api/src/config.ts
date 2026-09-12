@@ -60,11 +60,8 @@ const schema = z.object({
   MINIO_ROOT_PASSWORD: z.string().default('saos_dev_password'),
   // Upload limits (client tax documents are PDFs/photos — 25MB is generous).
   DOC_MAX_SIZE_MB: z.coerce.number().int().positive().default(25),
-  // Docuseal (self-hosted e-signature). 'stub' needs no instance (dev/test);
-  // 'http' talks to the real container. Production send paths refuse 'stub'.
-  DOCUSEAL_MODE: z.enum(['stub', 'http']).default('stub'),
-  DOCUSEAL_URL: z.string().default('http://localhost:3002'),
-  DOCUSEAL_API_TOKEN: z.string().optional(),
+  // The e-signature vendor (Docuseal) is retired (2026-09-12): signatures are portal-native, the
+  // 8879 is a wet-signed upload. No DOCUSEAL_* key is read; a leftover one in .env is ignored.
   // KBA for remote 8879 (IRS Pub 1345). 'sandbox' until Brian picks the
   // vendor; production refuses remote 8879 without a real vendor.
   // Stripe (approved vendor — payment tokens only). 'stub' for dev/test;

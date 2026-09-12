@@ -181,8 +181,8 @@ template variable, stop and tell me.
 
 **You should see:** confirmation that it went to the portal. The client gets an email.
 
-This is **portal-native signing**, permanently — not Docuseal. Docuseal stays for 8879s
-only.
+This is **portal-native signing**, permanently. Docuseal was decommissioned 2026-09-12 (the 8879
+is a wet-signed upload; nothing called the vendor).
 
 🟡 If the button says **"Grant portal access first"** instead, something is wrong —
 Rehearsal Client 2 already has a portal user. Tell me rather than working around it.

@@ -51,7 +51,7 @@ fi
 RESTIC_IMAGE="restic/restic:0.19.1"
 TAR_IMAGE="alpine:3.23"
 BUCKETS="saos-documents saos-returns saos-signed-docs saos-recordings"
-VOLUME_SUFFIXES="docuseal_data vaultwarden_data uptime_kuma_data ntfy_data"
+VOLUME_SUFFIXES="vaultwarden_data uptime_kuma_data ntfy_data"
 
 PROJECT="${COMPOSE_PROJECT:-saos}"
 PGUSER="${POSTGRES_USER:-saos}"

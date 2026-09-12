@@ -51,14 +51,14 @@ function run(incoming, existing, managed = null) {
 try {
   // THE BUG THIS EXISTS FOR: blank locally, real value on the server.
   {
-    const { map } = run('DOCUSEAL_API_TOKEN=\n', 'DOCUSEAL_API_TOKEN=server_token_xyz\n');
-    check('a blank local value must NOT overwrite a server secret', map.get('DOCUSEAL_API_TOKEN'), 'server_token_xyz');
+    const { map } = run('TWILIO_AUTH_TOKEN=\n', 'TWILIO_AUTH_TOKEN=server_token_xyz\n');
+    check('a blank local value must NOT overwrite a server secret', map.get('TWILIO_AUTH_TOKEN'), 'server_token_xyz');
   }
 
   // Rotation from .env.production must still work.
   {
-    const { map } = run('DOCUSEAL_API_TOKEN=rotated_new\n', 'DOCUSEAL_API_TOKEN=server_old\n');
-    check('a non-blank local value still wins (rotation)', map.get('DOCUSEAL_API_TOKEN'), 'rotated_new');
+    const { map } = run('TWILIO_AUTH_TOKEN=rotated_new\n', 'TWILIO_AUTH_TOKEN=server_old\n');
+    check('a non-blank local value still wins (rotation)', map.get('TWILIO_AUTH_TOKEN'), 'rotated_new');
   }
 
   // Server-only keys survive.
@@ -88,12 +88,12 @@ try {
   }
   {
     const { map } = run(
-      'STRIPE_SECRET_KEY=sk_test_stale\nDOCUSEAL_API_TOKEN=rotated\n',
-      'STRIPE_SECRET_KEY=sk_live_real\nDOCUSEAL_API_TOKEN=old\n',
+      'STRIPE_SECRET_KEY=sk_test_stale\nTWILIO_AUTH_TOKEN=rotated\n',
+      'STRIPE_SECRET_KEY=sk_live_real\nTWILIO_AUTH_TOKEN=old\n',
       '# keys the server owns\n\nSTRIPE_SECRET_KEY\n'
     );
     check('the list tolerates comments and blank lines', map.get('STRIPE_SECRET_KEY'), 'sk_live_real');
-    check('and an UNLISTED non-blank local value still rotates', map.get('DOCUSEAL_API_TOKEN'), 'rotated');
+    check('and an UNLISTED non-blank local value still rotates', map.get('TWILIO_AUTH_TOKEN'), 'rotated');
   }
 
   // Blank on both stays blank (not "undefined", not dropped).

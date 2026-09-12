@@ -70,18 +70,6 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-saos_dev_password}
     networks: [saos]
 
-  # Docuseal (self-hosted e-signatures — sign.sotoaccounting.com in prod).
-  # SQLite storage inside its own volume; the API talks to it via
-  # DOCUSEAL_MODE=http + DOCUSEAL_URL + an API token from its admin UI.
-  docuseal:
-    image: docuseal/docuseal:3.1.2
-    restart: unless-stopped
-    ports:
-      - "${DOCUSEAL_PORT:-3002}:3000"
-    volumes:
-      - saos_docuseal_data:/data
-    networks: [saos]
-
   # ── Meeting intelligence (profile: intel) ───────────────────────────────────
   # Sized for the shared Hetzner CPX41 16GB box (MP): Whisper 'small' (~1GB
   # resident) + a ~3B quantized LLM (~2-3GB). The API's job queue SERIALIZES
@@ -264,7 +252,6 @@ volumes:
   saos_pg_data:
   saos_clamav_data:
   saos_minio_data:
-  saos_docuseal_data:
   saos_whisper_cache:
   saos_ollama_data:
   saos_ntfy_data:

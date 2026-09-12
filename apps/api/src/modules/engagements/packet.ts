@@ -610,7 +610,8 @@ export async function recordMasterSignature(
      * HOW it was signed, stamped in the same statement that marks it signed.
      * A signed packet must always say which path produced the signature
      * (CHECK engagement_packets_signed_has_method), so this cannot be a
-     * follow-up write that might not happen.
+     * follow-up write that might not happen. 'docuseal' is a historical value: the vendor is
+     * retired (2026-09-12) and the portal is the only path that signs.
      */
     method?: 'portal_esign' | 'docuseal' | undefined;
   } = {}
@@ -641,16 +642,14 @@ export async function recordMasterSignature(
    * document on file and the record of it would simply disagree, quietly, about the scope of
    * a signed agreement.
    *
-   * Nothing here reaches outward. The two occurrences of 'docuseal' below are the signature
-   * METHOD as a stored value, not a call to the vendor — the envelope work happens before
-   * this function is ever reached.
+   * Nothing here reaches outward.
    */
   return withTransaction(app.db, async () => {
     await app.db.query(
       `UPDATE engagement_packets
        SET status = 'signed', signed_at = now(), signature_method = $2
        WHERE id = $1`,
-      [packetId, meta.method ?? 'docuseal']
+      [packetId, meta.method ?? 'portal_esign']
     );
 
     for (const code of p.schedule_codes) {

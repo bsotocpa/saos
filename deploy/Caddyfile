@@ -82,9 +82,6 @@ ops.sotoaccounting.com {
 	}
 }
 
-sign.sotoaccounting.com {
-	reverse_proxy docuseal:3000
-}
 
 book.sotoaccounting.com {
 	reverse_proxy calcom:3000

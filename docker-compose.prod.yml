@@ -6,10 +6,10 @@
 #   - the three app services activate (their `app` profile is cleared) and
 #     build from the repo root context
 #   - every host-published port on the data services is STRIPPED — Postgres,
-#     MinIO, Docuseal, ntfy, Vaultwarden, Uptime Kuma are compose-network
+#     MinIO, ntfy, Vaultwarden, Uptime Kuma are compose-network
 #     internal, reachable only through Caddy (defense in depth on top of the
 #     Hetzner firewall)
-#   - Postgres/MinIO/Docuseal/Vaultwarden data binds into /mnt/saos-data —
+#   - Postgres/MinIO/Vaultwarden data binds into /mnt/saos-data —
 #     the LUKS-encrypted volume (scripts/setup-encrypted-volume.sh) — per the
 #     MP "encrypted volume" requirement
 
@@ -72,9 +72,6 @@ services:
   minio:
     ports: !override []
 
-  docuseal:
-    ports: !override []
-
   ntfy:
     ports: !override []
 
@@ -103,9 +100,6 @@ volumes:
   saos_minio_data:
     driver: local
     driver_opts: { type: none, o: bind, device: /mnt/saos-data/minio }
-  saos_docuseal_data:
-    driver: local
-    driver_opts: { type: none, o: bind, device: /mnt/saos-data/docuseal }
   saos_vaultwarden_data:
     driver: local
     driver_opts: { type: none, o: bind, device: /mnt/saos-data/vaultwarden }
