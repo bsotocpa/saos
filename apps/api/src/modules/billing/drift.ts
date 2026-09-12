@@ -205,6 +205,13 @@ export async function waiveStripeCheck(
   if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
   if (!inv.stripe_payment_intent_id) throw new AppError(409, 'nothing_to_waive', 'This invoice has no Stripe payment; there is no check to waive.');
   if (inv.waived_at) throw new AppError(409, 'already_waived', 'The Stripe check on this invoice is already waived.');
+  // A waiver answers a finding. With none open there is nothing to waive (Brian, 2026-09-12).
+  const finding = await app.db.query(
+    `SELECT 1 FROM tasks WHERE source_type = 'stripe_drift' AND source_id = $1
+      AND status IN ('not_started', 'in_progress', 'waiting_for_input', 'deferred') LIMIT 1`,
+    [invoiceId]
+  );
+  if (finding.rows.length === 0) throw new AppError(409, 'no_drift_finding', 'The nightly check has not raised anything on this invoice; there is nothing to waive.');
   await app.db.query(
     `UPDATE invoices SET stripe_check_waived_at = now(), stripe_check_waived_by_staff_id = $2, stripe_check_waived_reason = $3 WHERE id = $1`,
     [invoiceId, actor.id, reason]

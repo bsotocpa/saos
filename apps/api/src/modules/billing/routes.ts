@@ -203,6 +203,9 @@ export function registerBillingRoutes(app: FastifyInstance): void {
               i.qb_exported_at, c.id AS contact_id, c.first_name, c.last_name,
               i.amount_refunded_cents, i.void_reason, i.voided_at,
               i.stripe_payment_intent_id IS NOT NULL AS has_stripe_payment,
+              -- The waiver control is offered only where the nightly check has raised something (2026-09-12).
+              EXISTS (SELECT 1 FROM tasks t WHERE t.source_type = 'stripe_drift' AND t.source_id = i.id::text
+                        AND t.status IN ('not_started', 'in_progress', 'waiting_for_input', 'deferred')) AS has_open_drift_finding,
               i.stripe_check_waived_at, i.stripe_check_waived_reason, ws.display_name AS stripe_check_waived_by,
               -- The joined staff name when a person did it; the recorded label when a cascade did
               -- (2026-09-10). Never null on a void, so the row never reads "unknown".

@@ -44,6 +44,8 @@ test('waiving: reason required, tasks close, audited, the check skips and counts
   const task = await createTask(app, { title: 'Stripe cannot verify this payment', contactId: c.id, priority: 2, source: 'automation', sourceType: 'stripe_drift', sourceId: inv.id });
   assert.ok(task.created);
 
+  const listed = await app.inject({ method: 'GET', url: `/invoices?contactId=${c.id}`, headers: auth(brian) });
+  assert.equal((listed.json() as { invoices: { has_open_drift_finding: boolean }[] }).invoices[0]!.has_open_drift_finding, true, 'the card knows there is a finding to waive');
   const noReason = await app.inject({ method: 'POST', url: `/invoices/${inv.id}/waive-stripe-check`, headers: auth(brian), payload: { reason: 'ok' } });
   assert.equal(noReason.statusCode, 400, 'a reason is a sentence for the next reader');
   const chat = await app.inject({ method: 'POST', url: `/invoices/${inv.id}/waive-stripe-check`, headers: auth(brian), payload: { reason: 'as discussed in our chat, ruling 6' } });
@@ -72,9 +74,22 @@ test('waiving: reason required, tasks close, audited, the check skips and counts
   assert.equal(reopened.rows.length, 0, 'no new drift task');
 
   const list = await app.inject({ method: 'GET', url: `/invoices?contactId=${c.id}`, headers: auth(brian) });
-  const row = (list.json() as { invoices: { stripe_check_waived_reason: string | null; has_stripe_payment: boolean }[] }).invoices[0]!;
+  const row = (list.json() as { invoices: { stripe_check_waived_reason: string | null; has_stripe_payment: boolean; has_open_drift_finding: boolean }[] }).invoices[0]!;
   assert.match(row.stripe_check_waived_reason ?? '', /test key/, 'the card can say so');
   assert.equal(row.has_stripe_payment, true);
+  assert.equal(row.has_open_drift_finding, false, 'and the finding is closed, so the control goes');
+});
+
+test('a paid invoice that verifies fine (no open finding) cannot be waived, so the control is not offered', async () => {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Verifies', email: 'verifies@example.test' });
+  const item = await app.db.query<{ amount_cents: number }>(`SELECT pbi.amount_cents FROM price_book_items pbi WHERE pbi.is_active AND pbi.amount_cents > 0 ORDER BY pbi.amount_cents LIMIT 1`);
+  const inv = await createInvoice(app, { type: 'staff', id: brian.id, label: brian.fullName }, { contactId: c.id, lines: [{ description: 'Synthetic paid, verifies', unitCents: item.rows[0]!.amount_cents }], send: false, issued: true });
+  await markInvoicePaid(app, inv.id, { paymentIntentId: 'pi_synthetic_verifies' });
+  const listed = await app.inject({ method: 'GET', url: `/invoices?contactId=${c.id}`, headers: auth(brian) });
+  assert.equal((listed.json() as { invoices: { has_open_drift_finding: boolean }[] }).invoices[0]!.has_open_drift_finding, false);
+  const res = await app.inject({ method: 'POST', url: `/invoices/${inv.id}/waive-stripe-check`, headers: auth(brian), payload: { reason: 'Nothing was raised on this one, for the test.' } });
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.json().error, 'no_drift_finding');
 });
 
 test('an invoice with no Stripe payment has nothing to waive', async () => {

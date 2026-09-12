@@ -90,6 +90,7 @@ interface Invoice {
   void_reason?: string | null; voided_by?: string | null; voided_at?: string | null;
   refunded_at?: string | null;
   has_stripe_payment?: boolean;
+  has_open_drift_finding?: boolean;
   stripe_check_waived_at?: string | null; stripe_check_waived_reason?: string | null; stripe_check_waived_by?: string | null;
   /** Every client-facing notice about this invoice, in its real state (queued / delivered…). */
   notices: NoticeState[];
@@ -1151,7 +1152,7 @@ export default function ClientPacketPage() {
                   </button>
                 ) : null}
                 {/* The drift waiver (2026-09-12): a payment Stripe cannot see from this key is not a daily task. */}
-                {inv.has_stripe_payment && !inv.stripe_check_waived_at && ['paid', 'refunded', 'partially_refunded', 'disputed'].includes(inv.status) ? (
+                {inv.has_open_drift_finding && !inv.stripe_check_waived_at ? (
                   <button
                     className="btn ghost"
                     type="button"
