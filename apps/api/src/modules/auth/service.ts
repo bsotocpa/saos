@@ -54,7 +54,16 @@ interface StaffAuthRow {
 interface RequestMeta {
   ip?: string | null;
   userAgent?: string | null;
+  /**
+   * A SESSION MINTED BY A SCRIPT NAMES THE SCRIPT (2026-09-12, Brian). An action applied on a
+   * ruling is not the person's tap; every audit row written under such a session carries
+   * "<name> (<appliedBy>)", so "Brian Soto (ruled 2026-09-12, applied by script)" is what the
+   * log says. Stored on the session as user_agent "script: <appliedBy>"; the auth plugin reads it.
+   */
+  appliedBy?: string | null;
 }
+
+export const SCRIPT_SESSION_PREFIX = 'script: ';
 
 function totpFor(secretBase32: string, label: string): OTPAuth.TOTP {
   return new OTPAuth.TOTP({
@@ -104,10 +113,20 @@ async function recordFailure(db: Db, config: Config, staff: StaffAuthRow, reason
 
 export async function createSession(db: Db, config: Config, staffId: string, meta: RequestMeta): Promise<string> {
   const { token, hash } = generateToken();
+  /*
+   * THE VALIDATOR on system-applied actions: on the box, a session with no browser behind it
+   * (no user agent) is a script, and a script says what it is applying, or gets no session.
+   * A browser always sends its user agent; the login route passes it through.
+   */
+  const label = meta.appliedBy?.trim();
+  if (!label && !meta.userAgent && config.NODE_ENV === 'production') {
+    throw new AppError(400, 'session_unlabelled', 'A session with no browser behind it is a script; say what it applies (appliedBy), so the audit log names it.');
+  }
+  const userAgent = label ? `${SCRIPT_SESSION_PREFIX}${label}` : meta.userAgent ?? null;
   await db.query(
     `INSERT INTO staff_sessions (staff_id, token_hash, ip, user_agent, expires_at)
      VALUES ($1, $2, $3, $4, LEAST(now() + make_interval(hours => $5), now() + make_interval(mins => $6)))`,
-    [staffId, hash, meta.ip ?? null, meta.userAgent ?? null, config.SESSION_ABSOLUTE_HOURS, config.SESSION_IDLE_MINUTES]
+    [staffId, hash, meta.ip ?? null, userAgent, config.SESSION_ABSOLUTE_HOURS, config.SESSION_IDLE_MINUTES]
   );
   return token;
 }

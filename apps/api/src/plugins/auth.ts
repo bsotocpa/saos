@@ -11,6 +11,7 @@ import type { AuthedStaff } from '../types.ts';
 
 interface SessionRow {
   session_id: string;
+  session_user_agent: string | null;
   staff_id: string;
   email: string;
   full_name: string; must_change_password: boolean;
@@ -32,7 +33,7 @@ export function buildAuthenticate(app: FastifyInstance) {
     }
 
     const { rows } = await app.db.query<SessionRow>(
-      `SELECT s.id AS session_id, st.id AS staff_id, st.email, st.display_name AS full_name, st.must_change_password, r.key AS role_key,
+      `SELECT s.id AS session_id, s.user_agent AS session_user_agent, st.id AS staff_id, st.email, st.display_name AS full_name, st.must_change_password, r.key AS role_key,
               COALESCE(array_agg(rp.permission) FILTER (WHERE rp.permission IS NOT NULL), '{}') AS permissions
        FROM staff_sessions s
        JOIN staff st ON st.id = s.staff_id
@@ -42,7 +43,7 @@ export function buildAuthenticate(app: FastifyInstance) {
          AND s.revoked_at IS NULL
          AND s.expires_at > now()
          AND st.is_active
-       GROUP BY s.id, st.id, r.key`,
+       GROUP BY s.id, s.user_agent, st.id, r.key`,
       [hashToken(token)]
     );
     const row = rows[0];
@@ -59,10 +60,12 @@ export function buildAuthenticate(app: FastifyInstance) {
       [row.session_id, app.config.SESSION_ABSOLUTE_HOURS, app.config.SESSION_IDLE_MINUTES]
     );
 
+    // A session a script minted names the script on every row it writes (auth/service.ts).
+    const scriptLabel = row.session_user_agent?.startsWith('script: ') ? row.session_user_agent.slice('script: '.length) : null;
     const staff: AuthedStaff = {
       id: row.staff_id,
       email: row.email,
-      fullName: row.full_name,
+      fullName: scriptLabel ? `${row.full_name} (${scriptLabel})` : row.full_name,
       roleKey: row.role_key,
       permissions: row.permissions,
       sessionId: row.session_id,
