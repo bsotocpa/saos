@@ -32,7 +32,8 @@
     "check:client-sends": "node scripts/check-client-send-gates.mjs",
     "check:flash-once": "node scripts/check-flash-once.mjs",
     "check:date-rendering": "node scripts/check-date-rendering.mjs",
-    "check:no-native-dialogs": "node scripts/check-no-native-dialogs.mjs"
+    "check:no-native-dialogs": "node scripts/check-no-native-dialogs.mjs",
+    "check:report-files": "node scripts/check-report-files.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0"
