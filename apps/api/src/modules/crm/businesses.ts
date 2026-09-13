@@ -83,6 +83,69 @@ export async function archiveBusiness(
 
 export interface BusinessMergeResult { winnerId: string; losers: Array<{ id: string; moved: Record<string, number> }> }
 
+/**
+ * SAME-NAME BUSINESSES ON ONE CONTACT (2026-09-14, Brian's ruling 5). The import entered
+ * "Tri-Taylor Condominium Association" and "TRI-TAYLOR CONDOMINIUM ASSOCIATION" as two rows on one
+ * record. Case and surrounding space do not make two businesses. The winner is the row holding an
+ * EIN, then an entity type, then the most engagements, then the older row; protected names first.
+ */
+export interface BusinessDupeGroup {
+  contactId: string; contactName: string; protectedName: boolean; name: string;
+  businesses: Array<{ id: string; name: string; hasEin: boolean; entityType: string | null; engagements: number; createdAt: string }>;
+  winnerId: string; loserIds: string[];
+}
+
+const PROTECTED = new Set(['jackson flores', 'josean irizarry', 'joseph basilone']);
+
+export async function sameNameBusinessesWithinContact(app: FastifyInstance): Promise<BusinessDupeGroup[]> {
+  const { rows } = await app.db.query<{
+    contact_id: string; contact_name: string; key: string; id: string; name: string; has_ein: boolean; entity_type: string | null; engagements: string; created_at: Date;
+  }>(
+    `WITH k AS (
+       SELECT m.contact_id, c.first_name || ' ' || c.last_name AS contact_name,
+              lower(regexp_replace(btrim(b.name), '\\s+', ' ', 'g')) AS key,
+              b.id, b.name, b.ein IS NOT NULL AS has_ein, b.entity_type::text AS entity_type, b.created_at,
+              (SELECT count(*) FROM engagements e WHERE e.business_id = b.id) AS engagements
+         FROM businesses b JOIN business_members m ON m.business_id = b.id JOIN contacts c ON c.id = m.contact_id
+        WHERE NOT b.is_archived)
+     SELECT * FROM k WHERE (contact_id, key) IN (SELECT contact_id, key FROM k GROUP BY contact_id, key HAVING count(*) > 1)
+     ORDER BY contact_name, key, created_at, id`
+  );
+  const groups = new Map<string, BusinessDupeGroup>();
+  for (const r of rows) {
+    const gk = `${r.contact_id}|${r.key}`;
+    if (!groups.has(gk)) groups.set(gk, { contactId: r.contact_id, contactName: r.contact_name, protectedName: PROTECTED.has(r.contact_name.toLowerCase().replace(/\s+/g, ' ').trim()), name: r.name, businesses: [], winnerId: '', loserIds: [] });
+    groups.get(gk)!.businesses.push({ id: r.id, name: r.name, hasEin: r.has_ein, entityType: r.entity_type, engagements: Number(r.engagements), createdAt: r.created_at.toISOString() });
+  }
+  const out = [...groups.values()];
+  for (const g of out) {
+    const ranked = [...g.businesses].sort((a, b) =>
+      Number(b.hasEin) - Number(a.hasEin) || Number(b.entityType !== null) - Number(a.entityType !== null) || b.engagements - a.engagements || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    g.winnerId = ranked[0]!.id;
+    g.loserIds = ranked.slice(1).map((b) => b.id);
+  }
+  return out.sort((a, b) => Number(b.protectedName) - Number(a.protectedName) || a.contactName.localeCompare(b.contactName) || a.name.localeCompare(b.name));
+}
+
+export async function applyBusinessDedupe(
+  app: FastifyInstance, groups: BusinessDupeGroup[], actor: BusinessActor, opts: { reason: string; approvedLoserIds?: ReadonlySet<string> | undefined }
+): Promise<Array<{ contactName: string; name: string; merged: boolean; held: string | null; error: string | null }>> {
+  const out: Array<{ contactName: string; name: string; merged: boolean; held: string | null; error: string | null }> = [];
+  for (const g of groups) {
+    if (g.protectedName && !g.loserIds.every((id) => opts.approvedLoserIds?.has(id))) {
+      out.push({ contactName: g.contactName, name: g.name, merged: false, held: 'protected name: the merge waits for a person', error: null });
+      continue;
+    }
+    try {
+      await mergeBusinesses(app, g.winnerId, g.loserIds, opts.reason, actor);
+      out.push({ contactName: g.contactName, name: g.name, merged: true, held: null, error: null });
+    } catch (err) {
+      out.push({ contactName: g.contactName, name: g.name, merged: false, held: null, error: err instanceof AppError ? err.code : String(err) });
+    }
+  }
+  return out;
+}
+
 export async function mergeBusinesses(
   app: FastifyInstance,
   winnerId: string,
