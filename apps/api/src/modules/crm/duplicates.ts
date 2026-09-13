@@ -8,8 +8,8 @@
  *
  * The winner is the record holding the most: a portal sign-in first, then businesses, tasks,
  * engagements, invoices, documents, quotes and packets, then a phone and an address on file,
- * then the older record. A test record never wins and is never merged into a real one; it is
- * noted like a stranger.
+ * then the older record. A test record is rehearsal residue, not a person: it is outside the scan,
+ * neither merged nor noted, so a real record beside its own test twin is left clean.
  *
  * PROTECTED NAMES (Jackson Flores, Josean Irizarry, Joseph Basilone) sort first in every plan and
  * are never merged by a script: the plan says what the route would do and a person says go.
@@ -60,10 +60,10 @@ export async function sameNameGroups(app: FastifyInstance): Promise<DuplicateGro
             (SELECT count(*) FROM quotes x WHERE x.contact_id = c.id) AS quotes,
             (SELECT count(*) FROM engagement_packets x WHERE x.contact_id = c.id) AS packets
        FROM contacts c
-      WHERE NOT c.is_archived AND c.contact_status <> 'archived'
+      WHERE NOT c.is_archived AND c.contact_status <> 'archived' AND NOT c.is_test
         AND lower(regexp_replace(btrim(c.first_name || ' ' || c.last_name), '\\s+', ' ', 'g')) IN (
           SELECT lower(regexp_replace(btrim(first_name || ' ' || last_name), '\\s+', ' ', 'g'))
-            FROM contacts WHERE NOT is_archived AND contact_status <> 'archived'
+            FROM contacts WHERE NOT is_archived AND contact_status <> 'archived' AND NOT is_test
            GROUP BY 1 HAVING count(*) > 1)
       ORDER BY 2, 3, c.created_at`
   );
@@ -85,14 +85,13 @@ export async function sameNameGroups(app: FastifyInstance): Promise<DuplicateGro
 
   const groups: DuplicateGroup[] = [];
   for (const [key, records] of byName) {
-    // Shared identifiers, pairwise; test records stand outside every component.
+    // Shared identifiers, pairwise.
     const parent = new Map<string, string>(records.map((r) => [r.id, r.id]));
     const find = (x: string): string => (parent.get(x) === x ? x : (parent.set(x, find(parent.get(x)!)), parent.get(x)!));
     const shared: Record<string, string[]> = {};
     for (let i = 0; i < records.length; i++) {
       for (let j = i + 1; j < records.length; j++) {
         const a = records[i]!, b = records[j]!;
-        if (a.isTest || b.isTest) continue;
         const s = await sharedIdentifiers(app, a.id, b.id);
         if (s.length === 0) continue;
         shared[`${a.id}+${b.id}`] = s;

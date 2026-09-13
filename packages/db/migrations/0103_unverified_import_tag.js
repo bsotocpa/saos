@@ -18,9 +18,11 @@ const { isSelfNamed } = require('../lib/self-named.js');
 exports.shorthands = undefined;
 
 exports.up = async (pgm) => {
-  pgm.sql(`ALTER TABLE businesses ADD COLUMN unverified_import_source record_source;`);
-  pgm.sql(`COMMENT ON COLUMN businesses.unverified_import_source IS
-    'Set when the business is named after its contact with no EIN and no entity type: an import artifact or a sole prop, unverified. The value is where the row came from. NULL = not tagged.';`);
+  // pgm.sql() is queued until this function returns; the UPDATE below runs now. So the column is
+  // added now too, through the same connection, or the UPDATE finds no column (the first deploy did).
+  await pgm.db.query(`ALTER TABLE businesses ADD COLUMN unverified_import_source record_source`);
+  await pgm.db.query(`COMMENT ON COLUMN businesses.unverified_import_source IS
+    'Set when the business is named after its contact with no EIN and no entity type: an import artifact or a sole prop, unverified. The value is where the row came from. NULL = not tagged.'`);
 
   const { rows } = await pgm.db.query(`
     SELECT DISTINCT ON (b.id) b.id AS business_id, b.name AS business, b.source::text AS source,

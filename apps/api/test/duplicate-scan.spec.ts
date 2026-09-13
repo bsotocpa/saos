@@ -3,7 +3,7 @@
  *
  *   Same-name records sharing a phone merge into the one holding the most; records sharing
  *   nothing get a note and stay; a protected name is planned first and never merged by the
- *   scan; a test record is never merged into a real one.
+ *   scan; a test record is outside the scan, neither merged nor noted.
  *
  * Synthetic data only.
  */
@@ -75,9 +75,9 @@ test('the scan plans from shared identifiers: a shared phone merges into the rec
   assert.deepEqual(nameOnly.merges, [], 'a name alone never merges');
   assert.deepEqual(new Set(nameOnly.noteIds), new Set([b1, b2]));
 
-  const testers = groups.find((g) => g.name === 'Synthetic Tester')!;
-  assert.deepEqual(testers.merges, [], 'a test record is never merged into a real one');
-  assert.deepEqual(new Set(testers.noteIds), new Set([t1, t2]));
+  assert.equal(groups.find((g) => g.name === 'Synthetic Tester'), undefined, 'a test record is outside the scan; its real twin stands alone');
+  assert.equal((await app.db.query<{ notes: string | null }>(`SELECT notes FROM contacts WHERE id = $1`, [t1])).rows[0]!.notes, null);
+  void t2;
 
   // Apply: merges through the route's function, notes on the rest, the protected merge held.
   const results = await applyDuplicatePlan(app, groups, actor(), { dateIso: '2026-09-12', reason: 'The same person imported twice from the old systems; the records share a phone and nothing on either side is open' });
