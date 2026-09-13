@@ -30,7 +30,7 @@ interface CatalogItem {
 }
 interface CatalogBundle { slug: string; name_en: string; component_count: number }
 interface Contact { id: string; first_name: string; last_name: string; email: string | null }
-interface ContactBusiness { id: string; name: string; is_primary: boolean; status?: string | null }
+interface ContactBusiness { id: string; name: string; is_primary: boolean; status?: string | null; entity_type?: string | null; unverified_import_source?: string | null }
 /** Lines that are business work (mirrors BUSINESS_LINES in pricing/quotes.ts; the API is the gate). */
 const BUSINESS_LINES = new Set(['business_tax', 'recurring_accounting', 'attest', 'setup_conversion', 'entity_services', 'software_passthrough', 'coo']);
 
@@ -707,7 +707,11 @@ export default function PipelinePage() {
                     <select value={businessId} onChange={(e) => setBusinessId(e.target.value)}>
                       <option value="">— none —</option>
                       {businesses.map((b) => (
-                        <option key={b.id} value={b.id}>{b.name}{b.is_primary ? ' (primary)' : ''}{b.status === 'dissolved' ? ' (dissolved)' : ''}</option>
+                        <option key={b.id} value={b.id}>
+                          {b.name} · {b.entity_type ? b.entity_type.replaceAll('_', ' ') : 'entity type unknown'}
+                          {b.unverified_import_source ? ` · unverified import (${b.unverified_import_source})` : ''}
+                          {b.is_primary ? ' · primary' : ''}{b.status === 'dissolved' ? ' · dissolved' : ''}
+                        </option>
                       ))}
                     </select>
                   )}

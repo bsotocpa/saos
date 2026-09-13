@@ -226,10 +226,10 @@ export function TaskFormModal(props: {
     return r.contacts.map((c) => ({ id: c.id, name: `${c.first_name} ${c.last_name}` }));
   };
   const searchBusinesses = async (q: string) => {
-    const r = await api<{ businesses: { id: string; name: string }[] }>(
+    const r = await api<{ businesses: { id: string; name: string; entity_type: string | null; unverified_import_source: string | null }[] }>(
       `/businesses?search=${encodeURIComponent(q)}&limit=8`
     );
-    return r.businesses.map((b) => ({ id: b.id, name: b.name }));
+    return r.businesses.map((b) => ({ id: b.id, name: `${b.name} · ${b.entity_type ? b.entity_type.replaceAll('_', ' ') : 'entity type unknown'}${b.unverified_import_source ? ` · unverified import (${b.unverified_import_source})` : ''}` }));
   };
 
   const save = async (andNew: boolean) => {

@@ -41,6 +41,7 @@ interface Business {
   industry: string | null; state: string | null; il_sos_status: string | null;
   member_role: string | null; is_primary: boolean;
   is_test?: boolean; test_note?: string | null;
+  unverified_import_source?: string | null;
 }
 interface Packet {
   contact: Contact;
@@ -595,6 +596,11 @@ export default function ClientPacketPage() {
                 <strong>{b.name}</strong>
                 {b.is_primary ? <span className="badge">primary</span> : null}
                 {b.is_test ? <span className="badge warn test-client-badge" title={b.test_note ?? undefined}>TEST</span> : null}
+                {b.unverified_import_source ? (
+                  <span className="badge warn" title="Named after the client by the import, with no EIN and no entity type: an import artifact or a sole proprietorship. Verify before relying on it.">
+                    unverified import ({b.unverified_import_source})
+                  </span>
+                ) : null}
                 <br />
                 <span className="muted small">
                   {b.entity_type ?? 'entity type unknown'}{b.status === 'dissolved' ? <> · <span className="badge warn">dissolved</span></> : null}

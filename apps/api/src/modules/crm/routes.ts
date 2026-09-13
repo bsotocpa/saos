@@ -316,7 +316,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     // Archived businesses stay on the record's history, not on the page (2026-09-12).
     const businesses = await app.db.query(
       `SELECT b.id, b.name, b.ein, b.entity_type, b.industry, b.naics_code, b.state,
-              b.fiscal_year_end_month, b.il_sos_status, b.status::text AS status, b.is_test, b.test_note,
+              b.fiscal_year_end_month, b.il_sos_status, b.status::text AS status, b.is_test, b.test_note, b.unverified_import_source::text AS unverified_import_source,
               m.member_role, m.is_primary
        FROM businesses b JOIN business_members m ON m.business_id = b.id
        WHERE m.contact_id = $1 AND NOT b.is_archived ORDER BY m.is_primary DESC, b.name`,
@@ -435,7 +435,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     }
     params.push(q.limit);
     const { rows } = await app.db.query(
-      `SELECT b.id, b.name, b.entity_type FROM businesses b ${where ? where + ' AND' : 'WHERE'} NOT b.is_archived ORDER BY b.name LIMIT $${params.length}`,
+      `SELECT b.id, b.name, b.entity_type, b.unverified_import_source::text AS unverified_import_source FROM businesses b ${where ? where + ' AND' : 'WHERE'} NOT b.is_archived ORDER BY b.name LIMIT $${params.length}`,
       params
     );
     return { businesses: rows };
