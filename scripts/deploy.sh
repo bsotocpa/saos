@@ -58,15 +58,27 @@ echo "deploy: [1d/5] ensuring the container-health cron is installed (every 5 mi
 echo "deploy: [1e/5] recreating caddy if its config changed (single-file bind mount goes stale by inode)..."
 "${SSH[@]}" 'cd /opt/saos && NEW=$(md5sum deploy/Caddyfile | cut -d" " -f1) && OLD=$(docker exec saos-caddy-1 md5sum /etc/caddy/Caddyfile 2>/dev/null | cut -d" " -f1 || echo none) && if [ "$NEW" != "$OLD" ]; then echo "caddy config changed -> recreating"; docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate caddy; else echo "caddy config unchanged"; fi'
 
-echo "deploy: [2/5] building + starting the FULL stack incl. intel + booking (first build takes minutes)..."
-"${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml up -d --build --quiet-pull'
+# MIGRATE BEFORE SWAP (Brian, 2026-09-14). The order used to be swap, then migrate: a failed
+# migration left new code running on the old schema (0103, 2026-09-13). Now the images are built
+# while the old containers keep serving; the pending migrations run against a COPY of production
+# (schema and rows; scripts/preflight-migrate.sh), then against production; only then do the
+# containers swap. A red preflight or a red production migrate ends the deploy with the box on the
+# previous version.
+echo "deploy: [2/6] building images (the old containers keep serving)..."
+"${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml build --quiet'
 
-echo "deploy: [3/5] running migrations..."
+echo "deploy: [3/6] preflight: pending migrations against a copy of production..."
+"${SSH[@]}" 'cd /opt/saos && bash scripts/preflight-migrate.sh'
+
+echo "deploy: [4/6] running migrations on production..."
 "${SSH[@]}" 'cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api node packages/db/scripts/migrate.cjs up'
 
-echo "deploy: [4/5] seeding (idempotent — roles, settings, templates, price book, forms; NO demo data)..."
+echo "deploy: [5/6] swapping to the new containers..."
+"${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml up -d --quiet-pull'
+
+echo "deploy: [6/6] seeding (idempotent — roles, settings, templates, price book, forms; NO demo data)..."
 "${SSH[@]}" 'cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api node packages/db/seeds/run.mjs'
 
-echo "deploy: [5/5] service status:"
+echo "deploy: service status:"
 "${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml ps --format "table {{.Name}}\t{{.Status}}"'
 echo "deploy: done. Smoke-check the subdomains next (curl -sI https://portal.sotoaccounting.com)."
