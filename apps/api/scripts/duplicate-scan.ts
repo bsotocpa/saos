@@ -5,7 +5,8 @@
  *                                             record holds, what the merge route would do.
  *   APPLY=1 node scripts/duplicate-scan.ts    does it: merges through mergeContacts (the route's
  *                                             function), notes on the rest. Protected names are
- *                                             listed first and never merged by this script.
+ *                                             listed first and merged only when APPROVED names the
+ *                                             losing record (comma-separated ids, Brian's word).
  *
  * The actor is the active CEO, labelled as applied by script, so every audit row says so.
  * Prints names and counts; no secret, no PII beyond the names the book already holds.
@@ -40,9 +41,11 @@ if (apply) {
     `SELECT st.id, st.email, st.display_name FROM staff st JOIN roles r ON r.id = st.role_id WHERE r.key = 'ceo' AND st.is_active ORDER BY st.created_at LIMIT 1`);
   if (!ceo.rows[0]) throw new Error('refusing: no active CEO');
   const actor = { id: ceo.rows[0].id, email: ceo.rows[0].email, fullName: `${ceo.rows[0].display_name} (ruled ${today}, applied by script)` };
+  const approvedLoserIds = new Set((process.env.APPROVED ?? '').split(',').map((s) => s.trim()).filter(Boolean));
   const results = await applyDuplicatePlan(app, groups, actor, {
     dateIso: today,
     reason: 'The same person imported twice from the old systems; the records share a phone or address and nothing on either side is open',
+    approvedLoserIds,
   });
   console.log('\nAPPLIED');
   for (const r of results) {

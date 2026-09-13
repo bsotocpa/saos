@@ -102,7 +102,24 @@ test('the scan plans from shared identifiers: a shared phone merges into the rec
     assert.match(n, /^Possible duplicate: same name as Synthetic Nameonly \(native, added \d{4}-\d{2}-\d{2}\); no shared email, phone or address, so not merged \(duplicate scan, 2026-09-12\)\.$/);
     assert.equal((await app.db.query(`SELECT 1 FROM audit_log WHERE action = 'contact.updated' AND object_id = $1 AND details->'fields' ? 'notes'`, [id])).rows.length, 1);
   }
+  // A protected merge runs when a person names the losing record; with the wrong id named, it still waits.
+  const wrongId = await applyDuplicatePlan(app, await sameNameGroups(app), actor(), { dateIso: '2026-09-12', reason: 'The same person imported twice from the old systems; the records share a phone and nothing on either side is open', approvedLoserIds: new Set([p1]) });
+  assert.equal(wrongId.find((r) => r.name === 'Jackson Flores')!.held.length, 1, 'naming the winner is not naming the loser');
+  const approved = await applyDuplicatePlan(app, await sameNameGroups(app), actor(), { dateIso: '2026-09-12', reason: 'The same person imported twice from the old systems; the records share a phone and nothing on either side is open', approvedLoserIds: new Set([p2]) });
+  assert.deepEqual(approved.find((r) => r.name === 'Jackson Flores')!.merged, [{ winnerId: p1, loserIds: [p2] }]);
+  assert.equal((await app.db.query<{ merged_into_contact_id: string }>(`SELECT merged_into_contact_id FROM contacts WHERE id = $1`, [p2])).rows[0]!.merged_into_contact_id, p1);
+
   // Running it again adds nothing: the twins are merged, the notes are already there.
   const again = await applyDuplicatePlan(app, await sameNameGroups(app), actor(), { dateIso: '2026-09-12', reason: 'The same person imported twice from the old systems; the records share a phone and nothing on either side is open' });
   assert.equal(again.reduce((n, r) => n + r.merged.length + r.noted.length, 0), 0);
+});
+
+test('two identical empty records pick the same winner on every run: the id breaks the tie', async () => {
+  const x1 = await twin('Tiebreak', 1, { phone: '312-555-0304' });
+  const x2 = await twin('Tiebreak', 2, { phone: '312-555-0304' });
+  await app.db.query(`UPDATE contacts SET created_at = '2026-07-07T12:00:00Z' WHERE id = ANY($1::uuid[])`, [[x1, x2]]);
+  const first = (await sameNameGroups(app)).find((g) => g.name === 'Synthetic Tiebreak')!.merges[0]!;
+  const second = (await sameNameGroups(app)).find((g) => g.name === 'Synthetic Tiebreak')!.merges[0]!;
+  assert.equal(first.winnerId, second.winnerId);
+  assert.equal(first.winnerId, [x1, x2].sort()[0], 'the lower id wins a dead tie');
 });

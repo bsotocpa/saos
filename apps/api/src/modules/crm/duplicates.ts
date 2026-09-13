@@ -12,7 +12,8 @@
  * neither merged nor noted, so a real record beside its own test twin is left clean.
  *
  * PROTECTED NAMES (Jackson Flores, Josean Irizarry, Joseph Basilone) sort first in every plan and
- * are never merged by a script: the plan says what the route would do and a person says go.
+ * are never merged by a script on its own: the plan says what the route would do, and the merge
+ * runs only when a person has named the losing record (approvedLoserIds; Brian, 2026-09-14).
  */
 import type { FastifyInstance } from 'fastify';
 import { AppError } from '../../types.ts';
@@ -65,7 +66,7 @@ export async function sameNameGroups(app: FastifyInstance): Promise<DuplicateGro
           SELECT lower(regexp_replace(btrim(first_name || ' ' || last_name), '\\s+', ' ', 'g'))
             FROM contacts WHERE NOT is_archived AND contact_status <> 'archived' AND NOT is_test
            GROUP BY 1 HAVING count(*) > 1)
-      ORDER BY 2, 3, c.created_at`
+      ORDER BY 2, 3, c.created_at, c.id`
   );
   const byName = new Map<string, DuplicateRecord[]>();
   for (const r of rows) {
@@ -108,7 +109,7 @@ export async function sameNameGroups(app: FastifyInstance): Promise<DuplicateGro
     const noteIds: string[] = [];
     for (const members of components.values()) {
       if (members.length === 1) { noteIds.push(members[0]!.id); continue; }
-      const ranked = [...members].sort((a, b) => b.score - a.score || a.createdAt.localeCompare(b.createdAt));
+      const ranked = [...members].sort((a, b) => b.score - a.score || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
       const winner = ranked[0]!;
       const losers = ranked.slice(1).map((r) => r.id);
       const pairShared: Record<string, string[]> = {};
@@ -154,13 +155,17 @@ export interface ApplyResult {
 
 /** Do what the plan says: merges through the same function the route calls, notes on the rest. Protected names are never merged here. */
 export async function applyDuplicatePlan(
-  app: FastifyInstance, groups: DuplicateGroup[], actor: MergeActor, opts: { dateIso: string; reason: string }
+  app: FastifyInstance, groups: DuplicateGroup[], actor: MergeActor,
+  opts: { dateIso: string; reason: string; approvedLoserIds?: ReadonlySet<string> | undefined }
 ): Promise<ApplyResult[]> {
   const out: ApplyResult[] = [];
   for (const g of groups) {
     const r: ApplyResult = { name: g.name, protectedName: g.protectedName, merged: [], held: [], refused: [], noted: [] };
     for (const m of g.merges) {
-      if (g.protectedName) { r.held.push({ ...m, why: 'protected name: the merge waits for a person' }); continue; }
+      if (g.protectedName && !m.loserIds.every((id) => opts.approvedLoserIds?.has(id))) {
+        r.held.push({ ...m, why: 'protected name: the merge waits for a person' });
+        continue;
+      }
       try {
         await mergeContacts(app, m.winnerId, m.loserIds, opts.reason, actor);
         r.merged.push({ winnerId: m.winnerId, loserIds: m.loserIds });
