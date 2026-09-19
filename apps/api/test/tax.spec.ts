@@ -222,10 +222,18 @@ test('scope creep: auto-flag when final exceeds estimate top, reason REQUIRED', 
   assert.equal(otherNoDesc.statusCode, 409);
   assert.equal(otherNoDesc.json().error, 'scope_creep_description_required');
 
+  // Above the locked range, the standalone reason is required too (2026-09-19, item 2).
+  const unreasoned = await app.inject({
+    method: 'POST', url: `/tax-engagements/${id}/final-fee`, headers: auth(preparer),
+    payload: { finalFeeCents: 41000, scopeCreepReason: 'late_docs' },
+  });
+  assert.equal(unreasoned.statusCode, 409);
+  assert.equal(unreasoned.json().error, 'final_fee_reason_required');
+
   // With a reason: flagged + audited.
   const flagged = await app.inject({
     method: 'POST', url: `/tax-engagements/${id}/final-fee`, headers: auth(preparer),
-    payload: { finalFeeCents: 41000, scopeCreepReason: 'late_docs' },
+    payload: { finalFeeCents: 41000, scopeCreepReason: 'late_docs', reason: 'Documents arrived late and the return was reworked after the estimate.' },
   });
   assert.equal(flagged.statusCode, 200, flagged.body);
   assert.equal(flagged.json().scopeCreepFlag, true);

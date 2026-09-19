@@ -17,6 +17,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../../lib/api';
 import { useAsk } from '../../../components/ask';
 import { AddBusinessModal } from '../../../components/add-business';
+import { ReturnControls } from '../../../components/return-controls';
 import { consent7216Label, engagementStatusLabel, invoiceStatusLabel, letterStatusLabel, quoteStatusLabel } from '../../../lib/labels';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
 import { badgeToneFor, invoiceStatusLine } from '../../../lib/invoice-display';
@@ -76,6 +77,8 @@ interface Engagement {
   scopeName: string | null;
   scope: Array<{ itemCode: string; descriptionEn: string; quantity: string; lineCents: number | null; isPassThrough: boolean }>;
   scopeSummary: { count: number; totalCents: number };
+  /** What the client still owes on this engagement's sent and overdue invoices; a completed engagement can carry one. */
+  open_balance_cents?: number;
 }
 interface PacketPreview {
   codes: string[];
@@ -234,6 +237,9 @@ export default function ClientPacketPage() {
   const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const [previewErr, setPreviewErr] = useState('');
   const [addingBusiness, setAddingBusiness] = useState(false);
+  // WHO SEES THE DOOR (2026-09-19, walk step 1 role proof): the button renders for a session holding
+  // contacts.write, the permission the route requires; anyone else gets nothing, not a disabled button.
+  const [canWriteContacts, setCanWriteContacts] = useState(false);
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -327,6 +333,13 @@ export default function ClientPacketPage() {
     }
     void load();
   }, [router, load]);
+  useEffect(() => {
+    let alive = true;
+    api<{ permissions: string[] }>('/auth/me')
+      .then((m) => { if (alive) setCanWriteContacts(m.permissions.includes('*') || m.permissions.includes('contacts.write')); })
+      .catch(() => { if (alive) setCanWriteContacts(false); });
+    return () => { alive = false; };
+  }, []);
 
   if (error) return <div className="alert error">{error}</div>;
   if (!packet) return <p className="muted">Loading…</p>;
@@ -585,9 +598,11 @@ export default function ClientPacketPage() {
         <section className="card">
           <h2>Businesses</h2>
           {/* THE DOOR (Brian, 2026-09-19): a business is added here, on the client's record. */}
-          <p>
-            <button type="button" className="btn ghost small" disabled={busy} onClick={() => setAddingBusiness(true)}>Add a business</button>
-          </p>
+          {canWriteContacts ? (
+            <p>
+              <button type="button" className="btn ghost small" disabled={busy} onClick={() => setAddingBusiness(true)}>Add a business</button>
+            </p>
+          ) : null}
           {addingBusiness ? (
             <AddBusinessModal
               contactId={params.id}
@@ -919,6 +934,11 @@ export default function ClientPacketPage() {
               <span className="name">
                 {e.scopeName ?? e.title ?? e.service_line}{' '}
                 <span className="badge">{engagementStatusLabel(e.status)}</span>
+                {/* THE OPEN BALANCE (2026-09-19): an engagement, completed or not, with an unpaid
+                    invoice says so here — the work being done does not settle the bill. */}
+                {(e.open_balance_cents ?? 0) > 0 ? (
+                  <span className="badge warn" data-testid="engagement-open-balance">Open balance {formatMoney(e.open_balance_cents!)}</span>
+                ) : null}
                 {e.service_line !== (e.scopeName ?? e.title ?? e.service_line) ? (
                   <span className="badge">{e.service_line}</span>
                 ) : null}
@@ -1127,6 +1147,10 @@ export default function ClientPacketPage() {
                     ? `est. ${formatMoney(t.estimated_fee_max_cents)}`
                     : '—'}
               </span>
+              {/* STEP-7 CONTROLS (Brian, 2026-09-19, item 2): estimate lock, final fee, the legal next
+                  stage, and the signed-8879 upload — for a session holding engagements.tax.manage;
+                  nothing for anyone else. Each refusal renders beside its control. */}
+              <ReturnControls taxEngagementId={t.id} contactId={params.id} stage={t.stage} onChanged={load} />
             </div>
           ))
         )}

@@ -194,10 +194,12 @@ test('portal Pay Now: own invoices listed, checkout session created, foreign inv
   const pia = await makeClient('Billpia', 'bill-pia@example.test');
   const otto = await makeClient('Billotto', 'bill-otto@example.test');
   const te = await readyToFileEngagement(pia.contactId);
-  await app.inject({
+  // Inside the locked 30000–40000 range: no reason needed (2026-09-19, item 2).
+  const fee = await app.inject({
     method: 'POST', url: `/tax-engagements/${te}/final-fee`, headers: auth(ana),
-    payload: { finalFeeCents: 25000 },
+    payload: { finalFeeCents: 35000 },
   });
+  assert.equal(fee.statusCode, 200, fee.body);
   await app.inject({
     method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(ana),
     payload: { toStage: 'filed', preparerPtinHolderId: ana.id },
@@ -228,10 +230,11 @@ test('portal Pay Now: own invoices listed, checkout session created, foreign inv
 test('payment webhook: authenticated, marks paid + receipt + TE rollup, idempotent on replay', async () => {
   const raj = await makeClient('Billraj', 'bill-raj@example.test');
   const te = await readyToFileEngagement(raj.contactId);
-  // 42000 would exceed the 40000 estimate top → scope creep needs a reason.
+  // 42000 would exceed the 40000 estimate top → scope creep needs a reason, and leaving the
+  // quoted range needs the standalone reason (2026-09-19, item 2).
   const fee = await app.inject({
     method: 'POST', url: `/tax-engagements/${te}/final-fee`, headers: auth(ana),
-    payload: { finalFeeCents: 42000, scopeCreepReason: 'late_docs' },
+    payload: { finalFeeCents: 42000, scopeCreepReason: 'late_docs', reason: 'Documents arrived late and the return was reworked after the estimate.' },
   });
   assert.equal(fee.statusCode, 200, fee.body);
   await app.inject({

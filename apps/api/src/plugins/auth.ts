@@ -110,7 +110,8 @@ export function requirePermission(permission: string) {
     const wildcardApplies =
       staff.permissions.includes('*') && !EXPLICIT_ONLY_PERMISSIONS.has(permission);
     if (!wildcardApplies && !staff.permissions.includes(permission)) {
-      await reply.code(403).send({ error: 'forbidden', permission });
+      // The words the screen shows beside whatever asked (2026-09-19): never the helper's fallback.
+      await reply.code(403).send({ error: 'forbidden', permission, message: `This session does not hold ${permission}.` });
       return;
     }
   };
@@ -135,7 +136,7 @@ export function requireAnyPermission(...permissions: string[]) {
       return;
     }
     if (!permissions.some((p) => holds(staff, p))) {
-      await reply.code(403).send({ error: 'forbidden', permission: permissions[0] });
+      await reply.code(403).send({ error: 'forbidden', permission: permissions[0], message: `This session does not hold ${permissions.join(' or ')}.` });
       return;
     }
   };

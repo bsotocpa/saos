@@ -12,9 +12,12 @@ import { AppError } from '../../types.ts';
 import { createEngagement } from '../engagements/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { computeComplexityScore } from './complexity.ts';
-import { TAX_STAGES, markDocumentsRequested, recordEfileResult, transitionStage } from './pipeline.ts';
+import { TAX_STAGES, legalNextStages, markDocumentsRequested, recordEfileResult, transitionStage, type TaxStage } from './pipeline.ts';
 import { preparerQueue } from './queue.ts';
 import { todayChicago } from './deadlines.ts';
+import { returnTypeForItems } from './return-type.ts';
+import { currentPriceBookVersion } from '../pricing/service.ts';
+import { formatUsd } from '../billing/service.ts';
 
 const CreateBody = z.object({
   contactId: z.uuid(),
@@ -58,6 +61,12 @@ const FinalFeeBody = z.object({
     .enum(['additional_states', 'additional_sch_c', 'additional_sch_e', 'foreign', 'late_docs', 'prior_year_cleanup', 'irs_notice', 'other'])
     .optional(),
   scopeCreepDescription: z.string().optional(),
+  /**
+   * THE STANDALONE REASON (Brian, 2026-09-19, item 2): a final fee outside the quoted range says
+   * why, in words the next reader can use, and registers on the money line. Optional in the
+   * schema; the route requires it the moment the amount leaves the range.
+   */
+  reason: reasonText(10, 1000).optional(),
 });
 
 const ComplexityBody = z.object({
@@ -107,13 +116,55 @@ function actorOf(request: FastifyRequest) {
 }
 
 async function loadTaxEngagement(app: FastifyInstance, id: string) {
-  const { rows } = await app.db.query<{ id: string; engagement_id: string; contact_id: string; estimated_fee_max_cents: number | null; stage: string }>(
-    `SELECT te.id, te.engagement_id, e.contact_id, te.estimated_fee_max_cents, te.stage
+  const { rows } = await app.db.query<{
+    id: string; engagement_id: string; contact_id: string; return_type: string; stage: string;
+    estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null;
+  }>(
+    `SELECT te.id, te.engagement_id, e.contact_id, te.return_type, te.stage, te.estimated_fee_min_cents, te.estimated_fee_max_cents
      FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`,
     [id]
   );
   if (!rows[0]) throw new AppError(404, 'not_found', 'Tax engagement not found.');
   return rows[0];
+}
+
+export interface QuotedRange { min_cents: number; max_cents: number; price_book_version: number }
+
+/**
+ * THE QUOTED RANGE A FINAL FEE IS MEASURED AGAINST (Brian, 2026-09-19, item 2).
+ *
+ * Once the estimate is locked, the locked range IS the range: that is the number the client was
+ * given and it no longer moves. Before that, the accepted quote's line for this return: the
+ * engagement's scope snapshot (#47) names the base return item, and the price book in force
+ * prices it — a flat item is a range of one number. The version reported is the one in force
+ * today, which is what the fee is read against. A return with neither (opened by hand, no scope
+ * rows) has no range, and a fee on it needs no reason for being outside one.
+ */
+export async function quotedRangeFor(
+  app: FastifyInstance,
+  te: { engagement_id: string; return_type: string; estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null }
+): Promise<QuotedRange | null> {
+  const version = await currentPriceBookVersion(app.db);
+  if (te.estimated_fee_min_cents !== null && te.estimated_fee_max_cents !== null) {
+    return { min_cents: te.estimated_fee_min_cents, max_cents: te.estimated_fee_max_cents, price_book_version: version.versionNumber };
+  }
+  const scope = await app.db.query<{ item_code: string }>(
+    `SELECT item_code FROM engagement_scope_items WHERE engagement_id = $1 ORDER BY sort_order`,
+    [te.engagement_id]
+  );
+  const base = scope.rows.map((r) => r.item_code).find((code) => returnTypeForItems([code])?.returnType === te.return_type);
+  if (!base) return null;
+  const item = await app.db.query<{ amount_cents: number | null; price_min_cents: number | null; price_max_cents: number | null }>(
+    `SELECT amount_cents, price_min_cents, price_max_cents FROM price_book_items WHERE version_id = $1 AND item_code = $2 AND is_active`,
+    [version.id, base]
+  );
+  const it = item.rows[0];
+  if (!it) return null;
+  const ranged = it.price_min_cents !== null && it.price_max_cents !== null;
+  const min = ranged ? it.price_min_cents : it.amount_cents;
+  const max = ranged ? it.price_max_cents : it.amount_cents;
+  if (min === null || max === null) return null;
+  return { min_cents: min, max_cents: max, price_book_version: version.versionNumber };
 }
 
 export function registerTaxRoutes(app: FastifyInstance): void {
@@ -251,7 +302,36 @@ export function registerTaxRoutes(app: FastifyInstance): void {
        FROM engagement_stage_history WHERE tax_engagement_id = $1 ORDER BY entered_at`,
       [id]
     );
-    return { taxEngagement: rows[0], stageHistory: history.rows };
+    /*
+     * WHAT THE RETURN'S PAGE NEEDS TO OFFER THE RIGHT CONTROLS (Brian, 2026-09-19, item 2): the
+     * legal next stage(s), the quoted range and the book version the final fee is read against,
+     * whether a signed authorization is on file (told before the tap, refused at it), the
+     * assigned preparer (the PTIN-holder default) and who may be the PTIN holder at all.
+     */
+    const te = rows[0] as {
+      stage: TaxStage; engagement_id: string; return_type: string; preparer_id: string | null;
+      f8879_document_id: string | null; f8879_signed_at: Date | null;
+      estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null;
+    };
+    const [quotedRange, assigned, staffOptions] = await Promise.all([
+      quotedRangeFor(app, te),
+      te.preparer_id
+        ? app.db.query<{ id: string; name: string }>(`SELECT id, display_name AS name FROM staff WHERE id = $1`, [te.preparer_id])
+        : Promise.resolve({ rows: [] as Array<{ id: string; name: string }> }),
+      app.db.query<{ id: string; name: string }>(
+        `SELECT s.id, s.display_name AS name FROM staff s JOIN roles r ON r.id = s.role_id
+          WHERE s.is_active AND r.key IN ('tax_preparer', 'ceo') ORDER BY s.display_name`
+      ),
+    ]);
+    return {
+      taxEngagement: rows[0],
+      stageHistory: history.rows,
+      quoted_range: quotedRange,
+      legal_next_stages: legalNextStages(te.stage),
+      signed_authorization_on_file: Boolean(te.f8879_document_id && te.f8879_signed_at),
+      assigned_preparer: assigned.rows[0] ?? null,
+      staff_options: staffOptions.rows,
+    };
   });
 
   app.post<{ Params: { id: string } }>('/tax-engagements/:id/transition', manage, async (request) => {
@@ -261,8 +341,8 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     return { status: 'ok', ...result };
   });
 
-  // v4.3 flow 1: record the IRS acknowledgement. Accepted → completed;
-  // rejected → re-queued with the perfection clock + owned fix task.
+  // v4.3 flow 1: record an e-file acknowledgement. Accepted → completed once every
+  // jurisdiction has accepted (2026-09-19); rejected → re-queued with the perfection clock + owned fix task.
   app.post<{ Params: { id: string } }>('/tax-engagements/:id/efile-result', manage, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const b = z.object({
@@ -270,9 +350,14 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       rejectCode: z.string().max(40).optional(),
       rejectReason: z.string().max(1000).optional(),
       asOf: z.iso.date().optional(), // clock injection for tests
+      // 2026-09-19: which jurisdiction answered. Federal when unsaid; a return completes only
+      // when every jurisdiction it files in has accepted (the response carries `awaiting`).
+      jurisdiction: z.enum(['federal', 'state']).optional(),
+      stateCode: z.string().regex(/^[A-Za-z]{2}$/).optional(),
     }).parse(request.body);
     const out = await recordEfileResult(app, actorOf(request), id, {
       result: b.result, rejectCode: b.rejectCode, rejectReason: b.rejectReason, today: b.asOf,
+      jurisdiction: b.jurisdiction, stateCode: b.stateCode,
     });
     return { status: 'ok', ...out };
   });
@@ -299,21 +384,45 @@ export function registerTaxRoutes(app: FastifyInstance): void {
 
   // Final fee — scope creep auto-flags when final > estimate top, and the
   // reason is REQUIRED at that moment (MP: scope creep reason required).
+  // Sets the fee fields only: the invoice is issued at 'filed', through createInvoice (the money door).
   app.post<{ Params: { id: string } }>('/tax-engagements/:id/final-fee', manage, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const b = FinalFeeBody.parse(request.body);
     const te = await loadTaxEngagement(app, id);
 
     const creep = te.estimated_fee_max_cents !== null && b.finalFeeCents > te.estimated_fee_max_cents;
-    if (creep && !b.scopeCreepReason) {
+    /*
+     * The return's page asks for ONE reason (item 2's standalone reason), not the scope-creep
+     * category as well. Above the locked estimate that reason is the scope-creep description, filed
+     * under 'other'; an API caller naming the category still names it.
+     */
+    let scopeCreepReason = b.scopeCreepReason;
+    let scopeCreepDescription = b.scopeCreepDescription;
+    if (creep && !scopeCreepReason && b.reason) { scopeCreepReason = 'other'; scopeCreepDescription = b.reason; }
+    if (creep && !scopeCreepReason) {
       throw new AppError(
         409,
         'scope_creep_reason_required',
         'Final fee exceeds the top of the estimate — a scope-creep reason is required (additional_states / additional_sch_c / additional_sch_e / foreign / late_docs / prior_year_cleanup / irs_notice / other).'
       );
     }
-    if (creep && b.scopeCreepReason === 'other' && !b.scopeCreepDescription) {
+    if (creep && scopeCreepReason === 'other' && !scopeCreepDescription) {
       throw new AppError(409, 'scope_creep_description_required', "Reason 'other' requires a description.");
+    }
+
+    /*
+     * OUTSIDE THE QUOTED RANGE (Brian, 2026-09-19, item 2): the fee is read against the range the
+     * client was quoted, under the price book in force. Leaving it in either direction needs a
+     * standalone reason, and the move registers on the money line through its own audit action.
+     */
+    const range = await quotedRangeFor(app, te);
+    const outside = range !== null && (b.finalFeeCents < range.min_cents || b.finalFeeCents > range.max_cents);
+    if (outside && !b.reason) {
+      throw new AppError(
+        409,
+        'final_fee_reason_required',
+        `${formatUsd(b.finalFeeCents)} is outside the quoted range ${formatUsd(range.min_cents)}–${formatUsd(range.max_cents)} (price book v${range.price_book_version}). Say why in a reason; it registers on the money line.`
+      );
     }
 
     await app.db.query(
@@ -325,7 +434,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
        WHERE id = $1`,
       [
         id, b.finalFeeCents, b.discountCents ?? null, creep,
-        creep ? b.scopeCreepReason : null, creep ? (b.scopeCreepDescription ?? null) : null,
+        creep ? scopeCreepReason : null, creep ? (scopeCreepDescription ?? null) : null,
       ]
     );
     if (creep) {
@@ -333,10 +442,22 @@ export function registerTaxRoutes(app: FastifyInstance): void {
         actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
         action: 'tax_engagement.scope_creep_flagged', objectType: 'tax_engagement', objectId: id,
         contactId: te.contact_id, ...meta(request),
-        details: { reason: b.scopeCreepReason, over_estimate_cents: b.finalFeeCents - (te.estimated_fee_max_cents ?? 0) },
+        details: { reason: scopeCreepReason, over_estimate_cents: b.finalFeeCents - (te.estimated_fee_max_cents ?? 0) },
       });
     }
-    return { status: 'ok', scopeCreepFlag: creep };
+    if (outside) {
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
+        action: 'tax_engagement.final_fee_outside_quote', objectType: 'tax_engagement', objectId: id,
+        contactId: te.contact_id, ...meta(request),
+        details: {
+          final_fee_cents: b.finalFeeCents, amount_cents: b.finalFeeCents,
+          quoted_min_cents: range.min_cents, quoted_max_cents: range.max_cents,
+          price_book_version: range.price_book_version, reason: b.reason,
+        },
+      });
+    }
+    return { status: 'ok', scopeCreepFlag: creep, outsideQuotedRange: outside };
   });
 
   app.post<{ Params: { id: string } }>('/tax-engagements/:id/complexity', manage, async (request) => {
