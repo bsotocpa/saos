@@ -52,5 +52,6 @@ test('the delivered 1120S is under My Returns for the owner', async ({ page }, t
   } finally {
     if (!existsSync(shot)) await page.screenshot({ path: shot, fullPage: true }).catch(() => undefined);
     testInfo.annotations.push({ type: 'screenshot', description: keepScreenshot('portal-returns-phone', passed, shot) });
+    testInfo.annotations.push({ type: 'walk-step', description: 'A5|portal /returns (My Returns), the delivered return listed with its file name|client (portal sign-in link)|tap' });
   }
 });

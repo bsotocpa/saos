@@ -1,0 +1,41 @@
+{
+  "_comment": "The live-walk steps the harness must clear (Brian, 2026-09-19, report items 6 and 11). A spec clears a step by pushing an annotation { type: 'walk-step', description: '<path>:<step>|<control>|<roles>|<tap|api|fixture>' } while it runs; scripts/walk-evidence.mjs joins this manifest with apps/e2e/.artifacts/last-run.json. A step with no passing annotation is not cleared.",
+  "paths": {
+    "A": {
+      "title": "The 1120S, filed in ATX (Path A)",
+      "steps": [
+        { "id": "A1", "text": "Add the business with its EIN, make it primary", "device": "laptop" },
+        { "id": "A2", "text": "Business-tax quote against it, $0 deposit override with a reason, send", "device": "laptop" },
+        { "id": "A3", "text": "Accept the quote, sign Schedule B, business onboarding form, upload a document", "device": "phone" },
+        { "id": "A4", "text": "Deliver the return PDF to the portal", "device": "laptop" },
+        { "id": "A5", "text": "My Returns shows it", "device": "phone" },
+        { "id": "A6", "text": "Upload the signed 8879-CORP scan with its signed date and the PTIN holder", "device": "laptop" },
+        { "id": "A7", "text": "Set the final fee, ready to file, filed with the PTIN holder", "device": "laptop" },
+        { "id": "A8", "text": "Upload the ATX ack report, review the rows, release", "device": "laptop" },
+        { "id": "A9", "text": "Both rows read Sent; two acceptance emails", "device": "phone" },
+        { "id": "A10", "text": "Pay the final-fee invoice", "device": "phone" },
+        { "id": "A11", "text": "Receipt, the money line, the completed engagement", "device": "laptop" }
+      ]
+    },
+    "B": {
+      "title": "The 1040 on extension, walk-in wet-sign (Path B)",
+      "steps": [
+        { "id": "B1", "text": "Contact created", "device": "laptop" },
+        { "id": "B2", "text": "Quote built and sent", "device": "laptop" },
+        { "id": "B3", "text": "Accepted with the deposit paid", "device": "phone" },
+        { "id": "B4", "text": "Engagement packet assembled and sent", "device": "laptop" },
+        { "id": "B5", "text": "Section 7216 consent answered", "device": "phone" },
+        { "id": "B6", "text": "Onboarding questionnaire submitted", "device": "phone" },
+        { "id": "B7", "text": "Documents uploaded by the client", "device": "phone" },
+        { "id": "B8", "text": "Return delivered to the portal", "device": "laptop" },
+        { "id": "B9", "text": "Signed 8879 scan uploaded, wet-signed in office", "device": "laptop" },
+        { "id": "B10", "text": "Filed with the PTIN holder", "device": "laptop" },
+        { "id": "B11", "text": "Acknowledgment report uploaded and released", "device": "laptop" },
+        { "id": "B12", "text": "Acceptance emails sent", "device": "phone" },
+        { "id": "B13", "text": "Final invoice issued", "device": "laptop" },
+        { "id": "B14", "text": "Paid", "device": "phone" },
+        { "id": "B15", "text": "Engagement completed", "device": "laptop" }
+      ]
+    }
+  }
+}

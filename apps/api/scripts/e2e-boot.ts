@@ -230,11 +230,26 @@ await drainOutbox(app);
  * questionnaire submitted from a portal session, and documents filed. Page five reads the Ops
  * client page and asks the API what the page would.
  */
-const scorpOwner = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Scorpowner', email: 'scorpowner@example.test' });
+
+/*
+ * THE 1120S DRY RUN (Brian, 2026-09-19): the return was filed in ATX on time, outside SAOS, the
+ * ruled fallback exercised deliberately. The fixture takes the return to the point a person
+ * takes over: the letter and the estimate stamped the way the API specs stamp them, the stages
+ * walked through the transition route by the preparer, and the return DELIVERED to the portal
+ * through the upload route the Ops page presses. The signed 8879, the filing, the acknowledgment
+ * report, the payment and the completion are the harness's to do, as Brian in every role.
+ */
+const anamaria = await makeStaff(app.db, config, { email: 'anamaria-walker@example.test', name: 'Synthetic Ana-Maria', role: 'tax_preparer', password: 'anamaria-synthetic-2026', totpSecret: TOTP_SECRET });
+const anaLogin = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: anamaria.email, password: 'anamaria-synthetic-2026', totp: new OTPAuth.TOTP({ algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(TOTP_SECRET) }).generate() } });
+const anaToken = (anaLogin.json() as { token: string }).token;
+/* ONE S CORPORATION PER VIEWPORT (2026-09-19, BUILD 3): the dry run taps its way from the signed 8879 to the paid
+ * invoice at 390 and again at 1280, and each flow mutates its return once, so the fixture is built twice. */
+async function buildScorp(who: { email: string; lastName: string }, entity: { name: string; ein: string }) {
+const scorpOwner = await makeContact(app.db, { firstName: 'Synthetic', lastName: who.lastName, email: who.email });
 await app.db.query(`UPDATE contacts SET soto_status = 'active', is_test = true, test_note = 'Harness fixture: the S corporation rehearsal.' WHERE id = $1`, [scorpOwner.id]);
 const scorpBiz = await app.inject({
   method: 'POST', url: `/contacts/${scorpOwner.id}/businesses`, headers: { authorization: `Bearer ${staffToken}` },
-  payload: { name: 'Harness S Corp, LLC', ein: '55-5555555', entityType: 's_corp', state: 'IL' },
+  payload: { name: entity.name, ein: entity.ein, entityType: 's_corp', state: 'IL' },
 });
 if (scorpBiz.statusCode !== 201) throw new Error(`the S corp business was refused: ${scorpBiz.statusCode} ${scorpBiz.body}`);
 const scorpBusinessId = (scorpBiz.json() as { id: string }).id;
@@ -257,21 +272,8 @@ const scorpForm = await app.inject({
 });
 if (scorpForm.statusCode >= 300) throw new Error(`the business onboarding form was refused: ${scorpForm.statusCode} ${scorpForm.body}`);
 const scorpDoc = await uploadDocument(app, minio, { type: 'staff', id: staff.id, label: staff.fullName }, { contactId: scorpOwner.id, category: 'business_records', filename: 'HARNESS-SCORP-BANK-STATEMENT.pdf', mimeType: 'application/pdf', buffer: PDF });
-
-/*
- * THE 1120S DRY RUN (Brian, 2026-09-19): the return was filed in ATX on time, outside SAOS, the
- * ruled fallback exercised deliberately. The fixture takes the return to the point a person
- * takes over: the letter and the estimate stamped the way the API specs stamp them, the stages
- * walked through the transition route by the preparer, and the return DELIVERED to the portal
- * through the upload route the Ops page presses. The signed 8879, the filing, the acknowledgment
- * report, the payment and the completion are the harness's to do, as Brian in every role.
- */
-const anamaria = await makeStaff(app.db, config, { email: 'anamaria-walker@example.test', name: 'Synthetic Ana-Maria', role: 'tax_preparer', password: 'anamaria-synthetic-2026', totpSecret: TOTP_SECRET });
 const scorpTeId = scorpTe.rows[0]!.id;
 await app.db.query(`UPDATE tax_engagements SET engagement_letter_signed_at = now(), estimate_locked_at = now(), preparer_id = $2 WHERE id = $1`, [scorpTeId, anamaria.id]);
-const anaLogin = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: anamaria.email, password: 'anamaria-synthetic-2026', totp: new OTPAuth.TOTP({ algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(TOTP_SECRET) }).generate() } });
-if (anaLogin.statusCode !== 200) throw new Error(`the preparer could not sign in: ${anaLogin.statusCode} ${anaLogin.body}`);
-const anaToken = (anaLogin.json() as { token: string }).token;
 for (const toStage of ['scheduled', 'documents_requested', 'in_preparation', 'internal_review', 'client_review', 'ready_to_file']) {
   const moved = await app.inject({ method: 'POST', url: `/tax-engagements/${scorpTeId}/transition`, headers: { authorization: `Bearer ${anaToken}` }, payload: { toStage } });
   if (moved.statusCode !== 200) throw new Error(`the S corp return would not move to ${toStage}: ${moved.statusCode} ${moved.body}`);
@@ -287,6 +289,10 @@ if (scorpOwnerUser.statusCode !== 200) throw new Error(`the S corp owner's sign-
 await drainOutbox(app);
 const scorpMagicToken = magicTokens.pop();
 if (!scorpMagicToken) throw new Error('no sign-in link reached the mailer for the S corp owner');
+  return { scorpOwner, scorpBusinessId, scorpQuote, scorpAccepted, scorpTe, scorpPacket, scorpDoc, scorpTeId, scorpTaxYear, scorpMagicToken };
+}
+const S = await buildScorp({ email: 'scorpowner@example.test', lastName: 'Scorpowner' }, { name: 'Harness S Corp, LLC', ein: '55-5555555' });
+const D = await buildScorp({ email: 'scorpowner-desk@example.test', lastName: 'Scorpdesk' }, { name: 'Harness Desk Corp, LLC', ein: '55-5555556' });
 // Brian arms these himself on the box; the harness arms them so the sends are real here.
 await app.db.query(`UPDATE automations SET enabled = true WHERE key IN ('efile_acknowledgment', 'payment_receipt')`);
 const scorpFee = await app.db.query<{ amount_cents: number }>(`SELECT pbi.amount_cents FROM price_book_items pbi WHERE pbi.is_active AND pbi.amount_cents > 0 ORDER BY pbi.amount_cents LIMIT 1`);
@@ -317,23 +323,25 @@ await app.listen({ port: PORT, host: '127.0.0.1' });
 // waits on after a release, so the harness drains it every two seconds, the way the box does every minute.
 const harnessSweep = setInterval(() => { drainOutbox(app).catch(() => undefined); }, 2000);
 harnessSweep.unref();
+const scorpFixture = (x: Awaited<ReturnType<typeof buildScorp>>, entityName: string, einLast4: string, business: string) => ({
+  contactId: x.scorpOwner.id, businessId: x.scorpBusinessId, quoteId: x.scorpQuote.id,
+  engagementId: x.scorpAccepted.engagements[0]!.id, taxEngagementId: x.scorpTe.rows[0]!.id,
+  packetCodes: x.scorpPacket.scheduleCodes, documentId: x.scorpDoc.id,
+  markers: { business, document: 'HARNESS-SCORP-BANK-STATEMENT.pdf', returnFile: 'HARNESS-SCORP-1120S-RETURN.pdf' },
+  entityName, einLast4, taxYear: x.scorpTaxYear,
+  preparer: { id: anamaria.id, name: anamaria.fullName },
+  ownerEmail: x.scorpOwner.email, portalMagicToken: x.scorpMagicToken,
+  finalFeeCents: scorpFee.rows[0]!.amount_cents,
+  webhookSecret: config.WEBHOOK_SECRET,
+});
 console.log('E2E_READY ' + JSON.stringify({
   port: PORT,
   contactId: contact.id,
   engagementWithDeposit: acc1.engagementId,
   staff: { email: staff.email, password: 'walker-synthetic-2026', totpSecret: TOTP_SECRET },
   portalMagicTokens: magicTokens.slice(-2),
-  scorp: {
-    contactId: scorpOwner.id, businessId: scorpBusinessId, quoteId: scorpQuote.id,
-    engagementId: scorpAccepted.engagements[0]!.id, taxEngagementId: scorpTe.rows[0]!.id,
-    packetCodes: scorpPacket.scheduleCodes, documentId: scorpDoc.id,
-    markers: { business: 'Harness S Corp', document: 'HARNESS-SCORP-BANK-STATEMENT.pdf', returnFile: 'HARNESS-SCORP-1120S-RETURN.pdf' },
-    entityName: 'Harness S Corp, LLC', einLast4: '5555', taxYear: scorpTaxYear,
-    preparer: { id: anamaria.id, name: anamaria.fullName },
-    ownerEmail: scorpOwner.email, portalMagicToken: scorpMagicToken,
-    finalFeeCents: scorpFee.rows[0]!.amount_cents,
-    webhookSecret: config.WEBHOOK_SECRET,
-  },
+  scorp: scorpFixture(S, 'Harness S Corp, LLC', '5555', 'Harness S Corp'),
+  scorpDesk: scorpFixture(D, 'Harness Desk Corp, LLC', '5556', 'Harness Desk Corp'),
   amend: { invoiceId: acc1.depositInvoiceId },
   wall: {
     laura: { email: laura.email, password: 'laura-synthetic-2026', totpSecret: TOTP_SECRET },
