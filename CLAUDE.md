@@ -84,3 +84,6 @@
 - **Minimal Impact**: only touch what's necessary. No side effects, no new bugs.
 - **Sequence discipline**: finish the current phase's checklist before proposing the next. Brian sequences deliberately — don't parallelize open tracks without asking.
 - **Client-acting automations ship OFF**: every automation that sends to a client (ladders, dunning, extension notices, late fees, chases, acks) is registered in the `automations` table, gated by `isAutomationEnabled()`, and seeded `enabled = false`. Brian arms each one in Admin → Automations as real clients reach the portal. A client-facing send without a registered toggle + gate check is a build failure. Internal alerts/tasks are never gated — only the outbound client message, and every suppression is counted in the job's run record.
+
+### The MCP browser (Brian, 2026-09-19, standing rule)
+- **The MCP browser never signs into production Ops.** The Playwright MCP server in `.mcp.json` runs an isolated, in-memory profile and is for the local harness and public pages only. No production Ops or portal credentials go into it, ever; a walk on production is Brian's own hand on his own devices.
