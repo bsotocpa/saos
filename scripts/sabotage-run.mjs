@@ -10,7 +10,7 @@
  *
  *   node scripts/sabotage-run.mjs scripts/sabotages/2026-09-19-walk.mjs [--only <item substring>]
  *
- * A manifest exports `items`: [{ item, file, change, apply(text) -> text, test: { kind: 'api'|'harness', spec },
+ * A manifest exports `items`: [{ item, file, change, apply(text) -> text, test: { kind: 'api'|'harness'|'guard', spec },
  * expectRed: RegExp on failed test names (api) or /x\s+\d+/ style (harness) }]. An item with
  * `none: 'why'` and no apply is logged as having no sabotage, with the reason, and never fails the run.
  * Log row: date | item | file | change | test | on the harness | red | restored green
@@ -51,7 +51,14 @@ function runHarness(spec) {
   const failed = [...out.matchAll(/^\s+(?:x|✘)\s+\d+\s+\[(\w+)\][^\n]*›\s*([^\n]+)/gm)].map((m) => `${m[2].trim()} [${m[1]}]`);
   return { pass: /(\d+) passed/.exec(out)?.[1] ?? '0', fail: /(\d+) failed/.exec(out)?.[1] ?? '0', failed: [...new Set(failed)] };
 }
-const run = (t) => (t.kind === 'harness' ? runHarness(t.spec) : runApi(t.spec));
+/** A build guard: an npm script that must exit non-zero once the guarded shape is back in the tree. */
+function runGuard(script) {
+  const r = spawnSync('npm', ['run', '-s', script], { cwd: root, encoding: 'utf8', shell: true });
+  const out = (r.stdout ?? '') + (r.stderr ?? '');
+  const failed = [...out.matchAll(/^RED\s+(.+)$/gm)].map((m) => m[1].trim());
+  return { pass: r.status === 0 ? '1' : '0', fail: r.status === 0 ? '0' : String(Math.max(1, failed.length)), failed };
+}
+const run = (t) => (t.kind === 'harness' ? runHarness(t.spec) : t.kind === 'guard' ? runGuard(t.spec) : runApi(t.spec));
 const cell = (s) => String(s ?? '').replace(/\|/g, '/').replace(/\s+/g, ' ').trim();
 const log = (cols) => { const line = [date, ...cols].map(cell).join(' | '); appendFileSync(logFile, line + '\n'); console.log(line); };
 

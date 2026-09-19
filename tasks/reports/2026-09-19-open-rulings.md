@@ -1,6 +1,6 @@
 # open-rulings (2026-09-19)
 
-Generated 2026-09-19T20:29:05.408Z by scripts/report-table.mjs from the log open-rulings.log; 52 row(s).
+Generated 2026-09-19T20:46:12.327Z by scripts/report-table.mjs from the log open-rulings.log; 52 row(s).
 
 ```sql
 node scripts/open-rulings.mjs  (one row per checkbox line of tasks/todo.md OPEN RULINGS)
@@ -44,15 +44,15 @@ node scripts/open-rulings.mjs  (one row per checkbox line of tasks/todo.md OPEN 
 | R-34 | 2026-09-19 | RULED 2026-09-19, defect 3: a suppressed send reads "held on <date> — automation was off at the time", past tense, dated, everywhere a suppr | closed | SHIPPED: outbox.holdLine(at); old rows dated from their suppression audit row; the acks screen reads suppressed_at. |
 | R-35 | 2026-09-19 | RULED 2026-09-19, defect 4: period applies to tax lines; bookkeeping is ongoing | closed | SHIPPED (client page). |
 | R-36 | 2026-09-19 | RULED 2026-09-19, THE 1120S DRY RUN (filed in ATX on time, outside SAOS; the ruled fallback exercised deliberately) on the harness with an a | closed | SHIPPED on the harness: e2e-boot delivers the S corp return; ops-scorp-dry-run.spec.ts does 3, 4, 5 as the CEO on the phone project and both |
-| R-37 | 2026-09-19 | RULING NEEDED (harness finding, 2026-09-19): the dashboard's "Money actions today by staff" counts rows whose actor is the system (a Stripe | OPEN |  |
+| R-37 | 2026-09-19 | RULING NEEDED (harness finding, 2026-09-19), | closed | ANSWERED by BUILD 5: the dashboard's "Money actions today by staff" counts rows whose actor is the system (a Stripe webhook refund with no p |
 | R-38 |  | BRIAN, LIVE (after this deploy): the real 1120S in SAOS in this order, phone and laptop as listed in the 09-19 report. | OPEN |  |
 | R-39 | 2026-10-15 | STILL BRIAN'S: Trello exports, FL entity classification, client #1 name; 26 days to 2026-10-15. | OPEN |  |
-| R-40 | 2026-09-19 | RULED 2026-09-19 (BUILD), 1: pin @playwright/mcp in .mcp.json to the resolved version; ephemeral browser profile if supported, config shown; | OPEN | SHIPPED: .mcp.json pins @playwright/mcp@0.0.82 with --isolated (in-memory profile) at 383187b; the rule is in CLAUDE.md and memory; .claude/ |
-| R-41 | 2026-09-19 | RULED 2026-09-19 (BUILD), 2: step-7 controls on the return's page in Ops (no new admin page): estimate lock, set final fee, transitions thro | OPEN | SHIPPED: components/return-controls.tsx on the Returns card (Lock estimate, Set final fee, the legal next stage buttons, Mark filed with the |
-| R-42 | 2026-09-19 | RULED 2026-09-19 (BUILD), 3: replace every API-driven step in ops-scorp-dry-run.spec.ts with UI taps at 390 and 1280; one harness sabotage o | OPEN | SHIPPED: the spec taps the Returns card (signed 8879 upload with a future date refused beside the date, final fee outside the quoted range r |
-| R-43 | 2026-09-19 | RULED 2026-09-19 (BUILD), 4: completion when every jurisdiction row on the return is accepted, not federal alone; a rejection opens a prepar | OPEN | SHIPPED: before the change, a federal Accepted row alone moved the return to completed and closed the engagement (efile-ack.ts federal branc |
-| R-44 | 2026-09-19 | RULED 2026-09-19 (BUILD), 5: money line actor classes CEO, staff, system; "by staff" counts human staff only; a webhook refund matched to a | OPEN | SHIPPED: money-digest.ts classes every audited money action ceo / staff / system in SQL; the line and the digest count class staff only; a w |
-| R-45 | 2026-09-19 | RULED 2026-09-19 (REPORT; tables are files written by scripts, script path included): 6 walk evidence per live-walk step (control page+selec | OPEN |  |
+| R-40 | 2026-09-19 | RULED 2026-09-19 (BUILD), 1: pin @playwright/mcp in .mcp.json to the resolved version; ephemeral browser profile if supported, config shown; | closed | SHIPPED: .mcp.json pins @playwright/mcp@0.0.82 with --isolated (in-memory profile) at 383187b; the rule is in CLAUDE.md and memory; .claude/ |
+| R-41 | 2026-09-19 | RULED 2026-09-19 (BUILD), 2: step-7 controls on the return's page in Ops (no new admin page): estimate lock, set final fee, transitions thro | closed | SHIPPED: components/return-controls.tsx on the Returns card (Lock estimate, Set final fee, the legal next stage buttons, Mark filed with the |
+| R-42 | 2026-09-19 | RULED 2026-09-19 (BUILD), 3: replace every API-driven step in ops-scorp-dry-run.spec.ts with UI taps at 390 and 1280; one harness sabotage o | closed | SHIPPED: the spec taps the Returns card (signed 8879 upload with a future date refused beside the date, final fee outside the quoted range r |
+| R-43 | 2026-09-19 | RULED 2026-09-19 (BUILD), 4: completion when every jurisdiction row on the return is accepted, not federal alone; a rejection opens a prepar | closed | SHIPPED: before the change, a federal Accepted row alone moved the return to completed and closed the engagement (efile-ack.ts federal branc |
+| R-44 | 2026-09-19 | RULED 2026-09-19 (BUILD), 5: money line actor classes CEO, staff, system; "by staff" counts human staff only; a webhook refund matched to a | closed | SHIPPED: money-digest.ts classes every audited money action ceo / staff / system in SQL; the line and the digest count class staff only; a w |
+| R-45 | 2026-09-19 | RULED 2026-09-19 (REPORT; tables are files written by scripts, script path included): 6 walk evidence per live-walk step (control page+selec | closed | DONE: tasks/reports/2026-09-19-walk-evidence-path-a.md and -path-b.md (scripts/walk-evidence.mjs from the harness run record), sabotage-reco |
 | R-46 |  | Then the Monday walk as written. | OPEN |  |
 | R-47 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
 | R-48 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |

@@ -19,4 +19,7 @@ export const items = [
   { item: 'item 3 harness taps: the Set final fee control removed from the Returns card', file: 'apps/internal/components/return-controls.tsx', change: 'the Set final fee button replaced by nothing; the dry run cannot tap it', test: { kind: 'harness', spec: 'tests/ops-scorp-dry-run.spec.ts' },
     apply: (t) => { const a = '<button type="button" className="btn small ghost" onClick={() => void setFinalFee()}>Set final fee</button>'; must(t, a); return t.replace(a, '{null}'); },
     expectRed: /signed 8879-CORP, final fee/ },
+  { item: 'report item 9 ratchet: the old modal-then-api shape back in a page', file: 'apps/internal/app/alerts/page.tsx', change: 'a handler appended that awaits ask() without run and then calls api()', test: { kind: 'guard', spec: 'check:inline-errors' },
+    apply: (t) => t + ['', 'async function sabotageShape(): Promise<void> {', "  const a = await ask({ title: 'x', choices: [] });", "  if (a) await api('/x');", '}', ''].join('\n'),
+    expectRed: /ask\(\) without run/ },
 ];

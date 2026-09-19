@@ -1,8 +1,8 @@
 # sabotage-reconciliation (2026-09-19)
 
-Generated 2026-09-19T20:41:16.455Z by scripts/report-table.mjs from the log sab-table.log; 12 row(s).
+Generated 2026-09-19T20:56:28.655Z by scripts/report-table.mjs from the log sab-table.log; 13 row(s).
 
-Eight items of the walk batch (seven sabotages, defect 4 none) and the four build items; every sabotage was run today through the logged runner, so the earlier session-only runs are re-proven here.
+Eight items of the walk batch (seven sabotages, defect 4 none), the four build items, and the item 9 ratchet; every sabotage was run today through the logged runner, so the earlier session-only runs are re-proven here.
 
 ```sql
 node scripts/sabotage-table.mjs 2026-09-19  (the last row per item of tasks/sabotage/2026-09-19.log, written by scripts/sabotage-run.mjs)
@@ -22,3 +22,4 @@ node scripts/sabotage-table.mjs 2026-09-19  (the last row per item of tasks/sabo
 | item 5 money line: system actors classed as staff | apps/api/src/modules/billing/money-digest.ts | the actor-class CASE reads WHEN a.actor_type IN ('staff','system') THEN 'staff' | api: test/money-digest.spec.ts | no | RED as expected (2 failed: an unmatched webhook refund is outside the door: class system, never by staff; the executive view carries both lines, and the digest sends class staff only) | green (5 passed) |
 | item 2 return controls: the outside-range reason check disabled | apps/api/src/modules/tax/routes.ts | the final_fee_reason_required branch made unreachable, so a fee outside the quoted range passes without a reason | api: test/return-controls.spec.ts | no | RED as expected (1 failed: final fee inside the quoted range needs no reason; outside it is refused without one, naming the range, and audited with one) | green (6 passed) |
 | item 3 harness taps: the Set final fee control removed from the Returns card | apps/internal/components/return-controls.tsx | the Set final fee button replaced by nothing; the dry run cannot tap it | harness: tests/ops-scorp-dry-run.spec.ts | yes | RED as expected (4 failed: signed 8879-CORP, final fee, filed, acknowledged on the acks screen, paid, completed (5.0m) [phone]; the client page reads the finished run: filed and accepted, the return delivered, the invoice paid, the engagement completed (2.7s) [phone]; signed 8879-CORP, final fee, filed, acknowledged on the acks screen, paid, completed (5.0m) [desk]) | green (4 passed) |
+| report item 9 ratchet: the old modal-then-api shape back in a page | apps/internal/app/alerts/page.tsx | a handler appended that awaits ask() without run and then calls api() | guard: check:inline-errors | no | RED as expected (1 failed: apps/internal/app/alerts/page.tsx:80: ask() without run, then api() after the modal closed) | green (1 passed) |
