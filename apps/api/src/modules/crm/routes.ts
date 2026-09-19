@@ -9,6 +9,7 @@ import { writeAudit } from '../../audit.ts';
 import { holds, requireAnyPermission, requirePermission } from '../../plugins/auth.ts';
 import { reasonText } from '../../reasons.ts';
 import { mergeContacts } from './merge.ts';
+import { calendarDay, todayChicago } from '../tax/deadlines.ts';
 import { archiveBusiness, mergeBusinesses } from './businesses.ts';
 import { archiveContact } from './lifecycle.ts';
 import { AppError } from '../../types.ts';
@@ -60,6 +61,10 @@ const BusinessBody = z.object({
   state: z.string().length(2).default('IL'),
   fiscalYearEndMonth: z.number().int().min(1).max(12).default(12),
   memberRole: z.string().default('owner'),
+  /** The state's formation date, as the person adding the business states it (provenance staff_verified). */
+  formationDate: z.iso.date().optional(),
+  /** Make it the primary at creation (2026-09-19); the first business is primary either way. */
+  setPrimary: z.boolean().optional(),
 });
 
 const BusinessUpdateBody = BusinessBody.omit({ memberRole: true }).partial().extend({
@@ -400,21 +405,32 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       `SELECT count(*)::int AS n FROM business_members WHERE contact_id = $1 AND is_primary`,
       [contactId]
     );
+    if (b.formationDate && calendarDay(b.formationDate, 'formationDate') > calendarDay(todayChicago(), 'today')) throw new AppError(400, 'formation_date_in_future', 'A formation date is a thing that already happened.');
     const { rows } = await app.db.query<{ id: string }>(
       `INSERT INTO businesses (name, ein, entity_type, industry, naics_code, irs_activity_code,
-                               years_in_business, revenue_range, employees_range, zip, state, fiscal_year_end_month)
-       VALUES ($1,$2,$3::business_entity_type,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                               years_in_business, revenue_range, employees_range, zip, state, fiscal_year_end_month,
+                               formation_date, formation_date_source, formation_date_recorded_at)
+       VALUES ($1,$2,$3::business_entity_type,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+               $13, CASE WHEN $13::date IS NULL THEN NULL ELSE 'staff_verified' END, CASE WHEN $13::date IS NULL THEN NULL ELSE now() END)
        RETURNING id`,
       [
         b.name, b.ein ?? null, b.entityType ?? null, b.industry ?? null, b.naicsCode ?? null,
         b.irsActivityCode ?? null, b.yearsInBusiness ?? null, b.revenueRange ?? null, b.employeesRange ?? null,
-        b.zip ?? null, b.state, b.fiscalYearEndMonth,
+        b.zip ?? null, b.state, b.fiscalYearEndMonth, b.formationDate ?? null,
       ]
     );
     const businessId = rows[0]!.id;
+    // Primary at creation (2026-09-19): asked for, or the first business on the record. Never a second.
+    const makePrimary = b.setPrimary === true || (b.setPrimary === undefined && existing.rows[0]!.n === 0);
+    if (makePrimary && existing.rows[0]!.n > 0) {
+      const cleared = await app.db.query<{ business_id: string }>(`UPDATE business_members SET is_primary = false WHERE contact_id = $1 AND is_primary RETURNING business_id`, [contactId]);
+      for (const c of cleared.rows) {
+        await writeAudit(app.db, { actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName, action: 'business.primary_cleared', objectType: 'business', objectId: c.business_id, contactId, ...meta(request), details: { reason: 'another business chosen as primary at creation' } });
+      }
+    }
     await app.db.query(
       `INSERT INTO business_members (business_id, contact_id, member_role, is_primary) VALUES ($1, $2, $3, $4)`,
-      [businessId, contactId, b.memberRole, existing.rows[0]!.n === 0]
+      [businessId, contactId, b.memberRole, makePrimary]
     );
     await refreshEnrichmentGaps(app, contactId);
     await writeAudit(app.db, {
