@@ -12,7 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { withTransaction } from '../../db.ts';
 import { AppError } from '../../types.ts';
-import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
+import { alertRecipientForRole, firstActiveByRole, notifyOnce } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { addDays, daysBetween, todayChicago, calendarDay } from './deadlines.ts';
 import { invoiceForFiledEngagement } from '../billing/service.ts';
@@ -36,7 +36,7 @@ const RESUMABLE: TaxStage[] = [
 ];
 
 /** Forward/backward moves allowed from each stage (before gates). */
-const TRANSITIONS: Record<TaxStage, TaxStage[]> = {
+export const TRANSITIONS: Record<TaxStage, TaxStage[]> = {
   intake_started: ['scheduled'],
   scheduled: ['documents_requested'],
   documents_requested: ['pending_client_response', 'in_preparation'],
@@ -54,6 +54,24 @@ const TRANSITIONS: Record<TaxStage, TaxStage[]> = {
   on_hold: RESUMABLE,
   withdrawn: [],
 };
+
+/**
+ * THE LEGAL NEXT STAGE(S), FORWARD ONLY (Brian, 2026-09-19, item 2): the return's page offers
+ * exactly these and nothing else. Read from TRANSITIONS, minus the backward moves (send back to
+ * preparation, back to the client) and minus on_hold / withdrawn, which are not "next". The one
+ * exception is the re-file path: from 'rejected', ready_to_file is the fix, not a step back.
+ * Gates (letter, estimate lock, 8879, PTIN holder) still apply when the move is attempted.
+ */
+export function legalNextStages(from: TaxStage): TaxStage[] {
+  const here = ORDER[from];
+  if (here === undefined) return []; // on_hold / withdrawn: resumed by the API, not from the card
+  return (TRANSITIONS[from] ?? []).filter((to) => {
+    const there = ORDER[to];
+    if (there === undefined) return false;
+    if (from === 'rejected' && to === 'ready_to_file') return true;
+    return there > here;
+  });
+}
 
 /** Stages where the ball is in the client's court (delay attribution). */
 const CLIENT_COURT: TaxStage[] = ['pending_client_response', 'client_review'];
@@ -197,12 +215,68 @@ export function perfectionDays(returnType: string): number {
   return returnType === '1040' || returnType === '1040_expat' ? 5 : 10;
 }
 
+/**
+ * WHICH JURISDICTIONS A RETURN FILES IN, AND WHICH HAVE NOT ACCEPTED YET (Brian, 2026-09-19,
+ * item 4): "the engagement completes when every jurisdiction row on the return is accepted,
+ * not on federal alone."
+ *
+ * Expected = federal, plus the state the return files in: the business's state on a business
+ * return (engagements.business_id → businesses.state), the contact's state otherwise. A null
+ * state means the return files federally only, and federal alone completes it as before.
+ *
+ * Accepted = the stamps the acknowledgment ingest writes (federal_accepted_on; state_accepted_on
+ * with state_accepted_code equal to the expected state). A state row for some OTHER state is
+ * recorded on the acknowledgment table but is not this return's state acceptance, so it is not
+ * counted — see ingestReport.
+ */
+export async function acceptanceStatus(
+  app: FastifyInstance,
+  taxEngagementId: string
+): Promise<{ expectedState: string | null; federalAcceptedOn: string | null; stateAcceptedOn: string | null; stateAcceptedCode: string | null; awaiting: string[] }> {
+  const { rows } = await app.db.query<{
+    federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null; expected_state: string | null;
+  }>(
+    `SELECT te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
+            CASE WHEN e.business_id IS NOT NULL THEN b.state ELSE c.state END AS expected_state
+       FROM tax_engagements te
+       JOIN engagements e ON e.id = te.engagement_id
+       JOIN contacts c ON c.id = e.contact_id
+       LEFT JOIN businesses b ON b.id = e.business_id
+      WHERE te.id = $1`,
+    [taxEngagementId]
+  );
+  const r = rows[0];
+  if (!r) throw new AppError(404, 'not_found', 'Tax engagement not found.');
+  const expectedState = normaliseState(r.expected_state);
+  const awaiting: string[] = [];
+  if (!r.federal_accepted_on) awaiting.push('federal');
+  if (expectedState && !(r.state_accepted_on && normaliseState(r.state_accepted_code) === expectedState)) awaiting.push(expectedState);
+  return { expectedState, federalAcceptedOn: r.federal_accepted_on, stateAcceptedOn: r.state_accepted_on, stateAcceptedCode: r.state_accepted_code, awaiting };
+}
+
+/** The jurisdictions this return still waits on; empty when it is accepted everywhere it files. */
+export async function jurisdictionsAwaiting(app: FastifyInstance, taxEngagementId: string): Promise<string[]> {
+  return (await acceptanceStatus(app, taxEngagementId)).awaiting;
+}
+
+/** The state a return files in, as the acknowledgment report spells it: two upper-case letters, or nothing. */
+export function normaliseState(raw: string | null | undefined): string | null {
+  const v = (raw ?? '').trim().toUpperCase();
+  return v ? v : null;
+}
+
 export async function recordEfileResult(
   app: FastifyInstance,
   actor: { staffId: string | null; label: string },
   taxEngagementId: string,
-  input: { result: 'accepted' | 'rejected'; rejectCode?: string | undefined; rejectReason?: string | undefined; today?: string | undefined }
-): Promise<{ stage: TaxStage; perfectionDeadline: string | null }> {
+  input: {
+    result: 'accepted' | 'rejected'; rejectCode?: string | undefined; rejectReason?: string | undefined; today?: string | undefined;
+    /** Which jurisdiction answered. Federal when unsaid (the manual route records the IRS acknowledgment). */
+    jurisdiction?: 'federal' | 'state' | undefined;
+    /** With jurisdiction 'state': the state that answered. */
+    stateCode?: string | undefined;
+  }
+): Promise<{ stage: TaxStage; perfectionDeadline: string | null; awaiting: string[] }> {
   const { rows } = await app.db.query<{
     id: string; stage: TaxStage; return_type: string; tax_year: number;
     preparer_id: string | null; contact_id: string; first_name: string; last_name: string;
@@ -251,15 +325,48 @@ async function applyEfileResult(
   app: FastifyInstance,
   actor: { staffId: string | null; label: string },
   taxEngagementId: string,
-  input: { result: 'accepted' | 'rejected'; rejectCode?: string | undefined; rejectReason?: string | undefined; today?: string | undefined },
+  input: Parameters<typeof recordEfileResult>[3],
   te: {
     return_type: string; tax_year: number; preparer_id: string | null;
     contact_id: string; first_name: string; last_name: string;
   }
-): Promise<{ stage: TaxStage; perfectionDeadline: string | null }> {
+): Promise<{ stage: TaxStage; perfectionDeadline: string | null; awaiting: string[] }> {
   if (input.result === 'accepted') {
+    /*
+     * EVERY JURISDICTION, NOT FEDERAL ALONE (Brian, 2026-09-19, item 4). The acknowledgment
+     * ingest stamps the jurisdiction's date before calling here and this COALESCE leaves that
+     * stamp alone; the manual route, which stamps nothing, gets today's date so its acceptance
+     * is a fact on the row and not only a stage. Then: complete only when nothing is awaited.
+     * The order the acknowledgments arrive in does not matter — whichever comes second finds
+     * the first already stamped and finishes the return.
+     */
+    const jurisdiction = input.jurisdiction ?? 'federal';
+    const asOf = input.today ?? todayChicago();
+    if (jurisdiction === 'federal') {
+      await app.db.query(`UPDATE tax_engagements SET federal_accepted_on = COALESCE(federal_accepted_on, $2::date) WHERE id = $1`, [taxEngagementId, asOf]);
+    } else if (input.stateCode) {
+      const { expectedState } = await acceptanceStatus(app, taxEngagementId);
+      const code = normaliseState(input.stateCode);
+      // Only the state this return files in is stamped; another state's acceptance is not this one's.
+      if (code && (!expectedState || expectedState === code)) {
+        await app.db.query(
+          `UPDATE tax_engagements SET state_accepted_on = COALESCE(state_accepted_on, $2::date), state_accepted_code = COALESCE(state_accepted_code, $3) WHERE id = $1`,
+          [taxEngagementId, asOf, code]
+        );
+      }
+    }
+    const awaiting = await jurisdictionsAwaiting(app, taxEngagementId);
+    if (awaiting.length > 0) {
+      await writeAudit(app.db, {
+        actorType: actor.staffId ? 'staff' : 'system', actorId: actor.staffId, actorLabel: actor.label,
+        action: 'tax_engagement.efile_accepted_partial', objectType: 'tax_engagement', objectId: taxEngagementId, contactId: te.contact_id,
+        details: { jurisdiction, state_code: input.stateCode ?? null, awaiting },
+      });
+      return { stage: 'filed', perfectionDeadline: null, awaiting };
+    }
+
     await app.db.query(`UPDATE tax_engagements SET efile_accepted_at = now() WHERE id = $1`, [taxEngagementId]);
-    await transitionStage(app, actor, taxEngagementId, 'completed', { note: 'e-file ACCEPTED' });
+    await transitionStage(app, actor, taxEngagementId, 'completed', { note: 'e-file ACCEPTED by every jurisdiction' });
 
     /*
      * #44 §4 — the return is finished, so the engagement holding it might be too.
@@ -279,7 +386,7 @@ async function applyEfileResult(
     await closeEngagementIfAllReturnsDone(app, taxEngagementId, {
       type: 'staff', id: actor.staffId, label: actor.label,
     });
-    return { stage: 'completed', perfectionDeadline: null };
+    return { stage: 'completed', perfectionDeadline: null, awaiting: [] };
   }
 
   const today = input.today ?? todayChicago();
@@ -313,11 +420,18 @@ async function applyEfileResult(
    * Both halves are needed, which is why the deferred constraint trigger in migration 0068
    * enforces the pair at COMMIT rather than trusting this comment.
    */
-  const owner = te.preparer_id ?? (await ownerForRole(app.db, 'tax_preparer'));
+  /*
+   * THE RETURN'S PREPARER OWNS THE RE-FILE (Brian, 2026-09-19, item 4). When the return has no
+   * preparer the role holder does, and an unfilled role is a RECORDED fact that falls back to
+   * the CEO (alertRecipientForRole → staffing.role_unfilled), never a silently unowned clock.
+   * Federal or state, the same door: one createTask, one task type, one owner rule.
+   */
+  const owner = te.preparer_id ?? (await alertRecipientForRole(app.db, 'tax_preparer', 'efile_reject'));
+  const by = (input.jurisdiction ?? 'federal') === 'federal' ? 'the IRS' : (normaliseState(input.stateCode) ?? 'the state');
   await createTask(app, {
-    title: `E-file REJECTED: ${te.first_name} ${te.last_name} ${te.tax_year} ${te.return_type.toUpperCase()} — fix & re-file by ${deadline}`,
+    title: `E-file REJECTED by ${by}: ${te.first_name} ${te.last_name} ${te.tax_year} ${te.return_type.toUpperCase()} — fix & re-file by ${deadline}`,
     description:
-      `Reject code: ${input.rejectCode ?? 'n/a'}. ${input.rejectReason ?? ''}\n` +
+      `Rejected by ${by}. Reject code: ${input.rejectCode ?? 'n/a'}. ${input.rejectReason ?? ''}\n` +
       `Perfection window: re-file by ${deadline} (${perfectionDays(te.return_type)} days) to keep the original filing date.`,
     assignedStaffId: owner,
     contactId: te.contact_id,
@@ -344,7 +458,7 @@ async function applyEfileResult(
       relatedObjectId: taxEngagementId,
     });
   }
-  return { stage: 'rejected', perfectionDeadline: deadline };
+  return { stage: 'rejected', perfectionDeadline: deadline, awaiting: [] };
 }
 
 /**

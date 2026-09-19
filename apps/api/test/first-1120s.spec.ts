@@ -145,12 +145,15 @@ test('d, e, a, c, b, f: the S corp, quoted, accepted, prepared, authorized by th
   assert.equal(parsed.rows[0]!.returnType, '1120s');
   assert.equal(parsed.rows[1]!.stateCode, 'IL');
   const r = await ingestReport(app, { id: ana.id, label: ana.fullName }, { filename: 'business-ack.csv', text: report, today: '2026-09-15' });
-  const rows = await app.db.query<{ client_name_raw: string; disposition: string; tax_engagement_id: string | null; jurisdiction: string }>(
-    `SELECT client_name_raw, disposition::text AS disposition, tax_engagement_id, jurisdiction::text AS jurisdiction FROM efile_acknowledgments WHERE report_id = $1 ORDER BY row_index`, [r.reportId]);
+  const rows = await app.db.query<{ client_name_raw: string; disposition: string; tax_engagement_id: string | null; jurisdiction: string; disposition_note: string }>(
+    `SELECT client_name_raw, disposition::text AS disposition, tax_engagement_id, jurisdiction::text AS jurisdiction, disposition_note FROM efile_acknowledgments WHERE report_id = $1 ORDER BY row_index`, [r.reportId]);
   assert.equal(rows.rows[0]!.tax_engagement_id, teId, 'the federal row matched the entity');
   assert.equal(rows.rows[1]!.tax_engagement_id, teId, 'the Illinois row matched the entity');
   assert.equal(rows.rows[0]!.disposition, 'queued');
   assert.equal(rows.rows[1]!.disposition, 'queued');
+  // Item 4 (2026-09-19): federal alone left the return waiting on Illinois; Illinois completed it.
+  assert.match(rows.rows[0]!.disposition_note, /waits on IL/, 'the federal row did not complete the return');
+  assert.match(rows.rows[1]!.disposition_note, /the return is complete/, 'the Illinois row did');
   assert.equal(rows.rows[2]!.tax_engagement_id, null, 'the owner\'s personal name does not match an entity return: no guess');
   const done = await app.db.query<{ stage: string; federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null }>(
     `SELECT stage::text AS stage, federal_accepted_on::text AS federal_accepted_on, state_accepted_on::text AS state_accepted_on, state_accepted_code FROM tax_engagements WHERE id = $1`, [teId]);

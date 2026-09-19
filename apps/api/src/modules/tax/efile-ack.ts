@@ -35,7 +35,7 @@ import { ownerForRole } from '../../staffing.ts';
 import { isAutomationEnabled } from '../../automations.ts';
 import { enqueueEffect } from '../../outbox.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
-import { recordEfileResult } from './pipeline.ts';
+import { normaliseState, recordEfileResult } from './pipeline.ts';
 
 export type Jurisdiction = 'federal' | 'state';
 export type AckStatus = 'accepted' | 'rejected' | 'other';
@@ -178,6 +178,8 @@ interface Candidate {
   id: string; contact_id: string; stage: string; first_name: string; last_name: string; language: 'en' | 'es'; email: string | null; ssn_last4: string | null;
   /** The entity on a business return, joined through the engagement (2026-09-12). */
   business_name: string | null; ein_last4: string | null;
+  /** The state this return files in (2026-09-19): the business's on a business return, the contact's otherwise; null = federal only. */
+  expected_state: string | null;
 }
 
 /** Legal suffixes and punctuation do not make two names two entities: "Soto Accounting, LLC" is "Soto Accounting LLC". */
@@ -201,7 +203,8 @@ export async function matchRow(app: FastifyInstance, row: ParsedAckRow): Promise
   if (!row.returnType) return { te: null, why: 'the row has no return type' };
   const { rows } = await app.db.query<Candidate>(
     `SELECT te.id, e.contact_id, te.stage::text AS stage, c.first_name, c.last_name, c.language, c.email, c.ssn_last4,
-            b.name AS business_name, right(regexp_replace(COALESCE(b.ein, ''), '[^0-9]', '', 'g'), 4) AS ein_last4
+            b.name AS business_name, right(regexp_replace(COALESCE(b.ein, ''), '[^0-9]', '', 'g'), 4) AS ein_last4,
+            CASE WHEN e.business_id IS NOT NULL THEN b.state ELSE c.state END AS expected_state
        FROM tax_engagements te
        JOIN engagements e ON e.id = te.engagement_id
        JOIN contacts c ON c.id = e.contact_id
@@ -288,17 +291,37 @@ export async function ingestReport(
         disposition = 'queued';
         note = 'matched; accepted; will send when the report is released';
         queued++;
-        // The return records the acknowledgment now — that is a fact regardless of the send.
+        /*
+         * The return records the acknowledgment now — that is a fact regardless of the send.
+         * COMPLETION IS EVERY JURISDICTION (Brian, 2026-09-19, item 4): federal and the state the
+         * return files in each go through recordEfileResult, which completes the return only when
+         * nothing is still awaited, whichever row arrives first. A state row for some OTHER state
+         * is recorded here (the row, the send) but is not this return's state acceptance: it is
+         * not stamped on the return and does not count.
+         */
+        const expectedState = normaliseState(te.expected_state);
+        const juris = { staffId: actor.id, label: actor.label };
         if (row.jurisdiction === 'federal') {
           await app.db.query(`UPDATE tax_engagements SET federal_accepted_on = COALESCE($2::date, CURRENT_DATE) WHERE id = $1`, [te.id, row.acknowledgedOn]);
           if (te.stage === 'filed') {
-            await recordEfileResult(app, { staffId: actor.id, label: actor.label }, te.id, { result: 'accepted', today: input.today });
+            const out = await recordEfileResult(app, juris, te.id, { result: 'accepted', jurisdiction: 'federal', today: input.today });
+            note = out.stage === 'completed'
+              ? 'matched; accepted; the return is complete; will send when the report is released'
+              : `matched; accepted; will send when the report is released; the return still waits on ${out.awaiting.join(', ')}`;
           }
+        } else if (expectedState && row.stateCode !== expectedState) {
+          note = `matched; accepted by ${row.stateCode}, but this return files in ${expectedState}: recorded, does not count toward completion; will send when the report is released`;
         } else {
           await app.db.query(
             `UPDATE tax_engagements SET state_accepted_on = COALESCE($2::date, CURRENT_DATE), state_accepted_code = $3 WHERE id = $1`,
             [te.id, row.acknowledgedOn, row.stateCode]
           );
+          if (te.stage === 'filed') {
+            const out = await recordEfileResult(app, juris, te.id, { result: 'accepted', jurisdiction: 'state', stateCode: row.stateCode ?? undefined, today: input.today });
+            note = out.stage === 'completed'
+              ? 'matched; accepted; the return is complete; will send when the report is released'
+              : `matched; accepted; will send when the report is released; the return still waits on ${out.awaiting.join(', ')}`;
+          }
         }
       }
     } else if (te && row.status === 'rejected') {
@@ -306,6 +329,7 @@ export async function ingestReport(
       if (te.stage === 'filed') {
         await recordEfileResult(app, { staffId: actor.id, label: actor.label }, te.id, {
           result: 'rejected', rejectCode: row.rejectCode ?? undefined, rejectReason: row.rejectReason ?? undefined, today: input.today,
+          jurisdiction: row.jurisdiction, stateCode: row.stateCode ?? undefined,
         });
         const t = await app.db.query<{ id: string }>(`SELECT id FROM tasks WHERE source_type = 'efile_reject' AND source_id = $1 ORDER BY created_at DESC LIMIT 1`, [te.id]);
         taskId = t.rows[0]?.id ?? null;

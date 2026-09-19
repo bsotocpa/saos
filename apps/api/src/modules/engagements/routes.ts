@@ -85,7 +85,12 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
                 e.lead_staff_id, e.started_on, e.price_book_version_id,
                 e.ended_on, e.close_reason,
                 e.independence_override_at IS NOT NULL AS independence_overridden,
-                e.created_at
+                e.created_at,
+                -- 2026-09-19 (item 4): what the client still owes on this engagement. A completed
+                -- engagement with a sent or overdue invoice shows its open balance rather than
+                -- reading as finished and settled.
+                (SELECT COALESCE(sum(i.total_cents - i.amount_paid_cents), 0)::bigint
+                   FROM invoices i WHERE i.engagement_id = e.id AND i.status IN ('sent', 'overdue')) AS open_balance_cents
          FROM engagements e ${where}
          -- active first, then on hold, then closed (completed/withdrawn/draft); newest first
          -- within each group (2026-09-09, Brian's ruling).
@@ -107,6 +112,7 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
           const items = scopes.get(String(r.id)) ?? [];
           return {
             ...r,
+            open_balance_cents: Number(r.open_balance_cents),
             scopeName: scopeName(items, 'en'),
             scope: items,
             scopeSummary: scopeSummary(items),
