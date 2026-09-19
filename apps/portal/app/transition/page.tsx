@@ -42,6 +42,7 @@ function TransitionInner() {
   const [esign, setEsign] = useState(false);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!rt) {
@@ -143,6 +144,7 @@ function TransitionInner() {
           disabled={busy || !ack || !comm || !esign || services.length === 0}
           onClick={async () => {
             setBusy(true);
+            setError('');
             try {
               const res = await fetch('/api/public/transition/submit', {
                 method: 'POST',
@@ -155,7 +157,15 @@ function TransitionInner() {
                   esignConsent: esign,
                 }),
               });
-              if (res.ok) setDone(true);
+              if (res.ok) {
+                setDone(true);
+                return;
+              }
+              // The server's message, verbatim, at the button; the choices stay ticked.
+              const json = (await res.json().catch(() => ({}))) as { message?: string };
+              setError(json.message ?? t('error_generic'));
+            } catch {
+              setError(t('error_generic'));
             } finally {
               setBusy(false);
             }
@@ -163,6 +173,7 @@ function TransitionInner() {
         >
           {t('trans_submit')}
         </button>
+        {error ? <p className="field-error" role="alert">{error}</p> : null}
       </section>
     </div>
   );

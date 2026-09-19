@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../../lib/api';
 import { useAsk } from '../../../components/ask';
+import { AddBusinessModal } from '../../../components/add-business';
 import { consent7216Label, engagementStatusLabel, invoiceStatusLabel, letterStatusLabel, quoteStatusLabel } from '../../../lib/labels';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
 import { badgeToneFor, invoiceStatusLine } from '../../../lib/invoice-display';
@@ -224,7 +225,15 @@ export default function ClientPacketPage() {
   // Feedback for the actions further down the page — the packet card's message is far
   // enough away to read as "nothing happened" (#40).
   const [actionMsg, setActionMsg] = useState('');
-  const [actionErr, setActionErr] = useState('');
+  /*
+   * A FORM ERROR RENDERS AT THE CONTROL THAT CAUSED IT (Brian, 2026-09-19, defect 2). The
+   * page-top flash is for navigation results only. Modal actions carry their own error under
+   * the field (ask's `run`); plain buttons key their refusal here and render it beside themselves.
+   */
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
+  const [previewErr, setPreviewErr] = useState('');
+  const [addingBusiness, setAddingBusiness] = useState(false);
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -267,10 +276,10 @@ export default function ClientPacketPage() {
         // without an Addendum, text not final). Its message IS the explanation, so
         // it is shown rather than swallowed.
         api<PacketPreview>(`/contacts/${params.id}/packet/preview`, { method: 'POST', body: {} })
-          .then((r) => { setPreview(r); setActionErr(''); })
+          .then((r) => { setPreview(r); setPreviewErr(''); })
           .catch((err: unknown) => {
             setPreview(null);
-            setActionErr(err instanceof Error ? err.message : 'Could not work out the packet.');
+            setPreviewErr(err instanceof Error ? err.message : 'Could not work out the packet.');
           }),
       ]);
     } catch (err) {
@@ -295,13 +304,13 @@ export default function ClientPacketPage() {
     ) => {
       setBusy(true);
       setActionMsg('');
-      setActionErr('');
+      setInlineErr(null);
       try {
         await api(`/engagements/${engagementId}/${action}`, { method: 'POST', body });
         setActionMsg(okMessage);
         return null;
       } catch (err) {
-        setActionErr(err instanceof Error ? err.message : 'Could not update the engagement.');
+        setInlineErr({ key: `eng:${engagementId}`, message: err instanceof Error ? err.message : 'Could not update the engagement.' });
         return (err as { code?: string }).code ?? 'error';
       } finally {
         await load();
@@ -338,7 +347,6 @@ export default function ClientPacketPage() {
         scripts/check-flash-once.mjs refuses a second render of the same notice on any page.
       */}
       {actionMsg ? <p className="alert ok" role="status" aria-live="polite">{actionMsg}</p> : null}
-      {actionErr ? <p className="alert warn" role="alert">{actionErr}</p> : null}
       {/*
         #42. This read "lead · from native" for a client with a signed Master, an answered
         §7216, a paid invoice and a live portal session — two unrelated facts wearing one
@@ -463,7 +471,7 @@ export default function ClientPacketPage() {
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
-                  setActionErr('');
+                  setInlineErr(null);
                   try {
                     // Only what actually changed — a PATCH that resends every field
                     // would overwrite anything edited elsewhere since this page loaded.
@@ -477,7 +485,7 @@ export default function ClientPacketPage() {
                     setEditing(false);
                     await load();
                   } catch (e) {
-                    setActionErr(e instanceof Error ? e.message : 'Could not save.');
+                    setInlineErr({ key: 'contact-edit', message: e instanceof Error ? e.message : 'Could not save.' });
                   } finally {
                     setBusy(false);
                   }
@@ -485,6 +493,7 @@ export default function ClientPacketPage() {
               >
                 Save
               </button>
+              {errAt('contact-edit')}
             </div>
           ) : null}
           <p className="small" style={{ overflowWrap: 'anywhere' }}>
@@ -559,19 +568,13 @@ export default function ClientPacketPage() {
                   title: first ? 'Grant portal access?' : 'Send another sign-in link?',
                   body: <p>{first ? 'The client is emailed a secure sign-in link and a welcome.' : 'The previous link stops working.'}</p>,
                   choices: [{ key: 'go', label: first ? 'Grant access' : 'Send link', tone: 'primary' }],
+                  run: async () => { await api('/portal-users', { method: 'POST', body: { contactId: params.id } }); },
                 });
                 if (!ok) return;
                 setBusy(true);
-                setActionErr('');
-                try {
-                  await api('/portal-users', { method: 'POST', body: { contactId: params.id } });
-                  setActionMsg(first ? 'Invited — the client was emailed a sign-in link.' : 'A fresh sign-in link is on its way.');
-                  await load();
-                } catch (e) {
-                  setActionErr(e instanceof Error ? e.message : 'Could not send the link.');
-                } finally {
-                  setBusy(false);
-                }
+                setActionMsg(first ? 'Invited — the client was emailed a sign-in link.' : 'A fresh sign-in link is on its way.');
+                await load();
+                setBusy(false);
               }}
             >
               {c.portal_state === 'not_invited' ? 'Grant access' : 'Resend sign-in link'}
@@ -581,6 +584,18 @@ export default function ClientPacketPage() {
 
         <section className="card">
           <h2>Businesses</h2>
+          {/* THE DOOR (Brian, 2026-09-19): a business is added here, on the client's record. */}
+          <p>
+            <button type="button" className="btn ghost small" disabled={busy} onClick={() => setAddingBusiness(true)}>Add a business</button>
+          </p>
+          {addingBusiness ? (
+            <AddBusinessModal
+              contactId={params.id}
+              hasPrimary={packet.businesses.some((b) => b.is_primary)}
+              onClose={() => setAddingBusiness(false)}
+              onAdded={async () => { setAddingBusiness(false); setActionMsg('Business added.'); await load(); }}
+            />
+          ) : null}
           {/*
             2026-09-12 (Brian): exactly one primary business per contact, at the database. When the
             primary is archived nothing is promoted in its place; the page says so and a person chooses.
@@ -616,16 +631,10 @@ export default function ClientPacketPage() {
                       className="btn ghost small"
                       disabled={busy}
                       onClick={async () => {
-                        if (!(await ask({ title: `Make ${b.name} the primary business?`, body: <p>The current primary, if any, stops being primary.</p>, choices: [{ key: 'go', label: 'Set as primary', tone: 'primary' }] }))) return;
+                        if (!(await ask({ title: `Make ${b.name} the primary business?`, body: <p>The current primary, if any, stops being primary.</p>, choices: [{ key: 'go', label: 'Set as primary', tone: 'primary' }], run: async () => { await api(`/contacts/${params.id}/primary-business`, { method: 'POST', body: { businessId: b.id } }); } }))) return;
                         setBusy(true);
-                        try {
-                          await api(`/contacts/${params.id}/primary-business`, { method: 'POST', body: { businessId: b.id } });
-                          await load();
-                        } catch (err) {
-                          setActionErr(err instanceof Error ? err.message : String(err));
-                        } finally {
-                          setBusy(false);
-                        }
+                        await load();
+                        setBusy(false);
                       }}
                     >
                       Set as primary
@@ -637,16 +646,10 @@ export default function ClientPacketPage() {
                       className="btn ghost small"
                       disabled={busy}
                       onClick={async () => {
-                        if (!(await ask({ title: `${b.name} is no longer the primary business?`, body: <p>No other business is promoted; the record says no primary is set until someone chooses.</p>, choices: [{ key: 'go', label: 'Clear primary', tone: 'primary' }] }))) return;
+                        if (!(await ask({ title: `${b.name} is no longer the primary business?`, body: <p>No other business is promoted; the record says no primary is set until someone chooses.</p>, choices: [{ key: 'go', label: 'Clear primary', tone: 'primary' }], run: async () => { await api(`/contacts/${params.id}/primary-business`, { method: 'POST', body: { businessId: null } }); } }))) return;
                         setBusy(true);
-                        try {
-                          await api(`/contacts/${params.id}/primary-business`, { method: 'POST', body: { businessId: null } });
-                          await load();
-                        } catch (err) {
-                          setActionErr(err instanceof Error ? err.message : String(err));
-                        } finally {
-                          setBusy(false);
-                        }
+                        await load();
+                        setBusy(false);
                       }}
                     >
                       Clear primary
@@ -663,17 +666,12 @@ export default function ClientPacketPage() {
                         body: <p>Archived, never deleted: it leaves this page and every picker; its history stays. {b.is_primary ? 'It is the primary business; nothing is promoted in its place.' : ''}</p>,
                         reason: { label: 'Why is it being archived?', required: true },
                         choices: [{ key: 'go', label: 'Archive', tone: 'danger' }],
+                        run: async (r) => { await api(`/businesses/${b.id}/archive`, { method: 'POST', body: { reason: r.reason } }); },
                       });
                       if (!a) return;
                       setBusy(true);
-                      try {
-                        await api(`/businesses/${b.id}/archive`, { method: 'POST', body: { reason: a.reason } });
-                        await load();
-                      } catch (err) {
-                        setActionErr(err instanceof Error ? err.message : String(err));
-                      } finally {
-                        setBusy(false);
-                      }
+                      await load();
+                      setBusy(false);
                     }}
                   >
                     Archive
@@ -744,19 +742,13 @@ export default function ClientPacketPage() {
                           body: <p className="small">The draft stays on the record as withdrawn, with your reason. Nothing is sent to the client.</p>,
                           reason: { label: 'Why', required: true },
                           choices: [{ key: 'withdraw', label: 'Withdraw draft', tone: 'danger' }],
+                          run: async (r) => { await api(`/quotes/${q.id}/withdraw-draft`, { method: 'POST', body: { reason: r.reason } }); },
                         });
                         if (!a) return;
                         setBusy(true);
-                        setActionErr('');
-                        try {
-                          await api(`/quotes/${q.id}/withdraw-draft`, { method: 'POST', body: { reason: a.reason } });
-                          setActionMsg('Draft withdrawn.');
-                          await load();
-                        } catch (err) {
-                          setActionErr(err instanceof Error ? err.message : 'Could not withdraw the draft.');
-                        } finally {
-                          setBusy(false);
-                        }
+                        setActionMsg('Draft withdrawn.');
+                        await load();
+                        setBusy(false);
                       }}
                     >
                       Withdraw draft…
@@ -813,18 +805,11 @@ export default function ClientPacketPage() {
                       type="button"
                       disabled={busy}
                       onClick={async () => {
-                        if (!(await ask({ title: 'Grant portal access?', body: <p>The client is emailed a secure sign-in link.</p>, choices: [{ key: 'go', label: 'Grant access', tone: 'primary' }] }))) return;
+                        if (!(await ask({ title: 'Grant portal access?', body: <p>The client is emailed a secure sign-in link.</p>, choices: [{ key: 'go', label: 'Grant access', tone: 'primary' }], run: async () => { await api('/portal-users', { method: 'POST', body: { contactId: params.id } }); } }))) return;
                         setBusy(true);
-                        setActionErr('');
-                        try {
-                          await api('/portal-users', { method: 'POST', body: { contactId: params.id } });
-                          setActionMsg(`Portal access granted — sign-in link delivered ${formatTime(new Date())} (sent inline; audited as magic_link.issued). You can send the packet now.`);
-                          await load();
-                        } catch (err) {
-                          setActionErr(err instanceof Error ? err.message : 'Could not grant portal access.');
-                        } finally {
-                          setBusy(false);
-                        }
+                        setActionMsg(`Portal access granted — sign-in link delivered ${formatTime(new Date())} (sent inline; audited as magic_link.issued). You can send the packet now.`);
+                        await load();
+                        setBusy(false);
                       }}
                     >
                       {busy ? 'Working…' : 'Grant portal access first'}
@@ -835,24 +820,16 @@ export default function ClientPacketPage() {
                       type="button"
                       disabled={busy}
                       onClick={async () => {
-                        if (!(await ask({ title: 'Send this packet for signature?', body: <p>The client receives it immediately.</p>, choices: [{ key: 'go', label: 'Send for signature', tone: 'primary' }] }))) return;
+                        const got: { res: { sections: Array<{ code: string | null }>; submissionId?: string } | null } = { res: null };
+                        if (!(await ask({ title: 'Send this packet for signature?', body: <p>The client receives it immediately.</p>, choices: [{ key: 'go', label: 'Send for signature', tone: 'primary' }], run: async () => { got.res = await api(`/packets/${p.id}/send`, { method: 'POST', body: {} }); } }))) return;
                         setBusy(true);
-                        setActionErr('');
-                        try {
-                          const res = await api<{ sections: Array<{ code: string | null }>; submissionId?: string }>(
-                            `/packets/${p.id}/send`, { method: 'POST', body: {} }
-                          );
-                          setActionMsg(
-                            `Sent for signature. The client was emailed the Master plus ${
-                              res.sections.filter((s) => s.code).map((s) => s.code).join(' · ')
-                            }.`
-                          );
-                          await load();
-                        } catch (err) {
-                          setActionErr(err instanceof Error ? err.message : 'Could not send the packet.');
-                        } finally {
-                          setBusy(false);
-                        }
+                        setActionMsg(
+                          `Sent for signature. The client was emailed the Master plus ${
+                            (got.res?.sections ?? []).filter((s) => s.code).map((s) => s.code).join(' · ')
+                          }.`
+                        );
+                        await load();
+                        setBusy(false);
                       }}
                     >
                       {busy ? 'Sending…' : 'Send for signature'}
@@ -894,7 +871,7 @@ export default function ClientPacketPage() {
                 disabled={busy || preview.codes.length === 0}
                 onClick={async () => {
                   setBusy(true);
-                  setActionErr('');
+                  setInlineErr(null);
                   try {
                     const res = await api<{ packetId: string; scheduleCodes: string[] }>(
                       `/contacts/${params.id}/packet`, { method: 'POST', body: {} }
@@ -904,7 +881,7 @@ export default function ClientPacketPage() {
                     );
                     await load();
                   } catch (err) {
-                    setActionErr(err instanceof Error ? err.message : 'Could not create the packet.');
+                    setInlineErr({ key: 'packet-create', message: err instanceof Error ? err.message : 'Could not create the packet.' });
                   } finally {
                     setBusy(false);
                   }
@@ -912,9 +889,12 @@ export default function ClientPacketPage() {
               >
                 {busy ? 'Working…' : 'Create engagement packet'}
               </button>
+              {errAt('packet-create')}
             </p>
           </>
-        ) : actionErr ? null : (
+        ) : previewErr ? (
+          <p className="field-error" role="alert">{previewErr}</p>
+        ) : (
           <p className="muted small">Working out what this client needs…</p>
         )}
       </section>
@@ -942,12 +922,13 @@ export default function ClientPacketPage() {
                 {e.service_line !== (e.scopeName ?? e.title ?? e.service_line) ? (
                   <span className="badge">{e.service_line}</span>
                 ) : null}
-                {/* Audit item 1 (2026-09-09): the period, or the control that records it. */}
-                {e.period_key ? (
+                {/* Audit item 1 (2026-09-09): the period, or the control that records it. Tax lines only
+                    (Brian, 2026-09-19): bookkeeping and payroll are ongoing; a period badge on them said nothing. */}
+                {e.service_line !== 'tax' ? null : e.period_key ? (
                   <span className="badge" title="The period this engagement covers">
                     {/^\d{4}$/.test(e.period_key) ? `${e.period_key} return` : e.period_key}
                   </span>
-                ) : (e.status === 'active' || e.status === 'on_hold') && (e.service_line === 'tax' || e.service_line === 'bookkeeping' || e.service_line === 'payroll') ? (
+                ) : (e.status === 'active' || e.status === 'on_hold') ? (
                   <button
                     type="button"
                     className="badge warn"
@@ -957,21 +938,15 @@ export default function ClientPacketPage() {
                       const a = await ask({
                         title: 'Which period does this engagement cover?',
                         body: <p className="small">A tax engagement is a tax year (2025). Recurring work is "ongoing". Another active engagement on the same line and period will refuse the change — withdraw or supersede it first.</p>,
-                        reason: { label: 'Period', required: true, placeholder: e.service_line === 'tax' ? '2025' : 'ongoing' },
+                        reason: { label: 'Period', required: true, placeholder: '2025' },
                         choices: [{ key: 'set', label: 'Record the period', tone: 'primary' }],
+                        run: async (r) => { await api(`/engagements/${e.id}/period`, { method: 'PATCH', body: { periodKey: r.reason, reason: 'Recorded on the client page' } }); },
                       });
                       if (!a) return;
                       setBusy(true);
-                      setActionErr('');
-                      try {
-                        await api(`/engagements/${e.id}/period`, { method: 'PATCH', body: { periodKey: a.reason, reason: 'Recorded on the client page' } });
-                        setActionMsg(`Period recorded: ${a.reason}.`);
-                        await load();
-                      } catch (err) {
-                        setActionErr(err instanceof Error ? err.message : 'Could not record the period.');
-                      } finally {
-                        setBusy(false);
-                      }
+                      setActionMsg(`Period recorded: ${a.reason}.`);
+                      await load();
+                      setBusy(false);
                     }}
                   >
                     period not recorded
@@ -1013,9 +988,10 @@ export default function ClientPacketPage() {
                       <button
                         className="btn ghost small" type="button" disabled={busy}
                         onClick={async () => {
-                          const a = await ask({ title: 'Put this engagement on hold?', reason: { label: 'Why is it being held?', required: true }, choices: [{ key: 'hold', label: 'Hold', tone: 'primary' }] });
+                          const a = await ask({ title: 'Put this engagement on hold?', reason: { label: 'Why is it being held?', required: true }, choices: [{ key: 'hold', label: 'Hold', tone: 'primary' }], run: async (r) => { await api(`/engagements/${e.id}/pause`, { method: 'POST', body: { reason: r.reason } }); } });
                           if (!a) return;
-                          await runEngagementAction(e.id, 'pause', { reason: a.reason }, 'On hold. The clock stops — waiting time and the price lock both move out by the length of the hold.');
+                          setActionMsg('On hold. The clock stops — waiting time and the price lock both move out by the length of the hold.');
+                          await load();
                         }}
                       >
                         Hold
@@ -1023,9 +999,10 @@ export default function ClientPacketPage() {
                       <button
                         className="btn ghost small" type="button" disabled={busy}
                         onClick={async () => {
-                          const a = await ask({ title: 'Close this engagement as completed?', reason: { label: 'Anything to note about how this finished?', required: false }, choices: [{ key: 'close', label: 'Close as completed', tone: 'primary' }] });
+                          const a = await ask({ title: 'Close this engagement as completed?', reason: { label: 'Anything to note about how this finished?', required: false }, choices: [{ key: 'close', label: 'Close as completed', tone: 'primary' }], run: async (r) => { await api(`/engagements/${e.id}/close`, { method: 'POST', body: { outcome: 'completed', reason: r.reason || undefined } }); } });
                           if (!a) return;
-                          await runEngagementAction(e.id, 'close', { outcome: 'completed', reason: a.reason || undefined }, 'Closed as completed.');
+                          setActionMsg('Closed as completed.');
+                          await load();
                         }}
                       >
                         Close
@@ -1033,22 +1010,31 @@ export default function ClientPacketPage() {
                       <button
                         className="btn ghost small" type="button" disabled={busy}
                         onClick={async () => {
+                          let strand = false;
                           const first0 = await ask({
                             title: 'Withdraw this engagement?',
                             body: <p>Any sent invoice on it is cancelled and the client is told; drafts are deleted. This is the record.</p>,
                             reason: { label: 'Why is it being withdrawn?', required: true },
                             choices: [{ key: 'withdraw', label: 'Withdraw', tone: 'danger' }],
+                            /*
+                             * STRANDED DEPOSITS (item 7a, 2026-09-09). The server refuses a withdrawal
+                             * that would leave a paid deposit on dead work. That one refusal is not an
+                             * error to show: it opens the second question below. Any other refusal
+                             * renders under the reason, where it was typed.
+                             */
+                            run: async (r) => {
+                              try {
+                                await api(`/engagements/${e.id}/close`, { method: 'POST', body: { outcome: 'withdrawn', reason: r.reason } });
+                                strand = false;
+                              } catch (err) {
+                                if ((err as { code?: string }).code === 'deposit_would_strand') { strand = true; return; }
+                                throw err;
+                              }
+                            },
                           });
                           if (!first0) return;
                           const reason = first0.reason;
-                          /*
-                           * STRANDED DEPOSITS (item 7a, 2026-09-09). The server refuses a withdrawal
-                           * that would leave a paid deposit on dead work. When it does, the person
-                           * chooses here — transfer to another open engagement of this client, or a
-                           * refund task for billing — and the server validates the choice again.
-                           */
-                          const first = await runEngagementAction(e.id, 'close', { outcome: 'withdrawn', reason }, 'Withdrawn.');
-                          if (first !== 'deposit_would_strand') return;
+                          if (!strand) { setActionMsg('Withdrawn.'); await load(); return; }
                           const open = engagements.filter((o) => o.id !== e.id && (o.status === 'active' || o.status === 'on_hold'));
                           const choice = await ask({
                             title: 'This engagement holds a paid deposit',
@@ -1069,7 +1055,7 @@ export default function ClientPacketPage() {
                             return;
                           }
                           const target = open.find((o) => `transfer:${o.id}` === choice.choice);
-                          if (!target) { setActionErr('That engagement is no longer open. Nothing changed.'); return; }
+                          if (!target) { setInlineErr({ key: `eng:${e.id}`, message: 'That engagement is no longer open. Nothing changed.' }); return; }
                           await runEngagementAction(
                             e.id, 'close',
                             { outcome: 'withdrawn', reason, depositAction: 'transfer', transferToEngagementId: target.id },
@@ -1090,6 +1076,7 @@ export default function ClientPacketPage() {
                   )}
                 </span>
               ) : null}
+              {errAt(`eng:${e.id}`)}
             </div>
           ))}
         </section>
@@ -1233,7 +1220,7 @@ export default function ClientPacketPage() {
                         setActionMsg(`${inv.invoice_number} re-synced from Stripe: ${r.status}, ${r.recorded} refund(s) newly recorded.`);
                         await load();
                       } catch (e) {
-                        setActionErr(e instanceof Error ? e.message : 'Could not re-sync from Stripe.');
+                        setInlineErr({ key: `inv:${inv.id}`, message: e instanceof Error ? e.message : 'Could not re-sync from Stripe.' });
                       } finally {
                         setBusy(false);
                       }
@@ -1242,6 +1229,7 @@ export default function ClientPacketPage() {
                     Re-sync from Stripe
                   </button>
                 ) : null}
+                {errAt(`inv:${inv.id}`)}
                 {/* The drift waiver (2026-09-12): a payment Stripe cannot see from this key is not a daily task. */}
                 {inv.has_open_drift_finding && !inv.stripe_check_waived_at ? (
                   <button
@@ -1255,18 +1243,13 @@ export default function ClientPacketPage() {
                         body: <p>The nightly drift check will skip this invoice from now on and its open drift tasks close. Nothing about the money changes. Say why, for the next reader.</p>,
                         reason: { label: 'Why the check is waived', required: true, placeholder: 'e.g. paid under the test key on 08-13; the live key cannot see that payment' },
                         choices: [{ key: 'waive', label: 'Waive the check', tone: 'primary' }],
+                        run: async (r) => { await api(`/invoices/${inv.id}/waive-stripe-check`, { method: 'POST', body: { reason: r.reason } }); },
                       });
                       if (!a) return;
                       setBusy(true);
-                      try {
-                        await api(`/invoices/${inv.id}/waive-stripe-check`, { method: 'POST', body: { reason: a.reason } });
-                        setActionMsg(`${inv.invoice_number}: Stripe check waived (audited).`);
-                        await load();
-                      } catch (e) {
-                        setActionErr(e instanceof Error ? e.message : 'Could not waive the check.');
-                      } finally {
-                        setBusy(false);
-                      }
+                      setActionMsg(`${inv.invoice_number}: Stripe check waived (audited).`);
+                      await load();
+                      setBusy(false);
                     }}
                   >
                     Waive Stripe check
@@ -1289,18 +1272,13 @@ export default function ClientPacketPage() {
                           body: <p>The original line stays as written. Your amendment is added under it, with your name and the time.</p>,
                           reason: { label: 'The amendment', required: true, placeholder: 'e.g. paid under the Stripe test key on 2026-08-13; the live key cannot see that payment intent' },
                           choices: [{ key: 'amend', label: 'Add the amendment', tone: 'primary' }],
+                          run: async (r) => { await api(`/invoices/${inv.id}/waiver-amendments`, { method: 'POST', body: { body: r.reason } }); },
                         });
                         if (!a) return;
                         setBusy(true);
-                        try {
-                          await api(`/invoices/${inv.id}/waiver-amendments`, { method: 'POST', body: { body: a.reason } });
-                          setActionMsg(`${inv.invoice_number}: waiver reason amended (audited).`);
-                          await load();
-                        } catch (e) {
-                          setActionErr(e instanceof Error ? e.message : 'Could not amend the reason.');
-                        } finally {
-                          setBusy(false);
-                        }
+                        setActionMsg(`${inv.invoice_number}: waiver reason amended (audited).`);
+                        await load();
+                        setBusy(false);
                       }}
                     >
                       Amend reason
@@ -1316,22 +1294,17 @@ export default function ClientPacketPage() {
                       type="button"
                       disabled={busy}
                       onClick={async () => {
+                        const got: { sent: { to: string } | null } = { sent: null };
                         if (!(await ask({
                           title: `Email ${c.first_name} a reminder for ${inv.invoice_number}?`,
                           body: <p className="small">It chases <strong>{formatMoney(inv.total_cents)}</strong>, with the same pay link the invoice carried.</p>,
                           choices: [{ key: 'go', label: `Send reminder (${formatMoney(inv.total_cents)})`, tone: 'primary' }],
+                          run: async () => { got.sent = await api<{ to: string }>(`/invoices/${inv.id}/remind`, { method: 'POST' }); },
                         }))) return;
                         setBusy(true);
-                        setActionErr('');
-                        try {
-                          const r = await api<{ to: string }>(`/invoices/${inv.id}/remind`, { method: 'POST' });
-                          setActionMsg(`Reminder sent to ${r.to}.`);
-                          await load();
-                        } catch (e) {
-                          setActionErr(e instanceof Error ? e.message : 'Could not send the reminder.');
-                        } finally {
-                          setBusy(false);
-                        }
+                        setActionMsg(`Reminder sent to ${got.sent?.to ?? 'the client'}.`);
+                        await load();
+                        setBusy(false);
                       }}
                     >
                       Send reminder ({formatMoney(inv.total_cents)})
@@ -1347,6 +1320,7 @@ export default function ClientPacketPage() {
                         type="button"
                         disabled={busy}
                         onClick={async () => {
+                          const got: { link: { to: string; channel: string } | null } = { link: null };
                           const a = await ask({
                             title: `Send ${c.first_name} the pay link for ${inv.invoice_number}?`,
                             body: <p className="small">One link, the same one the invoice email carried. It goes on the send log.</p>,
@@ -1354,19 +1328,13 @@ export default function ClientPacketPage() {
                               { key: 'email', label: 'Email it', tone: 'primary' },
                               { key: 'sms', label: 'Text it', tone: 'ghost' },
                             ],
+                            run: async (r) => { got.link = await api<{ to: string; channel: string }>(`/invoices/${inv.id}/pay-link/send`, { method: 'POST', body: { channel: r.choice } }); },
                           });
                           if (!a) return;
                           setBusy(true);
-                          setActionErr('');
-                          try {
-                            const r = await api<{ to: string; channel: string }>(`/invoices/${inv.id}/pay-link/send`, { method: 'POST', body: { channel: a.choice } });
-                            setActionMsg(`Pay link ${r.channel === 'sms' ? 'texted' : 'emailed'} to ${r.to}.`);
-                            await load();
-                          } catch (e) {
-                            setActionErr(e instanceof Error ? e.message : 'Could not send the pay link.');
-                          } finally {
-                            setBusy(false);
-                          }
+                          setActionMsg(`Pay link ${got.link?.channel === 'sms' ? 'texted' : 'emailed'} to ${got.link?.to ?? 'the client'}.`);
+                          await load();
+                          setBusy(false);
                         }}
                       >
                         Send the pay link…
@@ -1380,6 +1348,7 @@ export default function ClientPacketPage() {
                           type="button"
                           disabled={busy}
                           onClick={async () => {
+                            const got: { voided: { notice: NoticeState | null } | null } = { voided: null };
                             const a = await ask({
                               title: `Void ${inv.invoice_number}?`,
                               body: (
@@ -1390,28 +1359,20 @@ export default function ClientPacketPage() {
                               ),
                               reason: { label: 'Why (this is the record)', required: true },
                               choices: [{ key: 'void', label: 'Void invoice', tone: 'danger' }],
+                              // The server validates the reason; its words come back under the field.
+                              run: async (r) => { got.voided = await api<{ notice: NoticeState | null }>(`/invoices/${inv.id}/void`, { method: 'POST', body: { reason: r.reason } }); },
                             });
                             if (!a) return;
-                            if (a.reason.length < 5) { setActionErr('Say why in at least a few words — this is the record.'); return; }
-                                setBusy(true);
-                                setActionErr('');
-                                try {
-                                  const r = await api<{ notice: NoticeState | null }>(`/invoices/${inv.id}/void`, {
-                                    method: 'POST', body: { reason: a.reason },
-                                  });
-                                  // The notice's REAL state, from the record: "queued" until the send log says
-                                  // delivered. "The client has been told" was a claim, not a fact (2026-09-09).
-                                  setActionMsg(
-                                    `${inv.invoice_number} is void. ${
-                                      r.notice ? describeNotice(r.notice, (iso) => formatTime(iso)) : 'No cancellation notice was queued (no email on file)'
-                                    } — see the send log under the invoice.`
-                                  );
-                                  await load();
-                                } catch (e) {
-                                  setActionErr(e instanceof Error ? e.message : 'Could not void the invoice.');
-                                } finally {
-                                  setBusy(false);
-                                }
+                            setBusy(true);
+                            // The notice's REAL state, from the record: "queued" until the send log says
+                            // delivered. "The client has been told" was a claim, not a fact (2026-09-09).
+                            setActionMsg(
+                              `${inv.invoice_number} is void. ${
+                                got.voided?.notice ? describeNotice(got.voided.notice, (iso) => formatTime(iso)) : 'No cancellation notice was queued (no email on file)'
+                              } — see the send log under the invoice.`
+                            );
+                            await load();
+                            setBusy(false);
                           }}
                         >
                           Void…
@@ -1462,7 +1423,7 @@ export default function ClientPacketPage() {
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
-                setActionErr('');
+                setInlineErr(null);
                 try {
                   await api(`/contacts/${params.id}/schedule-session`, {
                     method: 'POST',
@@ -1471,7 +1432,7 @@ export default function ClientPacketPage() {
                   setActionMsg('Scheduling task created — it is in the owner’s queue with the booking link.');
                   await load();
                 } catch (e) {
-                  setActionErr(e instanceof Error ? e.message : 'Could not request scheduling.');
+                  setInlineErr({ key: 'schedule', message: e instanceof Error ? e.message : 'Could not request scheduling.' });
                   await load();
                 } finally {
                   setBusy(false);
@@ -1480,6 +1441,7 @@ export default function ClientPacketPage() {
             >
               Request a meeting
             </button>
+            {errAt('schedule')}
           </>
         )}
         {/* Audit item 10 (2026-09-09): recorded sessions live here, under the calendar — one card for

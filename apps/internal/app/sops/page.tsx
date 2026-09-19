@@ -38,6 +38,9 @@ interface Registry {
   deliberatelyNone: number;
 }
 
+/** The server's words, verbatim; the fallback is only for a non-Error throw. */
+const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
+
 /** Minimal markdown: headings, bold, list items, rules. No dependency. */
 function renderMd(md: string) {
   return md.split('\n').map((line, i) => {
@@ -88,27 +91,31 @@ function SopsBrowser() {
   const [registry, setRegistry] = useState<Registry | null>(null);
   const [tab, setTab] = useState<'kb' | 'registry'>('kb');
   const [includeDrafts, setIncludeDrafts] = useState(false);
-  const [error, setError] = useState('');
+  // THE ERROR STAYS WITH THE CONTROL (Brian, 2026-09-19, defect 2): a refused search renders under
+  // the search box with the words kept; a refused open renders beside the procedure that was tapped.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
 
   const search = useCallback(async (query: string, drafts: boolean) => {
+    setInlineErr((e) => (e?.key === 'search' ? null : e));
     try {
       const r = await api<{ sops: SopRow[] }>(
         `/sops?q=${encodeURIComponent(query)}${drafts ? '&includeDrafts=true' : ''}`
       );
       setRows(r.sops);
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: 'search', message: refused(err) });
     }
   }, []);
 
   const load = useCallback(async (slug: string) => {
-    setError('');
+    setInlineErr(null);
     try {
       const r = await api<{ sop: SopDetail; history: typeof history }>(`/sops/${slug}`);
       setOpen(r.sop);
       setHistory(r.history);
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: `open:${slug}`, message: refused(err) });
     }
   }, []);
 
@@ -124,10 +131,15 @@ function SopsBrowser() {
     if (slug) void load(slug);
   }, [router, params, search, load]);
 
+  // A deep-linked slug (from a task's SOP link) has no row to sit beside when it is refused.
+  const orphanOpenErr =
+    inlineErr && inlineErr.key.startsWith('open:') && !rows.some((s) => `open:${s.slug}` === inlineErr.key)
+      ? <p className="field-error" role="alert">{inlineErr.message}</p>
+      : null;
+
   return (
     <>
       <h1>SOPs</h1>
-      {error ? <div className="alert error">{error}</div> : null}
 
       <div className="viewtabs" style={{ marginBottom: 10 }}>
         <button type="button" className={tab === 'kb' ? 'active' : ''} onClick={() => setTab('kb')}>
@@ -152,6 +164,7 @@ function SopsBrowser() {
                   void search(e.target.value, includeDrafts);
                 }}
               />
+              {errAt('search')}
             </label>
             <label className="field inline-check">
               <input
@@ -164,6 +177,7 @@ function SopsBrowser() {
               />
               <span>Include drafts (leadership only — drafts never appear in normal search)</span>
             </label>
+            {orphanOpenErr}
           </section>
 
           {open ? (
@@ -219,6 +233,7 @@ function SopsBrowser() {
                       {s.status !== 'published' ? ` · ${s.status}` : ''}
                       {s.from_transcript ? ' · from a recording' : ''}
                     </span>
+                    {errAt(`open:${s.slug}`)}
                   </div>
                 ))
               )}

@@ -30,6 +30,9 @@ export default function AutomationsPage() {
   const [items, setItems] = useState<Automation[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  // A refusal renders on the row whose button caused it (Brian, 2026-09-19, defect 2); `error` above is the load result.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
 
   const load = useCallback(async () => {
     try {
@@ -50,18 +53,34 @@ export default function AutomationsPage() {
 
   const toggle = async (a: Automation) => {
     const next = !a.enabled;
-    if (next && !(await ask({
-      title: `Arm "${a.name}"?`,
-      body: <p>This starts sending to real clients on the next job run. What it held while off stays held.</p>,
-      choices: [{ key: 'arm', label: 'Arm', tone: 'danger' }],
-    }))) return;
+    setInlineErr(null);
+    if (next) {
+      // The modal does the arming itself: a refusal renders inside it and it stays open.
+      const armed = await ask({
+        title: `Arm "${a.name}"?`,
+        body: <p>This starts sending to real clients on the next job run. What it held while off stays held.</p>,
+        choices: [{ key: 'arm', label: 'Arm', tone: 'danger' }],
+        run: async () => {
+          await api(`/admin/automations/${a.key}`, { method: 'PATCH', body: { enabled: true } });
+        },
+      });
+      if (!armed) return;
+      setBusy(a.key);
+      try {
+        await load();
+      } catch (err) {
+        setInlineErr({ key: a.key, message: err instanceof Error && err.message ? err.message : 'The request was refused.' });
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
     setBusy(a.key);
-    setError('');
     try {
-      await api(`/admin/automations/${a.key}`, { method: 'PATCH', body: { enabled: next } });
+      await api(`/admin/automations/${a.key}`, { method: 'PATCH', body: { enabled: false } });
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: a.key, message: err instanceof Error && err.message ? err.message : 'The request was refused.' });
     } finally {
       setBusy(null);
     }
@@ -103,14 +122,17 @@ export default function AutomationsPage() {
                 {a.updated_by ? ` · last changed by ${a.updated_by} ${dayOf(a.updated_at)}` : ' · never changed'}
               </span>
             </span>
-            <button
-              className={a.enabled ? 'btn danger' : 'btn'}
-              type="button"
-              disabled={busy === a.key}
-              onClick={() => void toggle(a)}
-            >
-              {a.enabled ? 'Turn OFF' : 'Arm'}
-            </button>
+            <span>
+              <button
+                className={a.enabled ? 'btn danger' : 'btn'}
+                type="button"
+                disabled={busy === a.key}
+                onClick={() => void toggle(a)}
+              >
+                {a.enabled ? 'Turn OFF' : 'Arm'}
+              </button>
+              {errAt(a.key)}
+            </span>
           </div>
         </section>
       ))}

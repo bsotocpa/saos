@@ -333,8 +333,6 @@ export default function IntakePage() {
 
       {resumed ? <div className="alert">{t('intake_resumed')}</div> : null}
 
-      {error ? <div className="alert error">{error}</div> : null}
-
       <section className="card">
         {visibleFields.map((f) => {
           const v = answers[f.key];
@@ -452,6 +450,9 @@ export default function IntakePage() {
           >
             {last ? t('intake_submit') : t('intake_next')}
           </button>
+          {/* The save/submit refusal lives with the button that caused it; per-field
+              issues stay with their fields above. */}
+          {error ? <p className="field-error" role="alert" style={{ flexBasis: '100%' }}>{error}</p> : null}
         </div>
         <p className="muted small">{t('intake_saved_note')}</p>
       </section>

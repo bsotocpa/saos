@@ -281,3 +281,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--electric); 
 /* Inline tick-boxes (SMS opt-in, consent checks): the global input rule stretches
    controls to 100%, which would push a consent label to the middle of the card. */
 .tickbox { width: 20px; height: 20px; flex: 0 0 auto; margin: 1px 0 0; padding: 0; display: inline-block; }
+
+/* A refusal, beside the control that caused it (2026-09-19). */
+.field-error { color: var(--danger); font-size: 13px; margin: 6px 0 0; }

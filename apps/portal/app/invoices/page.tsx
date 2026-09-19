@@ -20,7 +20,8 @@ export default function InvoicesPage() {
   // so a 503 produced NOTHING — Brian reported the button as "dead". A payment control
   // that fails invisibly is worse than one that errors.
   const [payingId, setPayingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Keyed by invoice id: the refusal renders beside THAT row's Pay button, not at the top.
+  const [payError, setPayError] = useState<{ id: string; message: string } | null>(null);
   // FINDING #23/#24: Stripe returns the client to ?paid=1 and the page ignored it.
   const [paidNotice, setPaidNotice] = useState<'confirming' | 'paid' | 'pending' | null>(null);
   /*
@@ -96,14 +97,14 @@ export default function InvoicesPage() {
   }, []);
 
   const pay = async (id: string) => {
-    setError(null);
+    setPayError(null);
     setPayingId(id);
     try {
       const res = await api<{ url: string }>(`/portal/invoices/${id}/checkout`, { method: 'POST' });
       window.location.href = res.url;
     } catch (err) {
       // Say what happened. The server's message is written for a client to read.
-      setError(err instanceof ApiError ? err.message : t('error_generic'));
+      setPayError({ id, message: err instanceof ApiError ? err.message : t('error_generic') });
       setPayingId(null);
     }
   };
@@ -116,11 +117,6 @@ export default function InvoicesPage() {
           {paidNotice === 'confirming' ? t('inv_confirming') : null}
           {paidNotice === 'paid' ? t('inv_paid_notice') : null}
           {paidNotice === 'pending' ? t('inv_paid_pending') : null}
-        </p>
-      ) : null}
-      {error ? (
-        <p className="alert error" role="alert">
-          {error}
         </p>
       ) : null}
       <section className="card">
@@ -162,14 +158,17 @@ export default function InvoicesPage() {
                   <span className={`badge ${i.status === 'overdue' ? 'danger' : 'warn'}`}>
                     {t(i.status === 'overdue' ? 'inv_overdue' : 'inv_open')}
                   </span>
-                  <button
-                    type="button"
-                    className="btn accent"
-                    disabled={payingId !== null}
-                    onClick={() => void pay(i.id)}
-                  >
-                    {payingId === i.id ? t('inv_paying') : t('inv_pay')}
-                  </button>
+                  <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                    <button
+                      type="button"
+                      className="btn accent"
+                      disabled={payingId !== null}
+                      onClick={() => void pay(i.id)}
+                    >
+                      {payingId === i.id ? t('inv_paying') : t('inv_pay')}
+                    </button>
+                    {payError?.id === i.id ? <p className="field-error" role="alert">{payError.message}</p> : null}
+                  </span>
                 </>
               )}
             </li>

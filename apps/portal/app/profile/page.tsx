@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, clearAuthed } from '../../lib/api';
+import { api, ApiError, clearAuthed } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import type { DictKey } from '../../lib/i18n';
 
@@ -17,12 +17,18 @@ export default function ProfilePage() {
   });
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  // The reminders toggle flips at once and flips BACK if the server refuses.
+  const [estimateOn, setEstimateOn] = useState(true);
+  const [estimateError, setEstimateError] = useState('');
   const [signingOut, setSigningOut] = useState(false);
   const [signedOutAll, setSignedOutAll] = useState(false);
+  const [signOutError, setSignOutError] = useState('');
   const router = useRouter();
 
   useEffect(() => {
     if (me) {
+      setEstimateOn(me.estimate_reminders_enabled);
       setForm({
         firstName: me.first_name,
         lastName: me.last_name,
@@ -49,6 +55,8 @@ export default function ProfilePage() {
           onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
+            setSaved(false);
+            setSaveError('');
             try {
               await api('/portal/me', {
                 method: 'PATCH',
@@ -62,6 +70,9 @@ export default function ProfilePage() {
               await api('/portal/onboarding/steps/confirm_info/complete', { method: 'POST' });
               await refresh();
               setSaved(true);
+            } catch (err) {
+              // The server's message, verbatim, at the Save button; the form keeps its text.
+              setSaveError(err instanceof ApiError ? err.message : t('error_generic'));
             } finally {
               setBusy(false);
             }
@@ -115,6 +126,7 @@ export default function ProfilePage() {
           <button className="btn" type="submit" disabled={busy}>
             {t('prof_save')}
           </button>
+          {saveError ? <p className="field-error" role="alert">{saveError}</p> : null}
         </form>
       </section>
 
@@ -124,10 +136,21 @@ export default function ProfilePage() {
           <input
             type="checkbox"
             data-testid="estimate-toggle"
-            checked={me?.estimate_reminders_enabled ?? true}
+            checked={estimateOn}
+            aria-invalid={estimateError ? true : undefined}
             onChange={async (e) => {
-              await api('/portal/me', { method: 'PATCH', body: { estimateReminders: e.target.checked } });
-              await refresh();
+              const next = e.target.checked;
+              const prev = estimateOn;
+              setEstimateOn(next);
+              setEstimateError('');
+              try {
+                await api('/portal/me', { method: 'PATCH', body: { estimateReminders: next } });
+                await refresh();
+              } catch (err) {
+                // Refused: the box goes back to what the server still holds, and says why.
+                setEstimateOn(prev);
+                setEstimateError(err instanceof ApiError ? err.message : t('error_generic'));
+              }
             }}
           />
           <span>
@@ -136,6 +159,7 @@ export default function ProfilePage() {
             <span className="muted small">{t('notif_estimate_help')}</span>
           </span>
         </label>
+        {estimateError ? <p className="field-error" role="alert">{estimateError}</p> : null}
       </section>
 
       {/*
@@ -149,24 +173,29 @@ export default function ProfilePage() {
         {signedOutAll ? (
           <p className="alert info" role="status">{t('sec_done')}</p>
         ) : (
-          <button
-            type="button"
-            className="btn ghost"
-            disabled={signingOut}
-            onClick={async () => {
-              setSigningOut(true);
-              try {
-                await api('/portal/auth/logout-all', { method: 'POST' });
-                clearAuthed();
-                setSignedOutAll(true);
-                router.push('/login');
-              } catch {
-                setSigningOut(false);
-              }
-            }}
-          >
-            {signingOut ? t('sec_signing_out') : t('sec_sign_out_all')}
-          </button>
+          <>
+            <button
+              type="button"
+              className="btn ghost"
+              disabled={signingOut}
+              onClick={async () => {
+                setSigningOut(true);
+                setSignOutError('');
+                try {
+                  await api('/portal/auth/logout-all', { method: 'POST' });
+                  clearAuthed();
+                  setSignedOutAll(true);
+                  router.push('/login');
+                } catch (err) {
+                  setSignOutError(err instanceof ApiError ? err.message : t('error_generic'));
+                  setSigningOut(false);
+                }
+              }}
+            >
+              {signingOut ? t('sec_signing_out') : t('sec_sign_out_all')}
+            </button>
+            {signOutError ? <p className="field-error" role="alert">{signOutError}</p> : null}
+          </>
         )}
       </section>
     </>

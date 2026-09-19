@@ -40,7 +40,10 @@ export default function ApprovalsPage() {
   const [draftEn, setDraftEn] = useState('');
   const [draftEs, setDraftEs] = useState('');
   const [busy, setBusy] = useState(false);
+  /** The load result only: a refusal of a button renders beside that button (Brian, 2026-09-19, defect 2). */
   const [error, setError] = useState('');
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const [note, setNote] = useState('');
 
   const load = useCallback(async () => {
@@ -61,9 +64,10 @@ export default function ApprovalsPage() {
     void load();
   }, [router, load]);
 
-  const act = async (fn: () => Promise<unknown>, ok: string) => {
+  /** `key` names the button pressed; a refusal renders beside it and the edit (if any) stays open with its text. */
+  const act = async (key: string, fn: () => Promise<unknown>, ok: string) => {
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     setNote('');
     try {
       await fn();
@@ -71,7 +75,7 @@ export default function ApprovalsPage() {
       setEditing('');
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key, message: err instanceof Error && err.message ? err.message : 'The request was refused.' });
     } finally {
       setBusy(false);
     }
@@ -143,6 +147,7 @@ export default function ApprovalsPage() {
                   disabled={busy || draftEn.trim().length === 0 || draftEs.trim().length === 0}
                   onClick={() =>
                     void act(
+                      `save:${r.meeting_id}`,
                       () => api(`/meetings/${r.meeting_id}/recap`, { method: 'PATCH', body: { bodyEn: draftEn, bodyEs: draftEs } }),
                       'Saved. Editing withdrew the previous approval, so approve again when you are happy.'
                     )
@@ -154,6 +159,7 @@ export default function ApprovalsPage() {
                   Cancel
                 </button>
               </div>
+              {errAt(`save:${r.meeting_id}`)}
               <p className="muted small">
                 Editing an approved recap withdraws the approval — your name should not stay attached to
                 text you have not read.
@@ -178,6 +184,7 @@ export default function ApprovalsPage() {
                   disabled={busy}
                   onClick={() =>
                     void act(
+                      `approve:${r.meeting_id}`,
                       () => api(`/meetings/${r.meeting_id}/recap/approve`, { method: 'POST' }),
                       armed ? 'Approved and sent to the client.' : 'Approved. It will send when you arm Session recaps.'
                     )
@@ -203,6 +210,7 @@ export default function ApprovalsPage() {
                   disabled={busy}
                   onClick={() =>
                     void act(
+                      `redraft:${r.meeting_id}`,
                       () => api(`/meetings/${r.meeting_id}/recap/draft`, { method: 'POST' }),
                       'Re-drafted from the session summary.'
                     )
@@ -211,6 +219,8 @@ export default function ApprovalsPage() {
                   Re-draft
                 </button>
               </div>
+              {errAt(`approve:${r.meeting_id}`)}
+              {errAt(`redraft:${r.meeting_id}`)}
             </>
           )}
         </section>

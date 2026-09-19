@@ -16,7 +16,10 @@ export default function AccountPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  // THE ERROR STAYS WITH THE FIELD (Brian, 2026-09-19, defect 2): keyed to the control that
+  // caused it, the server's words verbatim, the typed text kept.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -24,14 +27,14 @@ export default function AccountPage() {
   }, [router]);
 
   const submit = async () => {
-    setError('');
+    setInlineErr(null);
     setMessage('');
     if (newPassword.length < 12) {
-      setError('New password must be at least 12 characters.');
+      setInlineErr({ key: 'new', message: 'New password must be at least 12 characters.' });
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError('New passwords do not match.');
+      setInlineErr({ key: 'confirm', message: 'New passwords do not match.' });
       return;
     }
     setBusy(true);
@@ -42,10 +45,10 @@ export default function AccountPage() {
       setNewPassword('');
       setConfirmPassword('');
     } catch (err) {
+      // A credentials refusal belongs to the current-password field; anything else, to the button.
       const code = (err as { code?: string }).code;
-      setError(code === 'unauthorized' || code === 'invalid_credentials'
-        ? 'Current password did not match.'
-        : 'Password change failed — try again.');
+      const key = code === 'unauthorized' || code === 'invalid_credentials' ? 'current' : 'submit';
+      setInlineErr({ key, message: err instanceof Error && err.message ? err.message : 'The request was refused.' });
     } finally {
       setBusy(false);
     }
@@ -61,7 +64,6 @@ export default function AccountPage() {
         enrollment is unaffected.
       </p>
       {message ? <p className="alert info">{message}</p> : null}
-      {error ? <p className="alert error">{error}</p> : null}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -77,6 +79,7 @@ export default function AccountPage() {
             onChange={(e) => setCurrentPassword(e.target.value)}
             required
           />
+          {errAt('current')}
         </label>
         <label className="field">
           New password (12+ characters)
@@ -88,6 +91,7 @@ export default function AccountPage() {
             required
             minLength={12}
           />
+          {errAt('new')}
         </label>
         <label className="field">
           Confirm new password
@@ -99,10 +103,12 @@ export default function AccountPage() {
             required
             minLength={12}
           />
+          {errAt('confirm')}
         </label>
         <button className="btn" type="submit" disabled={busy || !currentPassword || !newPassword}>
           Change password
         </button>
+        {errAt('submit')}
       </form>
     </div>
   );

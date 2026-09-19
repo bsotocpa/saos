@@ -95,7 +95,8 @@ export async function api<T>(
   }
   const json = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
   if (!res.ok) {
-    throw new ApiError(res.status, json.error ?? 'error', json.message ?? 'Request failed');
+    // The server's words, verbatim (2026-09-19): a validation refusal carries them per field, not at the top.
+    throw new ApiError(res.status, json.error ?? 'error', json.message ?? (json as { issues?: Array<{ message?: string }> }).issues?.find((i) => i.message)?.message ?? 'Request failed');
   }
   return json as T;
 }

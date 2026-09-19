@@ -58,6 +58,8 @@ export default function SignPage() {
   const [schedules, setSchedules] = useState<PendingSchedule[]>([]);
   const [offers, setOffers] = useState<ConsentOffer[]>([]);
   const [accepted, setAccepted] = useState<string[]>([]);
+  // Keyed by schedule code: the refusal renders beside THAT schedule's Accept button.
+  const [scheduleError, setScheduleError] = useState<{ code: string; message: string } | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   // The engagement packet: read it, then sign it here.
@@ -130,9 +132,14 @@ export default function SignPage() {
   }, []);
 
   const acceptSchedule = async (code: string) => {
-    await api(`/portal/schedules/${code}/accept`, { method: 'POST' });
-    setAccepted((prev) => [...prev, code]);
-    setSchedules((prev) => prev.filter((s) => s.schedule_code !== code));
+    setScheduleError(null);
+    try {
+      await api(`/portal/schedules/${code}/accept`, { method: 'POST' });
+      setAccepted((prev) => [...prev, code]);
+      setSchedules((prev) => prev.filter((s) => s.schedule_code !== code));
+    } catch (err) {
+      setScheduleError({ code, message: err instanceof ApiError ? err.message : t('error_generic') });
+    }
   };
 
   return (
@@ -285,6 +292,7 @@ export default function SignPage() {
                   {t('schedules_accept')}
                 </button>
               </p>
+              {scheduleError?.code === s.schedule_code ? <p className="field-error" role="alert">{scheduleError.message}</p> : null}
             </div>
           ))}
         </section>

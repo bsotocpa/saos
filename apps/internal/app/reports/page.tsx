@@ -29,6 +29,9 @@ interface ReportResult {
   rows: Array<Record<string, unknown>>;
 }
 
+/** The server's words, verbatim; the fallback is only for a non-Error throw. */
+const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
+
 function renderCell(value: unknown, type: Column['type']): string {
   if (value === null || value === undefined) return '—';
   if (type === 'money') return formatMoney(Number(value));
@@ -43,7 +46,10 @@ export default function ReportsPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [tiles, setTiles] = useState<string[]>([]);
+  /** The catalog load only: a refused report or pin renders beside its control (Brian, 2026-09-19, defect 2). */
   const [error, setError] = useState('');
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -71,11 +77,12 @@ export default function ReportsPage() {
   const load = useCallback(async () => {
     if (!active || !from || !to) return;
     setBusy(true);
-    setError('');
+    setInlineErr((e) => (e?.key === 'range' ? null : e));
     try {
       setResult(await api<ReportResult>(`/reports/${active}?from=${from}&to=${to}`));
     } catch (err) {
-      setError((err as Error).message);
+      // Under the date range that asked for it; the dates stay.
+      setInlineErr({ key: 'range', message: refused(err) });
       setResult(null);
     } finally {
       setBusy(false);
@@ -89,12 +96,16 @@ export default function ReportsPage() {
   const meta = useMemo(() => catalog.find((r) => r.key === active), [catalog, active]);
 
   const toggleTile = async (key: string) => {
-    const next = tiles.includes(key) ? tiles.filter((t) => t !== key) : [...tiles, key];
+    const prev = tiles;
+    const next = prev.includes(key) ? prev.filter((t) => t !== key) : [...prev, key];
+    setInlineErr(null);
     setTiles(next);
     try {
       await api('/reports/tiles/mine', { method: 'PUT', body: { tiles: next } });
     } catch (err) {
-      setError((err as Error).message);
+      // The optimistic pin is reverted: the button must not claim a state the server refused.
+      setTiles(prev);
+      setInlineErr({ key: 'pin', message: refused(err) });
     }
   };
 
@@ -154,6 +165,7 @@ export default function ReportsPage() {
             />
           </label>
         </div>
+        {errAt('range')}
         <div className="chipbar">
           <button type="button" className="btn accent" disabled={busy || !result} onClick={exportCsv}>
             Export CSV
@@ -172,6 +184,7 @@ export default function ReportsPage() {
             <span className="muted small">Snapshot — as of today, so the dates are off.</span>
           ) : null}
         </div>
+        {errAt('pin')}
       </section>
 
       {meta ? (

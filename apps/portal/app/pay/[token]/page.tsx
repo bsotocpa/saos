@@ -105,7 +105,6 @@ export default function PayPage() {
       <h1>{t('pay_title')}</h1>
       {notice === 'confirming' ? <p className="alert info" role="status" aria-live="polite">{t('pay_confirming')}</p> : null}
       {notice === 'pending' ? <p className="alert info" role="status" aria-live="polite">{t('pay_pending')}</p> : null}
-      {error ? <div className="alert error">{error}</div> : null}
       <section className="card">
         <ul className="quote-lines">
           <li>
@@ -131,6 +130,8 @@ export default function PayPage() {
         <button type="button" className="btn accent" disabled={busy} onClick={() => void pay()}>
           {t('pay_button')}
         </button>
+        {/* The checkout refusal, verbatim, beside the button that asked for it. */}
+        {error ? <p className="field-error" role="alert" style={{ flexBasis: '100%' }}>{error}</p> : null}
       </div>
     </>
   );

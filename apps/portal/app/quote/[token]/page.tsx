@@ -79,7 +79,9 @@ export default function QuotePage() {
   const [showDecline, setShowDecline] = useState(false);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  // One per control: the Accept refusal sits by Accept, the decline refusal by Send.
+  const [acceptError, setAcceptError] = useState('');
+  const [declineError, setDeclineError] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -120,7 +122,7 @@ export default function QuotePage() {
 
   const accept = async () => {
     setBusy(true);
-    setError('');
+    setAcceptError('');
     try {
       const r = await api<{ depositInvoiceId: string | null }>(`/public/quote/${token}/accept`, {
         method: 'POST',
@@ -145,7 +147,7 @@ export default function QuotePage() {
       if (err instanceof ApiError && err.code === 'expired') {
         setQuote((q) => (q ? { ...q, expired: true } : q));
       }
-      setError(err instanceof ApiError ? err.message : t('error_generic'));
+      setAcceptError(err instanceof ApiError ? err.message : t('error_generic'));
     } finally {
       setBusy(false);
     }
@@ -154,12 +156,13 @@ export default function QuotePage() {
   const decline = async () => {
     if (reason.trim().length === 0) return;
     setBusy(true);
-    setError('');
+    setDeclineError('');
     try {
       await api(`/public/quote/${token}/decline`, { method: 'POST', body: { reason: reason.trim() } });
       setState('declined');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('error_generic'));
+      // The reason stays typed; the refusal renders under it.
+      setDeclineError(err instanceof ApiError ? err.message : t('error_generic'));
     } finally {
       setBusy(false);
     }
@@ -213,7 +216,6 @@ export default function QuotePage() {
     <>
       <h1>{t('quote_title')}</h1>
       <p className="muted">{t('quote_intro')}</p>
-      {error ? <div className="alert error">{error}</div> : null}
 
       <section className="card">
         <h2>{t('quote_included')}</h2>
@@ -342,13 +344,14 @@ export default function QuotePage() {
         <button type="button" className="btn ghost" disabled={busy} onClick={() => setShowDecline((s) => !s)}>
           {t('quote_decline')}
         </button>
+        {acceptError ? <p className="field-error" role="alert" style={{ flexBasis: '100%' }}>{acceptError}</p> : null}
       </div>
 
       {showDecline ? (
         <section className="card">
           <p>{t('quote_decline_prompt')}</p>
           <label className="field">
-            <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
+            <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} aria-invalid={declineError ? true : undefined} />
           </label>
           <button
             type="button"
@@ -358,6 +361,7 @@ export default function QuotePage() {
           >
             {t('quote_decline_send')}
           </button>
+          {declineError ? <p className="field-error" role="alert">{declineError}</p> : null}
         </section>
       ) : null}
     </>

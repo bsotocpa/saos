@@ -8,7 +8,7 @@
 
 import { calendarDay, dayOf, formatDate, formatDateTime, formatMonth, formatTime } from '../../lib/dates';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
 import { useAsk } from '../../components/ask';
@@ -65,6 +65,11 @@ interface Workload {
 /** The source_type the July migration used for its "this contact is missing X" rows. */
 const BACKLOG_SOURCE = 'enrichment';
 
+/** The server's words, verbatim; the fallback is only for a non-Error throw. */
+const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
+/** Renders a refusal beside the control it belongs to (Brian, 2026-09-19, defect 2). */
+type ErrAt = (key: string) => ReactNode;
+
 export default function TasksPage() {
   const router = useRouter();
   const ask = useAsk();
@@ -100,7 +105,10 @@ export default function TasksPage() {
   const [creating, setCreating] = useState(false);
   const [showWorkload, setShowWorkload] = useState(false);
   const [workload, setWorkload] = useState<Workload[]>([]);
+  /** The bootstrap/load result only: a refused edit renders beside the control that made it. */
   const [error, setError] = useState('');
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt: ErrAt = (key) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const isPhone = useIsPhone();
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -171,51 +179,80 @@ export default function TasksPage() {
   };
 
   const saveCurrentView = async () => {
+    setInlineErr(null);
+    const { sortField, sortDir, ...filterRest } = filters;
+    // The modal does the save itself: a refusal renders under the name field, the name stays.
     const a = await ask({
       title: 'Save this view',
       reason: { label: 'View name', required: true },
       choices: [{ key: 'private', label: 'Save as private', tone: 'ghost' }, { key: 'shared', label: 'Save and share with the team', tone: 'primary' }],
+      run: async (r) => {
+        await api('/task-views', {
+          method: 'POST',
+          body: { name: r.reason.trim(), shared: r.choice === 'shared', viewType, filters: filterRest, sort: { field: sortField, dir: sortDir }, columns, groupBy },
+        });
+      },
     });
     if (!a) return;
-    const name = a.reason;
-    const shared = a.choice === 'shared';
-    const { sortField, sortDir, ...filterRest } = filters;
-    await api('/task-views', {
-      method: 'POST',
-      body: { name: name.trim(), shared, viewType, filters: filterRest, sort: { field: sortField, dir: sortDir }, columns, groupBy },
-    });
-    const vw = await api<{ views: SavedView[] }>('/task-views');
-    setViews(vw.views);
+    try {
+      const vw = await api<{ views: SavedView[] }>('/task-views');
+      setViews(vw.views);
+    } catch (err) {
+      setInlineErr({ key: 'saveView', message: refused(err) });
+    }
   };
 
   const deleteView = async (id: string) => {
-    await api(`/task-views/${id}`, { method: 'DELETE' });
-    setViews((vs) => vs.filter((v) => v.id !== id));
-    if (activeViewId === id) setActiveViewId('');
+    setInlineErr(null);
+    try {
+      await api(`/task-views/${id}`, { method: 'DELETE' });
+      setViews((vs) => vs.filter((v) => v.id !== id));
+      if (activeViewId === id) setActiveViewId('');
+    } catch (err) {
+      setInlineErr({ key: `view:${id}`, message: refused(err) });
+    }
   };
 
   // ── mutations ────────────────────────────────────────────────────────────
+  // Each refusal is keyed to the row control that made the edit; the row re-renders from the
+  // server on refresh(), so a refused select shows the value the server still holds.
   const setStatus = async (id: string, status: TaskStatus) => {
+    setInlineErr(null);
     try {
-      setError('');
       await api(`/tasks/${id}/status`, { method: 'PATCH', body: { status } });
     } catch (err) {
-      // v4.6: completing a blocked task is refused — say why, don't swallow it.
-      setError((err as Error).message);
+      // v4.6: completing a blocked task is refused — say why, beside the control, don't swallow it.
+      setInlineErr({ key: `status:${id}`, message: refused(err) });
     }
     refresh();
   };
   const patchTask = async (id: string, body: Record<string, unknown>) => {
-    await api(`/tasks/${id}`, { method: 'PATCH', body });
+    setInlineErr(null);
+    const field = 'priority' in body ? 'priority' : 'assignedStaffId' in body ? 'owner' : 'dueDate' in body ? 'due' : 'patch';
+    try {
+      await api(`/tasks/${id}`, { method: 'PATCH', body });
+    } catch (err) {
+      setInlineErr({ key: `${field}:${id}`, message: refused(err) });
+    }
     refresh();
   };
   const duplicate = async (id: string) => {
-    await api(`/tasks/${id}/duplicate`, { method: 'POST', body: {} });
-    refresh();
+    setInlineErr(null);
+    try {
+      await api(`/tasks/${id}/duplicate`, { method: 'POST', body: {} });
+      refresh();
+    } catch (err) {
+      setInlineErr({ key: `dup:${id}`, message: refused(err) });
+    }
   };
   const followUp = async (id: string) => {
-    await api(`/tasks/${id}/follow-up`, { method: 'POST', body: {} });
-    refresh();
+    setInlineErr(null);
+    try {
+      await api(`/tasks/${id}/follow-up`, { method: 'POST', body: {} });
+      refresh();
+    } catch (err) {
+      setInlineErr({ key: `follow:${id}`, message: refused(err) });
+    }
   };
   useEffect(() => {
     if (!isPhone || phoneDefaultApplied.current) return;
@@ -224,11 +261,20 @@ export default function TasksPage() {
     setFilters((f) => ({ ...f, assignee: 'me', includeDone: false, sortField: 'due_then_priority', sortDir: 'asc' }));
   }, [isPhone]);
 
+  /** Throws on refusal so the mass-complete modal can hold the message; the bar shows it otherwise. */
   const bulk = async (set: Record<string, unknown>) => {
     if (selected.size === 0) return;
+    setInlineErr(null);
     const r = await api<{ updated: number; blocked?: number }>('/tasks/bulk', { method: 'POST', body: { ids: [...selected], set } });
-    if (r.blocked) setError(`${r.blocked} task${r.blocked === 1 ? '' : 's'} skipped — blocked by open tasks.`);
+    if (r.blocked) setInlineErr({ key: 'bulk', message: `${r.blocked} task${r.blocked === 1 ? '' : 's'} skipped — blocked by open tasks.` });
     refresh();
+  };
+  const bulkFromBar = async (set: Record<string, unknown>) => {
+    try {
+      await bulk(set);
+    } catch (err) {
+      setInlineErr({ key: 'bulk', message: refused(err) });
+    }
   };
 
   // ── sorting from list headers ────────────────────────────────────────────
@@ -332,9 +378,11 @@ export default function TasksPage() {
               <button type="button" className="x" style={{ all: 'unset', cursor: 'pointer', marginLeft: 6, opacity: 0.6 }}
                 title="Delete view" onClick={() => void deleteView(v.id)}>×</button>
             ) : null}
+            {errAt(`view:${v.id}`)}
           </span>
         ))}
         <button type="button" className="chip" onClick={() => void saveCurrentView()}>+ Save view</button>
+        {errAt('saveView')}
       </div>
 
       {/*
@@ -356,20 +404,21 @@ export default function TasksPage() {
           {selected.size > 0 ? (
             <BulkBar
               count={selected.size} staff={staff}
-              onStatus={(s) => void bulk({ status: s })}
-              onOwner={(id) => void bulk({ assignedStaffId: id || null })}
-              onPriority={(p) => void bulk({ priority: p })}
-              onDue={(d) => void bulk({ dueDate: d || null })}
+              onStatus={(s) => void bulkFromBar({ status: s })}
+              onOwner={(id) => void bulkFromBar({ assignedStaffId: id || null })}
+              onPriority={(p) => void bulkFromBar({ priority: p })}
+              onDue={(d) => void bulkFromBar({ dueDate: d || null })}
               onMassComplete={async () => {
                 const n = selected.size;
-                const a = await ask({
+                // The modal does the completing itself: a refusal renders inside it and it stays open.
+                await ask({
                   title: `Complete ${n} task${n === 1 ? '' : 's'}?`,
                   body: <p>They move to Completed together. There is no undo from this bar — reopen them one at a time if this was wrong.</p>,
                   choices: [{ key: 'go', label: `Complete ${n}`, tone: 'danger' }],
+                  run: async () => { await bulk({ status: 'completed' }); },
                 });
-                if (!a) return;
-                await bulk({ status: 'completed' });
               }}
+              error={errAt('bulk')}
               onClear={() => setSelected(new Set())}
             />
           ) : null}
@@ -379,7 +428,7 @@ export default function TasksPage() {
           {viewType === 'list' && isPhone ? (
             <ListCards
               tasks={tasks} selected={selected} setSelected={setSelected} selectMode={selectMode}
-              canManage={canManage} staff={staff}
+              canManage={canManage} staff={staff} errAt={errAt}
               onStatus={(id, s) => void setStatus(id, s)}
               onPatch={(id, b) => void patchTask(id, b)}
               onEdit={setEditing} onDuplicate={(id) => void duplicate(id)} onFollowUp={(id) => void followUp(id)}
@@ -388,7 +437,7 @@ export default function TasksPage() {
           {viewType === 'list' && !isPhone ? (
             <ListView
               tasks={tasks} columns={columns} setColumns={setColumns} filters={filters} sortBy={sortBy}
-              selected={selected} setSelected={setSelected} canManage={canManage} staff={staff}
+              selected={selected} setSelected={setSelected} canManage={canManage} staff={staff} errAt={errAt}
               onStatus={(id, s) => void setStatus(id, s)}
               onPatch={(id, b) => void patchTask(id, b)}
               onEdit={setEditing} onDuplicate={(id) => void duplicate(id)} onFollowUp={(id) => void followUp(id)}
@@ -397,7 +446,7 @@ export default function TasksPage() {
 
           {viewType === 'kanban' ? (
             <KanbanView
-              tasks={tasks} groupBy={groupBy} staff={staff} canManage={canManage}
+              tasks={tasks} groupBy={groupBy} staff={staff} canManage={canManage} errAt={errAt}
               onStatus={(id, s) => void setStatus(id, s)}
               onPatch={(id, b) => void patchTask(id, b)}
               onEdit={setEditing}
@@ -451,7 +500,7 @@ function ListCards(props: {
   tasks: Task[];
   selected: Set<string>; setSelected: (s: Set<string>) => void;
   selectMode: boolean;
-  canManage: boolean; staff: StaffEntry[];
+  canManage: boolean; staff: StaffEntry[]; errAt: ErrAt;
   onStatus: (id: string, s: TaskStatus) => void;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onEdit: (t: Task) => void; onDuplicate: (id: string) => void; onFollowUp: (id: string) => void;
@@ -536,6 +585,8 @@ function ListCards(props: {
                 <span className="muted small">{STATUS_LABEL[t.status]} · {PRIORITY_LABEL[t.priority]}</span>
               )}
             </div>
+            {/* A refused Complete (or status change from the panel below) says why, right here. */}
+            {props.errAt(`status:${t.id}`)}
 
             {/* Status, priority, reassign: real controls, one tap in, not on the face. */}
             {open && props.canManage ? (
@@ -552,6 +603,7 @@ function ListCards(props: {
                   <select value={t.priority} onChange={(e) => props.onPatch(t.id, { priority: Number(e.target.value) })}>
                     {PRIORITIES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
                   </select>
+                  {props.errAt(`priority:${t.id}`)}
                 </label>
                 <label className="small">
                   Owner
@@ -562,12 +614,15 @@ function ListCards(props: {
                     <option value="">Unassigned</option>
                     {props.staff.map((st) => <option key={st.id} value={st.id}>{st.full_name}</option>)}
                   </select>
+                  {props.errAt(`owner:${t.id}`)}
                 </label>
                 <div className="tmore-actions">
                   <button className="chip" type="button" onClick={() => props.onEdit(t)}>Open</button>
                   <button className="chip" type="button" onClick={() => props.onDuplicate(t.id)}>Duplicate</button>
                   <button className="chip" type="button" onClick={() => props.onFollowUp(t.id)}>Follow-up</button>
                 </div>
+                {props.errAt(`dup:${t.id}`)}
+                {props.errAt(`follow:${t.id}`)}
                 {t.business_name ? <p className="muted small" style={{ margin: '6px 0 0' }}>{t.business_name}</p> : null}
                 {t.tags.length ? <p className="muted small" style={{ margin: '2px 0 0' }}>{t.tags.join(', ')}</p> : null}
               </div>
@@ -694,6 +749,8 @@ function BulkBar(props: {
   onStatus: (s: TaskStatus) => void; onOwner: (id: string) => void;
   onPriority: (p: number) => void; onDue: (d: string) => void; onClear: () => void;
   onMassComplete: () => Promise<void> | void;
+  /** A refused bulk edit, rendered in the bar that made it. */
+  error: ReactNode;
 }) {
   const [due, setDue] = useState('');
   return (
@@ -732,6 +789,7 @@ function BulkBar(props: {
       <button className="chip" type="button" onClick={() => void props.onMassComplete()}>Mass complete</button>
       <span style={{ flex: 1 }} />
       <button className="chip" type="button" onClick={props.onClear}>Clear</button>
+      {props.error ? <span style={{ flexBasis: '100%' }}>{props.error}</span> : null}
     </div>
   );
 }
@@ -742,7 +800,7 @@ function ListView(props: {
   tasks: Task[]; columns: string[]; setColumns: (c: string[]) => void;
   filters: Filters; sortBy: (field: string) => void;
   selected: Set<string>; setSelected: (s: Set<string>) => void;
-  canManage: boolean; staff: StaffEntry[];
+  canManage: boolean; staff: StaffEntry[]; errAt: ErrAt;
   onStatus: (id: string, s: TaskStatus) => void;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onEdit: (t: Task) => void; onDuplicate: (id: string) => void; onFollowUp: (id: string) => void;
@@ -830,6 +888,7 @@ function ListView(props: {
                       {t.status === 'cancelled' ? <option value="cancelled">Cancelled</option> : null}
                     </select>
                   ) : STATUS_LABEL[t.status]}
+                  {props.errAt(`status:${t.id}`)}
                 </td>
               ) : null}
               {cols.includes('priority') ? (
@@ -839,6 +898,7 @@ function ListView(props: {
                       {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                     </select>
                   ) : PRIORITY_LABEL[t.priority]}
+                  {props.errAt(`priority:${t.id}`)}
                 </td>
               ) : null}
               {cols.includes('due_date') ? (
@@ -847,6 +907,7 @@ function ListView(props: {
                     <input type="date" value={t.due_date ?? ''} onChange={(e) => props.onPatch(t.id, { dueDate: e.target.value || null })} />
                   ) : (t.due_date ?? '—')}
                   {isOverdue(t) ? <span className="badge danger" style={{ marginLeft: 4 }}>overdue</span> : null}
+                  {props.errAt(`due:${t.id}`)}
                 </td>
               ) : null}
               {cols.includes('assignee') ? (
@@ -857,6 +918,7 @@ function ListView(props: {
                       {props.staff.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
                     </select>
                   ) : (t.assignee_name ?? '—')}
+                  {props.errAt(`owner:${t.id}`)}
                 </td>
               ) : null}
               {cols.includes('client') ? <td>{t.client_name ?? '—'}</td> : null}
@@ -880,6 +942,8 @@ function ListView(props: {
                   <>
                     <button className="chip" type="button" title="Duplicate task" onClick={() => props.onDuplicate(t.id)}>⧉</button>{' '}
                     <button className="chip" type="button" title="Create follow-up" onClick={() => props.onFollowUp(t.id)}>↳</button>
+                    {props.errAt(`dup:${t.id}`)}
+                    {props.errAt(`follow:${t.id}`)}
                   </>
                 ) : null}
               </td>
@@ -896,7 +960,7 @@ function ListView(props: {
 // ── kanban ───────────────────────────────────────────────────────────────────
 
 function KanbanView(props: {
-  tasks: Task[]; groupBy: string; staff: StaffEntry[]; canManage: boolean;
+  tasks: Task[]; groupBy: string; staff: StaffEntry[]; canManage: boolean; errAt: ErrAt;
   onStatus: (id: string, s: TaskStatus) => void;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onEdit: (t: Task) => void;
@@ -971,6 +1035,10 @@ function KanbanView(props: {
                     {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 ) : null}
+                {/* The move select writes status, priority or owner depending on the grouping. */}
+                {props.errAt(`status:${t.id}`)}
+                {props.errAt(`priority:${t.id}`)}
+                {props.errAt(`owner:${t.id}`)}
               </div>
             );
           })}

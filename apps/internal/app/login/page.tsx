@@ -17,12 +17,16 @@ export default function LoginPage() {
   const [totp, setTotp] = useState('');
   const [setupToken, setSetupToken] = useState('');
   const [secret, setSecret] = useState('');
-  const [error, setError] = useState('');
+  // THE ERROR STAYS WITH THE FIELD (Brian, 2026-09-19, defect 2): the server's refusal, verbatim,
+  // under the field it is about — or under the button when it is about the attempt as a whole.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
+  const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
   const [busy, setBusy] = useState(false);
 
   const login = async () => {
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     try {
       const res = await api<{ status?: string; setupToken?: string; mustChangePassword?: boolean }>('/auth/login', {
         method: 'POST',
@@ -43,7 +47,7 @@ export default function LoginPage() {
       }
     } catch (err) {
       const code = (err as { code?: string }).code;
-      setError(code === 'totp_required' ? 'Enter your 6-digit authenticator code.' : 'Sign-in failed — check your credentials.');
+      setInlineErr({ key: code === 'totp_required' ? 'totp' : 'signin', message: refused(err) });
     } finally {
       setBusy(false);
     }
@@ -51,7 +55,7 @@ export default function LoginPage() {
 
   const verifyEnrollment = async () => {
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     try {
       const verified = await api<{ mustChangePassword?: boolean }>('/auth/mfa/verify', {
         method: 'POST',
@@ -60,8 +64,8 @@ export default function LoginPage() {
       markAuthed();
       if (verified.mustChangePassword) { router.push('/account?set-password=1'); return; }
       router.push('/');
-    } catch {
-      setError('Code did not match — try the next one from your app.');
+    } catch (err) {
+      setInlineErr({ key: 'code', message: refused(err) });
     } finally {
       setBusy(false);
     }
@@ -70,7 +74,6 @@ export default function LoginPage() {
   return (
     <div className="card" style={{ maxWidth: 400, margin: '48px auto' }}>
       <h1>Staff sign-in</h1>
-      {error ? <p className="alert error">{error}</p> : null}
 
       {phase === 'credentials' ? (
         <form
@@ -90,10 +93,12 @@ export default function LoginPage() {
           <label className="field">
             Authenticator code (if enrolled)
             <input value={totp} onChange={(e) => setTotp(e.target.value)} placeholder="123456" inputMode="numeric" />
+            {errAt('totp')}
           </label>
           <button className="btn" type="submit" disabled={busy}>
             Sign in
           </button>
+          {errAt('signin')}
         </form>
       ) : (
         <div>
@@ -107,6 +112,7 @@ export default function LoginPage() {
           <label className="field">
             Code from your authenticator
             <input value={totp} onChange={(e) => setTotp(e.target.value)} placeholder="123456" inputMode="numeric" data-testid="enroll-code" />
+            {errAt('code')}
           </label>
           <button className="btn accent" type="button" disabled={busy} onClick={() => void verifyEnrollment()}>
             Enable MFA + sign in

@@ -414,3 +414,6 @@ label.inline-check input[type='checkbox'],
    to be wider than the screen; the PAGE is not. */
 .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .tablewrap > table { min-width: 100%; }
+
+/* A refusal, beside the control that caused it (2026-09-19). */
+.field-error { color: var(--danger); font-size: 13px; margin: 6px 0 0; }

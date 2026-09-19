@@ -13,6 +13,8 @@ export default function ReturnsPage() {
   const { t } = useSession();
   const [returns, setReturns] = useState<Ret[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // Keyed by return id so a failed download says so on ITS row.
+  const [downloadError, setDownloadError] = useState<{ id: string; message: string } | null>(null);
 
   useEffect(() => {
     void api<{ returns: Ret[] }>('/portal/returns').then((r) => {
@@ -20,6 +22,30 @@ export default function ReturnsPage() {
       setLoaded(true);
     });
   }, []);
+
+  /** Authenticated by the httpOnly session cookie (same-origin). A failed response
+   *  used to be saved AS the PDF — an error body with the return's filename. Now it
+   *  is an error on the row, with the server's message. */
+  const download = async (r: Ret) => {
+    setDownloadError(null);
+    try {
+      const res = await fetch(`/api/portal/documents/${r.id}/download`);
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { message?: string };
+        setDownloadError({ id: r.id, message: json.message ?? t('error_generic') });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = r.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setDownloadError({ id: r.id, message: t('error_generic') });
+    }
+  };
 
   return (
     <>
@@ -35,25 +61,12 @@ export default function ReturnsPage() {
                 <br />
                 <span className="muted small">{r.filename}</span>
               </span>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  void (async () => {
-                    // Authenticated by the httpOnly session cookie (same-origin).
-                    const res = await fetch(`/api/portal/documents/${r.id}/download`);
-                    const blob = await res.blob();
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = r.filename;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  })();
-                }}
-              >
-                {t('download')}
-              </button>
+              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                <button type="button" className="btn" onClick={() => void download(r)}>
+                  {t('download')}
+                </button>
+                {downloadError?.id === r.id ? <p className="field-error" role="alert">{downloadError.message}</p> : null}
+              </span>
             </li>
           ))}
         </ul>

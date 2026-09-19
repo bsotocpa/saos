@@ -4,12 +4,13 @@
 // figure) → consultation booking (Cal.com embed lands with M18).
 
 import { useState } from 'react';
-import { api, formatMoney } from '../../lib/api';
+import { api, ApiError, formatMoney } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import type { DictKey } from '../../lib/i18n';
 
 export default function EstimatePage() {
   const { t } = useSession();
+  const [error, setError] = useState('');
   const [filingStatus, setFilingStatus] = useState('single');
   const [schC, setSchC] = useState(0);
   const [rentals, setRentals] = useState(0);
@@ -83,12 +84,16 @@ export default function EstimatePage() {
           disabled={busy}
           onClick={async () => {
             setBusy(true);
+            setError('');
             try {
               const r = await api<{ minCents: number; maxCents: number }>('/portal/estimate', {
                 method: 'POST',
                 body: { filingStatus, schC, rentals, k1s, states, businessReturn },
               });
               setRange(r);
+            } catch (err) {
+              // The server's message, verbatim, at the button; the answers stay put.
+              setError(err instanceof ApiError ? err.message : t('error_generic'));
             } finally {
               setBusy(false);
             }
@@ -96,6 +101,7 @@ export default function EstimatePage() {
         >
           {t('est_calc')}
         </button>
+        {error ? <p className="field-error" role="alert">{error}</p> : null}
       </section>
 
       {range ? (

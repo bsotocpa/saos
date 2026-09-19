@@ -13,6 +13,15 @@
  *   if (!a) return;            // cancelled
  *   a.choice, a.reason         // what the person decided, and why
  *
+ * THE ERROR STAYS WITH THE FIELD (Brian, 2026-09-19, defect 2). A refusal used to reach the
+ * page top as "request failed" after the modal had closed, with the reason the person typed
+ * gone. With `run`, the modal does the work itself: the server's refusal renders verbatim under
+ * the field that caused it, the text stays, the person edits and tries again. The promise
+ * resolves only when the work succeeded (or the person cancelled).
+ *
+ *   const a = await ask({ ..., run: async (r) => { await api('/x', { body: { reason: r.reason } }); } });
+ *   if (!a) return;            // cancelled; a refusal never gets here
+ *
  * One component, one provider at the root, one guard (check:no-native-dialogs) that fails the
  * build on any new window.prompt / confirm / alert.
  */
@@ -34,6 +43,11 @@ export interface AskOptions {
   /** Action buttons besides Cancel. Default: one "Confirm". */
   choices?: AskChoice[];
   cancelLabel?: string;
+  /**
+   * The work the choice does. A throw renders its message verbatim under the field, keeps the
+   * text, and leaves the modal open; the promise resolves only after this returns.
+   */
+  run?: (r: AskResult) => Promise<void>;
 }
 
 export interface AskResult {
@@ -53,11 +67,15 @@ interface Pending {
 export function AskProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [working, setWorking] = useState(false);
   const reasonRef = useRef<HTMLTextAreaElement | null>(null);
 
   const ask = useCallback<AskFn>((opts) => {
     return new Promise<AskResult | null>((resolve) => {
       setReason(opts.reason?.initial ?? '');
+      setError('');
+      setWorking(false);
       setPending({ opts, resolve });
     });
   }, []);
@@ -69,15 +87,36 @@ export function AskProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const choose = useCallback(
+    async (key: string) => {
+      if (!pending) return;
+      const r: AskResult = { choice: key, reason: reason.trim() };
+      if (!pending.opts.run) { finish(r); return; }
+      setWorking(true);
+      setError('');
+      try {
+        await pending.opts.run(r);
+        finish(r);
+      } catch (err) {
+        // The server's words, beside the field, with the text kept. Nothing reaches the page top.
+        setError(err instanceof Error && err.message ? err.message : 'The request was refused.');
+        reasonRef.current?.focus();
+      } finally {
+        setWorking(false);
+      }
+    },
+    [pending, reason, finish]
+  );
+
   useEffect(() => {
     if (!pending) return;
     if (pending.opts.reason) reasonRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') finish(null);
+      if (e.key === 'Escape' && !working) finish(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [pending, finish]);
+  }, [pending, finish, working]);
 
   const choices = useMemo<AskChoice[]>(
     () => pending?.opts.choices ?? [{ key: 'confirm', label: 'Confirm', tone: 'primary' }],
@@ -94,10 +133,11 @@ export function AskProvider({ children }: { children: ReactNode }) {
           title={pending.opts.title}
           panelClass="ask-modal"
           backdropClass="ask-overlay"
+          dismissable={!working}
           onClose={() => finish(null)}
           footer={
             <>
-              <button type="button" className="btn ghost" onClick={() => finish(null)}>
+              <button type="button" className="btn ghost" disabled={working} onClick={() => finish(null)}>
                 {pending.opts.cancelLabel ?? 'Cancel'}
               </button>
               {choices.map((c) => (
@@ -105,10 +145,10 @@ export function AskProvider({ children }: { children: ReactNode }) {
                   key={c.key}
                   type="button"
                   className={c.tone === 'danger' ? 'btn danger' : c.tone === 'ghost' ? 'btn ghost' : 'btn accent'}
-                  disabled={needsReason}
-                  onClick={() => finish({ choice: c.key, reason: reason.trim() })}
+                  disabled={needsReason || working}
+                  onClick={() => void choose(c.key)}
                 >
-                  {c.label}
+                  {working ? 'Working…' : c.label}
                 </button>
               ))}
             </>
@@ -124,10 +164,13 @@ export function AskProvider({ children }: { children: ReactNode }) {
                 rows={3}
                 value={reason}
                 placeholder={pending.opts.reason.placeholder ?? ''}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? 'ask-error' : undefined}
                 onChange={(e) => setReason(e.target.value)}
               />
             </label>
           ) : null}
+          {error ? <p id="ask-error" className="field-error" role="alert">{error}</p> : null}
         </ModalShell>
       ) : null}
     </AskContext.Provider>

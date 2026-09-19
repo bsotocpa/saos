@@ -3,7 +3,7 @@
 // Request a Service (MP): → CRM opportunity, 24-hour response commitment.
 
 import { useState } from 'react';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import type { DictKey } from '../../lib/i18n';
 
@@ -15,6 +15,7 @@ export default function RequestServicePage() {
   const [notes, setNotes] = useState('');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   return (
     <>
@@ -28,9 +29,13 @@ export default function RequestServicePage() {
             onSubmit={async (e) => {
               e.preventDefault();
               setBusy(true);
+              setError('');
               try {
                 await api('/portal/service-requests', { method: 'POST', body: { service, notes: notes || undefined } });
                 setSent(true);
+              } catch (err) {
+                // The server's message, verbatim, at the Send button; the notes stay typed.
+                setError(err instanceof ApiError ? err.message : t('error_generic'));
               } finally {
                 setBusy(false);
               }
@@ -53,6 +58,7 @@ export default function RequestServicePage() {
             <button className="btn" type="submit" disabled={busy}>
               {t('req_send')}
             </button>
+            {error ? <p className="field-error" role="alert">{error}</p> : null}
           </form>
         )}
       </section>

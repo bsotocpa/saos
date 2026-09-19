@@ -43,8 +43,10 @@ export async function api<T>(
     window.location.href = '/login';
     throw new Error('session expired');
   }
-  const json = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-  if (!res.ok) throw Object.assign(new Error(json.message ?? 'request failed'), { code: json.error, status: res.status, payload: json });
+  const json = (await res.json().catch(() => ({}))) as { error?: string; message?: string; issues?: Array<{ path?: string; message?: string }> };
+  // The server's words, verbatim (2026-09-19): a validation refusal carries them per field, not at the top.
+  const words = json.message ?? json.issues?.find((i) => i.message)?.message;
+  if (!res.ok) throw Object.assign(new Error(words ?? 'request failed'), { code: json.error, status: res.status, payload: json });
   return json as T;
 }
 

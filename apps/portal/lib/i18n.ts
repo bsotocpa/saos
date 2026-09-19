@@ -522,10 +522,6 @@ const dict = {
     'Texts are off. Everything still reaches you by email and here in the portal.',
     'Los textos están desactivados. Todo le llega igual por correo y aquí en el portal.',
   ],
-  sms_optin_phone_required: [
-    'Add a mobile number first so we know where to text.',
-    'Agregue primero un número de celular para saber a dónde enviar.',
-  ],
 
   // Hilo workshops (M27). A full workshop offers the waitlist, never a dead end.
   event_register: ['Register', 'Inscribirse'],

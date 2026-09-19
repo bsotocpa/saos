@@ -37,7 +37,11 @@ function fmtSize(bytes: number): string {
 export default function InboxPage() {
   const router = useRouter();
   const [items, setItems] = useState<Attachment[]>([]);
+  /** The load result only: a refusal of a control renders beside that control (Brian, 2026-09-19, defect 2). */
   const [error, setError] = useState('');
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
+  const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
   const [category, setCategory] = useState<Record<string, string>>({});
   const [assigning, setAssigning] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -61,20 +65,25 @@ export default function InboxPage() {
   }, [router, load]);
 
   const file = async (a: Attachment) => {
+    setInlineErr(null);
     const cat = category[a.id] ?? a.suggested_category;
-    if (!cat) { setError('Pick a category first.'); return; }
-    setError('');
+    if (!cat) { setInlineErr({ key: `file:${a.id}`, message: 'Pick a category first.' }); return; }
     try {
       await api(`/inbound-attachments/${a.id}/file`, { method: 'POST', body: { category: cat } });
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: `file:${a.id}`, message: refused(err) });
     }
   };
 
   const discard = async (id: string) => {
-    await api(`/inbound-attachments/${id}/discard`, { method: 'POST', body: {} });
-    await load();
+    setInlineErr(null);
+    try {
+      await api(`/inbound-attachments/${id}/discard`, { method: 'POST', body: {} });
+      await load();
+    } catch (err) {
+      setInlineErr({ key: `discard:${id}`, message: refused(err) });
+    }
   };
 
   const searchContacts = async (q: string) => {
@@ -86,11 +95,17 @@ export default function InboxPage() {
   };
 
   const reassign = async (attachmentId: string, contactId: string) => {
-    await api(`/inbound-attachments/${attachmentId}/reassign`, { method: 'POST', body: { contactId } });
-    setAssigning(null);
-    setSearch('');
-    setResults([]);
-    await load();
+    setInlineErr(null);
+    try {
+      await api(`/inbound-attachments/${attachmentId}/reassign`, { method: 'POST', body: { contactId } });
+      setAssigning(null);
+      setSearch('');
+      setResults([]);
+      await load();
+    } catch (err) {
+      // The search and its matches stay; the refusal sits under them.
+      setInlineErr({ key: `reassign:${attachmentId}`, message: refused(err) });
+    }
   };
 
   return (
@@ -137,6 +152,8 @@ export default function InboxPage() {
             </button>
             <button className="btn danger" type="button" onClick={() => void discard(a.id)}>Discard</button>
           </div>
+          {errAt(`file:${a.id}`)}
+          {errAt(`discard:${a.id}`)}
           {assigning === a.id ? (
             <div style={{ marginTop: 8, maxWidth: 420 }}>
               <input
@@ -149,6 +166,7 @@ export default function InboxPage() {
                   {r.name}
                 </button>
               ))}
+              {errAt(`reassign:${a.id}`)}
             </div>
           ) : null}
         </section>

@@ -36,7 +36,10 @@ export default function StaffAdminPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditDraft>({ legalName: '', displayName: '', email: '' });
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  // THE ERROR STAYS WITH THE CONTROL (Brian, 2026-09-19, defect 2): every refusal is keyed to the
+  // button or field that caused it and rendered there, verbatim, with the typed text kept.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const ask = useAsk();
 
   const roleName = (key: string) => roles.find((r) => r.key === key)?.name ?? key;
@@ -58,22 +61,24 @@ export default function StaffAdminPage() {
     void load();
   }, []);
 
-  const act = async (fn: () => Promise<void>) => {
-    setError('');
+  /** Runs the work; a refusal renders beside the control named by `key`. */
+  const act = async (key: string, fn: () => Promise<void>) => {
+    setInlineErr(null);
     try {
       await fn();
     } catch (err) {
-      setError((err as Error).message || 'request failed');
+      setInlineErr({ key, message: err instanceof Error && err.message ? err.message : 'The request was refused.' });
     }
   };
 
   const copyPassword = async () => {
     if (!reveal) return;
+    setInlineErr(null);
     try {
       await navigator.clipboard.writeText(reveal.password);
       setCopied(true);
     } catch {
-      setError('The browser refused the clipboard. Select the password and copy it by hand.');
+      setInlineErr({ key: 'copy', message: 'The browser refused the clipboard. Select the password and copy it by hand.' });
     }
   };
 
@@ -82,7 +87,7 @@ export default function StaffAdminPage() {
     setDraft({ legalName: s.legal_name, displayName: s.display_name, email: s.email });
   };
 
-  const saveEdit = (s: Staff) => act(async () => {
+  const saveEdit = (s: Staff) => act(`edit:${s.id}`, async () => {
     const body: Partial<EditDraft> = {};
     if (draft.legalName.trim() && draft.legalName !== s.legal_name) body.legalName = draft.legalName.trim();
     if (draft.displayName.trim() && draft.displayName !== s.display_name) body.displayName = draft.displayName.trim();
@@ -100,7 +105,6 @@ export default function StaffAdminPage() {
     <>
       <h1>Staff &amp; permissions</h1>
       {message ? <p className="alert info">{message}</p> : null}
-      {error ? <p className="alert danger">{error}</p> : null}
       {reveal ? (
         <section className="card" aria-live="polite" data-testid="temp-password-reveal">
           <h2>Temporary password for {reveal.whose}</h2>
@@ -116,6 +120,7 @@ export default function StaffAdminPage() {
             <button className="btn" type="button" onClick={() => void copyPassword()}>{copied ? 'Copied' : 'Copy'}</button>
             <button className="btn ghost" type="button" onClick={() => { setReveal(null); setCopied(false); }}>I have handed it over</button>
           </p>
+          {errAt('copy')}
         </section>
       ) : null}
 
@@ -137,6 +142,7 @@ export default function StaffAdminPage() {
                           <button className="btn" type="button" onClick={() => void saveEdit(s)}>Save</button>
                           <button className="btn ghost" type="button" onClick={() => setEditing(null)}>Cancel</button>
                         </span>
+                        {errAt(`edit:${s.id}`)}
                       </div>
                     ) : (
                       <>
@@ -155,7 +161,7 @@ export default function StaffAdminPage() {
                       <select
                         aria-label={`Change role for ${s.display_name}`}
                         value=""
-                        onChange={(e) => act(async () => {
+                        onChange={(e) => act(`role:${s.id}`, async () => {
                           const next = e.target.value;
                           if (!next) return;
                           await api(`/staff/${s.id}`, { method: 'PATCH', body: { roleKey: next } });
@@ -169,6 +175,7 @@ export default function StaffAdminPage() {
                         ))}
                       </select>
                     )}
+                    {errAt(`role:${s.id}`)}
                   </td>
                   <td>{s.totp_enabled ? <span className="badge ok">on</span> : <span className="badge warn">pending</span>}</td>
                   <td>{s.is_active ? <span className="badge ok">active</span> : <span className="badge danger">off</span>}</td>
@@ -181,33 +188,41 @@ export default function StaffAdminPage() {
                         className="btn ghost"
                         type="button"
                         disabled={!s.is_active}
-                        onClick={() => act(async () => {
+                        onClick={() => act(`pw:${s.id}`, async () => {
+                          // The modal does the regenerate itself: a refusal renders inside it and it stays open.
+                          const got: { res: { tempPassword: string } | null } = { res: null };
                           const go = await ask({
                             title: `Issue ${s.display_name} a new temporary password?`,
                             body: <p>The current password and every open session die immediately. This is audited.</p>,
                             choices: [{ key: 'go', label: 'Issue a new password', tone: 'danger' }],
+                            run: async () => {
+                              got.res = await api<{ tempPassword: string }>(`/staff/${s.id}/password/regenerate`, { method: 'POST' });
+                            },
                           });
-                          if (!go) return;
-                          const res = await api<{ tempPassword: string }>(`/staff/${s.id}/password/regenerate`, { method: 'POST' });
+                          if (!go || !got.res) return;
                           setCopied(false);
-                          setReveal({ password: res.tempPassword, whose: s.display_name, how: 'regenerated' });
+                          setReveal({ password: got.res.tempPassword, whose: s.display_name, how: 'regenerated' });
                           setMessage('');
                           await load();
                         })}
                       >
                         New temp password
                       </button>
+                      {errAt(`pw:${s.id}`)}
                       {isLastActiveCeo(s) ? null : (
-                        <button
-                          className="btn ghost"
-                          type="button"
-                          onClick={() => act(async () => {
-                            await api(`/staff/${s.id}`, { method: 'PATCH', body: { isActive: !s.is_active } });
-                            await load();
-                          })}
-                        >
-                          {s.is_active ? 'Deactivate' : 'Reactivate'}
-                        </button>
+                        <>
+                          <button
+                            className="btn ghost"
+                            type="button"
+                            onClick={() => act(`active:${s.id}`, async () => {
+                              await api(`/staff/${s.id}`, { method: 'PATCH', body: { isActive: !s.is_active } });
+                              await load();
+                            })}
+                          >
+                            {s.is_active ? 'Deactivate' : 'Reactivate'}
+                          </button>
+                          {errAt(`active:${s.id}`)}
+                        </>
                       )}
                     </div>
                   </td>
@@ -247,7 +262,7 @@ export default function StaffAdminPage() {
             className="btn"
             type="button"
             disabled={!form.email || !form.legalName || !form.roleKey}
-            onClick={() => act(async () => {
+            onClick={() => act('create', async () => {
               const whose = form.displayName || form.legalName;
               const res = await api<{ tempPassword: string }>('/staff', { method: 'POST', body: { email: form.email, legalName: form.legalName, displayName: form.displayName || undefined, roleKey: form.roleKey } });
               setCopied(false);
@@ -259,6 +274,7 @@ export default function StaffAdminPage() {
           >
             Create account
           </button>
+          {errAt('create')}
         </section>
       </div>
     </>

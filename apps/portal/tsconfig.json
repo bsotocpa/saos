@@ -26,10 +26,11 @@
     }
   },
   "include": [
-    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "next-env.d.ts",
+    "..\\..\\..\\..\\..\\AppData\\Local\\saos-e2e\\next-portal/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

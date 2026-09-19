@@ -21,6 +21,7 @@ test('the Role column shows the role name, and changing it is a separate control
 
 test('the last active CEO gets neither Deactivate nor a role change', () => {
   assert.match(page, /const isLastActiveCeo = \(s: Staff\) => s\.role === 'ceo' && s\.is_active && activeCeos <= 1;/);
-  assert.match(page, /\{isLastActiveCeo\(s\) \? null : \(\s*<button/);
+  // The control may sit in a fragment beside its inline error (2026-09-19); what matters is the guard around the button.
+  assert.match(page, /\{isLastActiveCeo\(s\) \? null : \(\s*(?:<>\s*)?<button/);
   assert.match(page, /the only active CEO/);
 });

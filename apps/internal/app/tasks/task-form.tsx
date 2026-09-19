@@ -7,7 +7,7 @@
 
 import { ModalShell } from '../../components/modal-shell';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../lib/api';
 import { PRIORITIES, RECUR_FREQS, STATUSES } from './lib';
 import type { StaffEntry, Task, TaskStatus } from './lib';
@@ -88,14 +88,22 @@ function toLocalInput(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** Async record lookup (contacts or businesses) with a picked-value chip. */
+/** The server's words, verbatim; the fallback is only for a non-Error throw. */
+const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
+
+/**
+ * Async record lookup (contacts or businesses) with a picked-value chip. `onPick` may be async:
+ * the typed search stays in the box until it resolves, so a refused pick leaves the words to retry
+ * (Brian, 2026-09-19, defect 2). `error` renders under the control.
+ */
 function Lookup(props: {
   label: string;
   required: boolean;
   placeholder: string;
   value: { id: string; name: string };
   search: (q: string) => Promise<{ id: string; name: string }[]>;
-  onPick: (v: { id: string; name: string }) => void;
+  onPick: (v: { id: string; name: string }) => void | Promise<void>;
+  error?: ReactNode;
 }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState<{ id: string; name: string }[]>([]);
@@ -134,7 +142,15 @@ function Lookup(props: {
           {open && results.length > 0 ? (
             <div className="results">
               {results.map((r) => (
-                <button key={r.id} type="button" onMouseDown={() => { props.onPick(r); setQ(''); setOpen(false); }}>
+                <button
+                  key={r.id}
+                  type="button"
+                  onMouseDown={() => {
+                    setOpen(false);
+                    // The search text clears only once the pick succeeded; the caller shows the refusal.
+                    void Promise.resolve(props.onPick(r)).then(() => setQ(''), () => undefined);
+                  }}
+                >
                   {r.name}
                 </button>
               ))}
@@ -142,6 +158,7 @@ function Lookup(props: {
           ) : null}
         </>
       )}
+      {props.error}
     </label>
   );
 }
@@ -149,7 +166,9 @@ function Lookup(props: {
 /** v4.6 "Blocked by" management — shown when editing an existing task. */
 function BlockersSection(props: { taskId: string; canManage: boolean }) {
   const [blockers, setBlockers] = useState<{ id: string; title: string; status: string }[]>([]);
-  const [error, setError] = useState('');
+  // A refused add renders under the search; a refused remove beside that blocker's button.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
 
   const load = async () => {
     const r = await api<{ blockers: { id: string; title: string; status: string }[] }>(`/tasks/${props.taskId}/dependencies`);
@@ -157,32 +176,41 @@ function BlockersSection(props: { taskId: string; canManage: boolean }) {
   };
   useEffect(() => { void load(); }, [props.taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Throws on refusal so the Lookup keeps the typed search. */
   const add = async (v: { id: string; name: string }) => {
     if (!v.id) return;
-    setError('');
+    setInlineErr(null);
     try {
       await api(`/tasks/${props.taskId}/dependencies`, { method: 'POST', body: { blockerTaskId: v.id } });
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: 'add', message: refused(err) });
+      throw err;
     }
   };
   const remove = async (blockerId: string) => {
-    await api(`/tasks/${props.taskId}/dependencies/${blockerId}`, { method: 'DELETE' });
-    await load();
+    setInlineErr(null);
+    try {
+      await api(`/tasks/${props.taskId}/dependencies/${blockerId}`, { method: 'DELETE' });
+      await load();
+    } catch (err) {
+      setInlineErr({ key: `remove:${blockerId}`, message: refused(err) });
+    }
   };
 
   return (
     <section>
       <h2 style={{ marginTop: 10 }}>Blocked by</h2>
-      {error ? <div className="alert error">{error}</div> : null}
       {blockers.length === 0 ? <p className="muted small">Not waiting on any task.</p> : null}
       {blockers.map((b) => (
-        <p key={b.id} className="small" style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '2px 0' }}>
-          <span className={`badge ${b.status === 'completed' || b.status === 'cancelled' ? 'ok' : 'warn'}`}>{b.status.replace(/_/g, ' ')}</span>
-          <span style={{ flex: 1 }}>{b.title}</span>
-          {props.canManage ? <button type="button" className="chip" onClick={() => void remove(b.id)}>remove</button> : null}
-        </p>
+        <div key={b.id} className="small" style={{ margin: '2px 0' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span className={`badge ${b.status === 'completed' || b.status === 'cancelled' ? 'ok' : 'warn'}`}>{b.status.replace(/_/g, ' ')}</span>
+            <span style={{ flex: 1 }}>{b.title}</span>
+            {props.canManage ? <button type="button" className="chip" onClick={() => void remove(b.id)}>remove</button> : null}
+          </div>
+          {errAt(`remove:${b.id}`)}
+        </div>
       ))}
       {props.canManage ? (
         <Lookup
@@ -192,7 +220,8 @@ function BlockersSection(props: { taskId: string; canManage: boolean }) {
             const r = await api<{ tasks: { id: string; title: string }[] }>(`/tasks/search?q=${encodeURIComponent(q)}&limit=8`);
             return r.tasks.filter((t) => t.id !== props.taskId).map((t) => ({ id: t.id, name: t.title }));
           }}
-          onPick={(v) => void add(v)}
+          onPick={add}
+          error={errAt('add')}
         />
       ) : null}
     </section>
@@ -210,7 +239,10 @@ export function TaskFormModal(props: {
 }) {
   const layout = props.layout ?? FALLBACK_LAYOUT;
   const [form, setForm] = useState<FormState>(() => fromTask(props.task, props.meId));
-  const [error, setError] = useState('');
+  // THE ERROR STAYS WITH THE FIELD (Brian, 2026-09-19, defect 2): a missing required field is
+  // marked at that field; the server's refusal renders beside Save, verbatim, with the form kept.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -233,16 +265,17 @@ export function TaskFormModal(props: {
   };
 
   const save = async (andNew: boolean) => {
-    setError('');
+    setInlineErr(null);
     const required = layout.sections.flatMap((s) => s.fields).filter((f) => f.required);
+    const missing = (f: LayoutField) => { setInlineErr({ key: f.key, message: `${f.label} is required.` }); };
     for (const f of required) {
-      if (f.key === 'title' && !form.title.trim()) { setError(`${f.label} is required.`); return; }
-      if (f.key === 'dueDate' && !form.dueDate) { setError(`${f.label} is required.`); return; }
-      if (f.key === 'contactId' && !form.contactId) { setError(`${f.label} is required.`); return; }
-      if (f.key === 'businessId' && !form.businessId) { setError(`${f.label} is required.`); return; }
-      if (f.key === 'assignedStaffId' && !form.assignedStaffId) { setError(`${f.label} is required.`); return; }
+      if (f.key === 'title' && !form.title.trim()) { missing(f); return; }
+      if (f.key === 'dueDate' && !form.dueDate) { missing(f); return; }
+      if (f.key === 'contactId' && !form.contactId) { missing(f); return; }
+      if (f.key === 'businessId' && !form.businessId) { missing(f); return; }
+      if (f.key === 'assignedStaffId' && !form.assignedStaffId) { missing(f); return; }
     }
-    if (!form.title.trim()) { setError('Subject is required.'); return; }
+    if (!form.title.trim()) { setInlineErr({ key: 'title', message: 'Subject is required.' }); return; }
 
     const tags = form.tags.split(',').map((t) => t.trim()).filter(Boolean);
     const remindAtIso = form.remindAt ? new Date(form.remindAt).toISOString() : null;
@@ -292,7 +325,7 @@ export function TaskFormModal(props: {
       if (andNew) setForm(fromTask(null, props.meId));
       else props.onClose();
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: 'save', message: refused(err) });
     } finally {
       setBusy(false);
     }
@@ -305,6 +338,7 @@ export function TaskFormModal(props: {
           <label className="field" key={f.key} style={{ gridColumn: '1 / -1' }}>
             {f.label}{f.required ? ' *' : ''}
             <input value={form.title} onChange={(e) => set('title', e.target.value)} autoFocus={!props.task} />
+            {errAt('title')}
           </label>
         );
       case 'assignedStaffId':
@@ -315,6 +349,7 @@ export function TaskFormModal(props: {
               <option value="">Unassigned</option>
               {props.staff.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
             </select>
+            {errAt('assignedStaffId')}
           </label>
         );
       case 'dueDate':
@@ -322,6 +357,7 @@ export function TaskFormModal(props: {
           <label className="field" key={f.key}>
             {f.label}{f.required ? ' *' : ''}
             <input type="date" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
+            {errAt('dueDate')}
           </label>
         );
       case 'contactId':
@@ -331,6 +367,7 @@ export function TaskFormModal(props: {
             value={{ id: form.contactId, name: form.contactName }}
             search={searchContacts}
             onPick={(v) => setForm((s) => ({ ...s, contactId: v.id, contactName: v.name }))}
+            error={errAt('contactId')}
           />
         );
       case 'businessId':
@@ -340,6 +377,7 @@ export function TaskFormModal(props: {
             value={{ id: form.businessId, name: form.businessName }}
             search={searchBusinesses}
             onPick={(v) => setForm((s) => ({ ...s, businessId: v.id, businessName: v.name }))}
+            error={errAt('businessId')}
           />
         );
       case 'status':
@@ -422,7 +460,6 @@ export function TaskFormModal(props: {
         </div>
       }
     >
-        {error ? <div className="alert error">{error}</div> : null}
         <form onSubmit={(e) => { e.preventDefault(); void save(false); }}>
           {layout.sections.map((section) => (
             <section key={section.title}>
@@ -435,6 +472,7 @@ export function TaskFormModal(props: {
             <input type="checkbox" style={{ width: 'auto', margin: 0, display: 'inline' }} checked={form.clientVisible} onChange={(e) => set('clientVisible', e.target.checked)} />
             Client-visible (appears on the client&apos;s portal to-do list; arms the follow-up ladder)
           </label>
+          {errAt('save')}
           <footer>
             <button type="button" className="btn ghost" onClick={props.onClose} disabled={busy}>Cancel</button>
             {!props.task ? (

@@ -44,7 +44,11 @@ const STATUS_BADGE: Record<string, string> = {
 export default function AnnouncementsPage() {
   const router = useRouter();
   const [list, setList] = useState<BroadcastRow[]>([]);
+  /** The load result only: a refusal of a button renders beside that button (Brian, 2026-09-19, defect 2). */
   const [error, setError] = useState('');
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
+  const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -84,22 +88,22 @@ export default function AnnouncementsPage() {
   }, [router, load]);
 
   const runPreview = async () => {
-    setError('');
+    setInlineErr(null);
     try {
       setPreview(await api<Preview>('/broadcasts/preview', { method: 'POST', body: { segment, channel } }));
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: 'preview', message: refused(err) });
     }
   };
 
   const act = async (id: string, action: 'submit' | 'approve' | 'send' | 'cancel') => {
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     try {
       await api(`/broadcasts/${id}/${action}`, { method: 'POST' });
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: id, message: refused(err) });
     } finally {
       setBusy(false);
     }
@@ -107,7 +111,7 @@ export default function AnnouncementsPage() {
 
   const create = async () => {
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     try {
       await api('/broadcasts', {
         method: 'POST',
@@ -123,7 +127,8 @@ export default function AnnouncementsPage() {
       setSmsEn(''); setSmsEs(''); setPreview(null);
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      // Beside "Save draft", verbatim; the composer keeps everything typed.
+      setInlineErr({ key: 'create', message: refused(err) });
     } finally {
       setBusy(false);
     }
@@ -195,6 +200,7 @@ export default function AnnouncementsPage() {
               Preview audience
             </button>
           </div>
+          {errAt('preview')}
           {preview ? (
             <div className="alert info">
               <strong>{preview.intended} in the segment</strong> · {preview.emailable} emailable ·{' '}
@@ -253,6 +259,7 @@ export default function AnnouncementsPage() {
           <button type="button" className="btn accent" disabled={busy || name.trim().length < 3} onClick={() => void create()}>
             Save draft
           </button>
+          {errAt('create')}
         </section>
       ) : null}
 
@@ -275,7 +282,7 @@ export default function AnnouncementsPage() {
                     : ''}
                 </span>
               </span>
-              <span className="chipbar" style={{ marginBottom: 0 }}>
+              <div className="chipbar" style={{ marginBottom: 0 }}>
                 {b.status === 'draft' ? (
                   <button type="button" className="chip" disabled={busy} onClick={() => void act(b.id, 'submit')}>
                     Submit for approval
@@ -296,8 +303,9 @@ export default function AnnouncementsPage() {
                     Cancel
                   </button>
                 ) : null}
-              </span>
+              </div>
             </div>
+            {errAt(b.id)}
           </section>
         ))
       )}

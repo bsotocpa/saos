@@ -17,13 +17,45 @@ export default function RecorderPage() {
   const [type, setType] = useState<'phone' | 'in_person'>('in_person');
   const [recording, setRecording] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  // THE ERROR STAYS WITH THE CONTROL (Brian, 2026-09-19, defect 2): a refused search renders under
+  // the search box; a refused upload renders beside the status, and the recording stays here to retry.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
+  const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
+  /** A recording whose upload was refused — kept so "Retry upload" sends the same audio. */
+  const [pending, setPending] = useState<{ blob: Blob; durationSeconds: number } | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
 
   const findContacts = async () => {
-    const res = await api<{ contacts: Contact[] }>(`/contacts?search=${encodeURIComponent(search)}`);
-    setContacts(res.contacts);
+    setInlineErr(null);
+    try {
+      const res = await api<{ contacts: Contact[] }>(`/contacts?search=${encodeURIComponent(search)}`);
+      setContacts(res.contacts);
+    } catch (err) {
+      setInlineErr({ key: 'search', message: refused(err) });
+    }
+  };
+
+  const upload = async (rec: { blob: Blob; durationSeconds: number }) => {
+    if (!contact) return;
+    setInlineErr(null);
+    setStatus('Uploading…');
+    const fd = new FormData();
+    fd.append('contactId', contact.id);
+    fd.append('type', type);
+    fd.append('durationSeconds', String(rec.durationSeconds));
+    fd.append('file', rec.blob, `session-${Date.now()}.webm`);
+    try {
+      await api('/meetings/upload', { method: 'POST', formData: fd });
+      setPending(null);
+      setStatus('Uploaded — transcript, summary, tasks, and a suggested time entry are on the way.');
+    } catch (err) {
+      setPending(rec);
+      setStatus('Not uploaded. The recording is still here — retry when ready.');
+      setInlineErr({ key: 'upload', message: refused(err) });
+    }
   };
 
   const start = async () => {
@@ -31,24 +63,19 @@ export default function RecorderPage() {
     const recorder = new MediaRecorder(stream);
     chunksRef.current = [];
     recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
-    recorder.onstop = async () => {
+    recorder.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
       const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
       const durationSeconds = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
-      setStatus('Uploading…');
-      const fd = new FormData();
-      fd.append('contactId', contact!.id);
-      fd.append('type', type);
-      fd.append('durationSeconds', String(durationSeconds));
-      fd.append('file', blob, `session-${Date.now()}.webm`);
-      await api('/meetings/upload', { method: 'POST', formData: fd });
-      setStatus('Uploaded — transcript, summary, tasks, and a suggested time entry are on the way.');
+      void upload({ blob, durationSeconds });
     };
     recorderRef.current = recorder;
     startedAtRef.current = Date.now();
     recorder.start();
     setRecording(true);
     setStatus(null);
+    setPending(null);
+    setInlineErr(null);
   };
 
   const stop = () => {
@@ -61,6 +88,12 @@ export default function RecorderPage() {
       <h1>Session recorder</h1>
       <section className="card" style={{ maxWidth: 520 }}>
         {status ? <p className="alert info">{status}</p> : null}
+        {errAt('upload')}
+        {pending && contact ? (
+          <p>
+            <button className="btn accent" type="button" onClick={() => void upload(pending)}>Retry upload</button>
+          </p>
+        ) : null}
         {!contact ? (
           <>
             <label className="field">
@@ -71,6 +104,7 @@ export default function RecorderPage() {
                 onKeyDown={(e) => e.key === 'Enter' && void findContacts()}
                 placeholder="Search clients — press Enter"
               />
+              {errAt('search')}
             </label>
             {contacts.map((c) => (
               <p key={c.id}>

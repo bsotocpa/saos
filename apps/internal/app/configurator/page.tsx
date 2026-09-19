@@ -75,7 +75,11 @@ export default function ConfiguratorPage() {
   const [session, setSession] = useState('quarterly');
   const [rung, setRung] = useState('full_management');
   const [result, setResult] = useState<Configured | null>(null);
-  const [error, setError] = useState('');
+  // THE ERROR STAYS WITH THE CONTROL (Brian, 2026-09-19, defect 2): a refusal renders beside the
+  // chip or button that caused it, verbatim; the dials keep their settings.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
+  const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -99,7 +103,7 @@ export default function ConfiguratorPage() {
     setContact(c);
     setMatches([]);
     setResult(null);
-    setError('');
+    setInlineErr(null);
     try {
       const [o, e] = await Promise.all([
         api<Options>(`/contacts/${c.id}/configurator-options`),
@@ -113,7 +117,7 @@ export default function ConfiguratorPage() {
       const firstAllowed = o.sessionCadences.find((s) => s.allowed && s.perYear <= 4);
       if (firstAllowed) setSession(firstAllowed.value);
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: 'pick', message: refused(err) });
     }
   }, []);
 
@@ -125,7 +129,7 @@ export default function ConfiguratorPage() {
   const submit = async (maintenance: boolean) => {
     if (!engagementId) return;
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     try {
       const url = maintenance
         ? `/engagements/${engagementId}/maintenance-mode`
@@ -135,7 +139,7 @@ export default function ConfiguratorPage() {
         : { prepCadence: prep, sessionCadence: session, ...(rung ? { scopeRung: rung } : {}) };
       setResult(await api<Configured>(url, { method: 'POST', body }));
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: maintenance ? 'maintenance' : 'save', message: refused(err) });
       setResult(null);
     } finally {
       setBusy(false);
@@ -145,7 +149,6 @@ export default function ConfiguratorPage() {
   return (
     <>
       <h1>Engagement configurator</h1>
-      {error ? <div className="alert error">{error}</div> : null}
 
       <section className="card" style={{ marginBottom: 12 }}>
         <label className="field">
@@ -175,6 +178,7 @@ export default function ConfiguratorPage() {
             ))}
           </div>
         ) : null}
+        {errAt('pick')}
       </section>
 
       {options ? (
@@ -272,6 +276,8 @@ export default function ConfiguratorPage() {
                 Move to maintenance mode
               </button>
             </div>
+            {errAt('save')}
+            {errAt('maintenance')}
             <p className="muted small">
               Maintenance mode holds the books cadence and reduces sessions — a positive, cheaper state
               for a client who does not need as much CPA time. It runs through the same floor check.

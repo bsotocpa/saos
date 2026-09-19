@@ -69,7 +69,10 @@ export default function PricingAdminPage() {
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState('');
+  /** The load result only: a refusal of a button renders beside that button (Brian, 2026-09-19, defect 2). */
   const [error, setError] = useState('');
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const [busy, setBusy] = useState(false);
 
   const load = async () => setBook(await api<Book>('/admin/price-book'));
@@ -106,9 +109,10 @@ export default function PricingAdminPage() {
     await api(`/admin/price-book/items/${code}/confirm?kind=${kind}`, { method: 'POST' });
   };
 
-  const confirmGroup = async (g: Pending) => {
+  /** `key` names the button pressed, so the refusal lands beside it: one line's Confirm or the group's Confirm all. */
+  const confirmGroup = async (g: Pending, key: string) => {
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     try {
       // Sequential, not Promise.all: each is an audited decision, and a partial failure
       // should stop rather than leave a half-answered question with no error.
@@ -116,7 +120,7 @@ export default function PricingAdminPage() {
       setMessage(`Confirmed ${g.items.length} line${g.items.length === 1 ? '' : 's'}.`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not confirm.');
+      setInlineErr({ key, message: e instanceof Error && e.message ? e.message : 'The request was refused.' });
     } finally {
       setBusy(false);
     }
@@ -193,7 +197,7 @@ export default function PricingAdminPage() {
                 {g.note}
               </p>
               {g.items.map((i) => (
-                <p key={i.item_code} className="small" style={{ margin: '4px 0' }}>
+                <div key={i.item_code} className="small" style={{ margin: '4px 0' }}>
                   <strong>{i.name_en}</strong>
                   <span className="muted">
                     {' '}· {priceLabel(i)}
@@ -204,16 +208,20 @@ export default function PricingAdminPage() {
                     type="button"
                     className="btn ghost"
                     disabled={busy}
-                    onClick={() => void confirmGroup({ ...g, items: [i] })}
+                    onClick={() => void confirmGroup({ ...g, items: [i] }, `${g.kind}::${i.item_code}`)}
                   >
                     Confirm
                   </button>
-                </p>
+                  {errAt(`${g.kind}::${i.item_code}`)}
+                </div>
               ))}
               {g.items.length > 1 ? (
-                <button type="button" className="btn accent" disabled={busy} onClick={() => void confirmGroup(g)}>
-                  Confirm all {g.items.length}
-                </button>
+                <>
+                  <button type="button" className="btn accent" disabled={busy} onClick={() => void confirmGroup(g, `group::${g.kind}::${g.note}`)}>
+                    Confirm all {g.items.length}
+                  </button>
+                  {errAt(`group::${g.kind}::${g.note}`)}
+                </>
               ) : null}
             </div>
           ))}
@@ -334,7 +342,7 @@ export default function PricingAdminPage() {
             disabled={!effectiveFrom || note.length < 3 || busy}
             onClick={async () => {
               setBusy(true);
-              setError('');
+              setInlineErr(null);
               try {
                 const res = await api<{ versionNumber: number }>('/admin/price-book/versions', {
                   method: 'POST',
@@ -346,7 +354,8 @@ export default function PricingAdminPage() {
                 setNote('');
                 await load();
               } catch (e) {
-                setError(e instanceof Error ? e.message : 'Could not publish the version.');
+                // Beside the button, verbatim; the edits and the note stay for the next try.
+                setInlineErr({ key: 'publish', message: e instanceof Error && e.message ? e.message : 'The request was refused.' });
               } finally {
                 setBusy(false);
               }
@@ -354,6 +363,7 @@ export default function PricingAdminPage() {
           >
             {busy ? 'Publishing…' : 'Publish new version'}
           </button>
+          {errAt('publish')}
         </section>
       ) : null}
     </>

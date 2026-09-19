@@ -63,6 +63,10 @@ export default function TemplatesAdminPage() {
   const [editing, setEditing] = useState<Template | null>(null);
   const [message, setMessage] = useState('');
   const [showRetired, setShowRetired] = useState(false);
+  // THE ERROR STAYS WITH THE CONTROL (Brian, 2026-09-19, defect 2): a refusal renders beside the
+  // button that caused it, verbatim, and the edit stays open with its text.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
 
   const load = async () => {
     const res = await api<{ templates: Template[] }>('/admin/templates');
@@ -72,6 +76,7 @@ export default function TemplatesAdminPage() {
     void load();
   }, []);
 
+  /** Saves the edit; throws on refusal so the caller can place the message. */
   const save = async (clearPlaceholder: boolean) => {
     if (!editing) return;
     const original = templates.find((t) => t.key === editing.key);
@@ -104,15 +109,33 @@ export default function TemplatesAdminPage() {
     await load();
   };
 
+  const saveDraft = async () => {
+    setInlineErr(null);
+    try {
+      await save(false);
+    } catch (err) {
+      setInlineErr({ key: 'save', message: err instanceof Error && err.message ? err.message : 'The request was refused.' });
+    }
+  };
+
   const approveSpanish = async (t: Template) => {
-    if (!(await ask({
+    setInlineErr(null);
+    // The modal does the approval itself: a refusal renders inside it and it stays open.
+    const a = await ask({
       title: `Approve the Spanish copy for "${t.name}"?`,
       body: <p>This confirms you have READ the translation and it says what the English says. Spanish-language clients will receive it from now on.</p>,
       choices: [{ key: 'approve', label: 'Approve Spanish', tone: 'primary' }],
-    }))) return;
-    await api(`/admin/templates/${t.key}/es-approve`, { method: 'POST' });
+      run: async () => {
+        await api(`/admin/templates/${t.key}/es-approve`, { method: 'POST' });
+      },
+    });
+    if (!a) return;
     setMessage(`${t.key}: Spanish approved — Spanish clients now receive the Spanish text.`);
-    await load();
+    try {
+      await load();
+    } catch (err) {
+      setInlineErr({ key: `es:${t.key}`, message: err instanceof Error && err.message ? err.message : 'The request was refused.' });
+    }
   };
 
   const active = templates.filter((t) => t.is_active);
@@ -141,6 +164,7 @@ export default function TemplatesAdminPage() {
               Approve ES
             </button>
           ) : null}
+          {errAt(`es:${t.key}`)}
         </td>
       </tr>
     );
@@ -222,18 +246,20 @@ export default function TemplatesAdminPage() {
             </div>
           </div>
           <p>
-            <button className="btn" type="button" onClick={() => void save(false)}>Save</button>{' '}
+            <button className="btn" type="button" onClick={() => void saveDraft()}>Save</button>{' '}
             {editing.is_placeholder ? (
               <button
                 className="btn accent"
                 type="button"
-                onClick={async () => {
-                  const a = await ask({
+                onClick={() => {
+                  setInlineErr(null);
+                  // The modal does the save itself: a refusal renders inside it and it stays open.
+                  void ask({
                     title: 'Clear the PLACEHOLDER flag?',
                     body: <p>This confirms the text above is the FINAL legal language — the template becomes sendable to clients.</p>,
                     choices: [{ key: 'final', label: 'Save as FINAL', tone: 'danger' }],
+                    run: async () => { await save(true); },
                   });
-                  if (a) void save(true);
                 }}
               >
                 Save as FINAL (clear placeholder)
@@ -241,6 +267,7 @@ export default function TemplatesAdminPage() {
             ) : null}{' '}
             <button className="btn ghost" type="button" onClick={() => setEditing(null)}>Cancel</button>
           </p>
+          {errAt('save')}
         </section>
       ) : null}
 

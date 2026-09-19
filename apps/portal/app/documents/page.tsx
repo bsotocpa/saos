@@ -4,7 +4,7 @@
 // portal-only policy enforced in copy. Uploads can fulfil request items.
 
 import { useEffect, useRef, useState } from 'react';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import { useAsk } from '../../components/ask';
 import type { DictKey } from '../../lib/i18n';
@@ -24,6 +24,9 @@ export default function DocumentsPage() {
   const [itemId, setItemId] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [uploaded, setUploaded] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  // Keyed by document id so a failed download says so on ITS row, not at the page top.
+  const [downloadError, setDownloadError] = useState<{ id: string; message: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -45,6 +48,7 @@ export default function DocumentsPage() {
   const upload = async (file: File) => {
     setBusy(true);
     setUploaded(false);
+    setUploadError('');
     try {
       const fd = new FormData();
       fd.append('category', category);
@@ -55,8 +59,35 @@ export default function DocumentsPage() {
       setItemId('');
       if (fileRef.current) fileRef.current.value = '';
       await load();
+    } catch (err) {
+      // The server's refusal, verbatim, under the file control. The category and
+      // request selections stay as they were so the client can fix and retry.
+      setUploadError(err instanceof ApiError ? err.message : t('error_generic'));
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** Authenticated by the httpOnly session cookie (same-origin). A failed response
+   *  is an error to show on the row, never a body to save as the file. */
+  const download = async (d: Doc) => {
+    setDownloadError(null);
+    try {
+      const res = await fetch(`/api/portal/documents/${d.id}/download`);
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { message?: string };
+        setDownloadError({ id: d.id, message: json.message ?? t('error_generic') });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = d.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setDownloadError({ id: d.id, message: t('error_generic') });
     }
   };
 
@@ -99,12 +130,14 @@ export default function DocumentsPage() {
             accept="application/pdf,image/*"
             capture="environment"
             disabled={busy}
+            aria-invalid={uploadError ? true : undefined}
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) void upload(file);
             }}
           />
         </label>
+        {uploadError ? <p className="field-error" role="alert">{uploadError}</p> : null}
       </section>
 
       <section className="card">
@@ -122,47 +155,43 @@ export default function DocumentsPage() {
               <span className={`badge ${d.status === 'needs_replacement' ? 'danger' : d.status === 'accepted' ? 'ok' : ''}`}>
                 {t(`doc_status_${d.status}` as DictKey)}
               </span>
-              <a
-                className="btn ghost"
-                href={`/api/portal/documents/${d.id}/download`}
-                onClick={(e) => {
-                  // Authenticated by the httpOnly session cookie (same-origin).
-                  e.preventDefault();
-                  void (async () => {
-                    const res = await fetch(`/api/portal/documents/${d.id}/download`);
-                    const blob = await res.blob();
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = d.filename;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  })();
-                }}
-              >
-                {t('download')}
-              </a>
+              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                <a
+                  className="btn ghost"
+                  href={`/api/portal/documents/${d.id}/download`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void download(d);
+                  }}
+                >
+                  {t('download')}
+                </a>
+                {downloadError?.id === d.id ? <p className="field-error" role="alert">{downloadError.message}</p> : null}
+              </span>
               {/* REMOVE = WITHDRAW, never delete (Brian's ruling, 2026-08-13). A client
                   who uploads the wrong file needs an undo; the record needs to keep the
                   fact that they sent it. So this hides the file, un-fulfils whatever it
                   was answering — the chase resumes — and leaves the row stamped with
                   who withdrew it. The confirm says exactly that, because "Remove" on its
-                  own implies a deletion we are not doing. */}
+                  own implies a deletion we are not doing.
+
+                  The modal does the work (`run`): a refusal renders verbatim inside it
+                  and it stays open; the row reloads only after the withdraw succeeded. */}
               <button
                 className="btn ghost"
                 type="button"
                 disabled={busy}
                 onClick={async () => {
-                  if (!(await ask({ lang, title: t('doc_withdraw_confirm'), choices: [{ key: 'withdraw', label: t('doc_withdraw'), tone: 'danger' }] }))) return;
-                  setBusy(true);
-                  void (async () => {
-                    try {
+                  const r = await ask({
+                    lang,
+                    title: t('doc_withdraw_confirm'),
+                    choices: [{ key: 'withdraw', label: t('doc_withdraw'), tone: 'danger' }],
+                    run: async () => {
                       await api(`/portal/documents/${d.id}/withdraw`, { method: 'POST' });
-                      await load();
-                    } finally {
-                      setBusy(false);
-                    }
-                  })();
+                    },
+                  });
+                  if (!r) return;
+                  await load();
                 }}
               >
                 {t('doc_withdraw')}

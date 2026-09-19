@@ -42,8 +42,8 @@ export function SmsOptIn({
       });
       onChange();
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'phone_required') setError(t('sms_optin_phone_required'));
-      else setError(err instanceof ApiError ? err.message : t('error_generic'));
+      // Verbatim: the server already says, in the client's language, what it needs.
+      setError(err instanceof ApiError ? err.message : t('error_generic'));
     } finally {
       setBusy(false);
     }
@@ -60,6 +60,7 @@ export function SmsOptIn({
         <button type="button" className="btn ghost" disabled={busy} onClick={() => void submit(false)}>
           {t('sms_optin_turn_off')}
         </button>
+        {error ? <p className="field-error" role="alert">{error}</p> : null}
       </section>
     );
   }

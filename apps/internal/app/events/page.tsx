@@ -44,7 +44,11 @@ export default function EventsPage() {
   const [open, setOpen] = useState<string>('');
   const [regs, setRegs] = useState<Registration[]>([]);
   const [impact, setImpact] = useState<Impact | null>(null);
+  /** The load result only: a refusal of a button renders beside that button (Brian, 2026-09-19, defect 2). */
   const [error, setError] = useState('');
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
+  const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -55,9 +59,10 @@ export default function EventsPage() {
     }
   }, []);
 
+  /** Opens the door list. A refusal renders at the top of that view, under the control that opened it. */
   const openEvent = useCallback(async (slug: string) => {
     setOpen(slug);
-    setError('');
+    setInlineErr(null);
     try {
       const [list, imp] = await Promise.all([
         api<{ registrations: Registration[] }>(`/events/${slug}/check-in`),
@@ -66,7 +71,7 @@ export default function EventsPage() {
       setRegs(list.registrations);
       setImpact(imp);
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: `open:${slug}`, message: refused(err) });
     }
   }, []);
 
@@ -78,15 +83,16 @@ export default function EventsPage() {
     void load();
   }, [router, load]);
 
-  const act = async (fn: () => Promise<unknown>) => {
+  /** `key` names the button pressed; a refusal renders beside it. */
+  const act = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     try {
       await fn();
       if (open) await openEvent(open);
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key, message: refused(err) });
     } finally {
       setBusy(false);
     }
@@ -100,7 +106,7 @@ export default function EventsPage() {
       {open ? (
         <>
           <div className="chipbar">
-            <button type="button" className="chip" onClick={() => { setOpen(''); setRegs([]); setImpact(null); }}>
+            <button type="button" className="chip" onClick={() => { setOpen(''); setRegs([]); setImpact(null); setInlineErr(null); }}>
               ← All events
             </button>
             <button
@@ -108,13 +114,15 @@ export default function EventsPage() {
               className="btn ghost"
               disabled={busy}
               onClick={() =>
-                void act(() => api(`/events/${open}/complete`, { method: 'POST' }))
+                void act('complete', () => api(`/events/${open}/complete`, { method: 'POST' }))
               }
               title="Records no-shows, sends the out-survey, raises the follow-up task"
             >
               Close out the event
             </button>
           </div>
+          {errAt(`open:${open}`)}
+          {errAt('complete')}
 
           {impact ? (
             <section className="card" style={{ marginBottom: 12 }}>
@@ -158,7 +166,7 @@ export default function EventsPage() {
                       className="btn accent"
                       disabled={busy}
                       onClick={() =>
-                        void act(() => api(`/event-registrations/${r.id}/check-in`, { method: 'POST' }))
+                        void act(`checkin:${r.id}`, () => api(`/event-registrations/${r.id}/check-in`, { method: 'POST' }))
                       }
                     >
                       Check in
@@ -167,6 +175,9 @@ export default function EventsPage() {
                     <span className="muted small">no seat</span>
                   )}
                 </span>
+                {inlineErr?.key === `checkin:${r.id}` ? (
+                  <p className="field-error" role="alert" style={{ flex: '1 1 100%' }}>{inlineErr.message}</p>
+                ) : null}
               </div>
             ))}
           </section>
@@ -192,13 +203,13 @@ export default function EventsPage() {
                       {e.attended > 0 ? ` · ${e.attended} attended` : ''}
                     </span>
                   </span>
-                  <span className="chipbar" style={{ marginBottom: 0 }}>
+                  <div className="chipbar" style={{ marginBottom: 0 }}>
                     {e.status === 'draft' ? (
                       <button
                         type="button"
                         className="chip"
                         disabled={busy}
-                        onClick={() => void act(() => api(`/events/${e.slug}/publish`, { method: 'POST' }))}
+                        onClick={() => void act(`publish:${e.slug}`, () => api(`/events/${e.slug}/publish`, { method: 'POST' }))}
                       >
                         Publish
                       </button>
@@ -206,8 +217,9 @@ export default function EventsPage() {
                     <button type="button" className="btn ghost" onClick={() => void openEvent(e.slug)}>
                       Door list
                     </button>
-                  </span>
+                  </div>
                 </div>
+                {errAt(`publish:${e.slug}`)}
               </section>
             ))
           )}

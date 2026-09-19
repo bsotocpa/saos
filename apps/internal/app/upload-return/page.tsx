@@ -20,28 +20,46 @@ export default function UploadReturnPage() {
   const [taxYear, setTaxYear] = useState('');
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // THE ERROR STAYS WITH THE CONTROL (Brian, 2026-09-19, defect 2): a refused search under the
+  // search box, a refused pick beside that client's button, a refused delivery beside the file control.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
+  const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
 
   const findContacts = async () => {
-    const res = await api<{ contacts: Contact[] }>(`/contacts?search=${encodeURIComponent(search)}`);
-    setContacts(res.contacts);
+    setInlineErr(null);
+    try {
+      const res = await api<{ contacts: Contact[] }>(`/contacts?search=${encodeURIComponent(search)}`);
+      setContacts(res.contacts);
+    } catch (err) {
+      setInlineErr({ key: 'search', message: refused(err) });
+    }
   };
 
   const pickContact = async (c: Contact) => {
-    setContact(c);
-    setContacts([]);
+    setInlineErr(null);
     setDone(null);
-    const res = await api<{ taxEngagements: TaxEngagement[] }>(`/tax-engagements`);
-    const own = res.taxEngagements.filter((t: TaxEngagement & { contact_id?: string }) => (t as { contact_id?: string }).contact_id === c.id);
-    setEngagements(own);
-    if (own[0]) {
-      setEngagementId(own[0].id);
-      setTaxYear(String(own[0].tax_year));
+    try {
+      const res = await api<{ taxEngagements: TaxEngagement[] }>(`/tax-engagements`);
+      const own = res.taxEngagements.filter((t: TaxEngagement & { contact_id?: string }) => (t as { contact_id?: string }).contact_id === c.id);
+      // The matches clear only once the pick succeeded, so a refusal has a button to sit beside.
+      setContact(c);
+      setContacts([]);
+      setEngagements(own);
+      if (own[0]) {
+        setEngagementId(own[0].id);
+        setTaxYear(String(own[0].tax_year));
+      }
+    } catch (err) {
+      setInlineErr({ key: `pick:${c.id}`, message: refused(err) });
     }
   };
 
   const upload = async (file: File) => {
     if (!contact) return;
     setBusy(true);
+    setInlineErr(null);
+    setDone(null);
     try {
       const fd = new FormData();
       fd.append('contactId', contact.id);
@@ -55,6 +73,9 @@ export default function UploadReturnPage() {
           ? 'Delivered — stage moved to Client Review and the client was notified.'
           : 'Delivered — client notified. (Stage unchanged: pipeline position doesn’t allow the auto-move.)'
       );
+    } catch (err) {
+      // A failed delivery says so, beside the file control — it used to say nothing.
+      setInlineErr({ key: 'upload', message: refused(err) });
     } finally {
       setBusy(false);
     }
@@ -73,13 +94,15 @@ export default function UploadReturnPage() {
             onKeyDown={(e) => e.key === 'Enter' && void findContacts()}
             placeholder="Name, email, or phone — press Enter"
           />
+          {errAt('search')}
         </label>
         {contacts.map((c) => (
-          <p key={c.id}>
+          <div key={c.id} style={{ margin: '8px 0' }}>
             <button className="btn ghost" type="button" onClick={() => void pickContact(c)}>
               {c.first_name} {c.last_name} <span className="muted small">{c.email}</span>
             </button>
-          </p>
+            {errAt(`pick:${c.id}`)}
+          </div>
         ))}
         {contact ? (
           <>
@@ -113,6 +136,7 @@ export default function UploadReturnPage() {
                   if (f) void upload(f);
                 }}
               />
+              {errAt('upload')}
             </label>
           </>
         ) : null}

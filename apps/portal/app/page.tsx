@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { formatDateTime } from '../lib/dates';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, formatMoney, isAuthed } from '../lib/api';
+import { api, ApiError, formatMoney, isAuthed } from '../lib/api';
 import { useSession } from '../lib/session';
 import { SmsOptIn } from './sms-optin';
 import type { DictKey } from '../lib/i18n';
@@ -178,6 +178,8 @@ export default function Dashboard() {
   const [consentApplies, setConsentApplies] = useState(false);
   // Booking is a setting; null means scheduling is not open, not that it is broken.
   const [bookingApplies, setBookingApplies] = useState(false);
+  // "Mark done" refused: the message renders beside THAT step's button, keyed by step.
+  const [stepError, setStepError] = useState<{ step: string; message: string } | null>(null);
 
   useEffect(() => {
     if (!isAuthed()) {
@@ -232,9 +234,14 @@ export default function Dashboard() {
   }, [router]);
 
   const markStep = async (step: string) => {
-    await api(`/portal/onboarding/steps/${step}/complete`, { method: 'POST' });
-    const r = await api<{ onboarding: Onboarding | null }>('/portal/onboarding');
-    setOnboarding(r.onboarding);
+    setStepError(null);
+    try {
+      await api(`/portal/onboarding/steps/${step}/complete`, { method: 'POST' });
+      const r = await api<{ onboarding: Onboarding | null }>('/portal/onboarding');
+      setOnboarding(r.onboarding);
+    } catch (err) {
+      setStepError({ step, message: err instanceof ApiError ? err.message : t('error_generic') });
+    }
   };
 
   if (!ready) return <p>{t('loading')}</p>;
@@ -325,9 +332,12 @@ export default function Dashboard() {
                   <>
                     <a className="btn ghost" href={s.href}>{t('checklist_go')}</a>
                     {s.step ? (
-                      <button className="btn ghost" type="button" onClick={() => void markStep(s.step!)}>
-                        {t('checklist_mark_done')}
-                      </button>
+                      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                        <button className="btn ghost" type="button" onClick={() => void markStep(s.step!)}>
+                          {t('checklist_mark_done')}
+                        </button>
+                        {stepError?.step === s.step ? <p className="field-error" role="alert">{stepError.message}</p> : null}
+                      </span>
                     ) : null}
                   </>
                 )}

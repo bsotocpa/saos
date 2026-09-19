@@ -12,6 +12,9 @@ export default function SettingsAdminPage() {
   const [settings, setSettings] = useState<Setting[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState('');
+  // A refusal renders beside the row's Save, verbatim, with the draft kept (Brian, 2026-09-19, defect 2).
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
 
   const load = async () => {
     const res = await api<{ settings: Setting[] }>('/admin/settings');
@@ -24,20 +27,25 @@ export default function SettingsAdminPage() {
   const save = async (key: string) => {
     const raw = drafts[key];
     if (raw === undefined) return;
+    setInlineErr(null);
     let value: unknown;
     try {
       value = JSON.parse(raw);
     } catch {
       value = raw; // plain strings are fine
     }
-    await api(`/admin/settings/${key}`, { method: 'PATCH', body: { value } });
-    setMessage(`${key} updated (old → new recorded in the audit log).`);
-    setDrafts((d) => {
-      const next = { ...d };
-      delete next[key];
-      return next;
-    });
-    await load();
+    try {
+      await api(`/admin/settings/${key}`, { method: 'PATCH', body: { value } });
+      setMessage(`${key} updated (old → new recorded in the audit log).`);
+      setDrafts((d) => {
+        const next = { ...d };
+        delete next[key];
+        return next;
+      });
+      await load();
+    } catch (err) {
+      setInlineErr({ key, message: err instanceof Error && err.message ? err.message : 'The request was refused.' });
+    }
   };
 
   return (
@@ -65,6 +73,7 @@ export default function SettingsAdminPage() {
                   {drafts[s.key] !== undefined ? (
                     <button className="btn ghost" type="button" onClick={() => void save(s.key)}>Save</button>
                   ) : null}
+                  {errAt(s.key)}
                 </td>
               </tr>
             ))}

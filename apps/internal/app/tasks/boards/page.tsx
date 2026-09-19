@@ -21,6 +21,11 @@ export default function BoardsPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [newBoard, setNewBoard] = useState('');
   const [newCard, setNewCard] = useState('');
+  // THE ERROR STAYS WITH THE CONTROL (Brian, 2026-09-19, defect 2): a refusal renders beside the
+  // input or select that caused it, verbatim, with the typed text kept.
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
+  const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
 
   const loadBoards = useCallback(async () => {
     const r = await api<{ boards: Board[] }>('/boards');
@@ -48,8 +53,38 @@ export default function BoardsPage() {
   }, [loadBoard]);
 
   const move = async (cardId: string, columnId: string) => {
-    await api(`/tasks/${cardId}/move`, { method: 'PATCH', body: { boardColumnId: columnId } });
-    await loadBoard();
+    setInlineErr(null);
+    try {
+      await api(`/tasks/${cardId}/move`, { method: 'PATCH', body: { boardColumnId: columnId } });
+      await loadBoard();
+    } catch (err) {
+      setInlineErr({ key: `move:${cardId}`, message: refused(err) });
+    }
+  };
+
+  const createBoard = async () => {
+    if (!newBoard.trim()) return;
+    setInlineErr(null);
+    try {
+      await api('/boards', { method: 'POST', body: { name: newBoard.trim() } });
+      setNewBoard('');
+      await loadBoards();
+    } catch (err) {
+      setInlineErr({ key: 'board', message: refused(err) });
+    }
+  };
+
+  const addCard = async () => {
+    const first = columns[0];
+    if (!newCard.trim() || !first) return;
+    setInlineErr(null);
+    try {
+      await api('/tasks', { method: 'POST', body: { title: newCard.trim(), boardColumnId: first.id } });
+      setNewCard('');
+      await loadBoard();
+    } catch (err) {
+      setInlineErr({ key: 'card', message: refused(err) });
+    }
   };
 
   return (
@@ -69,38 +104,27 @@ export default function BoardsPage() {
             </button>
           ))}
           <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!newBoard.trim()) return;
-              await api('/boards', { method: 'POST', body: { name: newBoard.trim() } });
-              setNewBoard('');
-              await loadBoards();
-            }}
+            onSubmit={(e) => { e.preventDefault(); void createBoard(); }}
             style={{ display: 'flex', gap: 6 }}
           >
             <input placeholder="New board…" value={newBoard} onChange={(e) => setNewBoard(e.target.value)} />
             <button className="btn ghost" type="submit">Create</button>
           </form>
         </div>
+        {errAt('board')}
       </section>
 
       {active ? (
         <>
           <section className="card">
             <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const first = columns[0];
-                if (!newCard.trim() || !first) return;
-                await api('/tasks', { method: 'POST', body: { title: newCard.trim(), boardColumnId: first.id } });
-                setNewCard('');
-                await loadBoard();
-              }}
+              onSubmit={(e) => { e.preventDefault(); void addCard(); }}
               style={{ display: 'flex', gap: 8 }}
             >
               <input placeholder="New card…" value={newCard} onChange={(e) => setNewCard(e.target.value)} style={{ flex: 1 }} />
               <button className="btn" type="submit">Add card</button>
             </form>
+            {errAt('card')}
           </section>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, 1fr)`, gap: 12 }}>
             {columns.map((col) => (
@@ -124,6 +148,7 @@ export default function BoardsPage() {
                         <option key={target.id} value={target.id}>{target.name}</option>
                       ))}
                     </select>
+                    {errAt(`move:${c.id}`)}
                   </div>
                 ))}
               </section>

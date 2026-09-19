@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
-import { formatDate, formatDateTime } from '../../lib/dates';
+import { dayOf, formatDate, formatDateTime } from '../../lib/dates';
 import { useAsk } from '../../components/ask';
 
 interface ReportSummary {
@@ -20,7 +20,7 @@ interface AckRow {
   acknowledged_on: string | null; reject_code: string | null; client_name_raw: string;
   tax_year: number | null; return_type_raw: string | null;
   disposition: 'queued' | 'held' | 'sent' | 'suppressed' | 'task' | 'duplicate'; disposition_note: string;
-  task_id: string | null; sent_at: string | null; tax_engagement_id: string | null; contact_id: string | null;
+  task_id: string | null; sent_at: string | null; suppressed_at: string | null; tax_engagement_id: string | null; contact_id: string | null;
   client: string | null; language: 'en' | 'es' | null;
 }
 interface ReportView { report: ReportSummary & { released_by: string | null }; rows: AckRow[] }
@@ -29,7 +29,7 @@ const DISPOSITION_LABEL: Record<AckRow['disposition'], string> = {
   queued: 'Will send',
   held: 'Held',
   sent: 'Sent',
-  suppressed: 'Held by the automation (off)',
+  suppressed: 'Held: automation was off at the time',
   task: 'Task raised',
   duplicate: 'Already recorded',
 };
@@ -42,6 +42,9 @@ export default function EfileAcksPage() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  /* A refusal renders beside the control that caused it (Brian, 2026-09-19, defect 2). */
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadList = useCallback(async () => {
@@ -54,7 +57,7 @@ export default function EfileAcksPage() {
   useEffect(() => { void loadList(); }, [loadList]);
 
   const upload = async (file: File) => {
-    setBusy(true); setErr(''); setMsg('');
+    setBusy(true); setInlineErr(null); setMsg('');
     try {
       const fd = new FormData();
       fd.append('file', file, file.name);
@@ -67,22 +70,23 @@ export default function EfileAcksPage() {
       );
       await loadList();
       await loadReport(r.reportId);
+      // The chosen file is cleared only once it was taken; a refusal keeps it beside its message.
+      if (fileRef.current) fileRef.current.value = '';
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'The report could not be read.');
+      setInlineErr({ key: 'upload', message: e instanceof Error ? e.message : 'The report could not be read.' });
     } finally {
       setBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
   const hold = async (row: AckRow, on: boolean) => {
     if (!open) return;
-    setBusy(true); setErr('');
+    setBusy(true); setInlineErr(null);
     try {
       await api(`/efile-acks/rows/${row.id}/${on ? 'hold' : 'unhold'}`, { method: 'POST' });
       await loadReport(open.report.id);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not change that row.');
+      setInlineErr({ key: `row:${row.id}`, message: e instanceof Error ? e.message : 'Could not change that row.' });
     } finally { setBusy(false); }
   };
 
@@ -90,6 +94,7 @@ export default function EfileAcksPage() {
     if (!open) return;
     const willSend = open.rows.filter((r) => r.disposition === 'queued');
     const held = open.rows.filter((r) => r.disposition === 'held');
+    const got: { r: { enqueued: number; held: number } | null } = { r: null };
     const a = await ask({
       title: `Release ${willSend.length} confirmation${willSend.length === 1 ? '' : 's'} to clients?`,
       body: (
@@ -99,21 +104,18 @@ export default function EfileAcksPage() {
             {willSend.map((r) => <li key={r.id}>{r.client} · {r.tax_year} {r.return_type_raw?.toUpperCase()} · {r.jurisdiction === 'federal' ? 'Federal' : r.state_code}</li>)}
           </ul>
           {held.length ? <p className="muted small">{held.length} held row{held.length === 1 ? '' : 's'} will not send.</p> : null}
-          <p className="small">If the automation is not armed in Admin, every one is recorded as held by it and nothing goes out.</p>
+          <p className="small">If the automation is not armed in Admin, every one is recorded as held on that date and nothing goes out.</p>
         </>
       ),
       choices: [{ key: 'go', label: `Release ${willSend.length}`, tone: 'primary' }],
+      run: async () => { got.r = await api<{ enqueued: number; held: number }>(`/efile-acks/${open.report.id}/release`, { method: 'POST' }); },
     });
     if (!a) return;
-    setBusy(true); setErr('');
-    try {
-      const r = await api<{ enqueued: number; held: number }>(`/efile-acks/${open.report.id}/release`, { method: 'POST' });
-      setMsg(`Released: ${r.enqueued} queued to send, ${r.held} held.`);
-      await loadList();
-      await loadReport(open.report.id);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Release failed.');
-    } finally { setBusy(false); }
+    setBusy(true);
+    setMsg(`Released: ${got.r?.enqueued ?? 0} queued to send, ${got.r?.held ?? 0} held.`);
+    await loadList();
+    await loadReport(open.report.id);
+    setBusy(false);
   };
 
   return (
@@ -127,6 +129,7 @@ export default function EfileAcksPage() {
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
         </label>
       </div>
+      {errAt('upload')}
       {msg ? <p className="alert ok" role="status">{msg}</p> : null}
       {err ? <p className="alert error" role="alert">{err}</p> : null}
 
@@ -186,13 +189,14 @@ export default function EfileAcksPage() {
                     <td>{r.acknowledged_on ? formatDate(r.acknowledged_on) : '—'}</td>
                     <td>{r.client ? <a href={`/clients/${r.contact_id}`}>{r.client}</a> : <span className="muted">not matched</span>}</td>
                     <td>
-                      <span className={`badge ${toneFor(r.disposition)}`}>{DISPOSITION_LABEL[r.disposition]}</span>{' '}
+                      <span className={`badge ${toneFor(r.disposition)}`}>{r.disposition === 'suppressed' && r.suppressed_at ? `held on ${dayOf(r.suppressed_at)} — automation was off at the time` : DISPOSITION_LABEL[r.disposition]}</span>{' '}
                       <span className="muted small">{r.disposition_note}</span>
                       {r.task_id ? <> <a className="small" href={`/tasks?open=${r.task_id}`}>task</a></> : null}
                     </td>
                     <td>
                       {r.disposition === 'queued' ? <button className="chip" type="button" disabled={busy} onClick={() => void hold(r, true)}>Hold</button> : null}
                       {r.disposition === 'held' ? <button className="chip" type="button" disabled={busy} onClick={() => void hold(r, false)}>Unhold</button> : null}
+                      {errAt(`row:${r.id}`)}
                     </td>
                   </tr>
                 ))}

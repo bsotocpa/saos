@@ -281,7 +281,6 @@ export default function QuestionnairePage() {
       {reviewing ? <div className="alert">{t('quest_review_intro')}</div> : null}
       {saved ? <div className="alert ok">{t('quest_saved')}</div> : null}
       {resumed && !reviewing ? <div className="alert">{t('quest_resumed')}</div> : null}
-      {errorNotice}
 
       <section className="card">
         {onDetails ? (
@@ -405,6 +404,9 @@ export default function QuestionnairePage() {
           >
             {last ? (reviewing ? t('quest_save_changes') : t('intake_submit')) : t('intake_next')}
           </button>
+          {/* The save/submit refusal, verbatim, beside the button that caused it. The
+              whole-card load failure above keeps its own notice. */}
+          {error ? <p className="field-error" role="alert" style={{ flexBasis: '100%' }}>{error}</p> : null}
         </div>
         <p className="muted small">{reviewing ? t('quest_review_note') : t('quest_saved_note')}</p>
         {reviewing ? (

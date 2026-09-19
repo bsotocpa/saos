@@ -99,7 +99,11 @@ export default function PipelinePage() {
   const [taxYear, setTaxYear] = useState<number | null>(null);
   const [taxYearSource, setTaxYearSource] = useState<TaxYearSource>('default');
   const [bundles, setBundles] = useState<CatalogBundle[]>([]);
+  /** The load result only: a refused send renders beside the button that sent (Brian, 2026-09-19, defect 2). */
   const [error, setError] = useState('');
+  const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
+  const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
+  const refused = (err: unknown) => (err instanceof Error && err.message ? err.message : 'The request was refused.');
   const [busy, setBusy] = useState(false);
   /**
    * THE COVERAGE QUESTION, as a decision rather than an error (2026-09-09).
@@ -292,11 +296,13 @@ export default function PipelinePage() {
    */
   /** Re-read the draft's deposit from the server — the only thing this panel displays about it. */
   const refreshDraftDeposit = async (quoteId: string) => {
+    setInlineErr((e) => (e?.key === 'deposit' ? null : e));
     try {
       const r = await api<{ deposit: ServerDeposit | null }>(`/quotes/${quoteId}`);
       setDraftDeposit(r.deposit);
     } catch (err) {
-      setOverrideError((err as Error).message);
+      // Beside the deposit line in the draft panel, whether or not the override panel is open.
+      setInlineErr({ key: 'deposit', message: refused(err) });
     }
   };
 
@@ -355,15 +361,16 @@ export default function PipelinePage() {
   const resetBuilder = () => {
     setContact(null); setSearch(''); setBundleSlug(''); setPicked([]); setBusinessId('');
     setNotes(''); setSentLink(''); setItemFilter('');
-    setDraftQuoteId(''); setDraftDeposit(null); setOverrideForm(null); setOverrideError('');
+    setDraftQuoteId(''); setDraftDeposit(null); setOverrideForm(null); setOverrideError(''); setInlineErr(null);
   };
 
   /**
    * A refused send is EITHER the coverage question or an ordinary error, and they must not
    * share a banner: one has two correct answers and the other has none. `api()` attaches the
-   * API's error code to the thrown Error, which is what makes the split possible.
+   * API's error code to the thrown Error, which is what makes the split possible. An ordinary
+   * error renders beside the button named by `key`.
    */
-  const routeSendFailure = (err: unknown, quoteId: string) => {
+  const routeSendFailure = (err: unknown, quoteId: string, key: string) => {
     const e = err as Error & { code?: string };
     if (e.code === 'change_order_required') {
       const issues = (e as { payload?: { issues?: Array<{ id: string; title: string | null; serviceLine: string; periodKey: string }> } }).payload?.issues ?? [];
@@ -377,14 +384,14 @@ export default function PipelinePage() {
       setDraftQuoteId(quoteId);
       void refreshDraftDeposit(quoteId);
     } else {
-      setError(e.message);
+      setInlineErr({ key, message: refused(e) });
     }
   };
 
   const sendDraft = async () => {
     if (!draftQuoteId) return;
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     setCoverageBlock(null);
     try {
       const words = await depositWordsFor(draftQuoteId, pickedDepositCents);
@@ -400,7 +407,7 @@ export default function PipelinePage() {
       resetBuilder();
       await load();
     } catch (err) {
-      routeSendFailure(err, draftQuoteId);
+      routeSendFailure(err, draftQuoteId, 'sendDraft');
     } finally {
       setBusy(false);
     }
@@ -410,7 +417,7 @@ export default function PipelinePage() {
   const sendWithIntent = async (duplicateIntent: 'additional_work' | 'replaces_existing') => {
     if (!coverageBlock || !contact) return;
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     try {
       const words = await depositWordsFor(coverageBlock.quoteId, pickedDepositCents);
       const r = await api<{ url: string }>(`/quotes/${coverageBlock.quoteId}/send`, {
@@ -424,7 +431,7 @@ export default function PipelinePage() {
       resetBuilder();
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: 'intent', message: refused(err) });
     } finally {
       setBusy(false);
     }
@@ -433,7 +440,7 @@ export default function PipelinePage() {
   const sendChangeOrder = async (engagementId: string) => {
     if (!changeOrderBlock || !contact) return;
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     try {
       const words = await depositWordsFor(changeOrderBlock.quoteId, pickedDepositCents);
       const r = await api<{ url: string }>(`/quotes/${changeOrderBlock.quoteId}/send`, {
@@ -447,7 +454,7 @@ export default function PipelinePage() {
       resetBuilder();
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setInlineErr({ key: 'changeOrder', message: refused(err) });
     } finally {
       setBusy(false);
     }
@@ -456,7 +463,7 @@ export default function PipelinePage() {
   const buildAndSend = async (send: boolean) => {
     if (!contact) return;
     setBusy(true);
-    setError('');
+    setInlineErr(null);
     setCoverageBlock(null);
     setChangeOrderBlock(null);
     // Hoisted out of the try: the quote is CREATED before the send can be refused, and the
@@ -502,8 +509,8 @@ export default function PipelinePage() {
     } catch (err) {
       // Once the quote exists, a refusal is about THAT quote — hand it over rather than dropping
       // it. Before it exists there is nothing to hand over and the error is just an error.
-      if (createdId) routeSendFailure(err, createdId);
-      else setError((err as Error).message);
+      if (createdId) routeSendFailure(err, createdId, 'build');
+      else setInlineErr({ key: 'build', message: refused(err) });
     } finally {
       setBusy(false);
     }
@@ -538,6 +545,7 @@ export default function PipelinePage() {
               Not now — keep it as a draft
             </button>
           </p>
+          {errAt('changeOrder')}
         </div>
       ) : null}
       {coverageBlock ? (
@@ -558,6 +566,7 @@ export default function PipelinePage() {
               Not now — keep it as a draft
             </button>
           </p>
+          {errAt('intent')}
         </div>
       ) : null}
 
@@ -916,6 +925,7 @@ export default function PipelinePage() {
                   Save as draft
                 </button>
               </div>
+              {errAt('build')}
 
               {/* Deposit decision on a saved draft. The standard deposit is what
                   happens by default — this panel only appears once a draft
@@ -943,6 +953,7 @@ export default function PipelinePage() {
                       Deposit the client will be asked for: <strong>{money(draftDeposit.chargeCents)}</strong> (standard).
                     </>
                   )}
+                  {errAt('deposit')}
                   {overrideForm ? (
                     <div className="alert warn" style={{ marginTop: 8, marginBottom: 0 }}>
                       <strong>{overrideForm.waive ? 'Waive the deposit' : 'Reduce the deposit'}</strong>
@@ -990,6 +1001,7 @@ export default function PipelinePage() {
                     >
                       Send to client — {depositWords(draftDeposit, pickedDepositCents)}
                     </button>
+                    {errAt('sendDraft')}
                     {canOverrideDeposit && draftDeposit && draftDeposit.standardCents !== null && !overrideForm ? (
                       <>
                         <button
