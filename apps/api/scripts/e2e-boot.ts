@@ -10,7 +10,8 @@
  * Synthetic data only. Never run against anything but the developer database server.
  */
 import { buildServer } from '../src/server.ts';
-import { createTestConfig, makeContact, makeStaff } from '../test/helpers.ts';
+import { createTestConfig, makeContact, makeStaff, multipartBody } from '../test/helpers.ts';
+import { waiveStripeCheck } from '../src/modules/billing/drift.ts';
 import type { Mailer } from '../src/mailer.ts';
 import { createQuote, sendQuote, acceptQuote, overrideQuoteDeposit } from '../src/modules/pricing/quotes.ts';
 import { createPacket } from '../src/modules/engagements/packet.ts';
@@ -258,6 +259,48 @@ if (scorpForm.statusCode >= 300) throw new Error(`the business onboarding form w
 const scorpDoc = await uploadDocument(app, minio, { type: 'staff', id: staff.id, label: staff.fullName }, { contactId: scorpOwner.id, category: 'business_records', filename: 'HARNESS-SCORP-BANK-STATEMENT.pdf', mimeType: 'application/pdf', buffer: PDF });
 
 /*
+ * THE 1120S DRY RUN (Brian, 2026-09-19): the return was filed in ATX on time, outside SAOS, the
+ * ruled fallback exercised deliberately. The fixture takes the return to the point a person
+ * takes over: the letter and the estimate stamped the way the API specs stamp them, the stages
+ * walked through the transition route by the preparer, and the return DELIVERED to the portal
+ * through the upload route the Ops page presses. The signed 8879, the filing, the acknowledgment
+ * report, the payment and the completion are the harness's to do, as Brian in every role.
+ */
+const anamaria = await makeStaff(app.db, config, { email: 'anamaria-walker@example.test', name: 'Synthetic Ana-Maria', role: 'tax_preparer', password: 'anamaria-synthetic-2026', totpSecret: TOTP_SECRET });
+const scorpTeId = scorpTe.rows[0]!.id;
+await app.db.query(`UPDATE tax_engagements SET engagement_letter_signed_at = now(), estimate_locked_at = now(), preparer_id = $2 WHERE id = $1`, [scorpTeId, anamaria.id]);
+const anaLogin = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: anamaria.email, password: 'anamaria-synthetic-2026', totp: new OTPAuth.TOTP({ algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(TOTP_SECRET) }).generate() } });
+if (anaLogin.statusCode !== 200) throw new Error(`the preparer could not sign in: ${anaLogin.statusCode} ${anaLogin.body}`);
+const anaToken = (anaLogin.json() as { token: string }).token;
+for (const toStage of ['scheduled', 'documents_requested', 'in_preparation', 'internal_review', 'client_review', 'ready_to_file']) {
+  const moved = await app.inject({ method: 'POST', url: `/tax-engagements/${scorpTeId}/transition`, headers: { authorization: `Bearer ${anaToken}` }, payload: { toStage } });
+  if (moved.statusCode !== 200) throw new Error(`the S corp return would not move to ${toStage}: ${moved.statusCode} ${moved.body}`);
+}
+// Delivered to the portal through the same route the Ops "Deliver a return" page presses (the stage goes back to client review).
+const scorpTaxYear = (await app.db.query<{ tax_year: number }>(`SELECT tax_year FROM tax_engagements WHERE id = $1`, [scorpTeId])).rows[0]!.tax_year;
+const deliverBody = multipartBody({ contactId: scorpOwner.id, category: 'return_deliverable', taxEngagementId: scorpTeId, taxYear: String(scorpTaxYear) }, { field: 'file', filename: 'HARNESS-SCORP-1120S-RETURN.pdf', contentType: 'application/pdf', data: PDF });
+const delivered = await app.inject({ method: 'POST', url: '/documents', headers: { authorization: `Bearer ${staffToken}`, ...deliverBody.headers }, payload: deliverBody.payload });
+if (delivered.statusCode !== 201) throw new Error(`the return could not be delivered: ${delivered.statusCode} ${delivered.body}`);
+if (!(delivered.json() as { stageMoved: boolean }).stageMoved) throw new Error('delivering the return did not move it to client review');
+const scorpOwnerUser = await app.inject({ method: 'POST', url: '/portal/auth/magic/request', payload: { email: scorpOwner.email } });
+if (scorpOwnerUser.statusCode !== 200) throw new Error(`the S corp owner's sign-in link was refused: ${scorpOwnerUser.statusCode} ${scorpOwnerUser.body}`);
+await drainOutbox(app);
+const scorpMagicToken = magicTokens.pop();
+if (!scorpMagicToken) throw new Error('no sign-in link reached the mailer for the S corp owner');
+// Brian arms these himself on the box; the harness arms them so the sends are real here.
+await app.db.query(`UPDATE automations SET enabled = true WHERE key IN ('efile_acknowledgment', 'payment_receipt')`);
+const scorpFee = await app.db.query<{ amount_cents: number }>(`SELECT pbi.amount_cents FROM price_book_items pbi WHERE pbi.is_active AND pbi.amount_cents > 0 ORDER BY pbi.amount_cents LIMIT 1`);
+
+/*
+ * THE REFUSED AMEND AT 390px (Brian, 2026-09-19, defect 2): the harness client's paid deposit
+ * gets a drift finding and a waiver, so the client page offers "Amend reason" and the harness can
+ * type a chat artifact into it and read the refusal beside the field.
+ */
+await createTask(app, { title: 'Harness: Stripe cannot see this payment', contactId: contact.id, priority: 2, source: 'automation', sourceType: 'stripe_drift', sourceId: acc1.depositInvoiceId! });
+await waiveStripeCheck(app, acc1.depositInvoiceId!, 'Paid under the harness stub; the live key cannot see that payment', { id: staff.id, fullName: staff.fullName });
+
+
+/*
  * A MAGIC LINK IS SINGLE USE, and the harness runs page two once per viewport. So each project
  * gets its own, requested through the public route a client uses. Two more, plus the one 'Grant
  * access' already sent, sits under the three-per-ten-minutes throttle in portal-auth/service.ts.
@@ -270,6 +313,10 @@ for (let i = 0; i < 2; i++) {
 if (magicTokens.length < 2) throw new Error(`only ${magicTokens.length} sign-in link(s) reached the mailer — page two cannot log in twice`);
 
 await app.listen({ port: PORT, host: '127.0.0.1' });
+// The harness API runs no scheduler (that is index.ts's job). The outbox fast lane is what a person
+// waits on after a release, so the harness drains it every two seconds, the way the box does every minute.
+const harnessSweep = setInterval(() => { drainOutbox(app).catch(() => undefined); }, 2000);
+harnessSweep.unref();
 console.log('E2E_READY ' + JSON.stringify({
   port: PORT,
   contactId: contact.id,
@@ -280,8 +327,14 @@ console.log('E2E_READY ' + JSON.stringify({
     contactId: scorpOwner.id, businessId: scorpBusinessId, quoteId: scorpQuote.id,
     engagementId: scorpAccepted.engagements[0]!.id, taxEngagementId: scorpTe.rows[0]!.id,
     packetCodes: scorpPacket.scheduleCodes, documentId: scorpDoc.id,
-    markers: { business: 'Harness S Corp', document: 'HARNESS-SCORP-BANK-STATEMENT.pdf' },
+    markers: { business: 'Harness S Corp', document: 'HARNESS-SCORP-BANK-STATEMENT.pdf', returnFile: 'HARNESS-SCORP-1120S-RETURN.pdf' },
+    entityName: 'Harness S Corp, LLC', einLast4: '5555', taxYear: scorpTaxYear,
+    preparer: { id: anamaria.id, name: anamaria.fullName },
+    ownerEmail: scorpOwner.email, portalMagicToken: scorpMagicToken,
+    finalFeeCents: scorpFee.rows[0]!.amount_cents,
+    webhookSecret: config.WEBHOOK_SECRET,
   },
+  amend: { invoiceId: acc1.depositInvoiceId },
   wall: {
     laura: { email: laura.email, password: 'laura-synthetic-2026', totpSecret: TOTP_SECRET },
     jaqueline: { email: jaqueline.email, password: 'jaqueline-synthetic-2026', totpSecret: TOTP_SECRET },

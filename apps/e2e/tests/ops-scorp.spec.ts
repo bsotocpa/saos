@@ -70,7 +70,8 @@ test.describe('Ops → client page, the S corporation', () => {
       expect(te.status, 'the return record opens').toBe(200);
       const record = te.json.taxEngagement as Record<string, unknown>;
       expect(record.return_type).toBe('1120s');
-      expect(record.stage).toBe('intake_started');
+      // Delivered by the fixture (client_review), or already acknowledged if the dry run ran first (2026-09-19).
+      expect(['client_review', 'completed'], 'the return is delivered or done').toContain(record.stage);
       expect(record.business_id).toBe(fixtures.scorp.businessId);
 
       await page.screenshot({ path: shot, fullPage: true });
