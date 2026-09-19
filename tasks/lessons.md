@@ -2047,3 +2047,7 @@ Migration 0103 added its column with pgm.sql() and updated rows with pgm.db.quer
 ## The symptom on the page had a different cause than the one named; the harness found it (2026-09-19)
 The walk said the validator refused "Rehearsal client." and the page read "request failed". Two defects, and I fixed the visible one first (the modal keeps the error beside the field). The harness page then failed with "request failed" beside the field: the API helper read only a top-level message, and a validation refusal carries its words per field under issues. The rule (verbatim words) was unmeetable until the helper changed, and no amount of modal work would have shown the words.
 **Rule:** when a report says a message was wrong, find the byte that produced the message before changing where it renders. The harness asserting the exact words, not just the presence of an error element, is what caught it; keep asserting words.
+
+## A refactor that moves code by line number is checked by running it, before the long run (2026-09-19)
+Splitting the S corp fixture into a per-viewport function by slicing line ranges dropped one line (the letter and estimate stamp), and the harness's full run (a Next build plus the boot) spent four minutes to say "409 engagement_letter_required" at boot.
+**Rule:** after any edit to the fixture boot, run `node --experimental-strip-types scripts/e2e-boot.ts` alone for one minute and read E2E_READY before the harness. Move code by anchors that name the lines, never by index arithmetic.

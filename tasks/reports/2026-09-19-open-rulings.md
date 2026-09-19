@@ -1,0 +1,62 @@
+# open-rulings (2026-09-19)
+
+Generated 2026-09-19T20:29:05.408Z by scripts/report-table.mjs from the log open-rulings.log; 52 row(s).
+
+```sql
+node scripts/open-rulings.mjs  (one row per checkbox line of tasks/todo.md OPEN RULINGS)
+```
+
+| id | date | text | state | outcome |
+|---|---|---|---|---|
+| R-01 | 2026-09-12 | Co-facilitation: a session records one staffer (the uploader) | OPEN |  |
+| R-02 | 2026-09-12 | Hilo referral discount: a price-book tier applied at quote time, shown on the proposal; Brian supplies the amount in v6 (2026-09-12, ruling | OPEN |  |
+| R-03 | 2026-10-12 | Docuseal volume and /mnt/saos-data/docuseal: remove on 2026-10-12. | OPEN |  |
+| R-04 |  | d) Soto Accounting LLC business record: missing on the box; Brian enters it with the EIN on the merged winner (walk step 1) | OPEN |  |
+| R-05 | 2026-09-12 | Monday's first message re-checks the standing rules (Brian, 2026-09-12 evening). | OPEN |  |
+| R-06 | 2026-09-12 | RULED 2026-09-12 (merge batch) | OPEN |  |
+| R-07 | 2026-09-12 | RULED 2026-09-12 (evening) | closed | SHIPPED: POST /contacts/:id/archive and POST /businesses/:id/archive (isTest + testNote); both archived on the box through the routes. |
+| R-08 | 2026-09-12 | RULED 2026-09-12 (evening): merge route rule: contacts with no shared email, phone or address require an explicit override with a reason; a | closed | SHIPPED: no_shared_identifier unless identityOverrideReason; the audit row names the shared identifiers or the override. |
+| R-09 | 2026-09-12 | RULED 2026-09-12 (evening), 2a: engagement creation always emits the lifecycle event; DB invariant: an active or on_hold engagement requires | closed | SHIPPED: migration 0100 (two triggers), deriveLifecycle open work = onboarding, createEngagement audits the move; production violations: non |
+| R-10 | 2026-09-12 | RULED 2026-09-12 (evening), 2b: every path creating an engagement outside quote acceptance or change-order supersession is listed; anything | closed | SHIPPED: intake inserts removed; POST /engagements, the new-engagement branch of POST /tax-engagements, and POST /resolution/cases require a |
+| R-11 | 2026-09-12 | RULED 2026-09-12 (evening), 2c: withdraw cascades to any unfiled return on the engagement; DB invariant: a pre-filed return requires an acti | closed | SHIPPED: withdrawUnfiledReturns in closeEngagement and change-order supersession; migration 0100 both directions; sabotage red then green; t |
+| R-12 | 2026-09-12 | RULED 2026-09-12 (evening), 3: businesses get parity with contacts: is_test with note, archive route (never delete), merge route, same audit | closed | SHIPPED: migration 0101, crm/businesses.ts, archive/merge/primary-business routes, Ops page; box: soto incorporated merged then archived, BR |
+| R-13 | 2026-09-12 | RULED 2026-09-12 (late), 1: clear the primary flag on all 74 multi-primary contacts. | closed | SHIPPED: migration 0102 lists every row by contact and business in the deploy log, then clears; createQuote refuses a business line with no |
+| R-14 | 2026-09-12 | RULED 2026-09-12 (late), 2: portal badge shows the sign-in address beside "Signed up" | closed | SHIPPED: portal_login_email on the contact detail; "signs in as / inicia sesión como". |
+| R-15 | 2026-09-12 | RULED 2026-09-12 (late), 3: verify tonight's archive, merge and clear audit rows carry "Brian Soto (ruled 2026-09-12, applied by script)", n | closed | SHIPPED: createSession takes appliedBy and stamps the session; the auth plugin puts "(appliedBy)" on every row written under it; on the box |
+| R-16 | 2026-09-12 | RULED 2026-09-12 (night), 1 | closed | SHIPPED: crm/duplicates.ts (plan from shared identifiers, winner by holdings, notes on the rest), scripts/duplicate-scan.ts (dry run; APPLY= |
+| R-17 | 2026-09-12 | RULING NEEDED: merge Joseph Basilone's two records (they share a phone; the scan planned it and held it as a protected name) | closed | closed |
+| R-18 | 2026-09-12 | RULED 2026-09-12 (night), 2 | closed | ON THE BOX: 202 businesses tagged, all from Zoho, one audit row each; one protected row among them (Joseph Basilone · JOSEPH BASILONE and ME |
+| R-19 | 2026-09-12 | SCAN TIE ORDER (shipped 2026-09-12, late night): two empty records with one creation timestamp pick the winner by row order; add the id to t | closed | closed |
+| R-20 | 2026-09-12 | DEPLOY ORDER (shipped 2026-09-12, late night): deploy.sh swapped containers before it migrated; a failed migration leaves new code on an old | closed | closed |
+| R-21 |  | ENRICHMENT: the unverified-import businesses join the FL-entity enrichment work; each needs an entity type or an EIN from a person, or a dec | OPEN |  |
+| R-22 | 2026-09-12 | Monday's first message re-checks standing rules before anything else (done 2026-09-12 night: hook, receipt, no-native-dialogs check, reason | closed | closed |
+| R-23 | 2026-09-12 | RULED 2026-09-12 (late night), 1 | closed | SHIPPED: scripts/report-table.mjs, scripts/check-report-draft.mjs, check:report-files in the root suite; tasks/reports holds the 167, the 12 |
+| R-24 | 2026-09-12 | RULED 2026-09-12 (late night), 2 | closed | SHIPPED: deploy.sh builds, preflights on a copy (scripts/preflight-migrate.sh), migrates, then swaps; sabotage on the box red then green; fi |
+| R-25 | 2026-09-12 | RULED 2026-09-12 (late night), 3: merge Joseph Basilone b773c010 into 8e499a4f | closed | DONE on the box through the scan with APPROVED naming the loser; tasks/reports/2026-09-12-joseph-basilone-merge.md. |
+| R-26 | 2026-09-12 | RULED 2026-09-12 (late night), 4: the duplicate scan's ORDER BY includes the id | closed | SHIPPED with the tie-break by id in the ranking too. |
+| R-27 | 2026-09-12 | RULED 2026-09-12 (late night), 5: case-insensitive business dedupe within a contact through the merge route (Tri-Taylor Condominium Associat | closed | SHIPPED: sameNameBusinessesWithinContact, scripts/business-dedupe.ts; on the box: one group, Erica Gonzalez's Tri-Taylor rows merged; tasks/ |
+| R-28 | 2026-09-12 | RULED 2026-09-12 (late night), 6 (deferred, enrichment): the 202 household rows | OPEN |  |
+| R-29 | 2026-09-19 | RULED 2026-09-19, 0 | closed | SHIPPED: Ops -> client page -> Businesses card -> "Add a business" (components/add-business.tsx); POST /contacts/:id/businesses takes format |
+| R-30 | 2026-09-19 | RULED 2026-09-19, STATUS: every open ruling with its state, everything shipped since 09-13, staff accounts (five temp passwords expired 09-1 | closed | DONE: tasks/reports/2026-09-19-status-*.md (open rulings from this file, staff accounts, automations, the waiver amendment); nothing shipped |
+| R-31 | 2026-09-19 | RULED 2026-09-19, DRY RUN IS SOLO: Brian acts as every role before the team sees it; handovers wait until the dry run is clean | closed | ANSWERED: the E-file acks screen, the review transitions and the billing controls are permission-gated and the CEO holds every permission; t |
+| R-32 | 2026-09-19 | RULED 2026-09-19, defect 1: the reason validator refuses chat artifacts, not English words: remove "rehearsal" | closed | SHIPPED (reasons.ts, reasons.spec). |
+| R-33 | 2026-09-19 | RULED 2026-09-19, defect 2: a form error renders inline at the control that caused it, with the server's message verbatim, and the field kee | closed | SHIPPED: ask() takes run (Ops and portal); 122 handlers surveyed and converted; ops-inline-error.spec.ts at 390px. |
+| R-34 | 2026-09-19 | RULED 2026-09-19, defect 3: a suppressed send reads "held on <date> — automation was off at the time", past tense, dated, everywhere a suppr | closed | SHIPPED: outbox.holdLine(at); old rows dated from their suppression audit row; the acks screen reads suppressed_at. |
+| R-35 | 2026-09-19 | RULED 2026-09-19, defect 4: period applies to tax lines; bookkeeping is ongoing | closed | SHIPPED (client page). |
+| R-36 | 2026-09-19 | RULED 2026-09-19, THE 1120S DRY RUN (filed in ATX on time, outside SAOS; the ruled fallback exercised deliberately) on the harness with an a | closed | SHIPPED on the harness: e2e-boot delivers the S corp return; ops-scorp-dry-run.spec.ts does 3, 4, 5 as the CEO on the phone project and both |
+| R-37 | 2026-09-19 | RULING NEEDED (harness finding, 2026-09-19): the dashboard's "Money actions today by staff" counts rows whose actor is the system (a Stripe | OPEN |  |
+| R-38 |  | BRIAN, LIVE (after this deploy): the real 1120S in SAOS in this order, phone and laptop as listed in the 09-19 report. | OPEN |  |
+| R-39 | 2026-10-15 | STILL BRIAN'S: Trello exports, FL entity classification, client #1 name; 26 days to 2026-10-15. | OPEN |  |
+| R-40 | 2026-09-19 | RULED 2026-09-19 (BUILD), 1: pin @playwright/mcp in .mcp.json to the resolved version; ephemeral browser profile if supported, config shown; | OPEN | SHIPPED: .mcp.json pins @playwright/mcp@0.0.82 with --isolated (in-memory profile) at 383187b; the rule is in CLAUDE.md and memory; .claude/ |
+| R-41 | 2026-09-19 | RULED 2026-09-19 (BUILD), 2: step-7 controls on the return's page in Ops (no new admin page): estimate lock, set final fee, transitions thro | OPEN | SHIPPED: components/return-controls.tsx on the Returns card (Lock estimate, Set final fee, the legal next stage buttons, Mark filed with the |
+| R-42 | 2026-09-19 | RULED 2026-09-19 (BUILD), 3: replace every API-driven step in ops-scorp-dry-run.spec.ts with UI taps at 390 and 1280; one harness sabotage o | OPEN | SHIPPED: the spec taps the Returns card (signed 8879 upload with a future date refused beside the date, final fee outside the quoted range r |
+| R-43 | 2026-09-19 | RULED 2026-09-19 (BUILD), 4: completion when every jurisdiction row on the return is accepted, not federal alone; a rejection opens a prepar | OPEN | SHIPPED: before the change, a federal Accepted row alone moved the return to completed and closed the engagement (efile-ack.ts federal branc |
+| R-44 | 2026-09-19 | RULED 2026-09-19 (BUILD), 5: money line actor classes CEO, staff, system; "by staff" counts human staff only; a webhook refund matched to a | OPEN | SHIPPED: money-digest.ts classes every audited money action ceo / staff / system in SQL; the line and the digest count class staff only; a w |
+| R-45 | 2026-09-19 | RULED 2026-09-19 (REPORT; tables are files written by scripts, script path included): 6 walk evidence per live-walk step (control page+selec | OPEN |  |
+| R-46 |  | Then the Monday walk as written. | OPEN |  |
+| R-47 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
+| R-48 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |
+| R-49 | 2026-09-12 | RULED 2026-09-12 | OPEN |  |
+| R-50 | 2026-09-12 | RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks th | OPEN |  |
+| R-51 | 2026-09-12 | Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12). | closed | closed |
+| R-52 | 2026-09-12 | FIRST REAL-DATA RUN (Brian, 2026-09-12) | OPEN |  |
