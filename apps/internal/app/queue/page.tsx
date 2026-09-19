@@ -47,6 +47,8 @@ export default function QueuePage() {
   const [counts, setCounts] = useState<{ total: number; atRisk: number; rejected: number; awaitingDocs: number } | null>(null);
   const [scoped, setScoped] = useState(true);
   const [error, setError] = useState('');
+  /* Leadership sees everyone's returns by default (Brian, 2026-09-19: the dry run is solo); a preparer sees their own. */
+  const [everyone, setEveryone] = useState(true);
 
   const load = useCallback(async () => {
     try {
@@ -54,14 +56,14 @@ export default function QueuePage() {
         queue: QueueRow[];
         counts: { total: number; atRisk: number; rejected: number; awaitingDocs: number };
         scoped: boolean;
-      }>('/my-queue');
+      }>(everyone ? '/my-queue?all=1' : '/my-queue');
       setRows(r.queue);
       setCounts(r.counts);
       setScoped(r.scoped);
     } catch (err) {
       setError((err as Error).message);
     }
-  }, []);
+  }, [everyone]);
 
   useEffect(() => {
     if (!isAuthed()) {
@@ -73,7 +75,12 @@ export default function QueuePage() {
 
   return (
     <>
-      <h1>My queue</h1>
+      <h1>{scoped ? 'My queue' : everyone ? 'Every open return' : 'My queue'}</h1>
+      {!scoped ? (
+        <p className="small">
+          <label><input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} /> Everyone&apos;s returns, not only mine</label>
+        </p>
+      ) : null}
       {error ? <div className="alert error">{error}</div> : null}
 
       {counts ? (
@@ -97,7 +104,7 @@ export default function QueuePage() {
           <p className="muted small">
             Sorted by deadline, with rejects pinned to the top — the perfection-period clock is shorter
             than any filing deadline.
-            {scoped ? ' You see only the returns assigned to you.' : ''}
+            {scoped ? ' You see only the returns assigned to you.' : everyone ? ' Every open return, whoever it is assigned to.' : ' Only the returns assigned to you.'}
           </p>
         </section>
       ) : null}
@@ -105,7 +112,7 @@ export default function QueuePage() {
       {rows.length === 0 ? (
         <section className="card">
           <p className="muted">
-            {counts ? 'Nothing assigned to you right now.' : 'Loading…'}
+            {counts ? (everyone && !scoped ? 'No open returns right now.' : 'Nothing assigned to you right now.') : 'Loading…'}
           </p>
         </section>
       ) : (

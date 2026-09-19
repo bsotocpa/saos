@@ -402,10 +402,14 @@ export async function sendEfileAckNotice(app: FastifyInstance, ackId: string): P
   const { rows } = await app.db.query<{
     id: string; disposition: string; jurisdiction: Jurisdiction; state_code: string | null; acknowledged_on: string | null;
     tax_year: number; return_type: string; contact_id: string; first_name: string; email: string | null; language: 'en' | 'es';
+    released_by: string | null; released_by_name: string | null;
   }>(
     `SELECT a.id, a.disposition::text AS disposition, a.jurisdiction::text AS jurisdiction, a.state_code, a.acknowledged_on::text AS acknowledged_on,
-            te.tax_year, te.return_type::text AS return_type, e.contact_id, c.first_name, c.email, c.language
+            te.tax_year, te.return_type::text AS return_type, e.contact_id, c.first_name, c.email, c.language,
+            r.released_by, rl.full_name AS released_by_name
        FROM efile_acknowledgments a
+       JOIN efile_ack_reports r ON r.id = a.report_id
+       LEFT JOIN staff rl ON rl.id = r.released_by
        JOIN tax_engagements te ON te.id = a.tax_engagement_id
        JOIN engagements e ON e.id = te.engagement_id
        JOIN contacts c ON c.id = e.contact_id
@@ -439,9 +443,15 @@ export async function sendEfileAckNotice(app: FastifyInstance, ackId: string): P
     },
   });
   await app.db.query(`UPDATE efile_acknowledgments SET disposition = 'sent', sent_at = now() WHERE id = $1`, [ackId]);
+  /*
+   * THE ACTOR ON THE SEND IS THE PERSON WHO RELEASED IT (Brian, 2026-09-19): the outbox carries
+   * the message, it does not decide to send it. The release decision names a person and so does
+   * every email it caused.
+   */
   await writeAudit(app.db, {
-    actorType: 'system', actorLabel: 'outbox', action: 'efile_ack.notice_sent', objectType: 'efile_ack', objectId: ackId, contactId: a.contact_id,
-    details: { template: templateKey, jurisdiction: a.jurisdiction, state_code: a.state_code, tax_year: a.tax_year, language: a.language },
+    actorType: a.released_by ? 'staff' : 'system', actorId: a.released_by, actorLabel: a.released_by_name ?? 'outbox',
+    action: 'efile_ack.notice_sent', objectType: 'efile_ack', objectId: ackId, contactId: a.contact_id,
+    details: { template: templateKey, jurisdiction: a.jurisdiction, state_code: a.state_code, tax_year: a.tax_year, language: a.language, released_by: a.released_by },
   });
   return { sent: true };
 }
@@ -457,6 +467,7 @@ export async function reportView(app: FastifyInstance, reportId: string) {
     `SELECT a.id, a.row_index, a.jurisdiction::text AS jurisdiction, a.state_code, a.status::text AS status, a.status_raw,
             a.submission_id, a.acknowledged_on::text AS acknowledged_on, a.reject_code, a.client_name_raw, a.tax_year, a.return_type_raw,
             a.disposition::text AS disposition, a.disposition_note, a.task_id, a.sent_at,
+            (SELECT max(al.occurred_at) FROM audit_log al WHERE al.object_type = 'efile_ack' AND al.object_id = a.id::text AND al.action = 'efile_ack.notice_suppressed') AS suppressed_at,
             te.id AS tax_engagement_id, c.id AS contact_id, c.first_name || ' ' || c.last_name AS client, c.language
        FROM efile_acknowledgments a
        LEFT JOIN tax_engagements te ON te.id = a.tax_engagement_id

@@ -276,6 +276,11 @@ export function addDays(date: string, n: number): string {
 }
 
 /** Today's date in the firm's timezone (America/Chicago), as YYYY-MM-DD. */
+/** A timestamp as the calendar day it was in Chicago, YYYY-MM-DD. */
+export function chicagoDate(at: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
+}
+
 export function todayChicago(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
 }

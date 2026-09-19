@@ -153,8 +153,8 @@ test('the reason validator refuses the assistant as a reason; a waiver reason is
   assert.equal(ok.statusCode, 200, ok.body);
   const nothingToAmend = await app.inject({ method: 'POST', url: `/invoices/${inv.id}/waiver-amendments`, headers: auth(brian), payload: { body: 'Claude said so' } });
   assert.equal(nothingToAmend.statusCode, 400, 'the amendment is a reason too');
-  const amended = await app.inject({ method: 'POST', url: `/invoices/${inv.id}/waiver-amendments`, headers: auth(brian), payload: { body: 'The payment was taken on 2026-08-13 under the Stripe test key during the rehearsal of the pay link; the live key has no record of it.' } });
-  assert.equal(amended.statusCode, 400, 'and "rehearsal" is still an artifact, even here');
+  const amended = await app.inject({ method: 'POST', url: `/invoices/${inv.id}/waiver-amendments`, headers: auth(brian), payload: { body: 'The payment was taken on 2026-08-13 under the Stripe test key, per our chat; the live key has no record of it.' } });
+  assert.equal(amended.statusCode, 400, 'and a pointer into a conversation is still an artifact, even here ("rehearsal" is a word, since 2026-09-19)');
   const amended2 = await app.inject({ method: 'POST', url: `/invoices/${inv.id}/waiver-amendments`, headers: auth(brian), payload: { body: 'The payment was taken on 2026-08-13 under the Stripe test key while the pay link was being proven; the live key has no record of it.' } });
   assert.equal(amended2.statusCode, 201, amended2.body);
   const row = await app.db.query<{ reason: string }>(`SELECT stripe_check_waived_reason AS reason FROM invoices WHERE id = $1`, [inv.id]);

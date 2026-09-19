@@ -44,7 +44,8 @@ export interface QueueRow {
  */
 export async function preparerQueue(
   app: FastifyInstance,
-  preparerId: string,
+  /** A preparer's own queue, or null for every open return (leadership only; the route decides). */
+  preparerId: string | null,
   today: string
 ): Promise<{ queue: QueueRow[]; counts: { total: number; atRisk: number; rejected: number; awaitingDocs: number } }> {
   const atRiskMonthDay = await getSetting<string>(app, 'extension.at_risk_no_docs_by', '08-15');
@@ -74,7 +75,7 @@ export async function preparerQueue(
      JOIN engagements e ON e.id = te.engagement_id
      JOIN contacts c ON c.id = e.contact_id
      LEFT JOIN staff ptin ON ptin.id = te.preparer_ptin_holder_id
-     WHERE te.preparer_id = $1
+     WHERE ($1::uuid IS NULL OR te.preparer_id = $1)
        AND te.stage NOT IN ('completed', 'withdrawn')
      ORDER BY COALESCE(te.extended_deadline, te.original_deadline) NULLS LAST, c.last_name`,
     [preparerId]

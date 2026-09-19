@@ -195,11 +195,16 @@ export function registerTaxRoutes(app: FastifyInstance): void {
    * queue" for a preparer is their own queue, not an error page.
    */
   app.get('/my-queue', read, async (request) => {
-    const q = z.object({ preparerId: z.uuid().optional() }).parse(request.query);
+    const q = z.object({ preparerId: z.uuid().optional(), all: z.enum(['1']).optional() }).parse(request.query);
     const staff = request.staff!;
     const isLeadership =
       staff.permissions.includes('*') || staff.permissions.includes('dashboards.executive');
-    const target = isLeadership && q.preparerId ? q.preparerId : staff.id;
+    /*
+     * THE SOLO DRY RUN (Brian, 2026-09-19): he acts as every role before the team sees it, and a
+     * queue that shows only the returns assigned to him would hide the preparer's work. Leadership
+     * asks for everyone's (?all=1) or one person's (?preparerId=); a preparer always gets their own.
+     */
+    const target = isLeadership && q.all ? null : isLeadership && q.preparerId ? q.preparerId : staff.id;
     return { preparerId: target, scoped: !isLeadership, ...(await preparerQueue(app, target, todayChicago())) };
   });
 

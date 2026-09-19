@@ -38,9 +38,9 @@ test('the shapes that were actually written are named, and honest reasons pass',
     'per our chat, void this',
     'as discussed on the call',
     'Duplicate acceptance (migration 0061).',
-    'duplicate accept — rehearsal 2026-09-09',
     'overnight batch cleanup',
     'see decision 3',
+    'per ruling 3, void it',
     'canonical quote e0acf123-f82b-4ce5-9a2c-abd3c73e1196',
   ];
   for (const r of refused) assert.ok(conversationArtifact(r), `should refuse: ${r}`);
@@ -51,6 +51,8 @@ test('the shapes that were actually written are named, and honest reasons pass',
     'IL SOS file # 72224825 restored',
     'Superseded by the corrected invoice issued today.',
     'Client is travelling until October.',
+    'Rehearsal client.',                                              // an English word, not a chat artifact (2026-09-19)
+    'rehearsal client; the record is a dress rehearsal for the real one',
   ];
   for (const r of fine) assert.equal(conversationArtifact(r), null, `should allow: ${r}`);
 });

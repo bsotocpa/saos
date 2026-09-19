@@ -9,6 +9,7 @@
  * exactly the claim this rule forbids.
  */
 import type { FastifyInstance } from 'fastify';
+import { calendarDay, todayChicago } from './deadlines.ts';
 import { AppError } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
 
@@ -45,6 +46,13 @@ export async function recordSigned8879(
   if (d.category !== 'signed_authorizations') throw new AppError(409, 'wrong_category', `A signed 8879 must be filed under Signed Authorizations, not '${d.category}'.`);
   if (d.contact_id !== row.contact_id) throw new AppError(409, 'wrong_client', 'That document belongs to a different client.');
   if (d.tax_engagement_id && d.tax_engagement_id !== row.id) throw new AppError(409, 'wrong_return', 'That document is linked to a different return.');
+
+  /*
+   * THE SIGNED DATE IS A PAST FACT (Brian, 2026-09-19): an 8879 signed before the SAOS record
+   * existed is the ordinary case for a return filed in ATX; a date after today is not a signature
+   * anyone has seen. Today in Chicago is the latest a scan can be dated.
+   */
+  if (calendarDay(input.signedOn, 'signedOn') > calendarDay(todayChicago(), 'today')) throw new AppError(409, 'signed_date_in_future', `The signed date ${input.signedOn} is after today; a signature is a thing that already happened.`);
 
   const holder = await app.db.query(`SELECT 1 FROM staff WHERE id = $1 AND is_active`, [input.preparerPtinHolderId]);
   if (!holder.rows.length) throw new AppError(409, 'preparer_unknown', 'The preparer of record must be an active staff member.');

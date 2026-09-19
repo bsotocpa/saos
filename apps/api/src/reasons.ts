@@ -12,6 +12,10 @@
  *
  * Applied to STAFF reasons only. A client's own free text (portal decline reasons, SMS opt-out
  * notes) is theirs and is not policed.
+ *
+ * THE REFUSED SET IS CHAT ARTIFACTS, NOT ENGLISH WORDS (Brian, 2026-09-19): "Rehearsal client."
+ * was refused on the walk. A word a person would write on a record stays; a pointer into a
+ * conversation, a batch or a database goes.
  */
 import { z } from 'zod';
 
@@ -22,7 +26,6 @@ const CONVERSATION_ARTIFACTS: Array<{ re: RegExp; why: string }> = [
   { re: /\bper (our |the )?(chat|call|thread|conversation)\b/i, why: 'that points into a conversation' },
   { re: /\bmigration\s*0?[0-9]{2,4}\b/i, why: 'a migration number is a fact about the code, not the client' },
   { re: /\bovernight batch\b/i, why: 'the batch that did it is on the audit log, not in the reason' },
-  { re: /\b(dress )?rehearsal\b/i, why: 'the rehearsal is over; say what the row means now' },
   // 2026-09-12: "idk claude code told me to" landed on a waiver. Who suggested it is not why it is right.
   { re: /\bclaude( code)?\b/i, why: 'who suggested it is not the reason; say why the record is right' },
   // A bare short hex id: 8 hex chars with at least one letter, on its own. Pure digits are left

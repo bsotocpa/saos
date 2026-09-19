@@ -13,6 +13,14 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+import { holdLine } from '../../outbox.ts';
+
+/** A stored hold line as it should read today: dated and in the past tense (Brian, 2026-09-19). */
+function datedHold(stored: string | null, heldAt: Date): string | null {
+  if (stored && /^held on \d{4}-\d{2}-\d{2}/.test(stored)) return stored;
+  if (!stored || /automation is off/.test(stored)) return holdLine(heldAt);
+  return stored;
+}
 
 export type NoticeKind = 'invoice_send' | 'void_notice' | 'refund_receipt' | 'payment_receipt' | 'pay_link';
 
@@ -129,7 +137,8 @@ export async function noticesForInvoices(
      */
     if (row.status === 'suppressed' || row.status === 'skipped') {
       state = 'skipped';
-      detail = row.last_error;
+      // A hold recorded before 2026-09-19 reads "the automation is off", present tense; it is dated here.
+      detail = row.status === 'suppressed' ? datedHold(row.last_error, heldAuditFor(row.invoice_id, kind)?.occurred_at ?? row.created_at) : row.last_error;
     } else if (row.status === 'sent') {
       state = 'delivered';
     } else if (row.status === 'abandoned') {
@@ -168,7 +177,7 @@ export async function noticesForInvoices(
   // inline payment receipt has only this audit row to speak for it.
   for (const a of audits.rows) {
     if (a.action !== SUPPRESSED_BY_KIND.payment_receipt) continue;
-    out[a.object_id]?.push({ kind: 'payment_receipt', state: 'skipped', at: a.occurred_at.toISOString(), outboxId: null, auditId: a.id, detail: 'held — the automation is off (Admin → Automations)' });
+    out[a.object_id]?.push({ kind: 'payment_receipt', state: 'skipped', at: a.occurred_at.toISOString(), outboxId: null, auditId: a.id, detail: holdLine(a.occurred_at) });
   }
   return out;
 }
@@ -188,7 +197,7 @@ export async function sendLogForInvoice(
     [invoiceId]
   );
   for (const o of outbox.rows) {
-    rows.push({ source: 'outbox', id: o.id, what: `${o.effect} (attempt ${o.attempts})`, state: o.status, at: o.created_at.toISOString(), detail: o.last_error });
+    rows.push({ source: 'outbox', id: o.id, what: `${o.effect} (attempt ${o.attempts})`, state: o.status, at: o.created_at.toISOString(), detail: o.status === 'suppressed' ? datedHold(o.last_error, o.created_at) : o.last_error });
   }
   const audits = await app.db.query<{ id: string; action: string; occurred_at: Date; actor_label: string | null }>(
     `SELECT id::text AS id, action, occurred_at, actor_label FROM audit_log

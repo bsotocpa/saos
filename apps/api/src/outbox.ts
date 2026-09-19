@@ -21,6 +21,7 @@ import type { FastifyInstance } from 'fastify';
 import { AppError } from './types.ts';
 import { writeAudit } from './audit.ts';
 import { ownerForRole, notifyOnce } from './staffing.ts';
+import { chicagoDate } from './modules/tax/deadlines.ts';
 
 /**
  * Every effect the drain knows how to perform.
@@ -128,6 +129,14 @@ type HandlerResult =
   | { sent: false; retry: string };
 
 /**
+ * THE HOLD LINE (Brian, 2026-09-19): "held — the automation is off" read as the present a week
+ * after Brian armed it. A hold is a fact about a moment: it says when, in the past tense.
+ */
+export function holdLine(at: Date = new Date()): string {
+  return `held on ${chicagoDate(at)} — automation was off at the time`;
+}
+
+/**
  * Machine reason code → the sentence a person reads.
  *
  * `last_error` is not only a log field: it goes into the dead-letter task's description, which
@@ -175,7 +184,7 @@ async function performEffect(
       if (result.sent) return { sent: true };
       if (result.reason === 'already_sent') return { sent: false, skip: 'receipt already sent' };
       // Item 9 (2026-09-09): a gated send that is OFF retires — it is a decision, not a fault.
-      if (result.reason === 'suppressed') return { sent: false, hold: 'held — the automation is off (Admin → Automations)' };
+      if (result.reason === 'suppressed') return { sent: false, hold: holdLine() };
       return { sent: false, retry: humanReason(result.reason) };
     }
     case 'invoice.void_notice': {
@@ -186,7 +195,7 @@ async function performEffect(
       if (result.sent) return { sent: true };
       if (result.reason === 'already_sent') return { sent: false, skip: 'void notice already sent' };
       // Item 9 (2026-09-09): a gated send that is OFF retires — it is a decision, not a fault.
-      if (result.reason === 'suppressed') return { sent: false, hold: 'held — the automation is off (Admin → Automations)' };
+      if (result.reason === 'suppressed') return { sent: false, hold: holdLine() };
       return { sent: false, retry: humanReason(result.reason) };
     }
     case 'efile.ack_notice': {
@@ -196,7 +205,7 @@ async function performEffect(
       const result = await sendEfileAckNotice(app, ackId);
       if (result.sent) return { sent: true };
       if (result.reason === 'already_sent') return { sent: false, skip: 'already sent, or held after release' };
-      if (result.reason === 'suppressed') return { sent: false, hold: 'held — the automation is off (Admin → Automations)' };
+      if (result.reason === 'suppressed') return { sent: false, hold: holdLine() };
       return { sent: false, retry: humanReason(result.reason) };
     }
     case 'schedule.added_notice': {
@@ -206,7 +215,7 @@ async function performEffect(
       const result = await sendAddedScheduleNotice(app, contactId);
       if (result.sent) return { sent: true };
       if (result.reason === 'nothing_pending') return { sent: false, skip: 'every schedule was accepted before the notice left' };
-      if (result.reason === 'suppressed') return { sent: false, hold: 'held — the automation is off (Admin → Automations)' };
+      if (result.reason === 'suppressed') return { sent: false, hold: holdLine() };
       return { sent: false, retry: humanReason(result.reason) };
     }
     case 'packet.send_signature_link': {
