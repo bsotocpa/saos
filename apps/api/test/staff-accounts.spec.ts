@@ -19,7 +19,7 @@ import type { Config } from '../src/config.ts';
 import { ownerForRole, firstActiveByRole } from '../src/staffing.ts';
 import { createInvoice } from '../src/modules/billing/service.ts';
 import { createEngagement } from '../src/modules/engagements/service.ts';
-import { runMoneyDigestJob, moneyActionsToday } from '../src/modules/billing/money-digest.ts';
+import { runMoneyDigestJob, moneyLineToday } from '../src/modules/billing/money-digest.ts';
 import { todayChicago } from '../src/modules/tax/deadlines.ts';
 
 let app: FastifyInstance;
@@ -163,7 +163,7 @@ test('ruling 10: a void by anyone other than the CEO is on the executive view im
 
   // Immediately on the executive view.
   const today = todayChicago();
-  const now = await moneyActionsToday(app, today);
+  const now = (await moneyLineToday(app, today)).byStaff;
   const mine = now.find((m) => m.invoiceNumber === inv.invoiceNumber);
   assert.ok(mine, 'the void is on the same-day line');
   assert.equal(mine!.action, 'Void');
@@ -176,7 +176,7 @@ test('ruling 10: a void by anyone other than the CEO is on the executive view im
   // The CEO's own void is NOT on it.
   const inv2 = await createInvoice(app, { type: 'staff', id: ceo.id, label: ceo.fullName }, { contactId: c.id, engagementId: e.id, lines: [{ description: 'Books — month 2', unitCents: 100 }], send: false, issued: true });
   await app.inject({ method: 'POST', url: `/invoices/${inv2.id}/void`, headers: auth(ceoToken), payload: { reason: 'Superseded by the corrected invoice issued today.' } });
-  assert.ok(!(await moneyActionsToday(app, today)).some((m) => m.invoiceNumber === inv2.invoiceNumber), 'the CEO is not reported to himself');
+  assert.ok(!(await moneyLineToday(app, today)).byStaff.some((m) => m.invoiceNumber === inv2.invoiceNumber), 'the CEO is not reported to himself');
 
   // The next morning's digest names it, once, to the CEO.
   const tomorrow = new Date(`${today}T12:00:00Z`); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);

@@ -6,14 +6,14 @@
 
 import type { FastifyInstance } from 'fastify';
 import { hiloSessionSql } from '../meetings/wall.ts';
-import { moneyActionsToday } from '../billing/money-digest.ts';
+import { moneyLineToday } from '../billing/money-digest.ts';
 import { deadlineDashboard } from '../tax/extension.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import { retirementReadiness } from '../admin/dubsado-retirement.ts';
 import { pipelineMetrics } from '../pricing/pipeline.ts';
 
 export async function executiveDashboard(app: FastifyInstance) {
-  const [byStage, revenue, ar, health, capacity, deadlines, retirement, pipeline, m26] = await Promise.all([
+  const [byStage, revenue, ar, health, capacity, deadlines, retirement, pipeline, m26, completedUnpaid] = await Promise.all([
     // Open returns by stage + value (estimate top until a final fee exists).
     app.db.query(
       `SELECT te.stage::text, count(*)::int AS count,
@@ -85,15 +85,32 @@ export async function executiveDashboard(app: FastifyInstance) {
            WHERE completed_at IS NULL AND stalled_flagged_at IS NOT NULL) AS onboarding_stalled,
          (SELECT count(*) FROM engagements WHERE work_paused_at IS NOT NULL) AS work_paused`
     ),
+    // 2026-09-19 (item 4): completed engagements the client still owes on. The work is done;
+    // the money is not in, and that is the executive's to see, not to discover.
+    app.db.query<{ count: string; balance_cents: string }>(
+      `SELECT count(*) AS count, COALESCE(sum(x.balance_cents), 0)::bigint AS balance_cents
+         FROM (SELECT e.id, sum(i.total_cents - i.amount_paid_cents) AS balance_cents
+                 FROM engagements e
+                 JOIN contacts c ON c.id = e.contact_id
+                 JOIN invoices i ON i.engagement_id = e.id
+                WHERE e.status = 'completed' AND NOT c.is_test AND i.status IN ('sent', 'overdue')
+                GROUP BY e.id
+               HAVING sum(i.total_cents - i.amount_paid_cents) > 0) x`
+    ),
   ]);
+  const money = await moneyLineToday(app, todayChicago());
 
   return {
     openReturnsByStage: byStage.rows,
     revenue: { mtdCents: Number(revenue.rows[0]!.mtd_cents), ytdCents: Number(revenue.rows[0]!.ytd_cents) },
-    // Ruling 10 (2026-09-12): every money action today by anyone other than the CEO, live.
-    moneyActionsToday: await moneyActionsToday(app, todayChicago()),
+    // Ruling 10 (2026-09-12), item 5 (2026-09-19): today's money actions by human staff other
+    // than the CEO, live; and the Stripe refunds that moved with no SAOS initiator, on their own.
+    moneyActionsToday: money.byStaff,
+    moneyOutsideTheDoor: money.outsideTheDoor,
     mrr: { note: 'Stripe Billing subscriptions land in Phase 3', cents: 0 },
     arAging: ar.rows,
+    // Item 4 (2026-09-19): done but not paid — count and what is owed, across completed engagements.
+    completedUnpaid: { count: Number(completedUnpaid.rows[0]!.count), balanceCents: Number(completedUnpaid.rows[0]!.balance_cents) },
     healthDistribution: health.rows,
     staffCapacity: capacity.rows,
     deadlines: {

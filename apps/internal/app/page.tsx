@@ -10,10 +10,20 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../lib/api';
 
+interface MoneyActionRow {
+  at: string; action: string; actor: string; client: string | null; contactId: string | null;
+  invoiceNumber: string | null; amountCents: number | null; reason: string | null;
+}
+
 interface Executive {
   openReturnsByStage: Array<{ stage: string; count: number; value_cents: string }>;
   revenue: { mtdCents: number; ytdCents: number };
-  moneyActionsToday: Array<{ at: string; action: string; actor: string; client: string | null; contactId: string | null; invoiceNumber: string | null; amountCents: number | null; reason: string | null }>;
+  /** Item 5 (2026-09-19): class 'staff' only — human staff other than the CEO. */
+  moneyActionsToday: MoneyActionRow[];
+  /** Stripe refunds with no SAOS initiator: money that moved outside the door. */
+  moneyOutsideTheDoor?: MoneyActionRow[];
+  /** Item 4 (2026-09-19): completed engagements the client still owes on. */
+  completedUnpaid?: { count: number; balanceCents: number };
   mrr: { cents: number; note: string };
   arAging: Array<{ bucket: string; count: number; owed_cents: string }>;
   healthDistribution: Array<{ band: string; count: number }>;
@@ -92,6 +102,24 @@ function formatDuration(seconds: number | string): string {
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${mins}m`;
   return `${mins}m`;
+}
+
+/** One money line's rows: what moved, for whom, on which invoice, by whom, when. */
+function MoneyList({ rows, empty }: { rows: MoneyActionRow[]; empty: string }) {
+  if (rows.length === 0) return <p className="muted small">{empty}</p>;
+  return (
+    <ul className="list small">
+      {rows.map((m, i) => (
+        <li key={i}>
+          <span className="grow">
+            <strong>{m.action}</strong>{m.amountCents !== null ? ` · ${formatMoney(m.amountCents)}` : ''} · {m.client ?? '—'} · {m.invoiceNumber ?? '—'} · by {m.actor}
+            {m.reason ? <><br /><span className="muted">{m.reason}</span></> : null}
+          </span>
+          <span className="muted">{formatTime(m.at)}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export default function ExecutivePage() {
@@ -206,21 +234,22 @@ export default function ExecutivePage() {
             </div>
           </div>
           <p className="muted small">{data.mrr.note}</p>
-          {/* Ruling 10 (2026-09-12): money actions today by anyone other than the CEO. Detection, not a gate. */}
+          {/* Ruling 10 (2026-09-12), item 5 (2026-09-19): money actions today by human staff other
+              than the CEO — detection, not a gate. Stripe refunds nobody in SAOS initiated are a
+              separate line: money that moved outside the door. */}
           <h3 style={{ marginTop: 10 }} data-testid="money-actions-today">Money actions today by staff: {data.moneyActionsToday.length}</h3>
-          {data.moneyActionsToday.length === 0 ? <p className="muted small">None so far today.</p> : (
-            <ul className="list small">
-              {data.moneyActionsToday.map((m, i) => (
-                <li key={i}>
-                  <span className="grow">
-                    <strong>{m.action}</strong>{m.amountCents !== null ? ` · ${formatMoney(m.amountCents)}` : ''} · {m.client ?? '—'} · {m.invoiceNumber ?? '—'} · by {m.actor}
-                    {m.reason ? <><br /><span className="muted">{m.reason}</span></> : null}
-                  </span>
-                  <span className="muted">{formatTime(m.at)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <MoneyList rows={data.moneyActionsToday} empty="None so far today." />
+          <h3 style={{ marginTop: 10 }} data-testid="money-outside-the-door">Money moved outside the door today: {(data.moneyOutsideTheDoor ?? []).length}</h3>
+          <MoneyList rows={data.moneyOutsideTheDoor ?? []} empty="Nothing moved outside the door today." />
+          {/* Item 4 (2026-09-19): the work is done; the money is not in. */}
+          {data.completedUnpaid ? (
+            <div className="stat-row" style={{ marginTop: 10 }}>
+              <div>
+                <div className="stat" data-testid="completed-unpaid">{data.completedUnpaid.count} · {formatMoney(data.completedUnpaid.balanceCents)}</div>
+                <div className="muted small">Completed, unpaid</div>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="card">
