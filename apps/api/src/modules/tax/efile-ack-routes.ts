@@ -1,6 +1,10 @@
 /*
- * E-file acknowledgment routes (2026-09-12). All behind engagements.tax.manage: this is the tax
- * preparer's screen. Upload → review → release; nothing sends on upload.
+ * E-file acknowledgment routes (2026-09-12). All behind efile.manage: this is the tax preparer's
+ * screen. Upload → review → release; nothing sends on upload.
+ *
+ * THE PERMISSION IS ITS OWN (2026-09-19). It used to be engagements.tax.manage, which bundled the
+ * screen with every tax engagement action; efile.manage names the three verbs this screen has, so a
+ * preparer can hold it alone and lose it alone. The seed grants it to tax_preparer on deploy.
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -11,7 +15,7 @@ import { holdRow, ingestReport, listReports, releaseReport, reportView } from '.
 const ACCEPTED_TYPES = new Set(['text/csv', 'text/plain', 'application/vnd.ms-excel', 'application/csv', 'text/tab-separated-values']);
 
 export function registerEfileAckRoutes(app: FastifyInstance): void {
-  const manage = { preHandler: [app.authenticate, requirePermission('engagements.tax.manage')] };
+  const manage = { preHandler: [app.authenticate, requirePermission('efile.manage')] };
   const actorOf = (request: FastifyRequest) => ({ id: request.staff!.id, label: request.staff!.fullName });
 
   app.post('/efile-acks', manage, async (request, reply) => {

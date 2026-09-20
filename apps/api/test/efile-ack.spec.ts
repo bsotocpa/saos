@@ -38,7 +38,7 @@ async function arm(on: boolean): Promise<void> {
 }
 
 /** A return at `filed`, through the real transition, with the preparer of record set at filing. */
-async function filedReturn(first: string, last: string, opts: { language?: 'en' | 'es'; taxYear?: number; returnType?: string; ssnLast4?: string } = {}) {
+async function filedReturn(first: string, last: string, opts: { language?: 'en' | 'es'; taxYear?: number; returnType?: string; ssnLast4?: string; jurisdictions?: readonly string[] } = {}) {
   const c = await makeContact(app.db, { firstName: first, lastName: last, email: `${first}.${last}@example.test`.toLowerCase(), language: opts.language ?? 'en' });
   if (opts.ssnLast4) await app.db.query(`UPDATE contacts SET ssn_last4 = $2 WHERE id = $1`, [c.id, opts.ssnLast4]);
   const eng = await app.db.query<{ id: string }>(
@@ -51,7 +51,11 @@ async function filedReturn(first: string, last: string, opts: { language?: 'en' 
     [eng.rows[0]!.id, opts.taxYear ?? 2025, opts.returnType ?? '1040', ana.id]
   );
   await signed8879OnFile(app, te.rows[0]!.id, ana.id);
-  await transitionStage(app, { staffId: ana.id, label: ana.fullName }, te.rows[0]!.id, 'filed', { preparerPtinHolderId: ana.id });
+  // The filing declares its jurisdictions (2026-09-19 evening, ruling 2). These fixtures have no
+  // address on file, so the default is federal alone; a spec that acknowledges a state says so.
+  await transitionStage(app, { staffId: ana.id, label: ana.fullName }, te.rows[0]!.id, 'filed', {
+    preparerPtinHolderId: ana.id, ...(opts.jurisdictions ? { jurisdictions: opts.jurisdictions } : {}),
+  });
   return { contactId: c.id, taxEngagementId: te.rows[0]!.id };
 }
 
@@ -121,7 +125,7 @@ test('one accepted, one rejected, one unmatched → one queued send, two tasks, 
 test('federal and state acknowledge separately, in the client\'s language, and the return records both', async () => {
   await arm(true);
   sent.length = 0;
-  const es = await filedReturn('Federico', 'Estado', { language: 'es' });
+  const es = await filedReturn('Federico', 'Estado', { language: 'es', jurisdictions: ['federal', 'IL'] });
   const report = [
     HEADER,
     'Federico Estado,2025,1040,Federal,Accepted,S10,09/12/2026,,',
@@ -142,6 +146,12 @@ test('federal and state acknowledge separately, in the client\'s language, and t
   assert.equal(te.rows[0]!.federal_accepted_on, '2026-09-12');
   assert.equal(te.rows[0]!.state_accepted_on, '2026-09-12');
   assert.equal(te.rows[0]!.state_accepted_code, 'IL');
+  // Both declared jurisdictions carry their own acceptance, and the return is complete.
+  const each = await app.db.query<{ jurisdiction: string; accepted_on: string | null }>(
+    `SELECT jurisdiction, accepted_on::text AS accepted_on FROM tax_engagement_jurisdictions
+      WHERE tax_engagement_id = $1 ORDER BY (jurisdiction <> 'federal'), jurisdiction`, [es.taxEngagementId]);
+  assert.deepEqual(each.rows, [{ jurisdiction: 'federal', accepted_on: '2026-09-12' }, { jurisdiction: 'IL', accepted_on: '2026-09-12' }]);
+  assert.equal((await app.db.query<{ stage: string }>(`SELECT stage::text AS stage FROM tax_engagements WHERE id = $1`, [es.taxEngagementId])).rows[0]!.stage, 'completed');
 });
 
 test('a held row does not send when the report is released; the same file twice is the same report', async () => {

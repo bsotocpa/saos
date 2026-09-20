@@ -13,6 +13,18 @@ import { calendarDay, todayChicago } from './deadlines.ts';
 import { AppError } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
 
+/**
+ * The last calendar day of a return's tax year: the end of the entity's fiscal year end month
+ * inside `taxYear` for a fiscal-year filer, else December 31 of `taxYear`. `null` or 12 is a
+ * calendar-year filer, which is every individual and most entities.
+ */
+export function taxYearEndedOn(taxYear: number, fiscalYearEndMonth: number | null | undefined): string {
+  const month = fiscalYearEndMonth && fiscalYearEndMonth >= 1 && fiscalYearEndMonth <= 12 ? fiscalYearEndMonth : 12;
+  // Day 0 of the next month is the last day of this one, leap years included.
+  const lastDay = new Date(Date.UTC(taxYear, month, 0)).getUTCDate();
+  return `${taxYear}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+}
+
 export interface Signed8879Input {
   taxEngagementId: string;
   /** The uploaded scan, already in Signed Authorizations and linked to this return. */
@@ -28,9 +40,15 @@ export async function recordSigned8879(
   actor: { staffId: string; label: string; ip?: string | null; userAgent?: string | null },
   input: Signed8879Input
 ): Promise<{ taxEngagementId: string; signedOn: string }> {
-  const te = await app.db.query<{ id: string; contact_id: string; f8879_document_id: string | null; preparer_ptin_holder_id: string | null }>(
-    `SELECT te.id, e.contact_id, te.f8879_document_id, te.preparer_ptin_holder_id
-       FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`,
+  const te = await app.db.query<{
+    id: string; contact_id: string; f8879_document_id: string | null; preparer_ptin_holder_id: string | null;
+    tax_year: number; fiscal_year_end_month: number | null;
+  }>(
+    `SELECT te.id, e.contact_id, te.f8879_document_id, te.preparer_ptin_holder_id, te.tax_year, b.fiscal_year_end_month
+       FROM tax_engagements te
+       JOIN engagements e ON e.id = te.engagement_id
+       LEFT JOIN businesses b ON b.id = e.business_id
+      WHERE te.id = $1`,
     [input.taxEngagementId]
   );
   const row = te.rows[0];
@@ -53,6 +71,23 @@ export async function recordSigned8879(
    * anyone has seen. Today in Chicago is the latest a scan can be dated.
    */
   if (calendarDay(input.signedOn, 'signedOn') > calendarDay(todayChicago(), 'today')) throw new AppError(409, 'signed_date_in_future', `The signed date ${input.signedOn} is after today; a signature is a thing that already happened.`);
+
+  /*
+   * NO BACKFILL MODE (Brian, 2026-09-19 evening, ruling 5). The other end of the same window: an
+   * 8879 authorizes a return for a year, and nobody signs an authorization for a year that has not
+   * finished. A date before the tax year ended is a typo, a wrong year on the record, or the scan
+   * belonging to a different return — three things worth stopping, none of them worth guessing at.
+   * The year end is the last day of the entity's fiscal year end month in the tax year for a
+   * fiscal-year filer, December 31 of the tax year otherwise.
+   */
+  const yearEnd = taxYearEndedOn(row.tax_year, row.fiscal_year_end_month);
+  if (calendarDay(input.signedOn, 'signedOn') < calendarDay(yearEnd, 'taxYearEnd')) {
+    throw new AppError(
+      409,
+      'signed_before_year_end',
+      `The signed date ${input.signedOn} is before this return's tax year ended on ${yearEnd}; an 8879 cannot authorize a year that had not closed yet.`
+    );
+  }
 
   const holder = await app.db.query(`SELECT 1 FROM staff WHERE id = $1 AND is_active`, [input.preparerPtinHolderId]);
   if (!holder.rows.length) throw new AppError(409, 'preparer_unknown', 'The preparer of record must be an active staff member.');

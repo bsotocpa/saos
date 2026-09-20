@@ -1,6 +1,7 @@
 /*
  * THE 2026-09-19 WALK (Brian). What the server side of it must hold:
  *   - an 8879 signed date is a past fact: a date after today is refused, an earlier one authorizes;
+ *   - and it cannot fall before the return's tax year ended: no backfill mode (evening ruling 5);
  *   - a held send is dated and past tense, when it is recorded and when an old row is read;
  *   - the actor on an acceptance email is the person who released the report;
  *   - the preparer queue shows leadership everyone's returns on request, and a preparer only their own;
@@ -78,6 +79,43 @@ test('the 8879 signed date is a past fact: tomorrow is refused, the real earlier
   await recordSigned8879(app, { staffId: ana.id, label: ana.fullName }, { taxEngagementId: r.teId, documentId: doc.rows[0]!.id, signedOn: past, preparerPtinHolderId: ana.id });
   const row = await app.db.query<{ signed: string }>(`SELECT f8879_signed_at::date::text AS signed FROM tax_engagements WHERE id = $1`, [r.teId]);
   assert.equal(row.rows[0]!.signed, past, 'the date on the scan, not the upload day');
+});
+
+test('NO BACKFILL MODE: an 8879 signed before the return\'s tax year ended is refused; after it, accepted', async () => {
+  /*
+   * Ruling 5 (2026-09-19 evening). A 2025 return signed in June 2025 is not an authorization for
+   * 2025 — the year had not closed. The refusal names both dates so the person can see which one is
+   * wrong, and it renders beside the "Signed on" control the scan was chosen with.
+   */
+  const r = await businessReturn('Beforeyearend', ana.id);
+  const docFor = async () =>
+    (await app.db.query<{ id: string }>(
+      `INSERT INTO documents (contact_id, tax_engagement_id, category, filename, minio_bucket, minio_key, uploaded_by_type)
+       VALUES ($1, $2, 'signed_authorizations', 'synthetic-8879-corp.pdf', 'saos-signed-docs', 'test/' || gen_random_uuid()::text || '.pdf', 'staff') RETURNING id`,
+      [r.contactId, r.teId])).rows[0]!.id;
+  const year = (await app.db.query<{ tax_year: number }>(`SELECT tax_year FROM tax_engagements WHERE id = $1`, [r.teId])).rows[0]!.tax_year;
+  assert.equal(year, 2025, 'the fixture is a 2025 return');
+
+  const early = await docFor();
+  await assert.rejects(
+    () => recordSigned8879(app, { staffId: ana.id, label: ana.fullName }, { taxEngagementId: r.teId, documentId: early, signedOn: '2025-06-30', preparerPtinHolderId: ana.id }),
+    (e: { code?: string; message?: string }) => {
+      assert.equal(e.code, 'signed_before_year_end');
+      assert.match(e.message ?? '', /2025-06-30/, 'names the signed date');
+      assert.match(e.message ?? '', /2025-12-31/, 'and the day the tax year ended');
+      return true;
+    }
+  );
+  const nothing = await app.db.query<{ f8879_document_id: string | null; f8879_signed_at: Date | null }>(
+    `SELECT f8879_document_id, f8879_signed_at FROM tax_engagements WHERE id = $1`, [r.teId]);
+  assert.equal(nothing.rows[0]!.f8879_document_id, null, 'the refusal left nothing on the return');
+  assert.equal(nothing.rows[0]!.f8879_signed_at, null);
+  assert.equal((await app.db.query(`SELECT 1 FROM signature_envelopes WHERE tax_engagement_id = $1`, [r.teId])).rows.length, 0, 'and no envelope');
+
+  // The last day of the year is the earliest date that authorizes it, and a January date does.
+  await recordSigned8879(app, { staffId: ana.id, label: ana.fullName }, { taxEngagementId: r.teId, documentId: await docFor(), signedOn: '2026-01-15', preparerPtinHolderId: ana.id });
+  const on = await app.db.query<{ signed: string }>(`SELECT f8879_signed_at::date::text AS signed FROM tax_engagements WHERE id = $1`, [r.teId]);
+  assert.equal(on.rows[0]!.signed, '2026-01-15');
 });
 
 test('a held send is dated and past tense, when it is held and when an old row is read', async () => {

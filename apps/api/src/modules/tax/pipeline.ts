@@ -92,8 +92,12 @@ export async function transitionStage(
   actor: { staffId: string | null; label: string },
   taxEngagementId: string,
   toStage: TaxStage,
-  opts: { note?: string | undefined; ip?: string | null; userAgent?: string | null; preparerPtinHolderId?: string | undefined } = {}
-): Promise<{ from: TaxStage; to: TaxStage }> {
+  opts: {
+    note?: string | undefined; ip?: string | null; userAgent?: string | null; preparerPtinHolderId?: string | undefined;
+    /** Only read at 'filed': the jurisdictions this return declares (federal plus states). */
+    jurisdictions?: readonly string[] | undefined;
+  } = {}
+): Promise<{ from: TaxStage; to: TaxStage; jurisdictions?: string[] }> {
   const { rows } = await app.db.query<GateRow>(
     `SELECT te.id, te.stage, te.engagement_letter_signed_at, te.f8879_signed_at, te.f8879_document_id,
             te.estimate_locked_at, te.filed_date, e.contact_id
@@ -154,6 +158,9 @@ export async function transitionStage(
         'Blocked: say whose PTIN is on this filing (the paid preparer of record) before marking it filed.'
       );
     }
+    // Validated before anything is written: a bad list must not leave the return filed with the
+    // wrong jurisdictions declared, or filed with none.
+    if (opts.jurisdictions) assertJurisdictions(opts.jurisdictions);
   }
   await app.db.query(
     `UPDATE tax_engagements
@@ -163,6 +170,12 @@ export async function transitionStage(
      WHERE id = $1`,
     [taxEngagementId, toStage, opts.preparerPtinHolderId ?? null]
   );
+  /*
+   * THE JURISDICTIONS ARE DECLARED WITH THE FILING (Brian, 2026-09-19 evening, ruling 2). The
+   * return says where it went, in the preparer's words, at the moment it went — not derived from an
+   * address afterwards. Completion then reads the list (acceptanceStatus).
+   */
+  const declared = toStage === 'filed' ? await declareJurisdictions(app, taxEngagementId, opts.jurisdictions) : null;
   await app.db.query(
     `INSERT INTO engagement_stage_history (tax_engagement_id, stage, changed_by_staff_id, waiting_on, note)
      VALUES ($1, $2::tax_stage, $3, $4::waiting_on, $5)`,
@@ -184,7 +197,7 @@ export async function transitionStage(
     contactId: row.contact_id,
     ip: opts.ip,
     userAgent: opts.userAgent,
-    details: { from, to: toStage },
+    details: { from, to: toStage, ...(declared ? { jurisdictions: declared } : {}) },
   });
 
   // Automation 12: Filed → invoice generated (or an exception to Rene when
@@ -205,7 +218,7 @@ export async function transitionStage(
     }
   }
 
-  return { from, to: toStage };
+  return { from, to: toStage, ...(declared ? { jurisdictions: declared } : {}) };
 }
 
 // ── v4.3 flow 1: e-file acceptance / rejection ──────────────────────────────
@@ -216,28 +229,84 @@ export function perfectionDays(returnType: string): number {
 }
 
 /**
- * WHICH JURISDICTIONS A RETURN FILES IN, AND WHICH HAVE NOT ACCEPTED YET (Brian, 2026-09-19,
- * item 4): "the engagement completes when every jurisdiction row on the return is accepted,
- * not on federal alone."
+ * THE NINE STATES THAT LEVY NO INCOME TAX (Brian, 2026-09-19 evening, ruling 2). A client in one
+ * of them has no state return to wait on, so the DEFAULT declared list there is federal alone.
+ * A default, not a rule: a preparer who really does file in one of them adds it in the modal.
+ */
+export const NO_INCOME_TAX_STATES: ReadonlySet<string> = new Set(['AK', 'FL', 'NV', 'NH', 'SD', 'TN', 'TX', 'WA', 'WY']);
+
+/** Federal always, plus the state an address suggests — unless that state levies no income tax. */
+export function defaultJurisdictions(state: string | null | undefined): string[] {
+  const s = normaliseState(state);
+  return s && !NO_INCOME_TAX_STATES.has(s) ? ['federal', s] : ['federal'];
+}
+
+/**
+ * A declared list, validated and put in canonical order: federal is on it, every other entry is a
+ * two-letter upper-case state code, nothing appears twice, and the result reads federal first then
+ * the states alphabetically — the order acceptanceStatus reads and every note prints. One place, so
+ * the route and a direct caller are refused in the same words.
+ */
+export function assertJurisdictions(raw: readonly string[]): string[] {
+  const list = raw.map((s) => s.trim());
+  for (const j of list) {
+    if (j !== 'federal' && !/^[A-Z]{2}$/.test(j)) {
+      throw new AppError(400, 'jurisdiction_invalid', `'${j}' is not a jurisdiction: say 'federal' or a two-letter state code in upper case (IL, WI).`);
+    }
+  }
+  if (!list.includes('federal')) {
+    throw new AppError(400, 'federal_jurisdiction_required', 'Every return files federally: federal stays on the jurisdiction list.');
+  }
+  const twice = [...new Set(list.filter((j, i) => list.indexOf(j) !== i))];
+  if (twice.length > 0) {
+    throw new AppError(400, 'jurisdiction_duplicated', `${twice.join(', ')} is on the list twice; each jurisdiction appears once.`);
+  }
+  return ['federal', ...list.filter((j) => j !== 'federal').sort()];
+}
+
+export interface AcceptanceStatus {
+  /** What the address suggests, before the preparer edits it. */
+  defaultJurisdictions: string[];
+  /** What the return actually declares — empty until it is filed. */
+  declaredJurisdictions: string[];
+  /** What completion is measured against: the declared list, or the defaults while nothing is declared. */
+  expected: string[];
+  accepted: string[];
+  awaiting: string[];
+  /** Compatibility: the summary columns every other reader still uses. */
+  federalAcceptedOn: string | null;
+  stateAcceptedOn: string | null;
+  stateAcceptedCode: string | null;
+}
+
+/**
+ * WHICH JURISDICTIONS A RETURN FILES IN, AND WHICH HAVE NOT ACCEPTED YET.
  *
- * Expected = federal, plus the state the return files in: the business's state on a business
- * return (engagements.business_id → businesses.state), the contact's state otherwise. A null
- * state means the return files federally only, and federal alone completes it as before.
+ * (Brian, 2026-09-19 item 4): "the engagement completes when every jurisdiction row on the return
+ * is accepted, not on federal alone." (Brian, 2026-09-19 evening, ruling 2): and the jurisdictions
+ * are DECLARED on the return, not guessed from an address — one client can file in two states, and
+ * a client in Texas files in none.
  *
- * Accepted = the stamps the acknowledgment ingest writes (federal_accepted_on; state_accepted_on
- * with state_accepted_code equal to the expected state). A state row for some OTHER state is
- * recorded on the acknowledgment table but is not this return's state acceptance, so it is not
- * counted — see ingestReport.
+ * Expected = the rows in tax_engagement_jurisdictions. Until the return is filed there are none,
+ * and the defaults stand in: federal plus the entity's state on a business return
+ * (engagements.business_id → businesses.state), the contact's otherwise, minus the no-income-tax
+ * states. That fallback is what keeps a return filed before this shipped — or forced to 'filed' by
+ * a fixture that never went through the transition — reading exactly as it did.
+ *
+ * Accepted = accepted_on per declared row; on the fallback path, the summary columns
+ * (federal_accepted_on, and state_accepted_on when state_accepted_code is an expected state).
+ * An acknowledgment for a jurisdiction the return does not declare is never counted — it is
+ * surfaced for review instead (see ingestReport).
  */
 export async function acceptanceStatus(
   app: FastifyInstance,
   taxEngagementId: string
-): Promise<{ expectedState: string | null; federalAcceptedOn: string | null; stateAcceptedOn: string | null; stateAcceptedCode: string | null; awaiting: string[] }> {
+): Promise<AcceptanceStatus> {
   const { rows } = await app.db.query<{
-    federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null; expected_state: string | null;
+    federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null; derived_state: string | null;
   }>(
     `SELECT te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
-            CASE WHEN e.business_id IS NOT NULL THEN b.state ELSE c.state END AS expected_state
+            CASE WHEN e.business_id IS NOT NULL THEN b.state ELSE c.state END AS derived_state
        FROM tax_engagements te
        JOIN engagements e ON e.id = te.engagement_id
        JOIN contacts c ON c.id = e.contact_id
@@ -247,16 +316,116 @@ export async function acceptanceStatus(
   );
   const r = rows[0];
   if (!r) throw new AppError(404, 'not_found', 'Tax engagement not found.');
-  const expectedState = normaliseState(r.expected_state);
-  const awaiting: string[] = [];
-  if (!r.federal_accepted_on) awaiting.push('federal');
-  if (expectedState && !(r.state_accepted_on && normaliseState(r.state_accepted_code) === expectedState)) awaiting.push(expectedState);
-  return { expectedState, federalAcceptedOn: r.federal_accepted_on, stateAcceptedOn: r.state_accepted_on, stateAcceptedCode: r.state_accepted_code, awaiting };
+  const defaults = defaultJurisdictions(r.derived_state);
+  // Federal first, then the states alphabetically: the order the modal and every note read in.
+  const decl = await app.db.query<{ jurisdiction: string; accepted_on: string | null }>(
+    `SELECT jurisdiction, accepted_on::text AS accepted_on FROM tax_engagement_jurisdictions
+      WHERE tax_engagement_id = $1 ORDER BY (jurisdiction <> 'federal'), jurisdiction`,
+    [taxEngagementId]
+  );
+  const declaredJurisdictions = decl.rows.map((d) => d.jurisdiction);
+  const expected = declaredJurisdictions.length > 0 ? declaredJurisdictions : defaults;
+  const stateCode = normaliseState(r.state_accepted_code);
+  const accepted =
+    declaredJurisdictions.length > 0
+      ? decl.rows.filter((d) => d.accepted_on).map((d) => d.jurisdiction)
+      : [
+          ...(r.federal_accepted_on ? ['federal'] : []),
+          ...(r.state_accepted_on && stateCode && expected.includes(stateCode) ? [stateCode] : []),
+        ];
+  const awaiting = expected.filter((j) => !accepted.includes(j));
+  return {
+    defaultJurisdictions: defaults,
+    declaredJurisdictions,
+    expected,
+    accepted,
+    awaiting,
+    federalAcceptedOn: r.federal_accepted_on,
+    stateAcceptedOn: r.state_accepted_on,
+    stateAcceptedCode: r.state_accepted_code,
+  };
 }
 
 /** The jurisdictions this return still waits on; empty when it is accepted everywhere it files. */
 export async function jurisdictionsAwaiting(app: FastifyInstance, taxEngagementId: string): Promise<string[]> {
   return (await acceptanceStatus(app, taxEngagementId)).awaiting;
+}
+
+/**
+ * Record that ONE jurisdiction accepted, and say whether it was this return's to record.
+ *
+ * `false` means the jurisdiction is not declared on the return: nothing is stamped, and the caller
+ * surfaces the row for a person rather than filing it away quietly. The summary columns on
+ * tax_engagements are written beside the row — the FIRST state to accept fills the state pair —
+ * so every existing reader keeps working (migration 0104).
+ */
+export async function stampJurisdictionAccepted(
+  app: FastifyInstance,
+  taxEngagementId: string,
+  jurisdiction: string,
+  acceptedOn: string | null,
+  submissionId: string | null = null
+): Promise<boolean> {
+  const status = await acceptanceStatus(app, taxEngagementId);
+  if (!status.expected.includes(jurisdiction)) return false;
+  if (status.declaredJurisdictions.length > 0) {
+    await app.db.query(
+      `UPDATE tax_engagement_jurisdictions
+          SET accepted_on = COALESCE(accepted_on, $3::date, CURRENT_DATE),
+              submission_id = COALESCE(submission_id, $4)
+        WHERE tax_engagement_id = $1 AND jurisdiction = $2`,
+      [taxEngagementId, jurisdiction, acceptedOn, submissionId]
+    );
+  }
+  if (jurisdiction === 'federal') {
+    await app.db.query(
+      `UPDATE tax_engagements SET federal_accepted_on = COALESCE(federal_accepted_on, $2::date, CURRENT_DATE) WHERE id = $1`,
+      [taxEngagementId, acceptedOn]
+    );
+  } else {
+    await app.db.query(
+      `UPDATE tax_engagements
+          SET state_accepted_on = COALESCE(state_accepted_on, $2::date, CURRENT_DATE),
+              state_accepted_code = COALESCE(state_accepted_code, $3)
+        WHERE id = $1`,
+      [taxEngagementId, acceptedOn, jurisdiction]
+    );
+  }
+  return true;
+}
+
+/**
+ * The list the return declares from this filing onward. An explicit list is validated and becomes
+ * the list — a jurisdiction the preparer removed on a re-file goes away unless it has already
+ * accepted, because an acceptance is a fact and not a preference. No list means: keep what is
+ * already declared, or take the defaults on the first filing.
+ */
+async function declareJurisdictions(
+  app: FastifyInstance,
+  taxEngagementId: string,
+  requested: readonly string[] | undefined
+): Promise<string[]> {
+  const status = await acceptanceStatus(app, taxEngagementId);
+  const list = requested
+    ? assertJurisdictions(requested)
+    : status.declaredJurisdictions.length > 0
+      ? status.declaredJurisdictions
+      : status.defaultJurisdictions;
+  for (const jurisdiction of list) {
+    await app.db.query(
+      `INSERT INTO tax_engagement_jurisdictions (tax_engagement_id, jurisdiction) VALUES ($1, $2)
+       ON CONFLICT (tax_engagement_id, jurisdiction) DO NOTHING`,
+      [taxEngagementId, jurisdiction]
+    );
+  }
+  if (requested) {
+    await app.db.query(
+      `DELETE FROM tax_engagement_jurisdictions
+        WHERE tax_engagement_id = $1 AND accepted_on IS NULL AND NOT (jurisdiction = ANY($2::text[]))`,
+      [taxEngagementId, list]
+    );
+  }
+  return list;
 }
 
 /** The state a return files in, as the acknowledgment report spells it: two upper-case letters, or nothing. */
@@ -342,18 +511,22 @@ async function applyEfileResult(
      */
     const jurisdiction = input.jurisdiction ?? 'federal';
     const asOf = input.today ?? todayChicago();
-    if (jurisdiction === 'federal') {
-      await app.db.query(`UPDATE tax_engagements SET federal_accepted_on = COALESCE(federal_accepted_on, $2::date) WHERE id = $1`, [taxEngagementId, asOf]);
-    } else if (input.stateCode) {
-      const { expectedState } = await acceptanceStatus(app, taxEngagementId);
-      const code = normaliseState(input.stateCode);
-      // Only the state this return files in is stamped; another state's acceptance is not this one's.
-      if (code && (!expectedState || expectedState === code)) {
-        await app.db.query(
-          `UPDATE tax_engagements SET state_accepted_on = COALESCE(state_accepted_on, $2::date), state_accepted_code = COALESCE(state_accepted_code, $3) WHERE id = $1`,
-          [taxEngagementId, asOf, code]
-        );
-      }
+    const code = jurisdiction === 'federal' ? 'federal' : normaliseState(input.stateCode);
+    if (!code) {
+      throw new AppError(409, 'state_code_required', 'A state acknowledgment says which state accepted (a two-letter code).');
+    }
+    /*
+     * ONLY A DECLARED JURISDICTION IS STAMPED (Brian, 2026-09-19 evening, ruling 2), and one that
+     * is not declared is REFUSED here rather than swallowed. The route used to ignore another
+     * state's acceptance silently, which reads as "recorded" to whoever sent it.
+     */
+    if (!(await stampJurisdictionAccepted(app, taxEngagementId, code, asOf))) {
+      const { expected } = await acceptanceStatus(app, taxEngagementId);
+      throw new AppError(
+        409,
+        'jurisdiction_not_declared',
+        `${code} is not declared on this return — it files in ${expected.join(', ')}. Declare ${code} on the return before recording an acknowledgment for it.`
+      );
     }
     const awaiting = await jurisdictionsAwaiting(app, taxEngagementId);
     if (awaiting.length > 0) {

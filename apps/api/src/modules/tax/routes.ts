@@ -12,7 +12,7 @@ import { AppError } from '../../types.ts';
 import { createEngagement } from '../engagements/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { computeComplexityScore } from './complexity.ts';
-import { TAX_STAGES, legalNextStages, markDocumentsRequested, recordEfileResult, transitionStage, type TaxStage } from './pipeline.ts';
+import { TAX_STAGES, acceptanceStatus, legalNextStages, markDocumentsRequested, recordEfileResult, transitionStage, type TaxStage } from './pipeline.ts';
 import { preparerQueue } from './queue.ts';
 import { todayChicago } from './deadlines.ts';
 import { returnTypeForItems } from './return-type.ts';
@@ -47,6 +47,13 @@ const TransitionBody = z.object({
   note: z.string().optional(),
   /** Required when toStage is 'filed': the staff member whose PTIN is on the filing. */
   preparerPtinHolderId: z.uuid().optional(),
+  /**
+   * JURISDICTIONS ARE DECLARED ON THE RETURN (Brian, 2026-09-19 evening, ruling 2). Read only at
+   * 'filed': federal plus zero or more two-letter state codes. The shape is checked here; what a
+   * list must contain (federal, upper-case codes, nothing twice) is checked in one place —
+   * assertJurisdictions in pipeline.ts — so a direct caller hears the same words.
+   */
+  jurisdictions: z.array(z.string().min(1).max(20)).max(60).optional(),
 });
 
 const EstimateBody = z.object({
@@ -313,8 +320,11 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       f8879_document_id: string | null; f8879_signed_at: Date | null;
       estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null;
     };
-    const [quotedRange, assigned, staffOptions] = await Promise.all([
+    const [quotedRange, jurisdictions, assigned, staffOptions] = await Promise.all([
       quotedRangeFor(app, te),
+      // The Mark filed modal's jurisdiction list: what the address suggests, and what the return
+      // already declares (Brian, 2026-09-19 evening, ruling 2).
+      acceptanceStatus(app, id),
       te.preparer_id
         ? app.db.query<{ id: string; name: string }>(`SELECT id, display_name AS name FROM staff WHERE id = $1`, [te.preparer_id])
         : Promise.resolve({ rows: [] as Array<{ id: string; name: string }> }),
@@ -327,6 +337,9 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       taxEngagement: rows[0],
       stageHistory: history.rows,
       quoted_range: quotedRange,
+      default_jurisdictions: jurisdictions.defaultJurisdictions,
+      declared_jurisdictions: jurisdictions.declaredJurisdictions,
+      jurisdictions_awaiting: jurisdictions.awaiting,
       legal_next_stages: legalNextStages(te.stage),
       signed_authorization_on_file: Boolean(te.f8879_document_id && te.f8879_signed_at),
       assigned_preparer: assigned.rows[0] ?? null,
@@ -337,7 +350,9 @@ export function registerTaxRoutes(app: FastifyInstance): void {
   app.post<{ Params: { id: string } }>('/tax-engagements/:id/transition', manage, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const b = TransitionBody.parse(request.body);
-    const result = await transitionStage(app, actorOf(request), id, b.toStage, { note: b.note, preparerPtinHolderId: b.preparerPtinHolderId, ...meta(request) });
+    const result = await transitionStage(app, actorOf(request), id, b.toStage, {
+      note: b.note, preparerPtinHolderId: b.preparerPtinHolderId, jurisdictions: b.jurisdictions, ...meta(request),
+    });
     return { status: 'ok', ...result };
   });
 
@@ -392,31 +407,49 @@ export function registerTaxRoutes(app: FastifyInstance): void {
 
     const creep = te.estimated_fee_max_cents !== null && b.finalFeeCents > te.estimated_fee_max_cents;
     /*
-     * The return's page asks for ONE reason (item 2's standalone reason), not the scope-creep
-     * category as well. Above the locked estimate that reason is the scope-creep description, filed
-     * under 'other'; an API caller naming the category still names it.
-     */
-    let scopeCreepReason = b.scopeCreepReason;
-    let scopeCreepDescription = b.scopeCreepDescription;
-    if (creep && !scopeCreepReason && b.reason) { scopeCreepReason = 'other'; scopeCreepDescription = b.reason; }
-    if (creep && !scopeCreepReason) {
-      throw new AppError(
-        409,
-        'scope_creep_reason_required',
-        'Final fee exceeds the top of the estimate — a scope-creep reason is required (additional_states / additional_sch_c / additional_sch_e / foreign / late_docs / prior_year_cleanup / irs_notice / other).'
-      );
-    }
-    if (creep && scopeCreepReason === 'other' && !scopeCreepDescription) {
-      throw new AppError(409, 'scope_creep_description_required', "Reason 'other' requires a description.");
-    }
-
-    /*
      * OUTSIDE THE QUOTED RANGE (Brian, 2026-09-19, item 2): the fee is read against the range the
      * client was quoted, under the price book in force. Leaving it in either direction needs a
      * standalone reason, and the move registers on the money line through its own audit action.
+     * Read here, above the scope-creep check, because a fee over a locked top is USUALLY outside the
+     * range as well — the locked range IS the quoted range — and a refusal that mentions only one of
+     * the two tells the person half of what happened.
      */
     const range = await quotedRangeFor(app, te);
     const outside = range !== null && (b.finalFeeCents < range.min_cents || b.finalFeeCents > range.max_cents);
+
+    /*
+     * ABOVE A LOCKED ESTIMATE: ONE MODAL, ONE REASON, AND THE CATEGORY (Brian, 2026-09-19 evening,
+     * ruling 1). The previous build asked for one free-text reason and filed it under the category
+     * 'other'. That made every overrun in the firm's history read the same — "other" — so the one
+     * question the category answers, "what keeps putting us over the estimate", could never be
+     * asked of the data. The category is now chosen, in the same modal, beside the same reason, and
+     * it is NEVER defaulted: 'other' means a person looked at the list and none of it fit.
+     *
+     * Both are required the moment the amount is above the locked top, and the refusal names which
+     * one is missing so the modal can say it beside the field.
+     */
+    const scopeCreepReason = b.scopeCreepReason;
+    // The required reason IS the description — including for the category 'other', which is why
+    // there is no separate "'other' needs a description" refusal any more: it cannot be reached.
+    const scopeCreepDescription = b.scopeCreepDescription || b.reason;
+    if (creep) {
+      const missing: string[] = [];
+      if (!scopeCreepReason) missing.push('a scope-creep category');
+      if (!scopeCreepDescription) missing.push('a reason');
+      if (missing.length > 0) {
+        const where =
+          outside && range
+            ? `${formatUsd(b.finalFeeCents)} is outside the quoted range ${formatUsd(range.min_cents)}–${formatUsd(range.max_cents)} (price book v${range.price_book_version}) and above the locked estimate's top of ${formatUsd(te.estimated_fee_max_cents!)}`
+            : `${formatUsd(b.finalFeeCents)} is above the locked estimate's top of ${formatUsd(te.estimated_fee_max_cents!)}`;
+        throw new AppError(
+          409,
+          'scope_creep_reason_required',
+          `${where} — ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} missing. ` +
+            'Choose the category (additional_states / additional_sch_c / additional_sch_e / foreign / late_docs / prior_year_cleanup / irs_notice / other) and say why in the reason; both register on the money line.'
+        );
+      }
+    }
+
     if (outside && !b.reason) {
       throw new AppError(
         409,

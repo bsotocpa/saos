@@ -31,11 +31,11 @@ import { AppError } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
 import { parseCsvObjects } from '../../migration/csv.ts';
 import { createTask } from '../tasks/service.ts';
-import { ownerForRole } from '../../staffing.ts';
+import { alertRecipientForRole, ownerForRole } from '../../staffing.ts';
 import { isAutomationEnabled } from '../../automations.ts';
 import { enqueueEffect } from '../../outbox.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
-import { normaliseState, recordEfileResult } from './pipeline.ts';
+import { acceptanceStatus, normaliseState, recordEfileResult, stampJurisdictionAccepted } from './pipeline.ts';
 
 export type Jurisdiction = 'federal' | 'state';
 export type AckStatus = 'accepted' | 'rejected' | 'other';
@@ -178,8 +178,8 @@ interface Candidate {
   id: string; contact_id: string; stage: string; first_name: string; last_name: string; language: 'en' | 'es'; email: string | null; ssn_last4: string | null;
   /** The entity on a business return, joined through the engagement (2026-09-12). */
   business_name: string | null; ein_last4: string | null;
-  /** The state this return files in (2026-09-19): the business's on a business return, the contact's otherwise; null = federal only. */
-  expected_state: string | null;
+  /** The return's preparer: the owner of anything this ingest has to raise about it. */
+  preparer_id: string | null;
 }
 
 /** Legal suffixes and punctuation do not make two names two entities: "Soto Accounting, LLC" is "Soto Accounting LLC". */
@@ -202,9 +202,8 @@ export async function matchRow(app: FastifyInstance, row: ParsedAckRow): Promise
   if (!row.taxYear) return { te: null, why: 'the row has no tax year' };
   if (!row.returnType) return { te: null, why: 'the row has no return type' };
   const { rows } = await app.db.query<Candidate>(
-    `SELECT te.id, e.contact_id, te.stage::text AS stage, c.first_name, c.last_name, c.language, c.email, c.ssn_last4,
-            b.name AS business_name, right(regexp_replace(COALESCE(b.ein, ''), '[^0-9]', '', 'g'), 4) AS ein_last4,
-            CASE WHEN e.business_id IS NOT NULL THEN b.state ELSE c.state END AS expected_state
+    `SELECT te.id, e.contact_id, te.stage::text AS stage, te.preparer_id, c.first_name, c.last_name, c.language, c.email, c.ssn_last4,
+            b.name AS business_name, right(regexp_replace(COALESCE(b.ein, ''), '[^0-9]', '', 'g'), 4) AS ein_last4 
        FROM tax_engagements te
        JOIN engagements e ON e.id = te.engagement_id
        JOIN contacts c ON c.id = e.contact_id
@@ -288,36 +287,56 @@ export async function ingestReport(
         note = `${row.jurisdiction === 'federal' ? 'Federal' : row.stateCode} acceptance already recorded for this return`;
         duplicates++;
       } else {
-        disposition = 'queued';
-        note = 'matched; accepted; will send when the report is released';
-        queued++;
         /*
          * The return records the acknowledgment now — that is a fact regardless of the send.
-         * COMPLETION IS EVERY JURISDICTION (Brian, 2026-09-19, item 4): federal and the state the
-         * return files in each go through recordEfileResult, which completes the return only when
-         * nothing is still awaited, whichever row arrives first. A state row for some OTHER state
-         * is recorded here (the row, the send) but is not this return's state acceptance: it is
-         * not stamped on the return and does not count.
+         * COMPLETION IS EVERY JURISDICTION (Brian, 2026-09-19, item 4) and the jurisdictions are
+         * DECLARED ON THE RETURN (Brian, 2026-09-19 evening, ruling 2): federal and each declared
+         * state go through recordEfileResult, which completes the return only when nothing is still
+         * awaited, whichever row arrives first.
+         *
+         * A row for a jurisdiction the return does NOT declare is neither counted nor sent nor
+         * quietly filed: it reads as needing review, it names the state and that the return does not
+         * declare it, and it opens a task through createTask — the one door. Either the return
+         * really does file there and the declared list is wrong, or the row belongs to a different
+         * return. Both need a person.
          */
-        const expectedState = normaliseState(te.expected_state);
-        const juris = { staffId: actor.id, label: actor.label };
-        if (row.jurisdiction === 'federal') {
-          await app.db.query(`UPDATE tax_engagements SET federal_accepted_on = COALESCE($2::date, CURRENT_DATE) WHERE id = $1`, [te.id, row.acknowledgedOn]);
-          if (te.stage === 'filed') {
-            const out = await recordEfileResult(app, juris, te.id, { result: 'accepted', jurisdiction: 'federal', today: input.today });
-            note = out.stage === 'completed'
-              ? 'matched; accepted; the return is complete; will send when the report is released'
-              : `matched; accepted; will send when the report is released; the return still waits on ${out.awaiting.join(', ')}`;
-          }
-        } else if (expectedState && row.stateCode !== expectedState) {
-          note = `matched; accepted by ${row.stateCode}, but this return files in ${expectedState}: recorded, does not count toward completion; will send when the report is released`;
+        const jurisdiction = row.jurisdiction === 'federal' ? 'federal' : normaliseState(row.stateCode);
+        const status = await acceptanceStatus(app, te.id);
+        if (!jurisdiction || !status.expected.includes(jurisdiction)) {
+          const named = jurisdiction ?? row.stateCode ?? 'the agency on the row';
+          const who = te.business_name ?? `${te.first_name} ${te.last_name}`;
+          const declared = status.expected.join(', ');
+          disposition = 'task';
+          note = `needs review: accepted by ${named}, but ${named} is not declared on this return (it files in ${declared}). Nothing counted, nothing sent.`;
+          /*
+           * THE RETURN'S PREPARER OWNS IT, else the role's alert recipient — the same owner rule
+           * and the same door as the re-file task in pipeline.ts. An unfilled role is recorded.
+           */
+          const owner = te.preparer_id ?? (await alertRecipientForRole(app.db, 'tax_preparer', 'efile_ack_undeclared_jurisdiction'));
+          const t = await createTask(app, {
+            title: `E-file acknowledgment for a jurisdiction this return does not declare: ${named} on ${who} ${row.taxYear ?? '?'} ${(row.returnType ?? '?').toUpperCase()}`,
+            description:
+              `ATX report row ${row.rowIndex}: ${named} ACCEPTED this return, but the return declares ${declared} — ${named} is not on that list.\n` +
+              'Nothing was counted toward completion and nothing was sent to the client. Either this return really does file in ' +
+              `${named} (add it to the return's jurisdictions and re-apply the acknowledgment), or the row belongs to a different return. Then close this.`,
+            assignedStaffId: owner,
+            contactId: te.contact_id,
+            priority: 1,
+            source: 'automation',
+            sourceType: 'efile_ack_review',
+            sourceId: `${reportId}:${row.rowIndex}`,
+          });
+          taskId = t.id;
+          tasks++;
         } else {
-          await app.db.query(
-            `UPDATE tax_engagements SET state_accepted_on = COALESCE($2::date, CURRENT_DATE), state_accepted_code = $3 WHERE id = $1`,
-            [te.id, row.acknowledgedOn, row.stateCode]
-          );
+          disposition = 'queued';
+          note = 'matched; accepted; will send when the report is released';
+          queued++;
+          await stampJurisdictionAccepted(app, te.id, jurisdiction, row.acknowledgedOn, row.submissionId);
           if (te.stage === 'filed') {
-            const out = await recordEfileResult(app, juris, te.id, { result: 'accepted', jurisdiction: 'state', stateCode: row.stateCode ?? undefined, today: input.today });
+            const out = await recordEfileResult(app, { staffId: actor.id, label: actor.label }, te.id, {
+              result: 'accepted', jurisdiction: row.jurisdiction, stateCode: row.stateCode ?? undefined, today: input.today,
+            });
             note = out.stage === 'completed'
               ? 'matched; accepted; the return is complete; will send when the report is released'
               : `matched; accepted; will send when the report is released; the return still waits on ${out.awaiting.join(', ')}`;

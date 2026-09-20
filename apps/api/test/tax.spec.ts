@@ -206,29 +206,32 @@ test('scope creep: auto-flag when final exceeds estimate top, reason REQUIRED', 
   assert.equal(under.statusCode, 200);
   assert.equal(under.json().scopeCreepFlag, false);
 
-  // Over the top without a reason: refused.
+  // Over the top with neither the category nor a reason: refused, naming both (2026-09-19 evening).
   const noReason = await app.inject({
     method: 'POST', url: `/tax-engagements/${id}/final-fee`, headers: auth(preparer),
     payload: { finalFeeCents: 41000 },
   });
   assert.equal(noReason.statusCode, 409);
   assert.equal(noReason.json().error, 'scope_creep_reason_required');
+  assert.match(noReason.json().message, /scope-creep category and a reason are missing/);
 
-  // 'other' requires a description.
+  // 'other' is a category like any other: the required reason is its description.
   const otherNoDesc = await app.inject({
     method: 'POST', url: `/tax-engagements/${id}/final-fee`, headers: auth(preparer),
     payload: { finalFeeCents: 41000, scopeCreepReason: 'other' },
   });
   assert.equal(otherNoDesc.statusCode, 409);
-  assert.equal(otherNoDesc.json().error, 'scope_creep_description_required');
+  assert.equal(otherNoDesc.json().error, 'scope_creep_reason_required');
+  assert.match(otherNoDesc.json().message, /a reason is missing/);
 
-  // Above the locked range, the standalone reason is required too (2026-09-19, item 2).
+  // The category alone is not enough either: above the locked estimate BOTH are required.
   const unreasoned = await app.inject({
     method: 'POST', url: `/tax-engagements/${id}/final-fee`, headers: auth(preparer),
     payload: { finalFeeCents: 41000, scopeCreepReason: 'late_docs' },
   });
   assert.equal(unreasoned.statusCode, 409);
-  assert.equal(unreasoned.json().error, 'final_fee_reason_required');
+  assert.equal(unreasoned.json().error, 'scope_creep_reason_required');
+  assert.match(unreasoned.json().message, /a reason is missing/);
 
   // With a reason: flagged + audited.
   const flagged = await app.inject({
@@ -245,6 +248,23 @@ test('scope creep: auto-flag when final exceeds estimate top, reason REQUIRED', 
   );
   assert.equal(row.rows[0].scope_creep_flag, true);
   assert.equal(row.rows[0].scope_creep_reason, 'late_docs');
+});
+
+test("scope creep: 'other' with the required reason lands, and the reason is what is stored as its description", async () => {
+  const id = await newTaxEngagement();
+  await app.inject({
+    method: 'POST', url: `/tax-engagements/${id}/estimate`, headers: auth(preparer),
+    payload: { minCents: 20000, maxCents: 30000 },
+  });
+  const ok = await app.inject({
+    method: 'POST', url: `/tax-engagements/${id}/final-fee`, headers: auth(preparer),
+    payload: { finalFeeCents: 41000, scopeCreepReason: 'other', reason: 'The client changed accounting method mid-year and the books were rebuilt.' },
+  });
+  assert.equal(ok.statusCode, 200, ok.body);
+  const row = await app.db.query<{ scope_creep_reason: string; scope_creep_description: string }>(
+    `SELECT scope_creep_reason::text AS scope_creep_reason, scope_creep_description FROM tax_engagements WHERE id = $1`, [id]);
+  assert.equal(row.rows[0]!.scope_creep_reason, 'other', "chosen, not defaulted: 'other' means a person looked at the list");
+  assert.match(row.rows[0]!.scope_creep_description, /accounting method/);
 });
 
 test('complexity endpoint stores score + inputs', async () => {

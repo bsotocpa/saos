@@ -9,7 +9,11 @@
  *    the range) and audited with one, under the action the money line reads;
  *  · filed with no 8879 on file refuses f8879_required; with the 8879 and a PTIN holder it issues
  *    the invoice through createInvoice (the row, and invoice.created on the audit log);
- *  · a bookkeeper gets 403 from all three routes.
+ *  · a bookkeeper gets 403 from all three routes;
+ *  · above a LOCKED estimate the final fee needs the scope-creep category AND the reason, and the
+ *    category is never defaulted to 'other' (2026-09-19 evening, ruling 1);
+ *  · the filed transition declares the return's jurisdictions, validated, and GET says what the
+ *    modal should start from (2026-09-19 evening, ruling 2).
  * Synthetic data only.
  */
 import { test, before, after } from 'node:test';
@@ -111,11 +115,14 @@ test('GET /tax-engagements/:id carries the quoted range under the book in force,
   const j = res.json() as {
     quoted_range: { min_cents: number; max_cents: number; price_book_version: number } | null;
     legal_next_stages: string[]; signed_authorization_on_file: boolean;
+    default_jurisdictions: string[]; declared_jurisdictions: string[];
     assigned_preparer: { id: string; name: string } | null; staff_options: Array<{ id: string; name: string }>;
   };
   // The accepted quote's line for this return, priced from the current book: a flat item is a range of one number.
   assert.deepEqual(j.quoted_range, { min_cents: price.cents, max_cents: price.cents, price_book_version: price.version });
   assert.deepEqual(j.legal_next_stages, ['filed']);
+  assert.deepEqual(j.default_jurisdictions, ['federal'], 'a contact with no state on file suggests federal alone');
+  assert.deepEqual(j.declared_jurisdictions, [], 'nothing is declared until the return is filed');
   assert.equal(j.signed_authorization_on_file, false);
   assert.deepEqual(j.assigned_preparer, { id: ana.id, name: ana.fullName });
   const ids = j.staff_options.map((o) => o.id);
@@ -174,22 +181,74 @@ test('final fee inside the quoted range needs no reason; outside it is refused w
   assert.equal(below.json().error, 'final_fee_reason_required');
 });
 
-test('above a locked estimate the one reason serves both rules: scope creep is flagged under "other" with the reason as its description', async () => {
+test('above a locked estimate BOTH the category and the reason are required, and the category is never defaulted to other', async () => {
   const te = await quotedReturn('Creep', 'ready_to_file');
-  await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/estimate`, headers: auth(ana), payload: { minCents: 60000, maxCents: 80000 } });
+  const lock = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/estimate`, headers: auth(ana), payload: { minCents: 60000, maxCents: 80000 } });
+  assert.equal(lock.statusCode, 200, lock.body);
+  const reason = 'Late documents arrived after the estimate and a prior-year cleanup was needed first.';
+
+  // Neither: the refusal names both, in the words the modal renders beside the fields.
   const bare = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/final-fee`, headers: auth(ana), payload: { finalFeeCents: 95000 } });
-  assert.equal(bare.statusCode, 409);
+  assert.equal(bare.statusCode, 409, bare.body);
   assert.equal(bare.json().error, 'scope_creep_reason_required');
+  assert.match(bare.json().message, /scope-creep category/, 'names the missing category');
+  assert.match(bare.json().message, /a reason/, 'and the missing reason');
+  assert.match(bare.json().message, /above the locked estimate/i, 'and why both are being asked for');
+
+  // THE DEFECT THIS RULING REPLACES: a reason alone used to be stored as category 'other'. Refused now.
+  const reasonOnly = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/final-fee`, headers: auth(ana), payload: { finalFeeCents: 95000, reason } });
+  assert.equal(reasonOnly.statusCode, 409, reasonOnly.body);
+  assert.match(reasonOnly.json().message, /scope-creep category/, 'the category is what is missing');
+  assert.doesNotMatch(reasonOnly.json().message, /a reason and/, 'the reason is not also reported missing');
+
+  // A category alone is refused too: the reason is what the next reader uses.
+  const categoryOnly = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/final-fee`, headers: auth(ana), payload: { finalFeeCents: 95000, scopeCreepReason: 'late_docs' } });
+  assert.equal(categoryOnly.statusCode, 409, categoryOnly.body);
+  assert.match(categoryOnly.json().message, /a reason is missing/);
+
+  const nothingLanded = await app.db.query<{ final_fee_cents: number | null; scope_creep_reason: string | null }>(
+    `SELECT final_fee_cents, scope_creep_reason::text AS scope_creep_reason FROM tax_engagements WHERE id = $1`, [te.id]);
+  assert.equal(nothingLanded.rows[0]!.final_fee_cents, null, 'three refusals left nothing behind');
+  assert.equal(nothingLanded.rows[0]!.scope_creep_reason, null);
+
+  // Both: the category is the one chosen, and the reason is its description.
   const ok = await app.inject({
     method: 'POST', url: `/tax-engagements/${te.id}/final-fee`, headers: auth(ana),
-    payload: { finalFeeCents: 95000, reason: 'Late documents arrived after the estimate and a prior-year cleanup was needed first.' },
+    payload: { finalFeeCents: 95000, scopeCreepReason: 'late_docs', reason },
   });
   assert.equal(ok.statusCode, 200, ok.body);
   assert.equal(ok.json().scopeCreepFlag, true);
   const row = await app.db.query<{ scope_creep_reason: string; scope_creep_description: string }>(
     `SELECT scope_creep_reason::text AS scope_creep_reason, scope_creep_description FROM tax_engagements WHERE id = $1`, [te.id]);
-  assert.equal(row.rows[0]!.scope_creep_reason, 'other');
+  assert.equal(row.rows[0]!.scope_creep_reason, 'late_docs', 'the category the person chose, never \'other\' by default');
   assert.match(row.rows[0]!.scope_creep_description, /Late documents/);
+  const flagged = await app.db.query<{ details: Record<string, unknown> }>(
+    `SELECT details FROM audit_log WHERE action = 'tax_engagement.scope_creep_flagged' AND object_id = $1`, [te.id]);
+  assert.equal(flagged.rows.length, 1);
+  assert.equal(flagged.rows[0]!.details['reason'], 'late_docs');
+});
+
+test('outside the quoted range but NOT above a locked estimate: the reason alone, as before, and no category is asked for', async () => {
+  // The estimate is unlocked, so the quoted range is the accepted quote's line under the book in
+  // force. Above it the fee is outside the range but there is no locked top to be over.
+  const te = await quotedReturn('Nolock', 'ready_to_file');
+  const price = await bookPrice('BIZ_1120S');
+  const above = price.cents + 12000;
+  const bare = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/final-fee`, headers: auth(ana), payload: { finalFeeCents: above } });
+  assert.equal(bare.statusCode, 409, bare.body);
+  assert.equal(bare.json().error, 'final_fee_reason_required', 'the range rule, not the scope-creep rule');
+  assert.doesNotMatch(bare.json().message, /category/, 'no category is asked for without a locked estimate');
+
+  const ok = await app.inject({
+    method: 'POST', url: `/tax-engagements/${te.id}/final-fee`, headers: auth(ana),
+    payload: { finalFeeCents: above, reason: 'Two additional state returns were prepared beyond the quoted federal filing.' },
+  });
+  assert.equal(ok.statusCode, 200, ok.body);
+  assert.deepEqual(ok.json(), { status: 'ok', scopeCreepFlag: false, outsideQuotedRange: true });
+  const row = await app.db.query<{ scope_creep_reason: string | null; scope_creep_flag: boolean }>(
+    `SELECT scope_creep_reason::text AS scope_creep_reason, scope_creep_flag FROM tax_engagements WHERE id = $1`, [te.id]);
+  assert.equal(row.rows[0]!.scope_creep_flag, false);
+  assert.equal(row.rows[0]!.scope_creep_reason, null, 'nothing is filed under a category nobody chose');
 });
 
 test('filed with no 8879 on file refuses f8879_required; with the 8879 and a PTIN holder it issues the invoice through createInvoice', async () => {
@@ -210,7 +269,8 @@ test('filed with no 8879 on file refuses f8879_required; with the 8879 and a PTI
 
   const filed = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/transition`, headers: auth(ana), payload: { toStage: 'filed', preparerPtinHolderId: ana.id } });
   assert.equal(filed.statusCode, 200, filed.body);
-  assert.deepEqual(filed.json(), { status: 'ok', from: 'ready_to_file', to: 'filed' });
+  assert.deepEqual(filed.json(), { status: 'ok', from: 'ready_to_file', to: 'filed', jurisdictions: ['federal'] },
+    'the filing declares where it went; this client has no state on file, so federal alone');
 
   // THE MONEY DOOR: transitionStage → invoiceForFiledEngagement → createInvoice. The row and its audit.
   const inv = await app.db.query<{ id: string; total_cents: number; status: string }>(
@@ -224,6 +284,48 @@ test('filed with no 8879 on file refuses f8879_required; with the 8879 and a PTI
     `SELECT preparer_ptin_holder_id, filed_date::text AS filed_date FROM tax_engagements WHERE id = $1`, [te.id]);
   assert.equal(holder.rows[0]!.preparer_ptin_holder_id, ana.id);
   assert.ok(holder.rows[0]!.filed_date);
+});
+
+test('the filed transition declares the jurisdictions: validated, stored on the return, and read back by GET', async () => {
+  const te = await quotedReturn('Jurisdictions', 'ready_to_file');
+  const price = await bookPrice('BIZ_1120S');
+  await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/final-fee`, headers: auth(ana), payload: { finalFeeCents: price.cents } });
+  await signed8879OnFile(app, te.id, ana.id);
+  const file = (payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/transition`, headers: auth(ana), payload: { toStage: 'filed', preparerPtinHolderId: ana.id, ...payload } });
+
+  const noFederal = await file({ jurisdictions: ['IL'] });
+  assert.equal(noFederal.statusCode, 400, noFederal.body);
+  assert.equal(noFederal.json().error, 'federal_jurisdiction_required');
+  const lower = await file({ jurisdictions: ['federal', 'il'] });
+  assert.equal(lower.statusCode, 400, lower.body);
+  assert.equal(lower.json().error, 'jurisdiction_invalid');
+  assert.match(lower.json().message, /two-letter state code in upper case/);
+  const tooLong = await file({ jurisdictions: ['federal', 'ILL'] });
+  assert.equal(tooLong.statusCode, 400, tooLong.body);
+  assert.equal(tooLong.json().error, 'jurisdiction_invalid');
+  const twice = await file({ jurisdictions: ['federal', 'IL', 'IL'] });
+  assert.equal(twice.statusCode, 400, twice.body);
+  assert.equal(twice.json().error, 'jurisdiction_duplicated');
+  const stillOpen = await app.db.query<{ stage: string }>(`SELECT stage::text AS stage FROM tax_engagements WHERE id = $1`, [te.id]);
+  assert.equal(stillOpen.rows[0]!.stage, 'ready_to_file', 'a refused list leaves the return unfiled');
+
+  const filed = await file({ jurisdictions: ['federal', 'WI', 'IL'] });
+  assert.equal(filed.statusCode, 200, filed.body);
+  assert.deepEqual(filed.json().jurisdictions, ['federal', 'IL', 'WI'], 'federal first, then the states in order');
+  const detail = (await app.inject({ method: 'GET', url: `/tax-engagements/${te.id}`, headers: auth(ana) })).json() as {
+    declared_jurisdictions: string[]; default_jurisdictions: string[]; jurisdictions_awaiting: string[];
+  };
+  assert.deepEqual(detail.declared_jurisdictions, ['federal', 'IL', 'WI']);
+  assert.deepEqual(detail.default_jurisdictions, ['federal'], 'the default is still what the address suggests');
+  assert.deepEqual(detail.jurisdictions_awaiting, ['federal', 'IL', 'WI'], 'a filing waits on every jurisdiction it declared');
+  const rows = await app.db.query<{ jurisdiction: string; accepted_on: string | null }>(
+    `SELECT jurisdiction, accepted_on::text AS accepted_on FROM tax_engagement_jurisdictions WHERE tax_engagement_id = $1 ORDER BY jurisdiction`, [te.id]);
+  assert.deepEqual(rows.rows.map((r) => r.jurisdiction).sort(), ['IL', 'WI', 'federal']);
+  assert.ok(rows.rows.every((r) => r.accepted_on === null), 'declared is not accepted');
+  const declared = await app.db.query<{ details: { jurisdictions?: string[] } }>(
+    `SELECT details FROM audit_log WHERE action = 'tax_engagement.stage_changed' AND object_id = $1 AND details->>'to' = 'filed'`, [te.id]);
+  assert.deepEqual(declared.rows[0]!.details.jurisdictions, ['federal', 'IL', 'WI'], 'the filing records where it went');
 });
 
 test('role proof: a bookkeeper gets 403 from estimate, final-fee and transition; the CEO holds them by wildcard', async () => {

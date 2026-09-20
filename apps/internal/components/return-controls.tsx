@@ -30,7 +30,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, formatMoney } from '../lib/api';
 import { TAX_STAGE_LABEL } from '../lib/labels';
 import {
-  canManageReturns, controlsApply, dollarsToCents, outsideRange, stageActionLabel, type QuotedRange,
+  aboveLockedEstimate, addState, canManageReturns, controlsApply, dollarsToCents, jurisdictionsSentence,
+  normaliseJurisdictions, outsideRange, removeState, stageActionLabel, startingJurisdictions,
+  FEDERAL, SCOPE_CREEP_CATEGORIES, SCOPE_CREEP_LABEL, type QuotedRange,
 } from '../lib/return-controls';
 import { useAsk } from './ask';
 
@@ -43,6 +45,9 @@ interface Detail {
     preparer_ptin_holder_id: string | null;
   };
   quoted_range: QuotedRange | null;
+  /** What the address suggests, and what the return already declares (2026-09-19 evening, ruling 2). */
+  default_jurisdictions: string[];
+  declared_jurisdictions: string[];
   legal_next_stages: string[];
   signed_authorization_on_file: boolean;
   assigned_preparer: { id: string; name: string } | null;
@@ -66,6 +71,7 @@ export const CONTROL_SENTENCES = {
   lock: "Locks the estimate so preparation can start; the client's range no longer moves.",
   fee: 'Records the fee the client will be invoiced; outside the quoted range it needs a reason.',
   move: 'Moves the return to the next stage; filed issues the final-fee invoice through the same door every invoice uses.',
+  jurisdictions: 'The return completes when every jurisdiction declared here has accepted; federal is always one of them.',
   upload: 'This scan is what authorizes the return; the date and the PTIN holder are recorded from it.',
 } as const;
 
@@ -134,10 +140,10 @@ export function ReturnControls({ taxEngagementId, contactId, stage, onChanged }:
   };
 
   const setFinalFee = async () => {
-    const draft = { amount: te.final_fee_cents !== null ? centsToDollars(te.final_fee_cents) : '' };
+    const draft = { amount: te.final_fee_cents !== null ? centsToDollars(te.final_fee_cents) : '', category: '' };
     const a = await ask({
       title: 'Set the final fee',
-      body: <FinalFeeFields draft={draft} range={range} rangeText={rangeText} />,
+      body: <FinalFeeFields draft={draft} range={range} rangeText={rangeText} te={te} />,
       reason: {
         label: 'Reason',
         required: false,
@@ -149,7 +155,13 @@ export function ReturnControls({ taxEngagementId, contactId, stage, onChanged }:
         if (finalFeeCents === null) throw new Error('Enter the final fee in dollars.');
         await api(`/tax-engagements/${taxEngagementId}/final-fee`, {
           method: 'POST',
-          body: { finalFeeCents, ...(r.reason ? { reason: r.reason } : {}) },
+          body: {
+            finalFeeCents,
+            ...(r.reason ? { reason: r.reason } : {}),
+            // Only ever what the person chose. The route refuses the missing category in its own
+            // words, beside the field, and nothing here fills it in for them.
+            ...(draft.category ? { scopeCreepReason: draft.category } : {}),
+          },
         });
       },
     });
@@ -170,15 +182,29 @@ export function ReturnControls({ taxEngagementId, contactId, stage, onChanged }:
       await after();
       return;
     }
-    // The PTIN holder: set once at filing; the default is the assigned preparer.
-    const draft = { ptin: te.preparer_ptin_holder_id ?? detail.assigned_preparer?.id ?? '' };
+    // The PTIN holder: set once at filing; the default is the assigned preparer. The jurisdictions:
+    // what the return already declares, else what the address suggests — the preparer edits either.
+    const draft = {
+      ptin: te.preparer_ptin_holder_id ?? detail.assigned_preparer?.id ?? '',
+      jurisdictions: startingJurisdictions(detail),
+    };
     const a = await ask({
       title: 'Mark filed',
-      body: <FiledFields draft={draft} options={detail.staff_options} signed={detail.signed_authorization_on_file} feeCents={te.final_fee_cents} />,
+      body: (
+        <FiledFields
+          draft={draft}
+          options={detail.staff_options}
+          signed={detail.signed_authorization_on_file}
+          feeCents={te.final_fee_cents}
+        />
+      ),
       choices: [{ key: 'file', label: 'Mark filed', tone: 'primary' }],
       run: async () => {
         if (!draft.ptin) throw new Error('Say whose PTIN is on this filing (the paid preparer of record).');
-        await api(`/tax-engagements/${taxEngagementId}/transition`, { method: 'POST', body: { toStage: 'filed', preparerPtinHolderId: draft.ptin } });
+        await api(`/tax-engagements/${taxEngagementId}/transition`, {
+          method: 'POST',
+          body: { toStage: 'filed', preparerPtinHolderId: draft.ptin, jurisdictions: normaliseJurisdictions(draft.jurisdictions) },
+        });
       },
     });
     if (!a) return;
@@ -312,10 +338,26 @@ function EstimateFields({ draft, rangeText }: { draft: { min: string; max: strin
   );
 }
 
-function FinalFeeFields({ draft, range, rangeText }: { draft: { amount: string }; range: QuotedRange | null; rangeText: string }): React.JSX.Element {
+/*
+ * ONE MODAL, ONE REASON, AND THE CATEGORY (Brian, 2026-09-19 evening, ruling 1).
+ *
+ * The amount is read against the quoted range as it is typed. Above the LOCKED estimate's top the
+ * scope-creep category select appears beside the same reason textarea the ask modal already owns —
+ * one modal, two answers, no second screen. The select opens on "Choose…" and is never preselected:
+ * the build this replaces stored every overrun as 'other', which is the same as storing nothing.
+ * The route is what refuses a missing answer, so its words are what the person reads.
+ */
+function FinalFeeFields({ draft, range, rangeText, te }: {
+  draft: { amount: string; category: string };
+  range: QuotedRange | null;
+  rangeText: string;
+  te: { estimated_fee_max_cents: number | null };
+}): React.JSX.Element {
   const [text, setText] = useState(draft.amount);
+  const [category, setCategory] = useState(draft.category);
   const cents = dollarsToCents(text);
   const outside = cents !== null && outsideRange(cents, range);
+  const overLock = cents !== null && aboveLockedEstimate(cents, te);
   return (
     <>
       <p className="small">Quoted range: {rangeText}.</p>
@@ -328,12 +370,29 @@ function FinalFeeFields({ draft, range, rangeText }: { draft: { amount: string }
       ) : range ? (
         <p className="muted small">Inside the quoted range — no reason needed.</p>
       ) : null}
+      {overLock ? (
+        <>
+          <label className="field" data-testid="scope-creep-category">
+            Scope-creep category
+            <select value={category} onChange={(e) => { setCategory(e.target.value); draft.category = e.target.value; }}>
+              <option value="">Choose…</option>
+              {SCOPE_CREEP_CATEGORIES.map((c) => <option key={c} value={c}>{SCOPE_CREEP_LABEL[c]}</option>)}
+            </select>
+          </label>
+          <p className="small" style={{ color: 'var(--danger)' }}>
+            Above the locked estimate — choose the category and say why below. Both are required.
+          </p>
+        </>
+      ) : null}
     </>
   );
 }
 
 function FiledFields({ draft, options, signed, feeCents }: {
-  draft: { ptin: string }; options: Array<{ id: string; name: string }>; signed: boolean; feeCents: number | null;
+  draft: { ptin: string; jurisdictions: string[] };
+  options: Array<{ id: string; name: string }>;
+  signed: boolean;
+  feeCents: number | null;
 }): React.JSX.Element {
   return (
     <>
@@ -352,6 +411,60 @@ function FiledFields({ draft, options, signed, feeCents }: {
           {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
       </label>
+      <JurisdictionList draft={draft} />
     </>
+  );
+}
+
+/*
+ * WHERE THIS RETURN WENT (Brian, 2026-09-19 evening, ruling 2). Not derived from the client's
+ * address afterwards — declared here, by the person filing, at the moment of filing. Federal is on
+ * the list and stays on it; the states start from the entity's (else the contact's) state, with a
+ * no-income-tax state starting at none, and the preparer adds or removes before filing. Completion
+ * then waits on every one of them.
+ */
+function JurisdictionList({ draft }: { draft: { jurisdictions: string[] } }): React.JSX.Element {
+  const [list, setList] = useState<string[]>(normaliseJurisdictions(draft.jurisdictions));
+  const [typed, setTyped] = useState('');
+  const [listErr, setListErr] = useState('');
+  const commit = (next: string[]) => { draft.jurisdictions = next; setList(next); };
+  const add = () => {
+    const r = addState(list, typed);
+    setListErr(r.error);
+    if (r.error) return;
+    commit(r.list);
+    setTyped('');
+  };
+  return (
+    <fieldset className="field" data-testid="filed-jurisdictions" style={{ border: 0, padding: 0, margin: 0 }}>
+      <legend className="small">Jurisdictions filed</legend>
+      <p className="muted small">{jurisdictionsSentence(list)}</p>
+      <ul style={{ listStyle: 'none', display: 'flex', flexWrap: 'wrap', gap: 6, padding: 0, margin: '0 0 6px' }}>
+        {list.map((j) => (
+          <li key={j}>
+            <span className="badge">{j === FEDERAL ? 'Federal' : j}</span>{' '}
+            {j === FEDERAL ? (
+              <span className="muted small">always</span>
+            ) : (
+              <button type="button" className="chip" onClick={() => { setListErr(''); commit(removeState(list, j)); }}>Remove {j}</button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <label className="field">
+        Add a state (two-letter code)
+        <input
+          value={typed}
+          maxLength={2}
+          placeholder="IL"
+          aria-invalid={listErr ? true : undefined}
+          onChange={(e) => { setTyped(e.target.value); setListErr(''); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+        />
+        {listErr ? <p className="field-error" role="alert">{listErr}</p> : null}
+      </label>
+      <button type="button" className="btn small ghost" onClick={add}>Add state</button>
+      <p className="muted small">{CONTROL_SENTENCES.jurisdictions}</p>
+    </fieldset>
   );
 }

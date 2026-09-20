@@ -10,7 +10,9 @@
  *   e) business-tax quote → acceptance creates the return record → Schedule B resolves → the
  *      deposit overridden to $0 → the preparer attaches to the accepted engagement rather than
  *      colliding with it;
- *   f) Illinois acknowledges separately, as a second jurisdiction.
+ *   f) Illinois acknowledges separately, as the second jurisdiction the return declared at filing
+ *      (2026-09-19 evening, ruling 2: the Mark filed step declares federal + IL, defaulted from the
+ *      entity's state, and completion waits on both).
  * Synthetic data only.
  */
 import { test, before, after } from 'node:test';
@@ -128,10 +130,19 @@ test('d, e, a, c, b, f: the S corp, quoted, accepted, prepared, authorized by th
     `INSERT INTO documents (contact_id, tax_engagement_id, category, filename, minio_bucket, minio_key, uploaded_by_type)
      VALUES ($1, $2, 'signed_authorizations', 'Form 8879-CORP signed.pdf', 'saos-signed-docs', 'test/8879-corp.pdf', 'staff') RETURNING id`, [owner.id, teId]);
   await recordSigned8879(app, { staffId: ana.id, label: ana.fullName }, { taxEngagementId: teId, documentId: scan.rows[0]!.id, signedOn: '2026-09-14', preparerPtinHolderId: ana.id });
+  // The filing declares where it went. Nothing is passed, so the default from the entity's Illinois
+  // address stands: federal and IL (2026-09-19 evening, ruling 2).
+  const before = (await app.inject({ method: 'GET', url: `/tax-engagements/${teId}`, headers: auth(ana) })).json() as { default_jurisdictions: string[]; declared_jurisdictions: string[] };
+  assert.deepEqual(before.default_jurisdictions, ['federal', 'IL'], 'the Illinois entity suggests federal + IL');
+  assert.deepEqual(before.declared_jurisdictions, [], 'nothing is declared before the filing');
   const filed = await move('filed', { preparerPtinHolderId: ana.id });
   assert.equal(filed.statusCode, 200, filed.body);
+  assert.deepEqual(filed.json().jurisdictions, ['federal', 'IL']);
   const onFile = await app.db.query<{ f8879_document_id: string; preparer_ptin_holder_id: string; stage: string }>(`SELECT f8879_document_id, preparer_ptin_holder_id, stage::text AS stage FROM tax_engagements WHERE id = $1`, [teId]);
   assert.deepEqual(onFile.rows[0], { f8879_document_id: scan.rows[0]!.id, preparer_ptin_holder_id: ana.id, stage: 'filed' });
+  const declared = (await app.inject({ method: 'GET', url: `/tax-engagements/${teId}`, headers: auth(ana) })).json() as { declared_jurisdictions: string[]; jurisdictions_awaiting: string[] };
+  assert.deepEqual(declared.declared_jurisdictions, ['federal', 'IL'], 'the return says where it went');
+  assert.deepEqual(declared.jurisdictions_awaiting, ['federal', 'IL'], 'and waits on both');
 
   // b, f) the ATX business acknowledgment report: entity columns, the entity's name, the EIN last-4, federal and Illinois.
   const report = [
@@ -161,6 +172,12 @@ test('d, e, a, c, b, f: the S corp, quoted, accepted, prepared, authorized by th
   assert.equal(done.rows[0]!.federal_accepted_on, '2026-09-15');
   assert.equal(done.rows[0]!.state_accepted_on, '2026-09-15');
   assert.equal(done.rows[0]!.state_accepted_code, 'IL');
+  const perJurisdiction = await app.db.query<{ jurisdiction: string; accepted_on: string | null; submission_id: string | null }>(
+    `SELECT jurisdiction, accepted_on::text AS accepted_on, submission_id FROM tax_engagement_jurisdictions
+      WHERE tax_engagement_id = $1 ORDER BY (jurisdiction <> 'federal'), jurisdiction`, [teId]);
+  assert.deepEqual(perJurisdiction.rows.map((x) => x.jurisdiction), ['federal', 'IL']);
+  assert.ok(perJurisdiction.rows.every((x) => x.accepted_on === '2026-09-15'), 'each declared jurisdiction carries its own acceptance');
+  assert.deepEqual(perJurisdiction.rows.map((x) => x.submission_id), ['S-FED-1', 'S-IL-1'], 'and the submission id from its own row');
   // The sends are held while the automation is off.
   const drained = await drainOutbox(app);
   assert.equal(drained.sent, 0);
