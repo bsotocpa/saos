@@ -10,12 +10,10 @@
  * Synthetic data only. Never run against anything but the developer database server.
  */
 import { buildServer } from '../src/server.ts';
-import { createTestConfig, makeContact, makeStaff, multipartBody } from '../test/helpers.ts';
+import { createTestConfig, makeContact, makeStaff } from '../test/helpers.ts';
 import { waiveStripeCheck } from '../src/modules/billing/drift.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createQuote, sendQuote, acceptQuote, overrideQuoteDeposit } from '../src/modules/pricing/quotes.ts';
-import { createPacket } from '../src/modules/engagements/packet.ts';
-import { generateToken } from '../src/crypto.ts';
+import { createQuote, sendQuote, acceptQuote } from '../src/modules/pricing/quotes.ts';
 import { createInvoice, markInvoicePaid } from '../src/modules/billing/service.ts';
 import { voidInvoice } from '../src/modules/billing/void.ts';
 import { handleStripeEvent } from '../src/modules/billing/refunds.ts';
@@ -27,7 +25,9 @@ import { createTask } from '../src/modules/tasks/service.ts';
 import { uploadDocument } from '../src/modules/documents/service.ts';
 import { makeMinioClient } from '../src/modules/documents/storage.ts';
 import { todayChicago } from '../src/modules/tax/deadlines.ts';
+import { defaultTaxYear } from '../src/modules/engagements/period.ts';
 import * as OTPAuth from 'otpauth';
+import { buildPathB } from './e2e-fixtures/path-b.ts';
 
 const PORT = Number(process.env.E2E_API_PORT ?? 3101);
 const TOTP_SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
@@ -40,16 +40,32 @@ if (!/localhost|127\.0\.0\.1/.test(config.DATABASE_URL)) throw new Error('refusi
  * client would, out of the message, rather than minting a session behind the route's back.
  */
 const magicTokens: string[] = [];
+/*
+ * AND THE PROPOSAL LINK (2026-09-19 evening, BUILD 1). The spec now sends the quote from the Ops
+ * builder, so the client's acceptance link does not exist at boot — it arrives in the mailer
+ * mid-run like any other message. Captured here, the same way and for the same reason as the
+ * sign-in link: the harness reads what the client was emailed, not a token out of the database.
+ */
+const quoteTokens: string[] = [];
 const silentMailer: Mailer = {
   transport: 'console',
   async send(msg) {
     const body = `${msg.subject ?? ''} ${msg.text ?? ''} ${msg.html ?? ''}`;
     const found = /[?&]token=([A-Za-z0-9_-]+)/.exec(body);
     if (found) magicTokens.push(found[1]!);
+    const quote = /\/quote\/([A-Za-z0-9_-]{20,})/.exec(body);
+    if (quote) quoteTokens.push(quote[1]!);
     return { id: 'e2e' };
   },
 };
 const app = buildServer(config, { mailer: silentMailer });
+/*
+ * The mailer's own record, readable by the spec while it runs. The proposal is sent by a tap on
+ * /pipeline, and the only honest way to the acceptance link from there is the email it produced.
+ * Registered before ready(), served on the harness API port, and it exists only in this script —
+ * nothing in apps/api/src knows about it, and the boot has already refused a non-local database.
+ */
+app.get('/harness/mail-links', async () => ({ quoteTokens, magicTokens }));
 await app.ready();
 
 // The staff member who walks the page.
@@ -170,6 +186,8 @@ for (const t of taskSeed) {
  */
 const laura = await makeStaff(app.db, config, { email: 'laura-walker@example.test', name: 'Synthetic Laura', role: 'va_entity', password: 'laura-synthetic-2026', totpSecret: TOTP_SECRET });
 const jaqueline = await makeStaff(app.db, config, { email: 'jaqueline-walker@example.test', name: 'Synthetic Jaqueline', role: 'ed_coo', password: 'jaqueline-synthetic-2026', totpSecret: TOTP_SECRET });
+// The bookkeeper (Marian's role): the role proof for Add a business moves here (R4, 2026-09-19 evening).
+const bookkeeper = await makeStaff(app.db, config, { email: 'bookkeeper-walker@example.test', name: 'Synthetic Bookkeeper', role: 'bookkeeper', password: 'bookkeeper-synthetic-2026', totpSecret: TOTP_SECRET });
 await app.db.query(`UPDATE contacts SET ssn_last4 = $2 WHERE id = $1`, [contact.id, WALL.ssnLast4]);
 const minio = makeMinioClient(config);
 const PDF = Buffer.from('%PDF-1.4 synthetic harness document — no real client data\n%%EOF');
@@ -223,79 +241,75 @@ if (granted.statusCode >= 300) throw new Error(`portal access was refused: ${gra
 await drainOutbox(app);
 
 /*
- * PAGE FIVE (2026-09-12): the first real-data run rehearsed, an S corporation's 1120S. Through the
- * routes and services a person uses: the business on the owner's record, a business-tax quote
- * against it with the deposit overridden to $0, sent and accepted (the acceptance creates the
- * return record, so Schedule B resolves), the packet assembled, the business onboarding
- * questionnaire submitted from a portal session, and documents filed. Page five reads the Ops
- * client page and asks the API what the page would.
- */
-
-/*
- * THE 1120S DRY RUN (Brian, 2026-09-19): the return was filed in ATX on time, outside SAOS, the
- * ruled fallback exercised deliberately. The fixture takes the return to the point a person
- * takes over: the letter and the estimate stamped the way the API specs stamp them, the stages
- * walked through the transition route by the preparer, and the return DELIVERED to the portal
- * through the upload route the Ops page presses. The signed 8879, the filing, the acknowledgment
- * report, the payment and the completion are the harness's to do, as Brian in every role.
+ * PAGE FIVE (2026-09-12) BECAME A WALK (2026-09-19 evening, BUILD 1). The fixture used to build the
+ * S corporation's whole front half through the routes: the quote, the $0 deposit override, the
+ * send, the acceptance, the packet, the onboarding questionnaire, the uploaded document, the stage
+ * walk and the delivery. Every one of those is a screen a person taps, so every one of them is now
+ * tapped by ops-scorp-dry-run.spec.ts (A2, A3, A4) and portal-returns.spec.ts (A5).
+ *
+ * WHAT STAYS HERE, AND WHY:
+ *
+ *   the owner contact (is_test, active)  the walk's starting point; a client exists before Brian
+ *                                       opens the builder, and A1 — adding a business with its
+ *                                       EIN — is already tapped by ops-add-business.spec.ts.
+ *   the business with its EIN            the entity the business-tax quote is written against.
+ *                                       A1 is cleared on the harness client; no walk step covers
+ *                                       a second entity, so this one is set up, not walked.
+ *   portal access + three sign-in links  through POST /portal-users ('Grant access'), then the
+ *                                       public request route. The throttle is three links per ten
+ *                                       minutes per address (portal-auth/service.ts) and a link is
+ *                                       single use: the invite plus two requests is exactly three,
+ *                                       one each for the dry run's portal turn (A3), My Returns
+ *                                       (A5) and the checkout walk. They must be minted at boot
+ *                                       for that budget to hold.
+ *
+ * WHAT IS NOT HERE AND COULD NOT BE: the engagement letter stamp and the preparer assignment. Both
+ * live on the tax_engagements row, and that row does not exist until the client accepts the quote —
+ * which the spec taps. No route and no screen assigns a preparer to a return at all, and signing
+ * the packet in the portal sets contacts.engagement_letter_status without stamping the return's own
+ * engagement_letter_signed_at, so the pipeline's gate 1 stays shut. The spec does both after the
+ * acceptance, through the one route that exists, and annotates them as api rather than tap.
  */
 const anamaria = await makeStaff(app.db, config, { email: 'anamaria-walker@example.test', name: 'Synthetic Ana-Maria', role: 'tax_preparer', password: 'anamaria-synthetic-2026', totpSecret: TOTP_SECRET });
-const anaLogin = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: anamaria.email, password: 'anamaria-synthetic-2026', totp: new OTPAuth.TOTP({ algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(TOTP_SECRET) }).generate() } });
-const anaToken = (anaLogin.json() as { token: string }).token;
-/* ONE S CORPORATION PER VIEWPORT (2026-09-19, BUILD 3): the dry run taps its way from the signed 8879 to the paid
+/* ONE S CORPORATION PER VIEWPORT (2026-09-19, BUILD 3): the dry run taps its way from the quote to the paid
  * invoice at 390 and again at 1280, and each flow mutates its return once, so the fixture is built twice. */
 async function buildScorp(who: { email: string; lastName: string }, entity: { name: string; ein: string }) {
-const scorpOwner = await makeContact(app.db, { firstName: 'Synthetic', lastName: who.lastName, email: who.email });
-await app.db.query(`UPDATE contacts SET soto_status = 'active', is_test = true, test_note = 'Harness fixture: the S corporation rehearsal.' WHERE id = $1`, [scorpOwner.id]);
-const scorpBiz = await app.inject({
-  method: 'POST', url: `/contacts/${scorpOwner.id}/businesses`, headers: { authorization: `Bearer ${staffToken}` },
-  payload: { name: entity.name, ein: entity.ein, entityType: 's_corp', state: 'IL' },
-});
-if (scorpBiz.statusCode !== 201) throw new Error(`the S corp business was refused: ${scorpBiz.statusCode} ${scorpBiz.body}`);
-const scorpBusinessId = (scorpBiz.json() as { id: string }).id;
-const scorpQuote = await createQuote(app, { contactId: scorpOwner.id, businessId: scorpBusinessId, lines: [{ itemCode: 'BIZ_1120S' }] }, actor);
-await overrideQuoteDeposit(app, scorpQuote.id, { amountCents: 0, reason: 'Harness: the firm files its own return; no deposit is collected.' }, { ...actor, permissions: ['*', 'deposits.override'] });
-const scorpSent = await sendQuote(app, scorpQuote.id, actor);
-const scorpAccepted = await acceptQuote(app, scorpSent.url.split('/').pop()!, {});
-await drainOutbox(app);
-const scorpTe = await app.db.query<{ id: string; return_type: string }>(`SELECT id, return_type::text AS return_type FROM tax_engagements WHERE engagement_id = $1`, [scorpAccepted.engagements[0]!.id]);
-if (scorpTe.rows[0]?.return_type !== '1120s') throw new Error('the accepted business-tax quote did not create an 1120S return record');
-const scorpPacket = await createPacket(app, scorpOwner.id, actor);
-if (!scorpPacket.scheduleCodes.includes('B')) throw new Error(`the S corp packet carries ${scorpPacket.scheduleCodes.join(',')}, not Schedule B`);
-// The business onboarding questionnaire, submitted from the client's own portal session.
-const scorpUser = await app.db.query<{ id: string }>(`INSERT INTO portal_users (contact_id, email) VALUES ($1, $2) RETURNING id`, [scorpOwner.id, scorpOwner.email]);
-const scorpSession = generateToken();
-await app.db.query(`INSERT INTO portal_sessions (portal_user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval '1 day')`, [scorpUser.rows[0]!.id, scorpSession.hash]);
-const scorpForm = await app.inject({
-  method: 'POST', url: '/portal/service-onboarding/submit', headers: { authorization: `Bearer ${scorpSession.token}` },
-  payload: { answers: { harness: 'the S corp questionnaire, submitted' } },
-});
-if (scorpForm.statusCode >= 300) throw new Error(`the business onboarding form was refused: ${scorpForm.statusCode} ${scorpForm.body}`);
-const scorpDoc = await uploadDocument(app, minio, { type: 'staff', id: staff.id, label: staff.fullName }, { contactId: scorpOwner.id, category: 'business_records', filename: 'HARNESS-SCORP-BANK-STATEMENT.pdf', mimeType: 'application/pdf', buffer: PDF });
-const scorpTeId = scorpTe.rows[0]!.id;
-await app.db.query(`UPDATE tax_engagements SET engagement_letter_signed_at = now(), estimate_locked_at = now(), preparer_id = $2 WHERE id = $1`, [scorpTeId, anamaria.id]);
-for (const toStage of ['scheduled', 'documents_requested', 'in_preparation', 'internal_review', 'client_review', 'ready_to_file']) {
-  const moved = await app.inject({ method: 'POST', url: `/tax-engagements/${scorpTeId}/transition`, headers: { authorization: `Bearer ${anaToken}` }, payload: { toStage } });
-  if (moved.statusCode !== 200) throw new Error(`the S corp return would not move to ${toStage}: ${moved.statusCode} ${moved.body}`);
-}
-// Delivered to the portal through the same route the Ops "Deliver a return" page presses (the stage goes back to client review).
-const scorpTaxYear = (await app.db.query<{ tax_year: number }>(`SELECT tax_year FROM tax_engagements WHERE id = $1`, [scorpTeId])).rows[0]!.tax_year;
-const deliverBody = multipartBody({ contactId: scorpOwner.id, category: 'return_deliverable', taxEngagementId: scorpTeId, taxYear: String(scorpTaxYear) }, { field: 'file', filename: 'HARNESS-SCORP-1120S-RETURN.pdf', contentType: 'application/pdf', data: PDF });
-const delivered = await app.inject({ method: 'POST', url: '/documents', headers: { authorization: `Bearer ${staffToken}`, ...deliverBody.headers }, payload: deliverBody.payload });
-if (delivered.statusCode !== 201) throw new Error(`the return could not be delivered: ${delivered.statusCode} ${delivered.body}`);
-if (!(delivered.json() as { stageMoved: boolean }).stageMoved) throw new Error('delivering the return did not move it to client review');
-const scorpOwnerUser = await app.inject({ method: 'POST', url: '/portal/auth/magic/request', payload: { email: scorpOwner.email } });
-if (scorpOwnerUser.statusCode !== 200) throw new Error(`the S corp owner's sign-in link was refused: ${scorpOwnerUser.statusCode} ${scorpOwnerUser.body}`);
-await drainOutbox(app);
-const scorpMagicToken = magicTokens.pop();
-if (!scorpMagicToken) throw new Error('no sign-in link reached the mailer for the S corp owner');
-  return { scorpOwner, scorpBusinessId, scorpQuote, scorpAccepted, scorpTe, scorpPacket, scorpDoc, scorpTeId, scorpTaxYear, scorpMagicToken };
+  const scorpOwner = await makeContact(app.db, { firstName: 'Synthetic', lastName: who.lastName, email: who.email });
+  await app.db.query(`UPDATE contacts SET soto_status = 'active', is_test = true, test_note = 'Harness fixture: the S corporation rehearsal.' WHERE id = $1`, [scorpOwner.id]);
+  const scorpBiz = await app.inject({
+    method: 'POST', url: `/contacts/${scorpOwner.id}/businesses`, headers: { authorization: `Bearer ${staffToken}` },
+    payload: { name: entity.name, ein: entity.ein, entityType: 's_corp', state: 'IL' },
+  });
+  if (scorpBiz.statusCode !== 201) throw new Error(`the S corp business was refused: ${scorpBiz.statusCode} ${scorpBiz.body}`);
+  const scorpBusinessId = (scorpBiz.json() as { id: string }).id;
+
+  /*
+   * THE WAY IN, three times over. 'Grant access' creates the portal account and emails the invite;
+   * two more public requests fill the throttle's budget. Each link is single use, so the tokens are
+   * handed out one per spec: [0] the dry run's A3, [1] My Returns (A5), [2] the checkout walk.
+   */
+  const firstToken = magicTokens.length;
+  const granted = await app.inject({
+    method: 'POST', url: '/portal-users', headers: { authorization: `Bearer ${staffToken}` },
+    payload: { contactId: scorpOwner.id },
+  });
+  if (granted.statusCode >= 300) throw new Error(`portal access for the S corp owner was refused: ${granted.statusCode} ${granted.body}`);
+  await drainOutbox(app);
+  for (let i = 0; i < 2; i++) {
+    const asked = await app.inject({ method: 'POST', url: '/portal/auth/magic/request', payload: { email: scorpOwner.email } });
+    if (asked.statusCode !== 200) throw new Error(`the S corp owner's sign-in link was refused: ${asked.statusCode} ${asked.body}`);
+    await drainOutbox(app);
+  }
+  const scorpMagicTokens = magicTokens.splice(firstToken);
+  if (scorpMagicTokens.length < 3) throw new Error(`only ${scorpMagicTokens.length} sign-in link(s) reached the mailer for ${who.email} — the walk needs three`);
+  return { scorpOwner, scorpBusinessId, scorpMagicTokens };
 }
 const S = await buildScorp({ email: 'scorpowner@example.test', lastName: 'Scorpowner' }, { name: 'Harness S Corp, LLC', ein: '55-5555555' });
 const D = await buildScorp({ email: 'scorpowner-desk@example.test', lastName: 'Scorpdesk' }, { name: 'Harness Desk Corp, LLC', ein: '55-5555556' });
 // Brian arms these himself on the box; the harness arms them so the sends are real here.
 await app.db.query(`UPDATE automations SET enabled = true WHERE key IN ('efile_acknowledgment', 'payment_receipt')`);
-const scorpFee = await app.db.query<{ amount_cents: number }>(`SELECT pbi.amount_cents FROM price_book_items pbi WHERE pbi.is_active AND pbi.amount_cents > 0 ORDER BY pbi.amount_cents LIMIT 1`);
+// The year the quote builder will offer for a return quoted today — the one rule, read, not restated.
+const scorpTaxYear = defaultTaxYear(todayChicago());
 
 /*
  * THE REFUSED AMEND AT 390px (Brian, 2026-09-19, defect 2): the harness client's paid deposit
@@ -318,21 +332,32 @@ for (let i = 0; i < 2; i++) {
 }
 if (magicTokens.length < 2) throw new Error(`only ${magicTokens.length} sign-in link(s) reached the mailer — page two cannot log in twice`);
 
+// Path B (the 1040 on extension) is built by its own module; null until that track lands.
+const pathB = await buildPathB(app, { staffToken, magicTokens, drainOutbox: () => drainOutbox(app), preparer: { id: anamaria.id, name: anamaria.fullName } });
 await app.listen({ port: PORT, host: '127.0.0.1' });
 // The harness API runs no scheduler (that is index.ts's job). The outbox fast lane is what a person
 // waits on after a release, so the harness drains it every two seconds, the way the box does every minute.
 const harnessSweep = setInterval(() => { drainOutbox(app).catch(() => undefined); }, 2000);
 harnessSweep.unref();
+/*
+ * The handles the walk needs, and no state it now taps for itself. `itemCode` is the price-book
+ * line the builder picks (never an amount — the guard reads this script and the book is the only
+ * source of a price); `markers.document` and `markers.returnFile` are the file names the spec
+ * uploads, declared here so both the walk and the reads agree on what to look for. The tax year
+ * comes from the catalog's default at build time, which is what the builder will offer.
+ */
 const scorpFixture = (x: Awaited<ReturnType<typeof buildScorp>>, entityName: string, einLast4: string, business: string) => ({
-  contactId: x.scorpOwner.id, businessId: x.scorpBusinessId, quoteId: x.scorpQuote.id,
-  engagementId: x.scorpAccepted.engagements[0]!.id, taxEngagementId: x.scorpTe.rows[0]!.id,
-  packetCodes: x.scorpPacket.scheduleCodes, documentId: x.scorpDoc.id,
+  contactId: x.scorpOwner.id, businessId: x.scorpBusinessId,
+  itemCode: 'BIZ_1120S',
   markers: { business, document: 'HARNESS-SCORP-BANK-STATEMENT.pdf', returnFile: 'HARNESS-SCORP-1120S-RETURN.pdf' },
-  entityName, einLast4, taxYear: x.scorpTaxYear,
+  entityName, einLast4, taxYear: scorpTaxYear,
   preparer: { id: anamaria.id, name: anamaria.fullName },
-  ownerEmail: x.scorpOwner.email, portalMagicToken: x.scorpMagicToken,
-  finalFeeCents: scorpFee.rows[0]!.amount_cents,
+  ownerEmail: x.scorpOwner.email,
+  /** Single use, one per spec: [0] the dry run's portal turn (A3), [1] My Returns (A5), [2] the checkout walk. */
+  portalMagicTokens: x.scorpMagicTokens,
+  invoiceItemCode: small.item_code,
   webhookSecret: config.WEBHOOK_SECRET,
+  apiPort: PORT,
 });
 console.log('E2E_READY ' + JSON.stringify({
   port: PORT,
@@ -343,9 +368,12 @@ console.log('E2E_READY ' + JSON.stringify({
   scorp: scorpFixture(S, 'Harness S Corp, LLC', '5555', 'Harness S Corp'),
   scorpDesk: scorpFixture(D, 'Harness Desk Corp, LLC', '5556', 'Harness Desk Corp'),
   amend: { invoiceId: acc1.depositInvoiceId },
+  pathB,
   wall: {
     laura: { email: laura.email, password: 'laura-synthetic-2026', totpSecret: TOTP_SECRET },
     jaqueline: { email: jaqueline.email, password: 'jaqueline-synthetic-2026', totpSecret: TOTP_SECRET },
+    bookkeeper: { email: bookkeeper.email, password: 'bookkeeper-synthetic-2026', totpSecret: TOTP_SECRET },
+    anamaria: { email: anamaria.email, password: 'anamaria-synthetic-2026', totpSecret: TOTP_SECRET },
     quoteId: q1.id, taxEngagementId, cpaMeetingId,
     taxDocumentId: taxDocument.id, entityDocumentId: entityDocument.id, bankDocumentId: bankDocument.id,
     markers: WALL,

@@ -24,7 +24,8 @@ function portFree(port: number): Promise<boolean> {
   return new Promise((done) => {
     const s = createServer();
     s.once('error', () => done(false));
-    s.listen(port, '127.0.0.1', () => s.close(() => done(true)));
+    // Next binds every interface; a port is free only when both loopbacks answer.
+    s.listen(port, () => s.close(() => done(true)));
   });
 }
 
@@ -38,13 +39,25 @@ async function waitForPorts(ports: number[], timeoutMs: number): Promise<void> {
 }
 
 export default async function globalTeardown(): Promise<void> {
-  restoreNextFiles(resolve(here, '.artifacts'), resolve(here, '..', 'internal'));
-  restoreNextFiles(resolve(here, '.artifacts'), resolve(here, '..', 'portal'), 'portal/');
-  if (!existsSync(pidsFile)) return;
-  const pids = JSON.parse(readFileSync(pidsFile, 'utf8')) as { api?: number; ops?: number; portal?: number };
-  kill(pids.portal);
-  kill(pids.ops);
-  kill(pids.api);
-  unlinkSync(pidsFile);
-  await waitForPorts([3101, 3105, 3106], 15_000);
+  // The servers die first, whatever else fails: a restore that throws (Dropbox holding a file, seen
+  // 2026-09-19) used to leave the three processes alive and the next run dead on EADDRINUSE.
+  let restoreError: unknown = null;
+  try {
+    if (existsSync(pidsFile)) {
+      const pids = JSON.parse(readFileSync(pidsFile, 'utf8')) as { api?: number; ops?: number; portal?: number };
+      kill(pids.portal);
+      kill(pids.ops);
+      kill(pids.api);
+      unlinkSync(pidsFile);
+      await waitForPorts([3101, 3105, 3106], 15_000);
+    }
+  } finally {
+    try {
+      restoreNextFiles(resolve(here, '.artifacts'), resolve(here, '..', 'internal'));
+      restoreNextFiles(resolve(here, '.artifacts'), resolve(here, '..', 'portal'), 'portal/');
+    } catch (err) {
+      restoreError = err;
+    }
+  }
+  if (restoreError) throw restoreError;
 }
