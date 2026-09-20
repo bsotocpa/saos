@@ -1,0 +1,1339 @@
+
+> saos@0.1.0 test
+> npm run check:prices && npm run check:sops && npm run check:env-merge && npm run check:role-tasks && npm run check:css-classes && npm run check:form-conditionals && npm run check:sop-steps && npm run check:no-sos-scraping && npm run check:client-sends && npm run check:flash-once && npm run check:date-rendering && npm run check:no-native-dialogs && npm run check:report-files && npm run check:inline-errors && npm run test --workspaces --if-present && node scripts/green-run.mjs record
+
+
+> saos@0.1.0 check:prices
+> node scripts/check-no-hardcoded-prices.mjs
+
+✓ No hardcoded prices in application code.
+
+> saos@0.1.0 check:sops
+> node scripts/check-task-sop-hooks.mjs
+
+✓ All 54 generated task types are registered with an SOP decision.
+  (note: 1 registered but not currently emitted: invoice_send_failed)
+
+> saos@0.1.0 check:env-merge
+> node scripts/check-env-merge.mjs
+
+check:env-merge: server-set secrets and runtime modes survive a deploy (9 cases)
+
+> saos@0.1.0 check:role-tasks
+> node scripts/check-role-guarded-tasks.mjs
+
+✓ One door for work creation; every task owner and alert recipient resolves through a resolver with a fallback (39 files creating work or raising alerts).
+
+> saos@0.1.0 check:css-classes
+> node scripts/check-css-classes.mjs
+
+check:css-classes: every class the markup uses is defined in its app stylesheet.
+
+> saos@0.1.0 check:form-conditionals
+> node scripts/check-form-conditionals.mjs
+
+check:form-conditionals: every showWhen has a parent that can produce its trigger.
+
+> saos@0.1.0 check:sop-steps
+> node scripts/check-sop-task-alignment.mjs
+
+✓ Every SOP section matches its task checklist step, in order (4 pairing(s), 21 steps).
+
+> saos@0.1.0 check:no-sos-scraping
+> node scripts/check-no-sos-scraping.mjs
+
+✓ No automated Secretary-of-State querying (registry lookups are a manual procedure).
+
+> saos@0.1.0 check:client-sends
+> node scripts/check-client-send-gates.mjs
+
+✓ Every client-facing send is gated or registered with a reason (33 send site(s), 10 registered ungated).
+
+> saos@0.1.0 check:flash-once
+> node scripts/check-flash-once.mjs
+
+check:flash-once: every post-action notice renders once (55 pages checked).
+
+> saos@0.1.0 check:date-rendering
+> node scripts/check-date-rendering.mjs
+
+check:date-rendering: every timestamp goes through the date helper (55 pages checked).
+
+> saos@0.1.0 check:no-native-dialogs
+> node scripts/check-no-native-dialogs.mjs
+
+check:no-native-dialogs: zero native dialogs in Ops and the portal (72 files checked).
+
+> saos@0.1.0 check:report-files
+> node scripts/check-report-files.mjs
+
+check:report-files — every report table names its query and its rows
+
+> saos@0.1.0 check:inline-errors
+> node scripts/check-inline-errors.mjs
+
+check:inline-errors: every modal action runs its work inside the modal, no helper fallback string outside lib/api.ts, no page-top-only refusal (62 files checked).
+
+> @saos/api@0.1.0 test
+> node --test --test-timeout=300000 --test-force-exit "test/*.spec.ts"
+
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a staff action through a route is audited under the staff member's name; the void card carries the name (15286.4226ms)
+✔ no staff-authored audit row in this database carries an email as its actor label (372.8599ms)
+✔ decision 2: a client actor is labelled by the contact's display name, never the email (509.4818ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ THE prove-it: price edit → new version; pinned engagements keep v1; calculator follows v2 (15641.4455ms)
+✔ ⚠ confirmation queue: confirming a seed conflict clears the flag without a new version (166.2763ms)
+✔ template editor: edits bump versions; clearing PLACEHOLDER opens the M11 envelope gate (360.901ms)
+✔ settings: value updates carry old/new in the audit trail; unknown keys 404 (310.3126ms)
+✔ roles endpoint feeds the staff admin UI (54.0172ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ health endpoint reports ok with db reachable (13735.676ms)
+✔ login with unknown email is a generic 401 (and audited) (72.3955ms)
+✔ wrong password fails, wrong TOTP fails, correct pair logs in (all audited) (1903.1741ms)
+✔ failed-login lockout engages at the limit and blocks even correct credentials (2789.5839ms)
+✔ MFA is required: password-only account must enroll before receiving a session (1069.519ms)
+✔ sessions expire and logout revokes immediately (1188.0055ms)
+✔ RBAC: intern is refused staff management; CEO is allowed; role change audits permission.change (1621.4838ms)
+✔ deactivating a staff member revokes their live sessions (1352.404ms)
+✔ password change requires the current password and revokes other sessions (2556.2458ms)
+✔ validation failures return sanitized issues (no echoed values) (9.6134ms)
+✔ login sets an httpOnly SameSite=Lax session cookie that authenticates on its own (283.142ms)
+✔ a garbage session cookie is rejected (11.989ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ every registered automation ships DISABLED by seed default (14420.5713ms)
+✔ ladder disarmed: no client sends, rungs DO NOT advance, suppression counted (540.3258ms)
+✔ A/R dunning disarmed: invoice still goes overdue and Rene still gets the task — client is not chased (506.0272ms)
+✔ admin toggles are audited and drive the gate immediately (1367.1732ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ automation 12: filed with a final fee → invoice + ES portal notice + Rene queue + TE rollup (16368.8654ms)
+✔ automation 12 exception: filed WITHOUT a final fee → no invoice, Rene alerted instead (833.2396ms)
+✔ portal Pay Now: own invoices listed, checkout session created, foreign invoices 404 (1473.8772ms)
+✔ payment webhook: authenticated, marks paid + receipt + TE rollup, idempotent on replay (1134.9459ms)
+✔ automation 17: unpaid past the window → overdue + reminder + Rene flag, once (1670.5459ms)
+✔ invoice guardrails: pass-throughs not invoiceable; range items need explicit amounts (136.5128ms)
+✔ dunning ladder: 3 reminders over 10 days → Rene call task → 30-day work pause → payment resumes (2467.2843ms)
+✔ late fees: BLOCKED without a signed disclosure; rate comes from the price book; deposits net first (945.4273ms)
+✔ #25: the late-fee line is a rate, and a fixed amount cannot sit beside it (58.3202ms)
+✔ #25: a client is never charged above the rate THEIR signed letter disclosed (440.7945ms)
+✔ #25: an unprovable disclosed rate charges nothing rather than guessing (468.3501ms)
+✔ the invoice email deep-links to THAT invoice, and no longer promises one click (187.8937ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ prefill carries name and email, and preserves parameters already on the setting (11878.2347ms)
+✔ the session wins over a name already hardcoded in the setting (6.6927ms)
+✔ a client with no name or no email still gets a usable link (2.3723ms)
+✔ a malformed or dangerous setting degrades instead of reaching the href (1.4691ms)
+✖ the checklist endpoint returns a prefilled link, and null while scheduling is closed (654.2893ms)
+✔ kickoff and support are different destinations, and both arrive prefilled (353.2588ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ lane 1 discovery: contact created, team tasked, and NOTHING is billed (13477.7205ms)
+✔ the booking confirmation is gated, and OFF suppresses only the email (831.9554ms)
+✔ lane 1 dedupe: an existing contact is linked, never duplicated (222.3796ms)
+✔ lane 1 variant: the business-discovery slug is also free (366.4904ms)
+✔ the retired deposit items cannot be sold, but a price-locked quote still reads them (11.6621ms)
+✔ lane 2: question calls are always free — task, no invoice, nothing billed (107.642ms)
+✔ unmapped event types are accepted but flagged to staff (nothing silently slips) (131.4871ms)
+✔ non-Zoom discovery bookings raise the Zoom-only flag (MP rule lives in Cal.com config) (257.2899ms)
+✔ webhook secret enforced (7.6667ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ close checklist is ordered: no skipping ahead, no closing early (15557.8979ms)
+✔ close with an EXISTING upcoming session: statements post to the portal and ATTACH — no scheduling task (1358.1774ms)
+✔ close with NO session on the calendar: a scheduling task IS created (first review / cleanup client) (2169.3557ms)
+✔ workbench lists open cycles with checklist state and the next session; closed ones drop off (930.919ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a broadcast cannot send without approval, and cannot be self-approved (15410.7889ms)
+✔ the database refuses a sent broadcast with no approver, even by direct SQL (102.6986ms)
+✔ every announcement email carries the unsubscribe footer, and the author cannot remove it (648.0038ms)
+✔ Spanish readers get the Spanish footer and Spanish subject (693.6238ms)
+✔ unsubscribe works with no account, is idempotent, and a wrong token is a 404 (248.0155ms)
+✔ suppression is evaluated AT SEND, not at draft time (912.1853ms)
+✔ broadcast SMS respects the TCPA consent gate and carries a STOP line (857.5026ms)
+✔ an SMS broadcast requires copy in both languages before it can be created (70.5334ms)
+✔ review asks: never after a notice, an overdue invoice, or paused work (348.1002ms)
+✔ review asks are kill-switched OFF, throttled, and record every skip (426.4916ms)
+✔ the review job is date-guarded and asks only on ACCEPTED returns (325.0514ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ case and spacing do not make two businesses: the row with the EIN wins, the other is merged into it; a protected name waits for a person (14348.6046ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ 3: exactly one primary business per contact, at the database; archiving the primary clears the flag and promotes nothing (17241.628ms)
+✔ 3: two businesses merge the way two contacts do: rows move, one audit row per object, the loser archived pointing at the winner, nothing left behind (1292.0146ms)
+✔ a business line is quoted for a named business, and that choice becomes the primary when none is set (1338.432ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the driver returns a DATE column as the calendar day it stored — text, not a midnight instant (13040.5078ms)
+✔ an engagement closed today carries ended_on >= started_on as calendar days on the API, and no ISO-T anywhere (1987.3902ms)
+✔ decision 6: the pause is measured on the database clock, so six backdated days are six days, every run (1202.3376ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the three system-fired sends are registered automations, and the registry no longer lists them as ungated (12046.3165ms)
+✔ payment receipt OFF: the invoice is paid, no mail goes out, the hold is on the send log; ON: the receipt goes (789.61ms)
+✔ refund receipt and cancellation notice: OFF records the hold and sends nothing; ON sends (815.2992ms)
+✔ staff-only recipients: the staff channel writes a notification row and never touches the mailer (637.1033ms)
+✔ through the outbox: a held notice retires as SUPPRESSED — the row never claims it was sent (397.8682ms)
+✔ a notice someone already sent by hand retires as SKIPPED, which is not the same as held (213.9325ms)
+✔ a notice that actually goes out is the only one that reads sent (192.8626ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ Twilio SMS: forged signature refused; unconfigured token would 503 (13093.4473ms)
+✔ Twilio SMS: matched sender lands in their thread; Rene notified; audited without the body (522.8696ms)
+✔ Twilio SMS: STOP revokes consent on our side (rollup + consent event + audit) (597.7664ms)
+✔ Twilio voice: TwiML greeting comes from the admin-editable template (120.1586ms)
+✔ SNS: signed SES bounce triggers the Rene task; tampered payload refused (360.3389ms)
+✔ SNS: SubscriptionConfirmation auto-confirms via a validated SubscribeURL (50.8474ms)
+✔ Intake writes the TCPA consent EVENT (type sms, versioned disclosure) — not just the rollup (419.3598ms)
+✔ MMS: media accepted → scanned → quarantined on the thread; matched sender gets the transactional ack (599.6904ms)
+✔ unmatched senders are triage-only; file/reassign/discard round trip with audit; infected hard-blocks (2638.5265ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ aging: a sent invoice on a completed engagement still flips to overdue (13936.6662ms)
+✔ dunning and late fees: an overdue invoice on a completed engagement is chased and assessed (953.9743ms)
+✔ drift: a paid invoice on a completed engagement is checked against Stripe (242.5866ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ federal then state: the return completes on the state acknowledgment, not the federal one (38822.3752ms)
+✔ state then federal: the order does not matter; the second acknowledgment completes (1640.9067ms)
+✔ a return with no state completes on federal alone, as before (591.8452ms)
+✔ a state row for a different state is recorded but does not count; the right state still completes (1629.1398ms)
+✔ the manual door obeys the same rule: federal accepted leaves the return awaiting its state; the state completes it (1297.9929ms)
+✔ a rejection from the state opens the preparer's re-file task through createTask, owned by the return's preparer (1389.9249ms)
+✔ a federal rejection on a return with no preparer falls back through the role: unfilled → the CEO, recorded (1539.4886ms)
+✔ a completed engagement with a sent invoice shows its open balance on GET /engagements and counts on the executive dashboard (3826.961ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ cadence maths: the floor is a constant and sessions-per-year derive from the dial (36091.981ms)
+✔ a NON-S-corp client can be configured to annual sessions (739.0044ms)
+✔ THE GATE: an active S corp cannot be configured below the floor, on any path (943.7598ms)
+✔ maintenance mode works for a client the floor does not bind, and holds prep cadence (850.6521ms)
+✔ the S election is detected from a 1120-S filing too, not just entity_type (813.709ms)
+✔ sessions can never be more frequent than prep, and unpriced cadences are refused (864.8085ms)
+✔ tax engagements have no cadence dials (336.6361ms)
+✔ the options endpoint tells the UI what the floor forbids, before anyone picks it (206.1567ms)
+✔ utilization now measures against the configured entitlement, and says so when there is none (575.0585ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ merge: every row moves to the winner, one audit row per object, the loser is archived pointing at the winner with nothing left (43093.882ms)
+✔ two sign-ins: the winner's stays, the loser's is retired on the record; a sign-in that signed a packet cannot be (1184.7674ms)
+✔ merge refuses active work on both sides for the same line, period and entity; a different entity is fine (463.3065ms)
+✔ the archived invariant, at the database: no active work on an archived contact, and no archiving a contact with active work (652.537ms)
+
+─── MAIL (console transport, not sent) ───
+From: Soto Accounting <no-reply@sotoaccounting.com>
+To: amend@example.test
+Subject: Payment received — thank you (SA-2026-0002)
+
+Hi Synthetic,
+
+We received your payment of $10.00 for invoice SA-2026-0002 — thank you. Your receipt and invoice history are always available in your portal.
+
+— Soto Accounting
+───────────────────────────────────────────
+
+✔ the reason validator refuses the assistant as a reason; a waiver reason is amended, never edited (1398.9167ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a container unhealthy past the grace period alerts Brian AND opens one task (37811.8472ms)
+✔ a briefly-unhealthy or still-starting container does NOT alert (47.3841ms)
+✔ a one-shot init container that finished is NOT an outage (51.4514ms)
+✔ a container that CRASHED alerts immediately — no grace period for gone (183.1074ms)
+✔ the host reports over a secret-authenticated webhook, not a session (208.0384ms)
+✔ an UNSCANNED attachment cannot be filed without an override (516.4135ms)
+✔ the override is Brian's alone, needs a real reason, and is audited by name (873.6552ms)
+✔ a CLEAN attachment still files with no override and no ceremony (617.0419ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ CRM walkthrough: contact → business → gaps shrink as data lands → entity group (40936.3561ms)
+✔ the client directory finds people by BUSINESS name, and carries what a row needs (744.149ms)
+✔ the row shows the business that MATCHED, not an unrelated primary one (948.1492ms)
+✔ §7216 gate: blocked until a signed consent is recorded (354.0707ms)
+✔ health job: red transition alerts the assigned manager; green+tenure upsell is §7216-gated (3743.6888ms)
+✔ attest independence: blocked with active bookkeeping; Brian-only documented override (2141.2651ms)
+✔ health baseline (2026-08-09): never-engaged = gray; yellow only on signals; active+clean = green (1990.6829ms)
+
+─── MAIL (console transport, not sent) ───
+From: Soto Accounting <no-reply@sotoaccounting.com>
+To: portalstate@example.test
+Subject: Your Soto Accounting client portal is ready
+
+Hi Synthetic,
+
+We have set up your secure client portal at Soto Accounting. It is where your documents, invoices, engagement letters and messages live — everything in one place, and nothing sensitive travelling by email or text.
+
+Open it here:
+
+http://localhost:3000/auth/verify?token=nzoLXhIx8X2p8iiS-KVYBi3retAdfarxQaPACE_ALHM
+
+In the portal you can:
+  · upload documents securely (photos from your phone are fine)
+  · sign your engagement letter and authorizations
+  · see and pay invoices
+  · message us, and track where your work stands
+
+That link signs you in once and expires in 30 minutes. If it expires before you use it, go to http://localhost:3000 and enter this same email address — we will send you a fresh one. There is no password to create or remember.
+
+If anything looks wrong, reply to this email and a person will answer.
+
+— Soto Accounting
+───────────────────────────────────────────
+
+✔ portal access reads not_invited → invited → active, and revoked is its own state (480.6364ms)
+✔ granting portal access needs the permission, and an intern does not have it (210.8045ms)
+
+─── MAIL (console transport, not sent) ───
+From: Soto Accounting <no-reply@sotoaccounting.com>
+To: remindme@example.test
+Subject: Friendly reminder: invoice SA-REMIND-0001 ($420.00)
+
+Hi Synthetic,
+
+A quick reminder that invoice SA-REMIND-0001 for $420.00 is still open. Paying takes about a minute in your portal:
+
+http://localhost:3000/pay/eQpuC6M-m9uPbcEJrEFLhIUQdrFb1oqDZ6qxfH0lxP8
+
+If the timing is tight or something looks off, reply here and we’ll sort it out.
+
+— Soto Accounting
+───────────────────────────────────────────
+
+✔ a reminder sends the pay link and moves no money — there is no staff-side checkout (283.8962ms)
+✔ the calendar cross-check is in the endpoint: an existing session refuses a second task (185.4212ms)
+✔ a meeting can only be scoped to an OPEN engagement belonging to this client (273.2828ms)
+✔ lifecycle climbs from what happened, and never from a hand-set value (300.4579ms)
+✔ archived is the only hand-set state, it needs a reason, and no sweep undoes it (134.0334ms)
+✔ the entity-type gap names WHICH business, because that gap blocks something specific (345.4479ms)
+✔ owesAnnualReport: no is an answer, unknown is not (2.8696ms)
+✔ the classify pass orders by what the answer unblocks (272.7696ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the drift check: a payment Stripe cannot see becomes a task and a count, and the run finishes (33990.2117ms)
+✔ one job's failure is that job's: logged, audited as job.failed, and the next job still runs (83.0676ms)
+✔ the real job list still carries every job the straight line ran, with reconciliation after the drift check (4.1917ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ executive dashboard aggregates trace to the scenario rows; leadership-only (39360.2674ms)
+✔ hilo dashboard: statuses, sessions, queues, summaries, funder metrics (pro bono valued from the price book) (105.8289ms)
+✔ alert center: own notifications only; mark-read; push sweep stamps leadership warnings once (931.2024ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ calendarDay: a validated day compares; a Date, an instant, a number or garbage throws with the value named (35117.1666ms)
+✔ overdue detection: an invoice sent 15 days ago flips to overdue with overdue_since = today; one sent 13 days ago stays sent (707.9514ms)
+✔ late fees: assessed when overdue past the grace period with a signed disclosure; not one day short; not twice inside 30 days; again after 30 (1595.6581ms)
+✔ price lock: a lock that expired yesterday and one that expires tomorrow both move by the paused days, as calendar days (1200.5844ms)
+✔ tax deadlines: the extension decision list fires for a deadline exactly 21 days out and not for 20 (1006.8891ms)
+✔ perfection clock: a deadline that passed yesterday counts as overdue, one two days out warns, one ten days out does neither (1591.1488ms)
+✔ annual reports: due in 60 days gets the staff reminder task; due in 61 does not; past due reads overdue (677.1451ms)
+✔ document chase: a request created past the reminder window is chased; a newer one is not; due_date is not an input to the chase (finding) (427.6595ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ #26: an unPAID deposit credits nothing — only Stripe-confirmed money counts (35787.8112ms)
+✔ #26: the exact double-charge — a paid deposit is credited, not billed over (869.2845ms)
+✔ #26: a deposit cannot be credited twice (971.4094ms)
+✔ #26: full prepay invoices to zero, and a deposit larger than the work keeps its remainder (1239.0578ms)
+✔ #26 THE GUARD: an invoice that skips the credit fails generation loudly (514.8555ms)
+✔ #26: the deposit invoice never credits itself (377.302ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ deposits.override is Brian ONLY — a wildcard role does not inherit it (37318.8466ms)
+✔ an override cannot exist without a reason and an approver (525.5888ms)
+✔ treatment is DERIVED from the price book, not asserted by the caller (1462.7315ms)
+✔ a WAIVED deposit issues no invoice, and stamps the engagement for A/R (1830.5641ms)
+✔ a REDUCED deposit invoices the reduced amount, not the price-book figure (1702.73ms)
+✔ the standard deposit is still the default, and an accepted quote cannot be re-cut (1239.3065ms)
+✔ an override cannot invent a deposit where the quote has none (338.1948ms)
+✔ the STAFF view of a quote carries the server-resolved deposit, so the builder cannot display a belief (666.1271ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a clean upload files immediately — the normal path is unchanged (31887.3625ms)
+✔ INTAKE NEVER REFUSES: a dead scanner still accepts and stores the upload (978.4122ms)
+✔ the rescan job completes the deferred filing once the scanner returns (1153.6644ms)
+✔ an infected upload is accepted, quarantined, undownloadable, and raises a task (665.7631ms)
+✔ every verdict leaves an audit row, including the skipped ones (569.3012ms)
+✔ dependency health measures a DURATION: since moves only on transition (446.533ms)
+✔ the ops dashboard endpoint reports the backlog, not just a red light (1041.8754ms)
+✔ THE ASSERTION THAT MAKES not_configured SAFE: production refuses to boot without a scanner (19.6391ms)
+✔ with no scanner configured at all, filing still works — dev is not broken (519.3987ms)
+✔ FINDING #16: the firm-wide overview leads with what is wrong (1069.7063ms)
+✔ PORTAL-UPLOAD ACK: one receipt per session, not per file, and never the portal-nudge copy (789.6129ms)
+✔ an infected upload is never acknowledged — that conversation is Brian’s (336.1984ms)
+✔ with the automation OFF the upload still works and the suppression is recorded (500.4641ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ upload + download round-trip through MinIO, audited on every access; cross-client fails closed (37528.6933ms)
+✔ disallowed file types are refused (109.4313ms)
+✔ IRS-notice upload auto-creates the notice record and alerts the handler role (725.6043ms)
+✔ itemized request: initial ES email, per-item fulfillment, completion stamps docs_received_at (2512.5824ms)
+✔ chase job: recurring reminders + one-time 7-day non-response alert (automations 4–5) (2522.8655ms)
+✔ return delivery: staff uploads the ATX PDF → stage moves to client_review + client notified (2247.684ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the portal checkout refuses a draft: nothing was issued (34208.7346ms)
+✔ acceptance issues the deposit invoice in its own transaction: sent before the email, payable at once, emailed once (2270.4435ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the scan plans from shared identifiers: a shared phone merges into the record holding the most, a name alone gets a note, a protected name is held first (34360.3441ms)
+✔ two identical empty records pick the same winner on every run: the id breaks the tie (169.9584ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the parser reads ATX columns by name and refuses a file that is not an acknowledgment report (29895.893ms)
+✔ one accepted, one rejected, one unmatched → one queued send, two tasks, zero guesses (2916.9144ms)
+✔ federal and state acknowledge separately, in the client's language, and the return records both (1702.4291ms)
+✔ a held row does not send when the report is released; the same file twice is the same report (982.3673ms)
+✔ two clients with the same name and year is not a match — a task, never a guess (1305.2532ms)
+✔ the preparer of record is set by the 8879 upload, required at filing, and cannot be changed after (860.224ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ closing is permission-gated, and the route is the same one a person clicks (38874.282ms)
+✔ a second close is refused rather than overwriting the first (505.329ms)
+✔ withdrawing without a reason is refused — by the service AND by the database (406.4616ms)
+✔ closing the last engagement moves the client to dormant; closing one of two does not (924.5196ms)
+✔ a hold pauses the work and the client stays ACTIVE (443.1392ms)
+✔ the database refuses an on_hold engagement that is not actually paused (321.0041ms)
+✔ resuming gives back the time: waiting_since moves forward and the price lock extends (825.1096ms)
+✔ a dunning pause is NOT ours to refund, and staff cannot click through it (380.2721ms)
+✔ paying an invoice lifts a DUNNING pause but never a staff hold (326.9111ms)
+✔ the escalation ladder does not chase a client whose work is paused, and says how many it held (476.0032ms)
+✔ an ON HOLD bookkeeping engagement still blocks an attest engagement (278.694ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the engagement list carries period_key; the set-period route is billing.manage; a preparer is refused (36540.7205ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the period of a line: tax → the year; recurring → ongoing; per-matter → none (32546.5418ms)
+✔ TWO PLAIN ACCEPTS: both quotes sent before either is accepted; the second acceptance is refused by the DATABASE and rolls back whole (3175.0121ms)
+✔ SEND GATE: a plain quote for a line with active work cannot be sent; naming the engagement it replaces can (1758.0418ms)
+✔ CHANGE ORDER: accepted atomically — old withdrawn with the reason, new active, deposit credit carried, one audit row (1817.5436ms)
+✔ DIFFERENT PERIODS coexist: a 2024 return and a 2025 return are two legitimate engagements (1629.1635ms)
+✔ LEGACY rows (no period) are outside the index and are reported, not guessed (50.7739ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ withdrawing voids the attached sent invoice with the withdrawal reason, deletes drafts, and audits both on the engagement (31519.6572ms)
+✔ the invariant is the database's: a raw status change to withdrawn with a sent invoice attached is refused, and a payable invoice cannot land on withdrawn work (1982.6829ms)
+✔ 7d is the guard: after withdrawals, no payable invoice sits on any non-active engagement (1624.1385ms)
+✔ completing an engagement with an unpaid invoice is still allowed (DECISION-PENDING: the collection tail) (496.3631ms)
+✔ a cascade names itself and the person behind it — never "unknown" (1664.9634ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a draft event is invisible publicly; publishing opens the bilingual page (34898.7673ms)
+✔ THE CAPACITY RACE: concurrent registrations never oversell the last seat (897.0164ms)
+✔ registration confirms in the registrant’s language, and waitlisting says so plainly (539.4014ms)
+✔ a cancelled seat is actually given to the next person on the waitlist (803.7659ms)
+✔ check-in: only a seated registrant, and the waitlist cannot be checked in (588.9273ms)
+✔ closing out: no-shows recorded, survey sent, ONE follow-up task, opt-out respected (1332.9663ms)
+✔ impact numbers are the funder-report figures, and survey answers land on them (249.6616ms)
+✔ the T-1 reminder is kill-switched, date-guarded, and SMS needs its own opt-in (566.6807ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ deadline derivation: table-driven, calendar AND fiscal year (no hardcoded swap) (33859.9014ms)
+✔ T-21 decision list job fires per deadline, once per day, and the list is queryable (2008.2669ms)
+✔ Extend decision → bilingual client notice; payment estimate flow; filed → DERIVED deadline (1026.1045ms)
+✔ fiscal-year filer gets a derived extended deadline no swap could produce (604.2217ms)
+✔ summer chase: escalating copy, skips clients whose docs are in, flags at-risk in August (1515.5952ms)
+✔ deadline dashboard: countdowns, extended + at-risk counts (98.3684ms)
+✔ AG990-IL (v4.5): state charity clock — FYE+6 month-end, 60-day AG extensions, independent of the 990 (116.7677ms)
+✔ FBAR: automatic extension keeps it OFF the T-21 decision list (374.2977ms)
+✔ estimate reminders: T-7 email honors the per-client toggle (default ON) (324.9338ms)
+✔ sweep window derives from the deadline table: T-10 per engagement, never after the deadline (5.9994ms)
+✔ auto-extension batch: sweeps per deadline, notifies clients, and filing is BLOCKED until Brian approves (2711.3984ms)
+✔ auto-extension batch respects the extension_notices kill switch (the sweep still happens) (567.9552ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the map: a quoted base item names the return; add-ons alone name none; the entity wins beside a side Schedule C (34120.075ms)
+✔ d, e, a, c, b, f: the S corp, quoted, accepted, prepared, authorized by the corporate scan, filed, acknowledged federally and by Illinois (4294.6228ms)
+✔ b) an EIN that does not agree with the record refuses the match, and a person-format report still matches a person (860.4402ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ Form 1 full branch: F&B owner, ES, IRS letters, SSN by phone, co-owned entities — automation #1 end to end (36808.8984ms)
+✔ Form 1 conditional logic: individual path skips business fields; validation fails closed (1049.9992ms)
+✔ autosave/resume tokens: wrong token 404; submitted form refuses further writes; analytics count (286.4892ms)
+✔ Form 2 Hilo intake: exploring status, demographics stay OFF the contact record (377.8427ms)
+✔ Module I → PLLC auto-flag: licensed therapist + LLC + IL creates the conversion pipeline record (2010.5144ms)
+✔ IL SOS: intake raises a MANUAL verification task and asserts nothing about the entity (815.4549ms)
+✔ IL SOS: recording an adverse result raises restoration — and the client email is GATED (342.9228ms)
+✔ IL SOS: arming the automation lets the same path email the client (582.0321ms)
+✔ IL SOS: the recheck job raises tasks instead of making requests, and is date-guarded (132.2752ms)
+✔ M28 renderer contract: every question has bilingual text, and the TCPA disclosure ships with it (189.3531ms)
+✔ the rehearsal banner keys off the placeholder flag, so it removes itself (113.548ms)
+✔ #21 for real: a new client from intake gets the invite, and only one welcome (449.1804ms)
+✔ Hilo entrepreneurs are welcomed by Hilo, not by Soto Accounting (276.4448ms)
+✔ an interrupted intake resumes: answers and place come back, stale handles do not (1286.5851ms)
+✔ the questionnaire is answerable: labelled options, autosave, and it completes its own step (1159.453ms)
+✔ a notice-only client gets no modules — but still confirms their own details (527.8055ms)
+✔ the revenue question names its year, and the year is derived rather than typed (28.0191ms)
+✔ a gross revenue figure is stored WITH the year it describes (299.6512ms)
+✔ a blank revenue answer is not a failure, and the year is not invented for it (273.7399ms)
+✔ every "Other" can be explained — except the one that must not be (23.78ms)
+✔ what the client typed for "Other" is kept, and only when they chose it (256.4469ms)
+✔ a stray "other" description is not stored beside a real answer (244.2747ms)
+✔ the public intake carries no client data, whoever asks and however often (160.7008ms)
+✔ the questionnaire opens with what we hold, and confirm-your-info is gone (116.0345ms)
+✔ every module "Other" has somewhere to write, and it only appears when chosen (196.0174ms)
+✔ a companion answer is dropped when the client changes their mind (81.228ms)
+✔ the fiscal-year-end companion asks for a MONTH, because a deadline is computed from it (2.5744ms)
+✔ a submitted questionnaire comes back with its answers, and revising is not resubmitting (276.8562ms)
+✔ there is nothing to revise before there is something submitted (20.9437ms)
+✔ every conditional question in the database has a trigger that can actually occur (2.8024ms)
+✔ the "Other" option F6 waits for is actually on F6 (1.7443ms)
+✔ #46 REPRODUCED: stripping the option a companion waits for is DETECTED, not silent (16.1633ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ vouchering: periods are owned work items, T-7 and overdue escalate, reimbursement closes it (34287.8044ms)
+✔ vouchering module generates NO files — status tracking only (hard rule) (238.6589ms)
+✔ onboarding rescue: one client-visible to-do per stage (arming the ladder), Day-60 decision holds the deposit as credit (696.1905ms)
+✔ stage derivation walks the pipeline in order (5.1008ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ three receipts held while OFF; arming sends nothing and the row reads 3 held (30599.9817ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ paid, void, refunded and partially refunded all come back with what the card must print (29653.2784ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ THE BUG: the sweep no longer rewrites a refunded invoice as paid — the row stays refunded (24934.2132ms)
+✔ the DATABASE refuses refunded → paid on a raw UPDATE (the sabotage target) (312.0253ms)
+✔ refunded → paid IS legal with a NEW payment intent — a new payment record (187.9524ms)
+✔ paid → refunded needs a refund row; void is terminal (430.2756ms)
+✔ markInvoicePaid refuses a refunded invoice in words, before the database has to (330.5702ms)
+✔ nightly drift check: SAOS says paid, Stripe says refunded → one task, nothing corrected (228.2231ms)
+✔ re-sync from Stripe is the deliberate correction: refunds recorded, status refunded, audited (388.1227ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the billing role voids a sent invoice: reason and actor recorded, session expired, client told, number kept (30560.8586ms)
+✔ a paid invoice cannot be voided — refused by the route, and by the database on a raw UPDATE (254.7747ms)
+✔ a reason is required — by the route and by the database (217.59ms)
+✔ void is terminal: nothing moves an invoice out of it, not even SQL (551.2122ms)
+✔ a draft cannot be voided (only sent or overdue), and the database says so (357.7298ms)
+✔ a role without billing.manage cannot void (271.3722ms)
+✔ a payment that lands on a VOID invoice does not flip it — a task is raised for a person (398.8979ms)
+✔ a void invoice leaves A/R aging and the number is not reused (214.3165ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ 2a: an engagement landing moves a lead to onboarding at the database, audited as the event; open work cannot be set back to lead (30613.3609ms)
+
+─── MAIL (console transport, not sent) ───
+From: Soto Accounting <no-reply@sotoaccounting.com>
+To: walkin-lifecycle@example.test
+Subject: Your Soto Accounting client portal is ready
+
+Hi Synthetic,
+
+We have set up your secure client portal at Soto Accounting. It is where your documents, invoices, engagement letters and messages live — everything in one place, and nothing sensitive travelling by email or text.
+
+Open it here:
+
+http://localhost:3000/auth/verify?token=xBsi6JjA7ibSxT2u4KnpSpD_BMlI8JLt2avcjptNZbQ
+
+In the portal you can:
+  · upload documents securely (photos from your phone are fine)
+  · sign your engagement letter and authorizations
+  · see and pay invoices
+  · message us, and track where your work stands
+
+That link signs you in once and expires in 30 minutes. If it expires before you use it, go to http://localhost:3000 and enter this same email address — we will send you a fresh one. There is no password to create or remember.
+
+If anything looks wrong, reply to this email and a person will answer.
+
+— Soto Accounting
+───────────────────────────────────────────
+
+✔ 2b: the intake opens no engagement; a hand-made engagement, return or resolution case says why (2642.8346ms)
+✔ 2c: withdrawing an engagement withdraws its unfiled returns, and the database holds the invariant both ways (1354.4876ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the preparer queue is deadline-first with rejects pinned to the top (29772.3817ms)
+✔ a preparer sees ONLY their own returns, whatever they ask for (287.2006ms)
+✔ at-risk uses the SAME setting as the extension board, not a second rule (488.9158ms)
+✔ the client packet scopes returns to one client, and lists documents WITH an audit row (528.9163ms)
+✔ the client sees that a notice is handled, and never sees the internal machinery (482.4396ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the Master is final, carries the late-fee disclosure, and the old letters are retired (34647.7126ms)
+✔ the A/B split comes from the RETURN TYPE, not from the service line (541.6133ms)
+✔ service lines map to their schedules (543.6381ms)
+✔ ONE signature accepts the Master and every attached schedule (561.6201ms)
+✔ the Master is NEVER re-executed — a second signed packet is impossible (515.2965ms)
+✔ a later-added service is accepted per-schedule in the portal, and recorded as such (712.9832ms)
+✔ BEFORE signing, no schedule is offered as "added since then" (finding #8) (468.7238ms)
+✔ a Schedule cannot be accepted before the Master it incorporates (93.1689ms)
+✔ unapproved Spanish is never sent — the client gets the controlling English text (91.256ms)
+✔ the attached-schedule list in the Master comes from the packet, not from a caller (153.8138ms)
+✔ the Spanish queue lists what is waiting, refuses to approve nothing, and re-queues on edit (431.3059ms)
+✔ no §7216 consent is presented before the Master is signed (96.2371ms)
+✔ USE goes to every client; DISCLOSE only to a Hilo bridge or a real referral moment (746.1359ms)
+✔ a declined consent is recorded and never asked again — and does not revoke a signed one (403.2443ms)
+✔ the portal shows only the offers, and refuses an answer to a consent it never asked (645.1523ms)
+✔ the portal accepts a later schedule, and refuses a code it was not offered (421.0822ms)
+✔ a legal DOCUMENT can render in Spanish — a null subject is not "Spanish unavailable" (84.2606ms)
+✔ §7216: the client is shown the MANDATED text, bilingual, with English operative (177.1395ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ voice memo → transcript → summary → tasks → referral queue → pro-bono time entry (37568.2917ms)
+✔ §7216 gate in the pipeline: blocked soto→hilo rec becomes a staff notification, not a silent skip (871.9788ms)
+✔ upload guards: contact required; non-audio refused; RBAC enforced (1229.1206ms)
+✔ zoom webhook: secret enforced; recording.completed accepted and triaged (262.9732ms)
+✔ recovery sweep re-enqueues stuck recordings (1246.4042ms)
+✔ recovery sweep rescues a session abandoned MID-processing, not just one never started (1477.2654ms)
+✔ a session still genuinely in flight is left alone (793.1224ms)
+✔ the client record lists sessions with their summaries; the transcript is separate and audited (771.4735ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a placeholder action item does not become a task nobody can act on (28215.3852ms)
+✔ a stalled session is NAMED as stalled, not left looking busy (821.678ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ merge: a shared email, phone or address merges; a name alone never does without a reason on the record (37642.026ms)
+✔ after a merge the client page says which address signs in, beside the access badge (938.7389ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ THE REQUIREMENT: a Messages file is indistinguishable from a direct upload (33560.1248ms)
+✔ the message keeps IMMUTABLE TEXT plus a reference (Brian’s ruling) (990.7008ms)
+✔ it lands in Documents and satisfies a document request like any upload (1193.1377ms)
+✔ scoping and validation hold: session contact only, real category, a file required (733.2355ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ csv parser: quoted commas, escaped quotes, embedded newlines, BOM (27248.2421ms)
+✔ normalizers: dates, money, phones, entity types, grant statuses (3.4433ms)
+✔ grant tracker: month labels skipped; credentials separated in BOTH column shapes; raw stripped (260.4916ms)
+✔ plan: activity windows, project rescue, tag exception, merge fill-don't-overwrite, lead handling (194.4698ms)
+✔ plan: businesses — real ones import with owners, shells and orphans do not (130.4683ms)
+✔ execute: dry run writes bookkeeping only; execute loads; re-run is all duplicates; secrets absent (974.0925ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ class ceo: the CEO's own void is on neither line (30223.946ms)
+✔ class staff: a void by a human member of staff is counted by staff, with their id (403.6896ms)
+✔ a webhook refund matched to a staff-initiated refund is attributed to that staff member, once (475.1623ms)
+✔ an unmatched webhook refund is outside the door: class system, never by staff (622.5626ms)
+✔ the executive view carries both lines, and the digest sends class staff only (211.3989ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ notice creation: auto response-deadline (notice date + 30) and role-routed handler alert (35325.8832ms)
+✔ status change out of received stamps first_actioned_at once (488.0792ms)
+✔ escalations: 48h unactioned → Brian+Jackson; <14d deadline → Brian; both idempotent (1337.7743ms)
+✔ annual-report due-date rule: IL = first day of anniversary month, strictly future (1.727ms)
+✔ FLORIDA is uniform-deadline: May 1 for everyone, formation date does not move it (1.399ms)
+✔ a uniform deadline derives with NO formation date; an anniversary one cannot (1.6242ms)
+✔ entity compliance: T-60 Laura reminder + task, T-30 client email (ES), filed rolls the date (771.2953ms)
+✔ PLLC pipeline: flag routes to Laura + advisory flag to Brian; license verification step (610.0068ms)
+✔ a non-researched state does NOT go to Laura to file against a guess (382.2665ms)
+✔ the business case is COUNTED, not a number frozen in a comment (415.4591ms)
+✔ a Florida entity now routes to Laura as routine work (238.1803ms)
+✔ a stored due date that disagrees with the rule goes to Brian with BOTH dates (331.1365ms)
+✔ a RECORDED override reason makes the same disagreement routine (276.9708ms)
+✔ enrolling with no formation date: Florida still gets a date, Illinois gets a task (395.5341ms)
+✔ the Florida cross-check works without a formation date (305.6437ms)
+✔ the override columns must be recorded together (23.5237ms)
+✔ a formation date cannot be stored without saying where it came from (357.6404ms)
+✔ enrolment records the formation date on the BUSINESS, and does not claim the register (209.9212ms)
+✔ (3b) one door: the scope rule is enforced in the enrolment function, not at each caller (550.0355ms)
+✔ (3b) an auto-enrolment with no derivable date is not quieter than a manual one (2111.8875ms)
+✔ (3b) the trigger is the SCOPE ITEM, not the service line (480.9192ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ ntfy titles survive HTTP header transport (RFC 2047 for non-ASCII) (29395.5938ms)
+✔ WISP summary is admin-only: preparer 403, ceo 200 with live posture (audited) (2750.2314ms)
+✔ WISP summary exports as markdown for the binder (942.6718ms)
+✔ restore-drill reminder: nags once per quarter until a drill is recorded (619.5783ms)
+✔ backup staleness: silent while unconfigured, critical alert once stale (1150.8338ms)
+✔ Dubsado retirement: measured, not guessed — and alerts exactly once (1744.3599ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ #48: the intent to send commits WITH its state, and vanishes with it (27826.1512ms)
+✔ #48: enqueueing the same effect twice queues ONE send (85.1524ms)
+✔ #48: an unknown effect is refused at enqueue, where the caller is still on the stack (3.3474ms)
+✔ #48: accepting a quote queues the deposit email, and the drain sends it (3573.4962ms)
+✔ #48: a client with no address is retried, then abandoned with a P1 task naming them (2386.1029ms)
+✔ #48: an invoice already sent by hand retires its row quietly, with no alarm (1039.3162ms)
+✔ #48: the packet is marked sent and the link queued together — never sent-but-unrecorded (493.6709ms)
+✔ #48: a packet signed before the tick fires is not asked to be signed again (537.4909ms)
+✔ a rejected return is OWNED and ALERTED even though nobody holds tax_preparer (443.1989ms)
+✔ a perfection clock CANNOT be stored without an open owning task (263.0742ms)
+✔ closing the owning task is only legal once the clock is cleared (361.4901ms)
+✔ the outbox fast lane runs at least once a minute — the number that makes the portal copy true (79.4742ms)
+✔ one pass of the fast lane performs a queued deposit email, without the rest of the tick (1082.3996ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ ONLY the required schedules appear — a tax client never sees bookkeeping terms (30819.8683ms)
+✔ a multi-service packet carries exactly its own schedules, in order (904.1413ms)
+✔ NO §7216 consent is ever in the signing document, and the omission is named (465.5064ms)
+✔ nothing unfilled reaches a signer, including the attest Addendum blanks (665.5818ms)
+✔ the document records which template VERSION each section came from (419.4414ms)
+✔ a packet whose schedule went back under review cannot be rendered (434.9779ms)
+✔ the document is reviewable over HTTP before anything is sent (406.6373ms)
+✔ #20: the signed Master lists each schedule ONCE, by its own title (497.9271ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ sending emails a PORTAL LINK and creates no signature envelope at all (31124.7139ms)
+✔ a failed build sends nothing and marks nothing (805.7017ms)
+✔ a client with no portal access cannot be sent a packet they could not sign (517.5651ms)
+✔ an already-signed packet cannot be sent again (1367.3728ms)
+✔ the whole path end to end: send, read, sign, and exactly those schedules accepted (1219.6777ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ email: the tokenized pay link goes out, is audited, and reads "Pay link delivered" on the send log (29807.9014ms)
+✔ text: no consent is refused by the TCPA gate; consent without Twilio says so; nothing is audited as sent (545.635ms)
+✔ only an open invoice has a pay link to send: paid and void are refused (728.3457ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the invoice email carries a tokenized pay link; the page learns the number and the amount, nothing else (29132.9724ms)
+✔ a reminder carries the SAME link — the client never holds two (706.0628ms)
+✔ checkout needs no login: the token opens Stripe, and Stripe returns to the same token page (414.7807ms)
+✔ paid kills the token: the return page reads paid (number only), and a further checkout is refused (835.5763ms)
+✔ void kills the token: a plain "no longer payable" with no data at all (759.6993ms)
+✔ age is not a death: an old link still opens an unpaid invoice, and a re-send carries the same one (325.5718ms)
+✔ a token nobody issued is simply unavailable (12.8835ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the exact 2026-08-13 bug: paid at Stripe, no webhook — reconcile settles it (29902.2371ms)
+✔ a client cannot mark their own invoice paid by calling reconcile (909.7216ms)
+✔ reconcile is scoped: another client's invoice does not exist to you (585.2595ms)
+✔ idempotent: reconciling twice does not double-settle or re-audit (660.7859ms)
+✔ an invoice that never went to checkout has nothing to reconcile (280.7761ms)
+✔ the sweep catches the client who paid and closed the tab (767.7075ms)
+✔ one unreachable session does not stop the sweep for everyone else (921.2518ms)
+✔ a session from the other Stripe world is retired by prefix, without asking Stripe (376.0237ms)
+✔ a session Stripe says does not exist is retired the same way, and the sweep counts it instead of erroring (433.6277ms)
+✔ the return from Stripe names the invoice that was just paid (281.5506ms)
+✔ the live adapter reads its key mode from the key; the stub has none (29.8782ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ staff grants portal access → magic link email → client session (audited) (26993.707ms)
+✔ spanish-language contact receives the spanish template (628.8519ms)
+✔ expired links are refused (569.4341ms)
+✔ requesting a link for an unknown email returns 200 and sends nothing (no enumeration) (37.285ms)
+✔ row-level isolation: a client can never see another client’s records (1112.3325ms)
+✔ logout revokes the portal session (492.3049ms)
+✔ bounce webhook creates the Rene verification task (and rejects bad secrets) (524.1801ms)
+✔ PLACEHOLDER GATE: placeholder templates are unsendable in every environment (101.634ms)
+✔ magic verify sets an httpOnly cookie that authenticates; logout clears it (482.7171ms)
+✔ #21: the first email is an INVITATION; the second is a bare sign-in link (393.326ms)
+✔ #21: a KNOWN client who cannot sign in becomes a task — the answer to them is unchanged (326.1127ms)
+✔ #21: an address we do not recognise creates NO task — the queue cannot be flooded (61.3012ms)
+✔ #21: the welcome email describes the checklist that actually exists (10.4903ms)
+✔ #13: an active client keeps their session — the window slides on use (708.9542ms)
+✔ #13: sign out everywhere ends EVERY session, not just this browser (574.2241ms)
+✔ #13: revoking portal access kills live sessions immediately (366.4738ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the checklist carries the canonical journey: booking is back as optional, the deposit is gone (31076.0681ms)
+✔ the completion route accepts the new steps and refuses the retired one (288.0454ms)
+✔ PAY DEPOSIT ticks itself when the invoice is paid — the client is never asked (1219.4101ms)
+✔ WITHDRAW hides the file, re-opens the request, and keeps the record (912.3931ms)
+✔ a client cannot withdraw someone else’s document, and a double tap is not an error (639.8386ms)
+✔ §7216 consent is a step only AFTER the packet is signed, and never before (601.1663ms)
+✔ DECLINING the consent completes the step — setup never depends on consenting (501.2514ms)
+✔ booking completes from the Cal.com webhook, never from a client saying so (787.0377ms)
+✔ booking is optional: it never holds the checklist open, and the deposit no longer does either (293.3914ms)
+✔ a bookkeeping client can finally see their own work — the portal was tax-only (278.9225ms)
+✔ a tax engagement with no tax row is still the client’s work, and still shows (191.2768ms)
+✔ a booking the client made is a record they can see, not just an audit line (455.5756ms)
+✔ track_services is gone: the checklist finishes without it (378.451ms)
+✔ a client made eligible by a RULE change is completed on their next visit (307.1166ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the client is shown the document and the hash their signature must carry (33299.0981ms)
+✔ a signature records intent, consent, attribution, the hash, and a retained copy (1040.7283ms)
+✔ signing advances onboarding step 2 server-side (finding #10) (955.2792ms)
+✔ THE INTEGRITY CHECK: a document that changed since it was read cannot be signed (1362.4249ms)
+✔ intent and e-sign consent are each required, and each refusal says why (518.5187ms)
+✔ a packet cannot be signed twice, and an unauthenticated caller cannot sign at all (1021.5983ms)
+✔ the §7216 consents appear only AFTER this signature, never inside it (1749.9902ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ E: the portal lists a void invoice, after every live one, and refuses to check it out (31490.3352ms)
+✔ E: the portal copy for a void invoice exists in both languages and says Cancelled, not void (8.4058ms)
+✔ F: engagements list active, then on hold, then closed — newest first within each group (1899.071ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ pricing_mode records intent that was previously only inferable from which column was filled (30431.8693ms)
+✔ the mode CHECK refuses a row whose shape contradicts its mode (624.2462ms)
+✔ a multi-line quote sums its lines’ deposits — the thing the old model could not do (662.0083ms)
+✔ the deposit does NOT multiply with quantity, unlike the price beside it (293.8863ms)
+✔ a quote of lines that carry no deposit asks for none — which is not the same as zero (229.7234ms)
+✔ an override still applies to the SUM, and the treatment stays derived (309.4626ms)
+✔ the deposit follows the quote’s LOCKED version, not whatever the book says today (547.9456ms)
+✔ a new version carries pricing_mode and deposit_cents forward instead of resetting them (19.5ms)
+✔ the retired deposit items are unsellable, and their questions are answered (248.9405ms)
+✔ a structure question does NOT make a quote provisional the way a price question does (416.0838ms)
+✔ confirming the price and confirming the structure are separate taps (146.8207ms)
+✔ a deposit may equal the price but never exceed it — and only flat lines are compared (227.6804ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the two price layers agree to the cent: bundled = prep + one session (29339.5308ms)
+✔ Brian confirmed the semi-annual price, so it no longer awaits confirmation (10.699ms)
+✔ RULING 1: weekly is configurable now, and prices at $300/week all-in (770.7058ms)
+✔ RULING 2: matched cadences price at today’s totals — no current client re-prices (1514.5518ms)
+✔ RULING 2: a mismatched combination derives, and is still ONE figure (299.9648ms)
+✔ RULING 4: maintenance mode derives monthly prep + semi-annual sessions (560.4724ms)
+✔ RULING 3: a component can never reach a quote, an invoice, or the builder (677.1137ms)
+✔ RULING 4: utilization entitlement reads sessions_per_year as configured (486.4ms)
+✔ the builder catalog carries deposit_cents, and it is the number acceptance will charge (294.2236ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ golden: MFJ + Sch C + additional state = $530 floor, $609.50 banded top (30649.8953ms)
+✔ golden: range-priced item (CPA letters $250–500) spreads before the band (90.7855ms)
+✔ golden: quantities multiply (3 rental properties = $540 floor) (90.5777ms)
+✔ golden: QBO + payroll setup bundle bills as one $250 (87.9915ms)
+✔ golden: monthly package makes ST-1 filings and forecasting free; recurring stays exact (85.9171ms)
+✔ golden: software pass-through shows on the quote but never in revenue (85.7447ms)
+✔ spanish quotes carry spanish line names (73.4936ms)
+✔ unknown item codes are refused by name (73.5402ms)
+✔ quote-onto-engagement locks the range, pins the version, satisfies the estimate gate (548.1431ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ THE BUG: acceptance produces a visible task even when NOBODY holds the routing role (30887.8414ms)
+✔ the acceptance task names the schedule the quote covers (920.1574ms)
+✔ SEND is blocked when the client already accepted that schedule (283.4543ms)
+✔ declaring the intent lets it through, and the answer is RECORDED (1005.051ms)
+✔ a quote with no overlap sends with no intent and records none (527.1796ms)
+✔ #19: a bookkeeping quote sends, and accepts into a BOOKKEEPING engagement (941.9926ms)
+✔ #19: a quote spanning two service lines creates two DISTINCT engagements (1100.9138ms)
+✔ #19 successor gate: a line mapping to no engagement is refused at SEND (15.7178ms)
+✔ schedule resolution PINS the price-book version — a reclassification is not retroactive (765.2771ms)
+✔ #47: acceptance snapshots each engagement scope, split along the same lines (1399.3897ms)
+✔ #47: editing the quote line afterwards does NOT rewrite what was agreed (1581.4793ms)
+✔ #47: the snapshot refuses to be updated at all (2106.2885ms)
+✔ #47: an engagement with no scope names itself null rather than guessing (1.5926ms)
+✔ #48: two simultaneous acceptances produce ONE set of engagements, not two (1197.8083ms)
+✔ #48: the claim is what stops it — the quote leaves "sent" before any work happens (932.834ms)
+✔ #48: acceptance itself sends nothing, and queues the delivery instead (1009.1605ms)
+✔ #48b: a failure at the LAST write leaves absolutely nothing behind (726.7009ms)
+✔ #48b: the rolled-back acceptance is LOUD — the client tried to buy and someone is told (618.5735ms)
+✔ #48b: after a failed acceptance the client can simply try again (748.2723ms)
+✔ #48b: withTransaction is re-entrant — a nested call joins rather than nesting (13.2919ms)
+✔ #48b: a rollback inside withTransaction discards every write, including nested ones (31.9138ms)
+✔ #48b: an ordinary query outside a transaction still uses the pool (4.6457ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the quotes list says who started a draft; 31 days old is stale, 29 is not; withdrawing needs a reason and only takes a draft (30206.2094ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a quote composes from the price book only — unknown codes are refused (30189.9706ms)
+✔ one-time work quotes as a RANGE whose width is a setting, not a literal (408.5294ms)
+✔ sending pins the price-book version and stores only the token hash (1002.2858ms)
+✔ a failed send rolls the quote back to draft instead of stranding the link (942.5135ms)
+✔ the public link needs no account, and a wrong token is a 404 (798.6605ms)
+✔ accepting converts to an engagement + deposit invoice with zero re-entry (1102.5571ms)
+✔ a later price change does not re-price a quote already in the client’s hands (1029.6805ms)
+✔ a bundle quote is still only price-book references (476.1667ms)
+✔ declining returns the lead to the pipeline WITH a reason, and tasks it to Brian (1150.0306ms)
+✔ expiry is date-guarded, records a reason, and runs once per day (1590.5461ms)
+✔ an expired-at-read quote closes itself instead of converting (1357.2276ms)
+✔ quoting extra work to an existing CLIENT never demotes them into the funnel (1166.4258ms)
+✔ conversion metrics measure win rate against DECIDED quotes only (25.0948ms)
+✔ the pipeline board shows leads only — clients are not open opportunities (106.4052ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the shapes that were actually written are named, and honest reasons pass (27590.6437ms)
+✔ a void with a ruling number in the reason is refused at the route, and the invoice stays sent (1002.0799ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the draft is built from what the session produced, in both languages (30065.0307ms)
+✔ a real next session appears in the recap instead of the placeholder (223.751ms)
+✔ NEVER AUTO-SENT: the database refuses a sent recap with no approver (608.9842ms)
+✔ approving is leadership-only, and cannot happen before drafting (583.4735ms)
+✔ the toggle gates the SEND, and an approved-but-unsent recap explains itself (641.3125ms)
+✔ armed: one tap posts to the portal thread and emails a pointer, in the client’s language (805.0224ms)
+✔ editing an approved recap withdraws the approval (486.2157ms)
+✔ a session with no client cannot produce a recap (269.329ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ soto→hilo is ALWAYS §7216-gated: blocked without consent, flows with it (31096.1484ms)
+✔ hilo→soto: pure Hilo entrepreneurs flow without consent; Soto tax clients need it (466.4005ms)
+✔ full transition journey: approve → link → disclosure REQUIRED → converted with full trail (1768.5903ms)
+✔ DB CHECK: an undisclosed hilo→soto conversion is impossible even by direct SQL (95.5562ms)
+✔ portal CTA (automation 15): fires on referral status / tax-need, and is §7216-aware (1599.8511ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ 6e: a real client whose deposit is paid then fully refunded moves zero revenue and zero deposit credit (32349.4381ms)
+✔ 6b: a session Stripe reports as expired is retired by the sweep, with no reconcile_checked row (165.9886ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ charge.refunded: the invoice stops saying Paid — refund row, amounts reversed, receipt queued (26848.9435ms)
+✔ THE REPLAY: the same charge.refunded delivered twice records ONE refund and queues ONE receipt (395.4213ms)
+✔ a partial refund reads partly refunded, and the un-refunded part is still deposit credit; a full one leaves none (408.1849ms)
+✔ charge.dispute.created: status disputed, a task for the billing owner due on the network deadline, no client send (701.702ms)
+✔ charge.dispute.closed won: back to paid and the task closes itself (320.4606ms)
+✔ charge.dispute.closed lost: treated exactly as a refund, keyed by the dispute so a replay cannot take the money twice (373.5259ms)
+✔ a refund for a payment SAOS has no invoice for raises a task naming the Stripe ids, and is not lost (90.0656ms)
+✔ the mapping reads the live event shape identically (one parser for fixtures and production) (7.4345ms)
+✔ every installer and the repair script subscribe the endpoint to the three events (11.8502ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ draft, void and partially refunded invoices are not chased; sent and overdue are (34028.5602ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the CSV writer is the one place formatting happens, and it is spreadsheet-safe (36646.6837ms)
+✔ every catalogued report runs, and its rows only use its declared columns (558.7962ms)
+✔ reports state their limits instead of approximating: every caveat is real (3.8596ms)
+✔ revenue splits by service line and reports unattributable money honestly (205.2698ms)
+✔ throughput separates filed from accepted, so a reject cannot inflate the number (175.9956ms)
+✔ session utilization flags an active S corp below the two-session floor (301.4088ms)
+✔ reports are leadership-only, and a CSV export is audited by name and range (538.6031ms)
+✔ dashboard tiles: never-configured gets defaults, deliberately-empty stays empty (641.6562ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ filing lane and surcharge derive from the tax year — never chosen (35120.1841ms)
+✔ refund statute = 3 years from the original due date, and says so honestly once passed (30.9869ms)
+✔ plan sorts oldest-first and pairs reconstruction where books are partial or missing (15.4072ms)
+✔ spawning a case: one engagement per year + reconstruction pairs, chained oldest-first, 8821 queued (3358.3667ms)
+✔ representation gate: 8821 is not a POA — abatement work needs a 2848 covering THAT year (1684.325ms)
+✔ paper lane: certified mailing requires tracking and is refused on an e-file year (1187.3419ms)
+✔ quote grid: every dollar from the price book, +$100 surcharge automatic past two years (297.991ms)
+✔ bundles compose from the price book: components priced, optional add-ons excluded until chosen (547.2434ms)
+✔ bundle_components cannot carry a price — the schema has no column for one (76.7168ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the legal next stage(s) per stage: forward only, never on_hold/withdrawn, never a step back (34781.2217ms)
+✔ GET /tax-engagements/:id carries the quoted range under the book in force, the 8879 state, the preparer and the PTIN-holder options (866.9073ms)
+✔ final fee inside the quoted range needs no reason; outside it is refused without one, naming the range, and audited with one (931.7154ms)
+✔ above a locked estimate the one reason serves both rules: scope creep is flagged under "other" with the reason as its description (557.922ms)
+✔ filed with no 8879 on file refuses f8879_required; with the 8879 and a PTIN holder it issues the invoice through createInvoice (1880.8839ms)
+✔ role proof: a bookkeeper gets 403 from estimate, final-fee and transition; the CEO holds them by wildcard (429.6952ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ an unfilled role reaches the CEO and is recorded with the site that asked; a filled role is quiet (34086.6738ms)
+✔ a variable role key nobody holds is still loud: the role is named in the record (59.2277ms)
+✔ the five sites route through the loud resolver, not the silent one (39.2312ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ Schedule F is loaded, mapped to attest, and queued for Spanish approval (35051.1978ms)
+✔ a schedule flagged PLACEHOLDER cannot ride in a packet at all (316.5225ms)
+✔ attest resolves to Schedule F instead of being refused outright (294.8204ms)
+✔ an attest packet is REFUSED until the per-engagement Addendum exists (559.7065ms)
+✔ a complete Addendum unlocks assembly and rides in the packet (727.7895ms)
+✔ the Addendum blanks are filled from the record — no client signs a blank form (403.7672ms)
+✔ "hourly, hours unknown" is not agreed terms — the service refuses, and so does the DB (1050.507ms)
+✔ an Addendum cannot be hung off a non-attest engagement (332.239ms)
+✔ INDEPENDENCE GATE UNCHANGED: active bookkeeping still blocks attest creation (500.0288ms)
+✔ an unknown price-book item is refused rather than defaulted to zero (246.1295ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ registered and OFF: the automation row ships disabled and the template is final, bilingual, and links to Sign (29857.034ms)
+✔ a service added after the Master: queued → held while off, counted and audited, nothing sent (1146.1789ms)
+✔ armed: the email leaves in the client's language with the deep link, and the send is audited (979.6641ms)
+✔ no Master yet: a first engagement queues nothing; the packet owns that conversation (271.7997ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a session minted for a script labels every audit row it writes; a browser session does not (32190.7593ms)
+✔ on the box, a session with no browser behind it and no label is refused (96.555ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ void says "queued" while the worker has not run, then "delivered" with the time once it has (33798.466ms)
+✔ the refund receipt follows the same rule: queued by the webhook, delivered by the worker (509.3841ms)
+✔ the payment receipt is sent inline, so it reads delivered at once — and only because its audit row exists (580.4592ms)
+✔ two overlapping drains perform an effect ONCE — the claim is a lease (480.7211ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the 8879 signed date is a past fact: tomorrow is refused, the real earlier date authorizes (35546.5224ms)
+✔ a held send is dated and past tense, when it is held and when an old row is read (937.4644ms)
+✔ the actor on an acceptance email is the person who released the report (2592.4687ms)
+✔ the preparer queue: leadership reads everyone on request; a preparer reads only their own (1872.1849ms)
+✔ a business added from the client page: formation date with provenance, and primary at creation clears the previous primary (661.1351ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ no e-sign vendor: drafting is a record, sending is a 410 with the real path named, and the webhook is gone (32489.5223ms)
+✔ portal Sign Documents list is scoped to the session contact (584.7919ms)
+✔ the wet-signed 8879 upload authorizes the return: date, preparer of record, envelope record, audit (1451.7155ms)
+✔ nothing may claim a return is authorized without the document: the database refuses a timestamp alone, and so does the gate (561.0016ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a migrated client can grant SMS consent from the portal, and it is recorded properly (27902.5277ms)
+✔ granting consent actually unblocks the send gate; revoking re-blocks it (464.57ms)
+✔ consent moves the broadcast audience: suppressed-for-TCPA becomes textable (487.9093ms)
+✔ consent is never granted as a side effect of a profile update (603.4473ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ an unreviewed row whose seed text moved is overwritten, and its version bumps (28910.5139ms)
+✔ a REVIEWED row is refused, and the summary names it with the size of the difference (2337.3809ms)
+✔ the seed is idempotent when nothing differs (1394.0808ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ every task type in the registry has an SOP or a written reason for having none (29812.1908ms)
+✔ a generated task carries its SOP link with nobody pasting a URL (185.8937ms)
+✔ a mapping pointing at a DRAFT or missing SOP resolves to null, not a dead link (150.5537ms)
+✔ search returns published SOPs only, and any staffer can read them (437.9341ms)
+✔ publishing snapshots the outgoing body, so history is answerable (1290.7095ms)
+✔ writing is leadership; reading is not (193.3496ms)
+✔ a Whisper-seeded SOP is a labelled DRAFT, never auto-published (504.7941ms)
+✔ the seeded skeletons are honest about being skeletons (16.3531ms)
+✔ seeded skeletons publish UNREVIEWED, and say so rather than borrowing Brian’s name (114.1198ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ rulings 2, 3, 6: named grants only — no wildcard on ed_coo, no phantom permissions anywhere, bookkeeping on comms_billing (28252.4142ms)
+✔ ruling 1: the temporary password dies at 72 hours or first use, and the session owes a password until it is set (3723.2753ms)
+✔ ruling 1: a temporary password older than 72 hours is refused before first use (1184.8195ms)
+✔ ruling 9: audit rows carry the display name; the legal name is what the record holds (2239.9743ms)
+✔ ruling 7 and the four nobody-paths: with the three roles held, owners resolve to them and the day-14 rung has someone to call (1556.9862ms)
+✔ ruling 10: a void by anyone other than the CEO is on the executive view immediately and in the next digest (1872.3196ms)
+✔ ruling 9: names are editable after creation, and the change is audited (494.7501ms)
+✔ password reveal (2026-09-12): regenerate is a separate audited action; the old password and its sessions die, the new one is shown once (1561.1773ms)
+✔ a changed sign-in address does not orphan the login: the open session survives, the new address signs in, the old one does not, and the change is audited (912.0894ms)
+✔ the CEO floor (0096): the only active CEO cannot be deactivated or moved off the role; the database refuses, the API says why, a second CEO lifts it (474.6071ms)
+✔ nobody is provisioned into client_success or advisory_manager: creation and role change refuse, and the roles say so (433.001ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ 7a: withdrawing an engagement that holds a paid, unapplied deposit is refused, and says which deposit (36866.9428ms)
+✔ 7a: "refund" withdraws and raises ONE billing task through the one door; Stripe is not touched (776.8404ms)
+✔ 7a/7b: "transfer" moves the deposit to the named open engagement; credit follows; both engagements audited (923.6263ms)
+✔ 7b: the transfer route is billing.manage, refuses another client’s engagement and a closed target (1328.4441ms)
+✔ decision 1 route: setting a period that collides with another active engagement is refused by the index (1511.5478ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+
+─── MAIL (console transport, not sent) ───
+From: Soto Accounting <no-reply@sotoaccounting.com>
+To: waiver@example.test
+Subject: Payment received — thank you (SA-2026-0001)
+
+Hi Synthetic,
+
+We received your payment of $10.00 for invoice SA-2026-0001 — thank you. Your receipt and invoice history are always available in your portal.
+
+— Soto Accounting
+───────────────────────────────────────────
+
+✔ waiving: reason required, tasks close, audited, the check skips and counts it, the money is untouched (34743.7903ms)
+
+─── MAIL (console transport, not sent) ───
+From: Soto Accounting <no-reply@sotoaccounting.com>
+To: verifies@example.test
+Subject: Payment received — thank you (SA-2026-0002)
+
+Hi Synthetic,
+
+We received your payment of $10.00 for invoice SA-2026-0002 — thank you. Your receipt and invoice history are always available in your portal.
+
+— Soto Accounting
+───────────────────────────────────────────
+
+✔ a paid invoice that verifies fine (no open finding) cannot be waived, so the control is not offered (206.2602ms)
+✔ an invoice with no Stripe payment has nothing to waive (90.3701ms)
+✔ production on a live key is fine (4.1793ms)
+✔ production on a TEST key is the 2026-09-09 failure, named as such (1.2771ms)
+✔ production in stub mode is the August failure (Pay returns 503), also named (0.6582ms)
+✔ a missing or unrecognisable key in production is a problem, not a pass (0.7243ms)
+✔ outside production the key is nobody’s business — dev and test run sandboxes on purpose (0.8382ms)
+✔ production config with the stub: boot fails, and the failure says why (1361.0779ms)
+✔ a live key beside the stub is refused even under test (4.4962ms)
+✔ development is not test: the stub is refused there too (1.0547ms)
+✔ under test with no live key the stub loads, and the live adapter is untouched by the rule (1.6376ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ createTask dedupes per source; closeTasksForSource is the auto-close hook (32878.1177ms)
+✔ views: My Tasks, owner rollup (approvals), team workload (229.6647ms)
+✔ checklist template instantiates per client with items (171.374ms)
+✔ client to-dos: aggregation (staff task + upload + signature) and client check-off (235.8758ms)
+✔ migration representative: IRS notice creates an owned ticket that closes on resolve (570.5807ms)
+✔ migration representative: enrichment gaps live as ONE task that follows the data (73.602ms)
+✔ Trello importer: board → columns → tasks, idempotent rerun (99.0915ms)
+✔ intern scope: tasks.execute changes status only on OWN tasks (412.6785ms)
+✔ waiting_for_input stamps waiting_since; leaving clears it and resets the rung (63.5953ms)
+✔ escalation ladder: D3 fires rung 1; a task discovered late fires ONLY the highest rung (281.2961ms)
+✔ recurrence: completing a repeating task spawns the next occurrence (53.2916ms)
+✔ reminder sweep: due reminders notify the assignee exactly once (26.4855ms)
+✔ search: the filter rail combines q, tag, priority, and dual lookups (72.2363ms)
+✔ saved views: private stays private, shared is visible, only the owner deletes (69.0126ms)
+✔ bulk operations: mass status + owner + tags across a selection (83.1707ms)
+✔ duplicate + follow-up + inline PATCH (client-visible arms the ladder clock) (70.1788ms)
+✔ dependencies: blocked tasks cannot complete; completing the blocker cascades unblock notification (109.5084ms)
+✔ dependencies: no self-blocks, no cycles, no terminal blockers; multi-blocker waits for the LAST one (300.4136ms)
+✔ backlog: enrichment is excluded from My Tasks, and the count says how much (54.8345ms)
+✔ backlog: the route ships the hidden count with the list, and the filtered view finds them (54.7796ms)
+✔ a second quote acceptance updates the open onboarding task instead of creating another (33.5862ms)
+✔ two IRS notices for one client are two tasks, not one (24.0289ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the interview is seeded, bilingual, and every question can price itself (30047.9098ms)
+✔ THE UNDERSTATEMENT: three rentals price as three, not one (99.7361ms)
+✔ a full interview derives every schedule the answers imply (377.0387ms)
+✔ THE RANGE: derived schedules are exact, only the base widens (40.4265ms)
+✔ a quote built from the interview stores the answers and narrows its own range (322.2558ms)
+✔ bad answers are refused with something a person can act on (57.5567ms)
+✔ the interview is reachable over HTTP and needs a session (188.9496ms)
+✔ a RANGE-priced item is not passed off as exact — it widens the range instead (80.304ms)
+✔ an item with no price at all is left off with a warning, never priced as zero (71.443ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the default tax year is the prior calendar year, and it is shown in the builder, on the quote, and in the engagement title (30868.1694ms)
+✔ an interview that names the year wins over the default (840.735ms)
+✔ item 13c: a year chosen in the builder is marked chosen; the default left in place is marked default; the proposal and title read whatever was chosen (479.5996ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ complexity score: table-driven per the MP formula, capped at L5 (30911.4424ms)
+✔ RBAC: intern cannot create tax engagements; preparer can (history row written) (397.2436ms)
+
+─── MAIL (console transport, not sent) ───
+From: Soto Accounting <no-reply@sotoaccounting.com>
+To: ret-237e311c@example.test
+Subject: Documents needed: 2025 tax documents
+
+Hi Synthetic,
+
+To move your work forward we need the following:
+
+—
+
+Upload them to your secure portal (photos from your phone work great):
+
+http://localhost:3000
+
+For your security, please use the portal — not email or text — for documents.
+
+— Soto Accounting
+───────────────────────────────────────────
+
+✔ full pipeline march with all three gates enforced (1113.9311ms)
+✔ invalid jumps are refused; on_hold resume re-applies gates (306.6009ms)
+✔ scope creep: auto-flag when final exceeds estimate top, reason REQUIRED (282.5038ms)
+✔ complexity endpoint stores score + inputs (116.9988ms)
+✔ e-file result: accepted completes; rejected re-queues with perfection clock + owned fix task (525.2409ms)
+✔ perfection clock job: T-2 warns the preparer, past-deadline escalates to Brian, date-guarded (462.2078ms)
+✔ an accepted return closes its engagement, and the client follows when the last one does (215.1755ms)
+✔ a REJECTED return does not finish anything — it is still open work (92.169ms)
+✔ withdrawing needs a reason, and closing twice is refused (59.0567ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a test client with money, work and a pipeline stage changes no report and no dashboard number (29892.1584ms)
+✔ the same client, un-flagged, DOES move the numbers — so the test above is not vacuous (512.3952ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the flag requires a reason — a mystery test row is not allowed (28850.8708ms)
+✔ EXCLUDED FROM MEASUREMENT: every number moves by exactly one when the flag flips (1041.6049ms)
+✔ a test client can NEVER be in a broadcast audience, whatever segment is built (815.6923ms)
+✔ VISIBLE IN OPERATIONS: the record can still be worked (176.5826ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ #48: a quote that cannot be fully written is not written at all (28802.3929ms)
+✔ #48: a REJECTED return that cannot be fully recorded stays filed, with no half-set clock (720.7184ms)
+✔ #48: an ACCEPTED return that cannot finish leaves the engagement open, not half-closed (634.3854ms)
+✔ #48: a signed Master records ALL its schedules or none — the worst partial state (193.1769ms)
+✔ #48: a packet is never created without the audit row that says who assembled it (129.2684ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a business named after its contact with no EIN and no entity type is tagged, and the tag and entity type reach the pickers (27565.2651ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ void is symmetric with issuance: the engagement deposit stamp returns to its pre-acceptance state, field by field (29206.1338ms)
+✔ the restamp route corrects a row an earlier void left stamped (the 6e474b1f shape), and is a no-op when nothing is wrong (721.7446ms)
+✔ a transferred deposit re-stamps both engagements from the record (515.2743ms)
+✔ a WAIVED deposit never issued an invoice: the stamp says waived, and a restamp keeps it — nothing was issued, so nothing is reversed (432.7639ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ the grants: her six on ed_coo, the entity scope on va_entity, the preparer inside the wall (29612.7748ms)
+✔ documents, Laura: holds documents.read; sees entity filings and nothing else, in the list, the overview, and the download (205.0815ms)
+✔ documents, Jaqueline: holds documents.read; the four return-adjacent categories and recordings are absent, the rest present (136.6396ms)
+✔ uploads follow reads: Laura files entity papers and nothing else; Rene reads the SSN last-4 (466.0673ms)
+✔ documents, inside the wall: Brian and Ana see every category (101.6141ms)
+✔ pii.read is real: the SSN last-4 leaves the client record only for its holders; the status and the EIN stay (114.8162ms)
+✔ interview content is behind interviews.read: the quote answers and the complexity inputs (213.6ms)
+✔ sessions, Jaqueline: holds meetings.read; a CPA session with a Soto client is absent everywhere, her own and Hilo sessions are present (164.0962ms)
+✔ her dashboard: dashboards.hilo opens it for Jaqueline, and its recent summaries are Hilo sessions only (100.7545ms)
+✔ her events: events.manage lets Jaqueline create, publish and complete a Hilo event (102.7539ms)
+✔ a transcript-seeded SOP draft is the author's until published (47.1416ms)
+0102: clearing the primary flag on 0 membership row(s) across 0 contact(s):
+0103: tagging 0 business(es) "unverified import" (named after the contact, no EIN, no entity type):
+✔ a bad signature is refused with 401, and the audit row names livemode, event id, configured mode and endpoint id (23903.375ms)
+✔ a body that is not JSON still fails safely, with livemode unknown (53.5482ms)
+✔ a good secret still passes through untouched (22.4868ms)
+ℹ tests 730
+ℹ suites 0
+ℹ pass 729
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 298264.9397
+
+✖ failing tests:
+
+test at test\booking-link.spec.ts:87:1
+✖ the checklist endpoint returns a prefilled link, and null while scheduling is closed (654.2893ms)
+  AssertionError [ERR_ASSERTION]: {"error":"internal_error"}
+  
+  500 !== 200
+  
+      at TestContext.<anonymous> (file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/api/test/booking-link.spec.ts:107:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path C:\Users\brian\Dropbox\AI AGENT\saos\apps\api
+npm error workspace @saos/api@0.1.0
+npm error location C:\Users\brian\Dropbox\AI AGENT\saos\apps\api
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c node --test --test-timeout=300000 --test-force-exit "test/*.spec.ts"
+
+
+> @saos/e2e@0.1.0 test
+> node prune-artifacts.mjs && playwright test
+
+
+Running 24 tests using 1 worker
+
+  ok  1 [phone] › tests\ops-add-business.spec.ts:47:3 › Add a business on the client page › the CEO adds a business with its EIN and makes it primary; a refusal renders beside its control (3.8s)
+  ok  2 [phone] › tests\ops-add-business.spec.ts:89:3 › Add a business on the client page › role proof: Laura (va_entity) has no Add a business button and the route refuses her (1.3s)
+  ok  3 [phone] › tests\ops-client-page.spec.ts:45:3 › Ops → client page › reads the way a person would, at this viewport (5.5s)
+  ok  4 [phone] › tests\ops-inline-error.spec.ts:40:1 › a refused amend shows the server's words beside the field, and the field keeps the text (2.1s)
+  ok  5 [phone] › tests\ops-scorp-dry-run.spec.ts:76:3 › The 1120S dry run › signed 8879-CORP, final fee, filed, acknowledged on the acks screen, paid, completed (12.5s)
+  ok  6 [phone] › tests\ops-scorp-dry-run.spec.ts:247:3 › The 1120S dry run › the client page reads the finished run: filed and accepted, the return delivered, the invoice paid, the engagement completed (3.3s)
+  ok  7 [phone] › tests\ops-scorp.spec.ts:44:3 › Ops → client page, the S corporation › the 1120S engagement, Schedule B, the $0 deposit, the return record and the document are there (2.5s)
+  ok  8 [phone] › tests\ops-tasks-phone.spec.ts:47:3 › Ops → Tasks › is a queue a person can work at this viewport (3.5s)
+  ok  9 [phone] › tests\ops-wall.spec.ts:69:5 › Ops → client page behind the wall, as laura › none of the four things are on the page, and the API says the same to this session (2.6s)
+  ok 10 [phone] › tests\ops-wall.spec.ts:69:5 › Ops → client page behind the wall, as jaqueline › none of the four things are on the page, and the API says the same to this session (2.7s)
+  ok 11 [phone] › tests\portal-invoices.spec.ts:122:3 › portal → Invoices › reads to the client in both languages, at this viewport (3.5s)
+  ok 12 [phone] › tests\portal-returns.spec.ts:38:1 › the delivered 1120S is under My Returns for the owner (1.8s)
+  ok 13 [desk] › tests\ops-add-business.spec.ts:47:3 › Add a business on the client page › the CEO adds a business with its EIN and makes it primary; a refusal renders beside its control (1.8s)
+  ok 14 [desk] › tests\ops-add-business.spec.ts:89:3 › Add a business on the client page › role proof: Laura (va_entity) has no Add a business button and the route refuses her (680ms)
+  ok 15 [desk] › tests\ops-client-page.spec.ts:45:3 › Ops → client page › reads the way a person would, at this viewport (4.0s)
+  ok 16 [desk] › tests\ops-inline-error.spec.ts:40:1 › a refused amend shows the server's words beside the field, and the field keeps the text (902ms)
+  ok 17 [desk] › tests\ops-scorp-dry-run.spec.ts:76:3 › The 1120S dry run › signed 8879-CORP, final fee, filed, acknowledged on the acks screen, paid, completed (5.9s)
+  ok 18 [desk] › tests\ops-scorp-dry-run.spec.ts:247:3 › The 1120S dry run › the client page reads the finished run: filed and accepted, the return delivered, the invoice paid, the engagement completed (2.2s)
+  ok 19 [desk] › tests\ops-scorp.spec.ts:44:3 › Ops → client page, the S corporation › the 1120S engagement, Schedule B, the $0 deposit, the return record and the document are there (2.3s)
+  ok 20 [desk] › tests\ops-tasks-phone.spec.ts:47:3 › Ops → Tasks › is a queue a person can work at this viewport (2.2s)
+  ok 21 [desk] › tests\ops-wall.spec.ts:69:5 › Ops → client page behind the wall, as laura › none of the four things are on the page, and the API says the same to this session (2.3s)
+  ok 22 [desk] › tests\ops-wall.spec.ts:69:5 › Ops → client page behind the wall, as jaqueline › none of the four things are on the page, and the API says the same to this session (2.5s)
+  ok 23 [desk] › tests\portal-invoices.spec.ts:122:3 › portal → Invoices › reads to the client in both languages, at this viewport (3.0s)
+  -  24 [desk] › tests\portal-returns.spec.ts:38:1 › the delivered 1120S is under My Returns for the owner
+
+  1 skipped
+  23 passed (3.0m)
+
+> @saos/internal@0.1.0 test
+> node --test test/*.spec.ts
+
+(node:7280) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/admin-staff.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Add staff has no default role: the form starts empty, offers "Select a role", and cannot submit without one (4.5164ms)
+✔ the Role column shows the role name, and changing it is a separate control with a placeholder (0.5929ms)
+✔ the last active CEO gets neither Deactivate nor a role change (0.6293ms)
+(node:24316) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/builder-lib.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a chip is filled exactly when its line is on the quote, and a tap toggles it (4.8611ms)
+✔ the summary bar follows every tap: deposit, committed total, line count (1.3307ms)
+✔ the tax year reads "default" until changed, the year alone once chosen, "from interview" when the interview said so (0.67ms)
+(node:30168) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/dates-typed.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a calendar day renders as that day — the 2026-08-16 that once rendered as Aug 15 (77.3781ms)
+✔ an instant renders in Chicago: the day it fell on there, and the time there (2.3239ms)
+✔ an instant handed to formatDate is marked, never silently the wrong day (0.9262ms)
+✔ started and ended read in order for the engagement that showed "started Sep 9 · ended Sep 8" (0.9835ms)
+(node:31340) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/dates.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a timestamp renders as a Chicago date, never as ISO-T (75.2839ms)
+✔ a date-only value is a calendar day and is not shifted by the zone (1.4206ms)
+✔ nothing renders as a dash, not as "Invalid Date" (0.6944ms)
+(node:18980) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/documents-link.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ "+N more" is a link to this client's documents, and the documents page passes the filter to the API (4.7881ms)
+(node:31068) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/gate-card.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the blocked state is explained once, with the action that clears it (3.6739ms)
+(node:29316) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/invoice-display.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ paid reads paid, with the ok badge (2.8309ms)
+✔ void reads "void · reason · actor · date" (0.6339ms)
+✔ refunded reads the refunded amount and date (0.4988ms)
+✔ partially refunded reads "$X of $Y" (0.4618ms)
+✔ a void row with nothing recorded says so instead of printing blanks (0.7643ms)
+(node:29664) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/labels.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every enum value has a word, and no word is the raw enum (8.5441ms)
+✔ the client and Ops read the same word for the same invoice state (6.2259ms)
+✔ the helpers never crash a page on an unknown value (0.9493ms)
+(node:30344) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/meetings-card.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ one Meetings card holds the calendar and the recorded sessions, and a recorded row says so (3.5197ms)
+(node:30024) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/one-link.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the client page prints no portal invoice URL, and sends the pay link through the one route (3.5287ms)
+(node:18904) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/return-controls.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ role proof: a bookkeeper (and the VA) cannot see the controls; the preparer and the CEO can (2.2233ms)
+✔ the component decides from GET /auth/me and renders nothing without the permission (0.6084ms)
+✔ the Returns card renders the controls inside its rows, and nowhere else on the page (0.5543ms)
+✔ the buttons say where the return goes; filed is "Mark filed" (2.7918ms)
+✔ the controls apply before filing and on the re-file path, not after (0.3928ms)
+✔ each control carries one plain sentence, and the 8879 modal is told before the tap (0.6356ms)
+✔ dollars typed by a person become cents; the range check reads both ends (0.6432ms)
+(node:22796) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/sessions-copy.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ no "summarized by <model>"; the line says the summary was auto-generated (2.8117ms)
+(node:30088) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/signed-in-copy.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ an active portal says "last signed in <date>" or "never signed in", beside the grant control (2.1334ms)
+(node:31548) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/internal/test/test-badge.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\internal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the client header carries the TEST badge with the note on hover, the same badge the pipeline shows (1.8913ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 614.5206
+
+> @saos/portal@0.1.0 test
+> node --test test/*.spec.ts
+
+(node:29980) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/brian/Dropbox/AI%20AGENT/saos/apps/portal/test/dates.spec.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\brian\Dropbox\AI AGENT\saos\apps\portal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ locale follows the portal language when the browser gives no hint (1.4143ms)
+✔ a date-only value is a calendar day in either language, never ISO-T (26.0538ms)
+✔ nothing renders as a dash (0.233ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 221.5311
+exit 1

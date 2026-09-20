@@ -2051,3 +2051,7 @@ The walk said the validator refused "Rehearsal client." and the page read "reque
 ## A refactor that moves code by line number is checked by running it, before the long run (2026-09-19)
 Splitting the S corp fixture into a per-viewport function by slicing line ranges dropped one line (the letter and estimate stamp), and the harness's full run (a Next build plus the boot) spent four minutes to say "409 engagement_letter_required" at boot.
 **Rule:** after any edit to the fixture boot, run `node --experimental-strip-types scripts/e2e-boot.ts` alone for one minute and read E2E_READY before the harness. Move code by anchors that name the lines, never by index arithmetic.
+
+## A flaky red is red until explained (Brian, 2026-09-19, R7)
+The second receipt run failed one API test (the portal onboarding endpoint answered 500 once), it passed alone, and I ran the suite again to get a green receipt and deployed on it. Brian ruled that a rerun is not an explanation.
+**Rule:** on a red that does not reproduce alone, keep the failed run's log, find the server's stack for that request, and name the cause (or run the spec twenty times in parallel and report the count) before any further receipt run. The deploy waits.

@@ -87,3 +87,6 @@
 
 ### The MCP browser (Brian, 2026-09-19, standing rule)
 - **The MCP browser never signs into production Ops.** The Playwright MCP server in `.mcp.json` runs an isolated, in-memory profile and is for the local harness and public pages only. No production Ops or portal credentials go into it, ever; a walk on production is Brian's own hand on his own devices.
+
+### A flaky red is red (Brian, 2026-09-19, standing rule R7)
+- **A flaky red is red until explained.** A test that fails once in the full suite and passes alone is a failure with an unknown cause, not a pass. Find the stack and the root cause before the next receipt run; never rerun the suite to reach a green receipt.

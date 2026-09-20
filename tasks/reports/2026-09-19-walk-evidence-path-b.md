@@ -1,27 +1,46 @@
 # walk-evidence-path-b (2026-09-19)
 
-Generated 2026-09-19T20:44:12.323Z by scripts/report-table.mjs from the log walk-b.log; 15 row(s).
+Generated 2026-09-20T01:08:26.242Z by scripts/report-table.mjs from the log walk-b.log; 34 row(s).
 
-Path B, the 1040 on extension with a walk-in wet signature: no spec annotates it yet, so every row is empty and every step is a defect to build, not fixed here.
+Path B, the 1040 on extension with a walk-in wet signature, from ops-path-b.spec.ts; how=fixture or api is a step not cleared by a tap.
 
 ```sql
-node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from the harness run of 2026-09-19)
+node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from the evening harness run of 2026-09-19: 30 passed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
 |---|---|---|---|---|---|---|---|---|---|
-| B1 | Contact created | laptop |  |  |  |  |  |  | NO |
-| B2 | Quote built and sent | laptop |  |  |  |  |  |  | NO |
-| B3 | Accepted with the deposit paid | phone |  |  |  |  |  |  | NO |
-| B4 | Engagement packet assembled and sent | laptop |  |  |  |  |  |  | NO |
-| B5 | Section 7216 consent answered | phone |  |  |  |  |  |  | NO |
-| B6 | Onboarding questionnaire submitted | phone |  |  |  |  |  |  | NO |
-| B7 | Documents uploaded by the client | phone |  |  |  |  |  |  | NO |
-| B8 | Return delivered to the portal | laptop |  |  |  |  |  |  | NO |
-| B9 | Signed 8879 scan uploaded, wet-signed in office | laptop |  |  |  |  |  |  | NO |
-| B10 | Filed with the PTIN holder | laptop |  |  |  |  |  |  | NO |
-| B11 | Acknowledgment report uploaded and released | laptop |  |  |  |  |  |  | NO |
-| B12 | Acceptance emails sent | phone |  |  |  |  |  |  | NO |
-| B13 | Final invoice issued | laptop |  |  |  |  |  |  | NO |
-| B14 | Paid | phone |  |  |  |  |  |  | NO |
-| B15 | Engagement completed | laptop |  |  |  |  |  |  | NO |
+| B1 | Contact created | laptop | DEFECT — no control: /clients offers search only and no page in Ops posts to /contacts; the person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | fixture | NO |
+| B1 | Contact created | laptop | DEFECT — no control: /clients offers search only and no page in Ops posts to /contacts; the person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | fixture | NO |
+| B2 | Quote built and sent | laptop | /pipeline button "New quote" → "Client or lead" search + the client's chip → "Filter the price book" + the price-book chips for the base return and its schedule → button "Create and send" | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B2 | Quote built and sent | laptop | /pipeline button "New quote" → "Client or lead" search + the client's chip → "Filter the price book" + the price-book chips for the base return and its schedule → button "Create and send" | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B3 | Accepted with the deposit paid | phone | portal /quote/:token button "Accept and start the work" → portal /invoices button "Pay now" → the Checkout URL the stub adapter returns (intercepted; never loaded) | client (portal sign-in link) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B3 | Accepted with the deposit paid | phone | Stripe Checkout is outside SAOS; the harness posts the checkout.session.completed event to /webhooks/stripe with the harness webhook secret | client (card) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | api | NO |
+| B3 | Accepted with the deposit paid | phone | portal /quote/:token button "Accept and start the work" → portal /invoices button "Pay now" → the Checkout URL the stub adapter returns (intercepted; never loaded) | client (portal sign-in link) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B3 | Accepted with the deposit paid | phone | Stripe Checkout is outside SAOS; the harness posts the checkout.session.completed event to /webhooks/stripe with the harness webhook secret | client (card) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | api | NO |
+| B4 | Engagement packet assembled and sent | laptop | /clients/:id Engagement packet card, button "Create engagement packet" → button "Send for signature" (modal "Send this packet for signature?") | ceo (engagements.create) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B4 | Engagement packet assembled and sent | laptop | /clients/:id Engagement packet card, button "Create engagement packet" → button "Send for signature" (modal "Send this packet for signature?") | ceo (engagements.create) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B5 | Section 7216 consent answered | phone | portal /consent (its own screen, reached from the signed packet), button "Yes, you have my permission" | client (portal sign-in link) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B5 | Section 7216 consent answered | phone | portal /consent (its own screen, reached from the signed packet), button "Yes, you have my permission" | client (portal sign-in link) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B6 | Onboarding questionnaire submitted | phone | portal /questionnaire, "Continue" past the details screen then the tax-onboarding module, button "Send it" | client (portal sign-in link) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B6 | Onboarding questionnaire submitted | phone | portal /questionnaire, "Continue" past the details screen then the tax-onboarding module, button "Send it" | client (portal sign-in link) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B7 | Documents uploaded by the client | phone | portal /documents (Document Center), the "Category" select + input[type=file] | client (portal sign-in link) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B7 | Documents uploaded by the client | phone | portal /documents (Document Center), the "Category" select + input[type=file] | client (portal sign-in link) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B8 | Return delivered to the portal | laptop | /upload-return "Find the client" → the client's button → input[type=file] "Final return PDF (from ATX)"; read back on portal /returns | ceo (documents.write) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B8 | Return delivered to the portal | laptop | /upload-return "Find the client" → the client's button → input[type=file] "Final return PDF (from ATX)"; read back on portal /returns | ceo (documents.write) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B9 | Signed 8879 scan uploaded, wet-signed in office | laptop | /clients/:id Returns card, input[type=file] + "Signed on" + "PTIN holder" + button "Upload the signed 8879" | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B9 | Signed 8879 scan uploaded, wet-signed in office | laptop | /clients/:id Returns card, input[type=file] + "Signed on" + "PTIN holder" + button "Upload the signed 8879" | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B10 | Filed with the PTIN holder | laptop | /clients/:id Returns card, button "Ready to file" then "Mark filed" (modal: PTIN holder) | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B10 | Filed with the PTIN holder | laptop | /clients/:id Returns card, button "Ready to file" then "Mark filed" (modal: PTIN holder) | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B11 | Acknowledgment report uploaded and released | laptop | /efile-acks input[type=file] "Upload ATX report", the review rows, button "Release 2 to clients" + modal "Release 2" | ceo (efile.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B11 | Acknowledgment report uploaded and released | laptop | /efile-acks input[type=file] "Upload ATX report", the review rows, button "Release 2 to clients" + modal "Release 2" | ceo (efile.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B12 | Acceptance emails sent | phone | /efile-acks reopened from the list (button "Open"), both rows reading Sent | ceo (efile.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B12 | Acceptance emails sent | phone | /efile-acks reopened from the list (button "Open"), both rows reading Sent | ceo (efile.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B13 | Final invoice issued | laptop | /clients/:id Returns card, "Set final fee" (modal: Final fee + Reason) then "Mark filed" issues it; the Invoices card shows it with the paid deposit credited | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B13 | Final invoice issued | laptop | /clients/:id Returns card, "Set final fee" (modal: Final fee + Reason) then "Mark filed" issues it; the Invoices card shows it with the paid deposit credited | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B14 | Paid | phone | portal /invoices button "Pay now" on the final-fee invoice → the Checkout URL the stub adapter returns (intercepted) | client (portal sign-in link) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B14 | Paid | phone | the checkout.session.completed event posted to /webhooks/stripe with the harness webhook secret | client (card) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | api | NO |
+| B14 | Paid | phone | portal /invoices button "Pay now" on the final-fee invoice → the Checkout URL the stub adapter returns (intercepted) | client (portal sign-in link) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |
+| B14 | Paid | phone | the checkout.session.completed event posted to /webhooks/stripe with the harness webhook secret | client (card) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | api | NO |
+| B15 | Engagement completed | laptop | /clients/:id read at phone: the return completed, the return and the client's upload on file, the invoice Paid, the engagement completed with no open balance | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | phone | passed | tap | yes |
+| B15 | Engagement completed | laptop | /clients/:id read at desk: the return completed, the return and the client's upload on file, the invoice Paid, the engagement completed with no open balance | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:151 | desk | passed | tap | yes |

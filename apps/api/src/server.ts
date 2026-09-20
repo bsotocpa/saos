@@ -135,6 +135,9 @@ export function buildServer(
     const known = err as { statusCode?: unknown; message?: unknown };
     const statusCode = typeof known.statusCode === 'number' ? known.statusCode : 500;
     if (statusCode >= 500) request.log.error({ err, route: request.routeOptions?.url }, 'unhandled error');
+    // Under test the logger is off, and a one-off 500 in a full run left no stack behind it once
+    // (2026-09-19). The stack goes to stderr there, so the next one can be explained.
+    if (statusCode >= 500 && config.NODE_ENV === 'test') console.error('[500 under test]', request.routeOptions?.url, err);
     return reply
       .code(statusCode)
       .send({ error: statusCode >= 500 ? 'internal_error' : String(known.message ?? 'error') });

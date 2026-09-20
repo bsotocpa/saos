@@ -1,6 +1,6 @@
 # open-rulings (2026-09-19)
 
-Generated 2026-09-19T20:46:12.327Z by scripts/report-table.mjs from the log open-rulings.log; 52 row(s).
+Generated 2026-09-20T01:08:55.762Z by scripts/report-table.mjs from the log open-rulings.log; 66 row(s).
 
 ```sql
 node scripts/open-rulings.mjs  (one row per checkbox line of tasks/todo.md OPEN RULINGS)
@@ -46,17 +46,31 @@ node scripts/open-rulings.mjs  (one row per checkbox line of tasks/todo.md OPEN 
 | R-36 | 2026-09-19 | RULED 2026-09-19, THE 1120S DRY RUN (filed in ATX on time, outside SAOS; the ruled fallback exercised deliberately) on the harness with an a | closed | SHIPPED on the harness: e2e-boot delivers the S corp return; ops-scorp-dry-run.spec.ts does 3, 4, 5 as the CEO on the phone project and both |
 | R-37 | 2026-09-19 | RULING NEEDED (harness finding, 2026-09-19), | closed | ANSWERED by BUILD 5: the dashboard's "Money actions today by staff" counts rows whose actor is the system (a Stripe webhook refund with no p |
 | R-38 |  | BRIAN, LIVE (after this deploy): the real 1120S in SAOS in this order, phone and laptop as listed in the 09-19 report. | OPEN |  |
-| R-39 | 2026-10-15 | STILL BRIAN'S: Trello exports, FL entity classification, client #1 name; 26 days to 2026-10-15. | OPEN |  |
+| R-39 | 2026-10-15 | STILL BRIAN'S: FL entity classification; 26 days to 2026-10-15. (Trello exports and client #1 name closed by R6, 2026-09-19 evening: the exp | OPEN |  |
 | R-40 | 2026-09-19 | RULED 2026-09-19 (BUILD), 1: pin @playwright/mcp in .mcp.json to the resolved version; ephemeral browser profile if supported, config shown; | closed | SHIPPED: .mcp.json pins @playwright/mcp@0.0.82 with --isolated (in-memory profile) at 383187b; the rule is in CLAUDE.md and memory; .claude/ |
 | R-41 | 2026-09-19 | RULED 2026-09-19 (BUILD), 2: step-7 controls on the return's page in Ops (no new admin page): estimate lock, set final fee, transitions thro | closed | SHIPPED: components/return-controls.tsx on the Returns card (Lock estimate, Set final fee, the legal next stage buttons, Mark filed with the |
 | R-42 | 2026-09-19 | RULED 2026-09-19 (BUILD), 3: replace every API-driven step in ops-scorp-dry-run.spec.ts with UI taps at 390 and 1280; one harness sabotage o | closed | SHIPPED: the spec taps the Returns card (signed 8879 upload with a future date refused beside the date, final fee outside the quoted range r |
 | R-43 | 2026-09-19 | RULED 2026-09-19 (BUILD), 4: completion when every jurisdiction row on the return is accepted, not federal alone; a rejection opens a prepar | closed | SHIPPED: before the change, a federal Accepted row alone moved the return to completed and closed the engagement (efile-ack.ts federal branc |
 | R-44 | 2026-09-19 | RULED 2026-09-19 (BUILD), 5: money line actor classes CEO, staff, system; "by staff" counts human staff only; a webhook refund matched to a | closed | SHIPPED: money-digest.ts classes every audited money action ceo / staff / system in SQL; the line and the digest count class staff only; a w |
 | R-45 | 2026-09-19 | RULED 2026-09-19 (REPORT; tables are files written by scripts, script path included): 6 walk evidence per live-walk step (control page+selec | closed | DONE: tasks/reports/2026-09-19-walk-evidence-path-a.md and -path-b.md (scripts/walk-evidence.mjs from the harness run record), sabotage-reco |
-| R-46 |  | Then the Monday walk as written. | OPEN |  |
-| R-47 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
-| R-48 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |
-| R-49 | 2026-09-12 | RULED 2026-09-12 | OPEN |  |
-| R-50 | 2026-09-12 | RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks th | OPEN |  |
-| R-51 | 2026-09-12 | Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12). | closed | closed |
-| R-52 | 2026-09-12 | FIRST REAL-DATA RUN (Brian, 2026-09-12) | OPEN |  |
+| R-46 | 2026-09-19 | RULED 2026-09-19 (evening), R1: final fee above a locked estimate: one modal and one reason, plus the scope-creep category select in that sa | closed | SHIPPED: routes.ts final-fee: above a locked estimate both the scope-creep category and the reason are required (409 names which is missing) |
+| R-47 | 2026-09-19 | RULED 2026-09-19 (evening), R2: jurisdictions are declared on the return | closed | SHIPPED: migration 0104 tax_engagement_jurisdictions (declared at filing, acceptance per jurisdiction; the old federal/state columns kept as |
+| R-48 | 2026-09-19 | RULED 2026-09-19 (evening), R3: tax_preparer holds efile.manage (upload, review, release) | closed | SHIPPED: roles.mjs gives tax_preparer efile.manage (production through the seed on deploy); the acks routes require efile.manage; the page g |
+| R-49 | 2026-09-19 | RULED 2026-09-19 (evening), R4: va_entity adds a business through a narrow permission, not contacts.write | closed | SHIPPED: permission businesses.write on va_entity; POST /contacts/:id/businesses takes contacts.write or businesses.write; the button gates |
+| R-50 | 2026-09-19 | RULED 2026-09-19 (evening), R5: no backfill mode | closed | SHIPPED: signed-8879.ts refuses 409 signed_before_year_end when the signed date falls before the last day of the entity's fiscal year end mo |
+| R-51 | 2026-09-19 | RULED 2026-09-19 (evening), R6: client #1 is Brian's own 1040, due 2026-10-15, prepared by Ana-Maria under her own login, with Brian as the | closed | DONE: the open list amended (R-39); Path B's fixture is the shape of that return. |
+| R-52 | 2026-09-19 | RULED 2026-09-19 (evening), R7 (standing): a flaky red is red until explained; never rerun to a green receipt | closed | closed |
+| R-53 | 2026-09-19 | RULED 2026-09-19 (evening, BUILD), 1: walk steps A2, A3 and A4 become taps in ops-scorp-dry-run.spec.ts and the fixture stops building them | closed | SHIPPED: buildScorp keeps only the owner, the business and three sign-in links; the spec taps the quote builder with the deposit waiver, the |
+| R-54 | 2026-09-19 | RULED 2026-09-19 (evening, BUILD), 2 | closed | SHIPPED: the Pay tap asserts the navigation to the stub's Checkout URL (a live test key swaps the host); the webhook post is annotated api; |
+| R-55 | 2026-09-19 | RULED 2026-09-19 (evening, BUILD), 3 | closed | SHIPPED with R1 to R5 above; the five sabotages are rows in tasks/sabotage/2026-09-19.log. |
+| R-56 | 2026-09-19 | RULED 2026-09-19 (evening, BUILD), 4 | closed | SHIPPED: apps/api/scripts/e2e-fixtures/path-b.ts (two synthetic people, one per viewport, portal access, the price-book lines) and ops-path- |
+| R-57 | 2026-09-19 | RULED 2026-09-19 (evening, BUILD), 5: sabotage defect 4: restore the period badge, expect red, remove it, expect green. | closed | DONE: ops-client-page.spec.ts asserts no period badge and no set-period control on the bookkeeping row; the sabotage restores the tax-only g |
+| R-58 | 2026-09-19 | RULED 2026-09-19 (evening, REPORT; tables are files written by scripts): 6 the one-off 500 on the portal onboarding endpoint: the stack from | closed | DONE: item 6 no stack existed (the test logger is off; 500s now reach stderr under test), 20 parallel runs 0 failures (tasks/receipts); item |
+| R-59 | 2026-09-19 | RULED 2026-09-19 (evening, TRELLO IMPORT PHASE 1, report-only, no production writes, no Phase 2 until Brian rules): 10 the trello_import fol | closed | DONE: tasks/reports/2026-09-19-trello-match-counts.md, -stage-map.md, -field-map.md, -send-suppression.md; scripts apps/api/scripts/trello-m |
+| R-60 |  | Then the Monday walk as written. | OPEN |  |
+| R-61 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
+| R-62 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |
+| R-63 | 2026-09-12 | RULED 2026-09-12 | OPEN |  |
+| R-64 | 2026-09-12 | RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks th | OPEN |  |
+| R-65 | 2026-09-12 | Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12). | closed | closed |
+| R-66 | 2026-09-12 | FIRST REAL-DATA RUN (Brian, 2026-09-12) | OPEN |  |
