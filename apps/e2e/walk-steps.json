@@ -36,6 +36,13 @@
         { "id": "B14", "text": "Paid", "device": "phone" },
         { "id": "B15", "text": "Engagement completed", "device": "laptop" }
       ]
+    },
+    "D": {
+      "title": "Doors: void and test-client flag",
+      "steps": [
+        { "id": "D1", "text": "Void a sent invoice from the client page: a reason, and the row reads cancelled with that reason and the actor", "device": "phone + laptop" },
+        { "id": "D2", "text": "Flag a contact as a test record: the note, and the record leaves every report and list", "device": "phone + laptop" }
+      ]
     }
   }
 }

@@ -243,6 +243,8 @@ export default function ClientPacketPage() {
    * entity VA). Anyone else gets nothing, not a disabled button.
    */
   const [canAddBusiness, setCanAddBusiness] = useState(false);
+  const [canFlagTest, setCanFlagTest] = useState(false);
+  const [flaggedTest, setFlaggedTest] = useState('');
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -339,8 +341,13 @@ export default function ClientPacketPage() {
   useEffect(() => {
     let alive = true;
     api<{ permissions: string[] }>('/auth/me')
-      .then((m) => { if (alive) setCanAddBusiness(['*', 'contacts.write', 'businesses.write'].some((p) => m.permissions.includes(p))); })
-      .catch(() => { if (alive) setCanAddBusiness(false); });
+      .then((m) => {
+        if (!alive) return;
+        setCanAddBusiness(['*', 'contacts.write', 'businesses.write'].some((p) => m.permissions.includes(p)));
+        // The test flag rides on POST /contacts/:id/archive, whose preHandler is contacts.write alone.
+        setCanFlagTest(['*', 'contacts.write'].some((p) => m.permissions.includes(p)));
+      })
+      .catch(() => { if (alive) { setCanAddBusiness(false); setCanFlagTest(false); } });
     return () => { alive = false; };
   }, []);
 
@@ -391,6 +398,62 @@ export default function ClientPacketPage() {
         {c.hilo_status !== 'none' ? <span className="muted"> · Hilo: {c.hilo_status}</span> : null}
       </p>
       <p className="muted small">Came to us via {SOURCE_LABEL[c.source] ?? c.source}</p>
+
+      {/*
+        THE TEST-CLIENT FLAG HAS A CONTROL (Brian, ruling R17, 2026-09-20).
+        `contacts.is_test` is read all over Ops — the directory badge, the banner below, the
+        pipeline board, the documents list — and every report and broadcast audience excludes it.
+        Nothing in Ops could SET it. The only writer is POST /contacts/:id/archive, which takes
+        `isTest` + `testNote` and flags and archives in one act, so that is what this control says
+        it does; the sentence is the whole truth about the act, not the half of it we would prefer.
+        The note is the reason: the route requires both and they are the same fact.
+      */}
+      {canFlagTest && !c.is_test ? (
+        <p className="small">
+          <button
+            type="button"
+            className="btn ghost small"
+            disabled={busy}
+            onClick={async () => {
+              const got: { isTest: boolean } = { isTest: false };
+              const a = await ask({
+                title: `Flag ${c.first_name} ${c.last_name} as a test record?`,
+                body: (
+                  <p className="small">
+                    A test record is flagged and archived in the same act: it is excluded from every report,
+                    dashboard, health score, funder metric and broadcast audience, and it leaves the working
+                    lists — so this is not a way to label a real client you are still working.
+                  </p>
+                ),
+                reason: { label: 'What was this record for? (this is the test note)', required: true, placeholder: 'e.g. a rehearsal of the 1040 path on 2026-09-20; never a real person' },
+                choices: [{ key: 'flag', label: 'Flag as a test record', tone: 'danger' }],
+                run: async (r) => {
+                  const res = await api<{ isTest: boolean }>(`/contacts/${params.id}/archive`, {
+                    method: 'POST',
+                    body: { reason: r.reason, isTest: true, testNote: r.reason },
+                  });
+                  got.isTest = res.isTest === true;
+                },
+              });
+              if (!a) return;
+              /*
+               * The server's own answer, not a claim: `isTest` comes back from the route that wrote the
+               * column. The record is archived now, so this page cannot re-read it — GET /contacts/:id
+               * refuses an archived contact — and reloading would blank the screen with a 404. So the
+               * result is stated here and the page stops showing the record's controls.
+               */
+              setFlaggedTest(
+                got.isTest
+                  ? 'Flagged as a test record and archived. It is out of every report, dashboard and broadcast audience, and out of the client lists.'
+                  : 'Archived, but the record was NOT flagged as a test — check it before relying on any number that excludes test records.'
+              );
+            }}
+          >
+            Flag as a test record…
+          </button>
+        </p>
+      ) : null}
+      {flaggedTest ? <div className="alert warn" data-test-flagged="1">{flaggedTest}</div> : null}
 
       {/* A test client announces itself before anything else on the page, so
           nobody works a rehearsal thinking it is a real engagement. */}

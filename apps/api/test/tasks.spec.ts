@@ -1,6 +1,6 @@
 // M25 "Prove it": the unified task system — one entry point, dedupe,
 // auto-close, the four staff views, client to-dos with aggregation, checklist
-// templates, the Trello importer, and representative module migrations
+// templates, and representative module migrations
 // (notice ticket, referral approval, enrichment lifecycle). Synthetic only.
 
 import { test, before, after } from 'node:test';
@@ -15,7 +15,6 @@ import {
   runTaskReminderSweep, setTaskStatus,
 } from '../src/modules/tasks/service.ts';
 import { refreshEnrichmentGaps } from '../src/modules/crm/service.ts';
-import { importTrelloBoard } from '../src/migration/trello.ts';
 import { generateToken } from '../src/crypto.ts';
 import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
@@ -207,40 +206,17 @@ test('migration representative: enrichment gaps live as ONE task that follows th
   assert.equal(closed.rows[0].status, 'completed');
 });
 
-test('Trello importer: board → columns → tasks, idempotent rerun', async () => {
-  const board = {
-    name: 'Synthetic Firm Board',
-    lists: [
-      { id: 'l1', name: 'To do', closed: false, pos: 1 },
-      { id: 'l2', name: 'Done', closed: false, pos: 2 },
-      { id: 'l3', name: 'Archived list', closed: true, pos: 3 },
-    ],
-    cards: [
-      { id: 'c1', name: 'Ship the thing', desc: 'details', due: '2026-08-01T12:00:00.000Z', idList: 'l1', closed: false, idMembers: ['m1'] },
-      { id: 'c2', name: 'Already finished', idList: 'l2', closed: false },
-      { id: 'c3', name: 'Archived card', idList: 'l1', closed: true },
-      { id: 'c4', name: 'On archived list', idList: 'l3', closed: false },
-    ],
-    checklists: [{ idCard: 'c1', checkItems: [{ name: 'step 1', state: 'complete' as const }, { name: 'step 2', state: 'incomplete' as const }] }],
-    members: [{ id: 'm1', fullName: 'Synthetic ceo' }], // matches brian's synthetic name
-  };
-  const r1 = await importTrelloBoard(app, board);
-  assert.equal(r1.columns, 2, 'archived lists skipped');
-  assert.equal(r1.tasksCreated, 2, 'archived cards + archived-list cards skipped');
-  assert.equal(r1.assigneesMatched, 1);
-  assert.equal(r1.checklistItems, 2);
-
-  const doneCard = await app.db.query(
-    `SELECT status, due_date FROM tasks WHERE source_type = 'trello' AND source_id = 'c2'`
-  );
-  assert.equal(doneCard.rows[0].status, 'completed', 'cards on done-ish lists arrive completed');
-  const dated = await app.db.query(`SELECT due_date::text AS d FROM tasks WHERE source_type = 'trello' AND source_id = 'c1'`);
-  assert.equal(dated.rows[0].d, '2026-08-01');
-
-  const r2 = await importTrelloBoard(app, board);
-  assert.equal(r2.tasksCreated, 0);
-  assert.equal(r2.tasksSkipped, 2, 'rerun is a no-op');
-});
+/*
+ * THE M25 RAW-JSON TRELLO IMPORTER IS GONE (Brian, ruling R8, 2026-09-20).
+ *
+ * `apps/api/src/migration/trello.ts` took a Trello board export's JSON straight into `boards`,
+ * `board_columns` and a raw `INSERT INTO tasks` — the one door bypassed, so the SOP hook, the
+ * owner rule and the (source_type, source_id) dedupe in createTask() never ran on a single
+ * imported card. It never ran on production either: tasks/reports/2026-09-20-m25-never-ran.md
+ * counts zero for every trace it would have left. The test that lived here proved a code path
+ * that no longer exists, and it is not re-pointed at the sanitized bundle: that lane is
+ * apps/api/scripts/trello-import.ts, which goes through createTask() and owns its own proofs.
+ */
 
 test('intern scope: tasks.execute changes status only on OWN tasks', async () => {
   const intern = await staffWithToken('intern-tasks@example.test', 'intern');
