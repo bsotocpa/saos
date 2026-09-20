@@ -123,6 +123,24 @@ export interface StageMapping {
   saosStage: string;
   /** Why, in a person's words. Goes in the report, and into the stage note or task description. */
   mapping: string;
+  /**
+   * WHAT ELSE A RETURN AT OR PAST 'filed' NEEDS (Brian, 2026-09-20, R23).
+   *
+   * These three shapes are the only ones where setting a stage is not the whole import, because at
+   * or past `filed` a return stops being a position and starts making CLAIMS — that it was filed
+   * somewhere, that somebody accepted it, that the client was told. The import can write the first
+   * as a flagged default and must not write the other two at all, so each shape carries the human
+   * follow-up that replaces what was not invented.
+   *
+   *   'declare_and_confirm'  jurisdictions from the R2 default, method e-file, flagged as a default
+   *                          (migration 0114), plus a preparer task to confirm them against ATX.
+   *   'notify_client'        no acceptance row is written; a comms_billing task tells the client by
+   *                          hand, because the ack notice belongs to a real acknowledgment.
+   *   'completed_silently'   'paper filed': completed under the attestation, and NOTHING else —
+   *                          no acceptance (a paper return can never have one recorded) and no
+   *                          mailing (the card does not say it was mailed, let alone how).
+   */
+  postImport?: 'declare_and_confirm' | 'notify_client' | 'completed_silently';
 }
 
 export const STAGE_MAP: Record<string, StageMapping> = {
@@ -135,10 +153,11 @@ export const STAGE_MAP: Record<string, StageMapping> = {
   'extended, awaiting documents': { stage: 'documents_requested', handling: 'stage', saosStage: 'documents_requested', mapping: 'maps; Extended is tax_engagements.extension_filed, a parallel flag, never a stage' },
   'e-file rejected': { stage: 'rejected', handling: 'stage', saosStage: 'rejected', mapping: 'maps exactly; a reject also carries a perfection_deadline SAOS computes, which Trello has no field for' },
   'prior-year return in progress': { stage: 'in_preparation', handling: 'stage', saosStage: 'in_preparation', mapping: 'maps; the filing lane is derived from the year (filingLane), never carried over from Trello' },
-  'accepted, client not yet notified': { stage: 'completed', handling: 'stage', saosStage: 'completed', mapping: 'maps; acceptance is recorded per jurisdiction by the ATX acknowledgment ingest, and "not yet notified" is the efile_acknowledgment automation, not a stage' },
+  'accepted, client not yet notified': { stage: 'completed', handling: 'stage', saosStage: 'completed', postImport: 'notify_client', mapping: 'R23: imported as completed under the attestation. NO acceptance row is invented — acceptance is recorded per jurisdiction by the ATX acknowledgment ingest, and the card is a note, not an acknowledgment. "Not yet notified" becomes a comms_billing task to tell the client by hand, because the efile_acknowledgment automation belongs to a real ack landing in SAOS' },
   'accepted, balance open': { stage: 'completed', handling: 'stage', saosStage: 'completed', mapping: 'maps; "balance open" is an invoice status (invoices.status), not a stage' },
+  'filed, awaiting ack': { stage: 'filed', handling: 'stage', saosStage: 'filed', postImport: 'declare_and_confirm', mapping: 'R23: filed, with jurisdictions declared from the R2 ADDRESS DEFAULT and method e-file, every row flagged declared_by_import_default (migration 0114) and paired with a preparer task to confirm them against ATX. A return at filed with no declared list can never complete — completion measures against the list — so a list is required; a guess that looked like a preparer declaration would be worse than the guess itself. A later ack upload completes it normally. ZERO rows in the 2026-09-20 v2 bundle carry this value: the shape is implemented and unexercised by this bundle' },
   'accepted and paid': { stage: 'completed', handling: 'stage', saosStage: 'completed', mapping: 'maps; the money is an invoice fact, not a stage. File 03 carries these and is never imported' },
-  'paper filed': { stage: 'filed', handling: 'stage', saosStage: 'filed', mapping: 'PARTIAL: filed exists, and so do filing_lane/paper_mailed_on/certified_tracking, but no acceptance can ever be RECORDED for a paper return (ack rows come only from the ATX report upload), so completion is a bare hand move with nothing accepted' },
+  'paper filed': { stage: 'completed', handling: 'stage', saosStage: 'completed', postImport: 'completed_silently', mapping: 'R23: imported as COMPLETED under the attestation, not filed. No acceptance can ever be recorded for a paper return (ack rows come only from the ATX report upload), so a paper return left at filed would wait for something that cannot arrive. Nothing is invented on the way: no acceptance row, and no mailing — the card does not say it was mailed, let alone by what method or on what day' },
   'amendment in progress': { stage: null, handling: 'preparer_task', saosStage: 'GAP', mapping: 'no amendment stage and no 1040X in the return_type enum; amendments exist only as the price-book item IND_AMENDMENT_1040X. Imported as a PREPARER TASK until a 1040-X return type is ruled — a return typed 1040 at some stage would claim the original return is being prepared again' },
   'blocked on business return/financials': { stage: 'documents_requested', handling: 'stage', saosStage: 'documents_requested (+ note)', mapping: 'no blocked stage; the dependency is a task_dependencies row ("blocked by"), which needs the blocker to exist. Imported at documents_requested — what is true of it today — with the blocker named in the note' },
   'awaiting year-end financials (bookkeeping dependency)': { stage: 'documents_requested', handling: 'stage', saosStage: 'documents_requested (+ note)', mapping: 'same shape: the wait is on a close_cycles period that the import does not create. Imported at documents_requested with the dependency named in the note' },

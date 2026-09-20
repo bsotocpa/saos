@@ -76,9 +76,9 @@ import { buildServer } from '../src/server.ts';
 import { loadConfig } from '../src/config.ts';
 import { parseCsvObjects } from '../src/migration/csv.ts';
 import { createEngagement } from '../src/modules/engagements/service.ts';
-import { transitionStage, type TaxStage } from '../src/modules/tax/pipeline.ts';
+import { applyNewReturnDefaults, transitionStage, type TaxStage } from '../src/modules/tax/pipeline.ts';
 import { isOneActivePerPeriodViolation } from '../src/modules/engagements/period.ts';
-import { setImportedStage } from '../src/modules/tax/import.ts';
+import { assertImportPreconditions, declareImportedJurisdictions, setImportedStage } from '../src/modules/tax/import.ts';
 import { recordSigned8879 } from '../src/modules/tax/signed-8879.ts';
 import { createTask } from '../src/modules/tasks/service.ts';
 import { createSession } from '../src/modules/auth/service.ts';
@@ -93,12 +93,24 @@ const arg = (name: string, dflt: string): string => {
   const i = argv.indexOf(`--${name}`);
   return i >= 0 ? (argv[i + 1] ?? dflt) : dflt;
 };
-const DEFAULT_DIR = 'C:/Users/brian/saos-imports/trello_import';
+const DEFAULT_DIR = 'C:/Users/brian/saos-imports/trello_import_v2/trello_import';
 const DIR = resolve(arg('dir', process.env.TRELLO_IMPORT_DIR ?? DEFAULT_DIR));
 const OUT = resolve(DIR, 'out');
 const LOGS = resolve(DIR, 'logs');
 const LIMIT = Number(arg('limit', '1000'));
 const UNSAFE = argv.includes('--unsafe-no-import-mode');
+/**
+ * R22's PRECONDITION IS REAL, SO THE REHEARSAL HAS TO SATISFY IT RATHER THAN SKIP IT.
+ *
+ * Production holds one staff account today and `tax_preparer` is unfilled, so the refusal fires on
+ * any copy of production — which is the precondition working, and is proven by running without this
+ * flag. But a rehearsal that stops there produces no counts, so this creates the account the cutover
+ * will create, on the COPY, with a name that says what it is.
+ *
+ * IT IS A FLAG AND NOT AUTOMATIC on purpose: the refusal must be the default behaviour, or the
+ * precondition becomes something the import quietly works around.
+ */
+const MAKE_PREPARER = argv.includes('--rehearsal-preparer');
 
 /** The bundle's own as-of date: what the attestation cites, never today. */
 const BUNDLE_DATE = '2026-09-19';
@@ -188,6 +200,17 @@ const load = (f: string): Array<Record<string, string>> => parseCsvObjects(readF
 const f01 = load('01_tax_wip.csv');
 const f02 = load('02_tax_ar_worklist.csv');
 const f04 = load('04_business_services.csv');
+/*
+ * R21: 04b IS THE IMPORT SOURCE FOR SERVICE FACTS, and file 04 is matching only.
+ *
+ * The difference is the KEY. File 04 is one row per business NAME — a summary the extract built by
+ * collapsing cards together — so its only identity is `match_key`, a hand-typed name, and 355 of its
+ * 464 rows carried no card id at all: last night's rehearsal had to refuse 50 rows with a live
+ * service because there was nothing to key a rerun on. 04b is one row per FACT, each carrying the
+ * Trello id it came from, so every fact has a stable identity across bundles and the name is demoted
+ * to what it always was: a way to find the business, never a way to identify the fact.
+ */
+const f04b = load('04b_service_facts.csv');
 
 /*
  * THE IMPORT DOES NOT RE-DECIDE THE MATCHING. It reads trello-match.ts's own output files, so the
@@ -205,10 +228,70 @@ const matchedRows = parseCsvObjects(readFileSync(resolve(OUT, 'trello_match_matc
 const missingRows = parseCsvObjects(readFileSync(resolve(OUT, 'trello_match_not_in_saos.csv'), 'utf8')) as unknown as MatchRow[];
 const matchedByCard = new Map(matchedRows.filter((r) => r.trello_card_id).map((r) => [r.trello_card_id, r]));
 const missingByCard = new Map(missingRows.filter((r) => r.trello_card_id).map((r) => [r.trello_card_id, r]));
+/*
+ * R21: THE BUSINESS FOR A NAME KEY. A key that matched a SAOS business anywhere — file 04's own rows
+ * or an entity return on files 01-03 — is that business. Built from the match output rather than
+ * re-derived, so the import and the counts report cannot disagree about who a name is.
+ *
+ * R24: `skip` is a DECISION, and it is in the matched file with no id: Brian said this Trello name is
+ * not a client of ours, so nothing is created for it. Different from not-in-SAOS, where the import
+ * creates — which is why the pick has three answers and not two.
+ */
+const matchedBizByKey = new Map<string, string>();
+const skipKeys = new Set<string>();
+for (const r of matchedRows) {
+  if (r.saos_type === 'skip') { skipKeys.add(r.trello_key); continue; }
+  if (r.saos_type === 'business' && r.saos_id && !matchedBizByKey.has(r.trello_key)) {
+    matchedBizByKey.set(r.trello_key, r.saos_id);
+  }
+}
+const createKeys = new Set(missingRows.filter((r) => r.saos_type === 'create').map((r) => r.trello_key));
+
 const enrichmentCount = existsSync(resolve(OUT, 'enrichment_file03.csv'))
   ? parseCsvObjects(readFileSync(resolve(OUT, 'enrichment_file03.csv'), 'utf8')).length
   : 0;
 console.log(`  match verdicts read: ${matchedByCard.size} matched card(s), ${missingByCard.size} not in SAOS, ${enrichmentCount} on the file-03 enrichment list`);
+console.log(`  R24 picks in the match output: ${skipKeys.size} SKIP, ${createKeys.size} CREATE; ${matchedBizByKey.size} name key(s) resolve to a SAOS business`);
+
+/*
+ * -- R21's THREE SMALL TABLES ------------------------------------------------
+ *
+ * HAS_A_HOME: the fact types SAOS can store today. Everything else is DEFERRED rather than dropped,
+ * and the report names the counts, so "no column for this yet" is a visible number and not a silence.
+ *
+ * ACTIVE_FACT: the fact types that justify CREATING a business that is not in SAOS. An anniversary
+ * or an access note is a fact ABOUT a business we do not have; a live bookkeeping, sales-tax or
+ * payroll service is a reason to have it.
+ */
+const HAS_A_HOME = new Set(['bookkeeping', 'access', 'annual_report_entity', 'annual_report_anniversary']);
+const ACTIVE_FACT = new Set(['bookkeeping', 'sales_tax', 'payroll']);
+const ANNIVERSARY_KIND_IN_04B: Record<string, string> = { 'admission date': 'admission', 'incorporation date': 'incorporation' };
+
+/** How many 04b source rows the ledger says have been applied. The rerun proof reads this. */
+async function ledgerCount(): Promise<number> {
+  const { rows } = await app.db.query<{ n: string }>(`SELECT count(*) AS n FROM service_fact_imports`);
+  return Number(rows[0]!.n);
+}
+
+/** Has this 04b row already been applied? The ledger answers; nothing re-derives it. */
+async function factApplied(sourceId: string, factType: string): Promise<boolean> {
+  const { rows } = await app.db.query<{ n: string }>(
+    `SELECT count(*) AS n FROM service_fact_imports
+      WHERE source = 'trello' AND trello_source_id = $1 AND fact_type = $2`,
+    [sourceId, factType]
+  );
+  return Number(rows[0]!.n) > 0;
+}
+
+/** One access fact. The CHECK in 0109 refuses anything that is not a derived category. */
+async function writeAccessFact(businessId: string, fact: string, asOf: string): Promise<number> {
+  const r = await app.db.query(
+    `INSERT INTO business_access_facts (business_id, fact, as_of, source)
+     VALUES ($1, $2, $3, 'trello') ON CONFLICT DO NOTHING`,
+    [businessId, fact, asOf]
+  );
+  return r.rowCount ?? 0;
+}
 
 /** File 04's live-service test, the same one the review file uses (item e). */
 const DEAD_SERVICE = ['closed', 'not_client', 'lost', 'inactive', 'dissolved'];
@@ -223,16 +306,18 @@ function activeService(row: Record<string, string>): boolean {
 }
 
 /*
- * A FILE-04 ROW WITH NO CARD ID CANNOT BE IMPORTED, and this is a finding rather than a bug here.
- * (source, trello_card_id) is the rerun guard (migration 0111); a row with no card id has no key, so
- * a second run could not tell it apart from the first and would create the business twice. The
- * bundle's bk_card_id is only filled where a bookkeeping card exists — 109 of 464 rows — and the
- * count below is how many rows carrying a LIVE service the import therefore has to refuse. Either
- * the extract supplies a card id for them or Brian rules that the name key is the key; the script
- * does not invent one.
+ * WHAT R21 FIXED, IN ONE NUMBER. Last night's rehearsal had to refuse 50 file-04 rows that carried a
+ * live service, because 355 of 464 rows had no bk_card_id and (source, trello_card_id) is the rerun
+ * guard: no key, no way to tell a second run from the first. 04b keys every fact on its own Trello
+ * id, so the refusal is gone — the count below is what it used to be and what it is now.
  */
-const noCardWithService = f04.filter((r) => !(r.bk_card_id ?? '').trim() && activeService(r)).length;
-console.log(`  file 04: ${f04.filter((r) => (r.bk_card_id ?? '').trim()).length} of ${f04.length} row(s) carry a card id; ${noCardWithService} row(s) with a LIVE service have none and are refused (no rerun key)`);
+const f04NoCard = f04.filter((r) => !(r.bk_card_id ?? '').trim()).length;
+const f04NoCardWithService = f04.filter((r) => !(r.bk_card_id ?? '').trim() && activeService(r)).length;
+console.log(
+  `  file 04 (matching only now): ${f04NoCard} of ${f04.length} row(s) carry no card id, ` +
+    `${f04NoCardWithService} of those carry a live service — all ${f04NoCardWithService} were refused on 2026-09-19 and none are now: ` +
+    `04b gives every one of its ${f04b.length} fact rows its own trello_source_id`
+);
 
 const RETURN_TYPES: Record<string, string> = {
   '1040': '1040', '1120-S': '1120s', '1120-C': '1120c', '1120': '1120', '1065': '1065',
@@ -260,6 +345,39 @@ function targetOf(cardId: string): { contactId: string; businessId?: string } | 
 }
 
 // ── the counts, before anything ─────────────────────────────────────────────
+
+/*
+ * R22: THE CUTOVER PRECONDITION, CHECKED BEFORE ANYTHING IS WRITTEN. The refusal is printed rather
+ * than swallowed: an import that lands 44 returns in nobody's queue is silent, and the point of a
+ * precondition is that it is loud at the start instead.
+ */
+if (MAKE_PREPARER) {
+  const have = await app.db.query<{ n: string }>(
+    `SELECT count(*) AS n FROM staff s JOIN roles r ON r.id = s.role_id WHERE s.is_active AND r.key = 'tax_preparer'`
+  );
+  if (Number(have.rows[0]!.n) === 0) {
+    const made = await app.db.query<{ id: string }>(
+      `INSERT INTO staff (legal_name, display_name, email, role_id, is_active)
+       SELECT $1, $2, $3, r.id, true FROM roles r WHERE r.key = 'tax_preparer' RETURNING id`,
+      [
+        `Rehearsal Preparer (${IMPORT_LABEL})`,
+        'Rehearsal Preparer',
+        `rehearsal.preparer.${DATE}@example.invalid`,
+      ]
+    );
+    console.log(
+      `  --rehearsal-preparer: created a synthetic ACTIVE tax_preparer ${made.rows[0]!.id.slice(0, 8)} on the copy, ` +
+        `because R22 refuses the import without one. The refusal itself is proven by running without this flag.`
+    );
+  }
+}
+const pre = await assertImportPreconditions(app);
+console.log(
+  `  R22 precondition: ${pre.activePreparers} active tax_preparer(s)` +
+    (pre.defaultPreparerId
+      ? ` — imported returns take ${pre.defaultPreparerId.slice(0, 8)} as their default preparer (R11)`
+      : ` — SEVERAL are active, so no default applies and imported returns land unassigned. Not a refusal: the firm chooses, not the import.`)
+);
 
 const before = await snapshot();
 const armed = await app.db.query<{ key: string }>(`SELECT key FROM automations WHERE enabled ORDER BY key`);
@@ -371,10 +489,17 @@ if (!UNSAFE) {
  * cannot show that the rerun created nothing. Each pass gets a fresh tally; the rerun's tally being
  * all zeros is itself the proof, alongside the snapshot deltas.
  */
-interface FileTally { recordsCreated: number; returnsCreated: number; attested: number; tasks: number; skipped: number; refused: number; facts: number }
-const emptyTally = (): FileTally => ({ recordsCreated: 0, returnsCreated: 0, attested: 0, tasks: 0, skipped: 0, refused: 0, facts: 0 });
+interface FileTally { recordsCreated: number; returnsCreated: number; attested: number; tasks: number; skipped: number; refused: number; facts: number;
+  /** R22: returns that took the sole active tax preparer, and letters inherited from the contact. */
+  preparerDefaulted: number; letterInherited: number;
+  /** R23, by shape. */
+  declaredByDefault: number; notifyTasks: number; completedSilently: number;
+  /** R21: 04b rows read but not applied because SAOS has nowhere to put them yet. */
+  deferred: number }
+const emptyTally = (): FileTally => ({ recordsCreated: 0, returnsCreated: 0, attested: 0, tasks: 0, skipped: 0, refused: 0, facts: 0,
+  preparerDefaulted: 0, letterInherited: 0, declaredByDefault: 0, notifyTasks: 0, completedSilently: 0, deferred: 0 });
 type Tallies = Record<string, FileTally>;
-const FILES = ['01_tax_wip.csv', '02_tax_ar_worklist.csv', '03_tax_completed_roster.csv', '04_business_services.csv'] as const;
+const FILES = ['01_tax_wip.csv', '02_tax_ar_worklist.csv', '03_tax_completed_roster.csv', '04_business_services.csv', '04b_service_facts.csv'] as const;
 /** One imported return at ready_to_file, kept for proof D. */
 let readyToFileId: string | null = null;
 
@@ -419,7 +544,6 @@ function monthEnd(raw: string): string | null {
   return `${year}-${String(mi + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
 }
 
-const ANNIVERSARY_KIND: Record<string, string> = { 'admission date': 'admission', 'incorporation date': 'incorporation' };
 
 /** The import proper. Called twice — the second time must change nothing. */
 async function runImport(pass: 'first' | 'rerun'): Promise<Tallies> {
@@ -535,6 +659,70 @@ async function runImport(pass: 'first' | 'rerun'): Promise<Tallies> {
     });
     t.attested++;
     if (mapping.stage === 'ready_to_file' && !readyToFileId) readyToFileId = teId;
+
+    /*
+     * R22, AND THE ORDER MATTERS. applyNewReturnDefaults is called AFTER setImportedStage, not
+     * before, because setImportedStage refuses a return that already carries a gate fact — and the
+     * defaults may stamp one: a contact whose engagement_letter_status is 'signed' has the standing
+     * letter inherited onto every return it covers. That inheritance is a REAL fact about the
+     * client (they signed), which is why it is allowed at all and why R16 does not touch it; the
+     * freshness check exists to stop a FABRICATED one, and running the defaults second keeps both
+     * rules intact rather than weakening either.
+     */
+    const defaults = await applyNewReturnDefaults(app, teId, target.contactId);
+    if (defaults.preparerId) t.preparerDefaulted++;
+    if (defaults.engagementLetterInherited) t.letterInherited++;
+
+    /*
+     * R23: A RETURN AT OR PAST 'filed' MAKES CLAIMS, so each shape carries what replaces the claim
+     * the import declined to invent.
+     */
+    if (mapping.postImport === 'declare_and_confirm') {
+      try {
+        const declared = await declareImportedJurisdictions(app, actorLabel, { taxEngagementId: teId, trelloCardId: cardId, asOf: BUNDLE_DATE });
+        const made = await createTask(app, {
+          title: `Trello: confirm the jurisdictions on an imported return (card ${cardId})`,
+          description:
+            `Imported as filed and awaiting an acknowledgment (${SOURCE_TAG}). The card did not say where it was filed, ` +
+            `so the declared list is the ADDRESS DEFAULT — ${declared.jurisdictions.join(', ')}, method e-file — and every ` +
+            `row is flagged declared_by_import_default. Confirm against ATX; a state on the list that was never filed ` +
+            `will wait for an acknowledgment forever.`,
+          assignedStaffId: preparer,
+          contactId: target.contactId,
+          priority: 1,
+          source: 'import',
+          sourceType: 'trello_confirm_jurisdictions',
+          sourceId: cardId,
+        });
+        if (made.created) t.tasks++;
+        await app.db.query(`UPDATE tasks SET trello_card_id = $2 WHERE id = $1 AND trello_card_id IS NULL`, [made.id, cardId]);
+        t.declaredByDefault++;
+      } catch (err) {
+        // The one refusal: an old year is the paper lane and R23's method is e-file. Not forced.
+        const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+        if (code !== 'old_year_is_paper_lane') throw err;
+        t.refused++;
+      }
+    }
+    if (mapping.postImport === 'notify_client') {
+      const made = await createTask(app, {
+        title: `Trello: tell the client their return was accepted (card ${cardId})`,
+        description:
+          `Imported as completed under the attestation (${SOURCE_TAG}). NO acceptance row was written and nothing was ` +
+          `sent — the card is a note, not an acknowledgment, and an imported record never triggers a client message. ` +
+          `Confirm the acceptance in ATX, then tell the client yourself.`,
+        assignedStaffId: comms,
+        contactId: target.contactId,
+        priority: 2,
+        source: 'import',
+        sourceType: 'trello_notify_client',
+        sourceId: cardId,
+      });
+      if (made.created) t.tasks++;
+      await app.db.query(`UPDATE tasks SET trello_card_id = $2 WHERE id = $1 AND trello_card_id IS NULL`, [made.id, cardId]);
+      t.notifyTasks++;
+    }
+    if (mapping.postImport === 'completed_silently') t.completedSilently++;
   }
 
   // ── file 02: a worklist, never an invoice ───────────────────────────────
@@ -564,83 +752,139 @@ async function runImport(pass: 'first' | 'rerun'): Promise<Tallies> {
   // ── file 03: refused, in code ───────────────────────────────────────────
   tally['03_tax_completed_roster.csv']!.refused = enrichmentCount;
 
-  // ── file 04: the businesses that are missing, and the service facts ─────
-  for (const row of f04.slice(0, LIMIT)) {
-    const t = tally['04_business_services.csv']!;
-    const cardId = (row.bk_card_id ?? '').trim();
-    if (!cardId) { t.refused++; continue; }
-    const matched = matchedByCard.get(cardId);
-    const missing = missingByCard.get(cardId);
-    let businessId: string | null = matched?.saos_id ?? null;
+  /*
+   * -- R21: 04b IS THE IMPORT SOURCE FOR SERVICE FACTS ---------------------
+   *
+   * ONE 04b ROW AT A TIME, keyed (source, trello_source_id, fact_type) against the ledger
+   * `service_fact_imports` (migration 0114). The ledger is consulted FIRST, so a rerun does no work
+   * rather than re-deriving whether the work is needed — which is the difference between idempotent
+   * and accidentally-harmless.
+   *
+   * WHY THE LEDGER AND NOT "IS THE VALUE ALREADY THERE". Equal values do not mean already-applied: a
+   * business whose books really are current through December would look applied before anything ran.
+   * The question idempotency asks is "have we already done what this row says", and only a record of
+   * having done it answers that.
+   *
+   * WHAT A DEFERRED ROW IS, and why it gets NO ledger row. Five fact types have nowhere to land yet:
+   * sales_tax and payroll want engagements.filing_frequency / payroll_provider and this import
+   * creates no bookkeeping, sales-tax or payroll engagements; svc_1099_ty2025, svc_2553 and
+   * bookkeeping_status_only have no column at all. Writing a ledger row for those would mark them
+   * applied forever, so the day a service-line import or a status column arrives they would be
+   * skipped in silence. They are counted as DEFERRED and left unapplied, which is the only version
+   * of this that a later run can fix.
+   *
+   * qbo_paid_by_2022_DO_NOT_IMPORT is different again: not deferred, REFUSED. Brian ruled the 2022
+   * values out, so they are never applied and never will be, and the type name says so.
+   */
+  for (const row of f04b.slice(0, LIMIT)) {
+    const t = tally['04b_service_facts.csv']!;
+    const factType = (row.fact_type ?? '').trim();
+    const sourceId = (row.trello_source_id ?? '').trim();
+    const key = (row.match_key ?? '').trim();
+    const asOf = (row.as_of ?? '').trim() || BUNDLE_DATE;
+    if (!factType || !sourceId) { t.refused++; continue; }
+    if (factType === 'qbo_paid_by_2022_DO_NOT_IMPORT') { t.refused++; continue; }
+    if (!HAS_A_HOME.has(factType)) { t.deferred++; continue; }
+    if (await factApplied(sourceId, factType)) { t.skipped++; continue; }
 
-    if (!businessId && missing) {
-      /*
-       * ITEM f: an ACTIVE file-04 row with no SAOS business is created as an unverified import. An
-       * inactive one is not: a business whose bookkeeping is Lost and whose payroll is closed has no
-       * live service to attach, and a record created for it would be a name in the directory with
-       * nothing behind it.
-       */
-      if (!activeService(row)) { t.skipped++; continue; }
-      if (await alreadyImported('businesses', cardId)) { t.skipped++; continue; }
-      const name = (row.name_most_common ?? '').trim() || (row.match_key ?? '').trim();
+    let values: Record<string, unknown>;
+    try {
+      values = JSON.parse(row.values_json ?? '{}') as Record<string, unknown>;
+    } catch { t.refused++; continue; }
+
+    /*
+     * WHICH BUSINESS. Through the MATCH output, by name key — file 04's job is now matching only, and
+     * a name key that matched a SAOS business anywhere (file 04's own rows or an entity return on
+     * files 01-03) is that business. The name is how the business is FOUND; the ledger key is how the
+     * fact is IDENTIFIED, and R21 is the rule that those are not the same thing.
+     */
+    let businessId: string | null = matchedBizByKey.get(key) ?? null;
+    if (!businessId) {
+      if (skipKeys.has(key)) { t.skipped++; continue; }         // R24: Brian said skip
+      if (!ACTIVE_FACT.has(factType)) { t.skipped++; continue; } // nothing live to attach
+      if (await alreadyImported('businesses', sourceId)) { t.skipped++; continue; }
+      const name = (row.name_clean ?? '').trim() || key;
       if (!name) { t.refused++; continue; }
       const ins = await app.db.query<{ id: string }>(
         `INSERT INTO businesses (name, state, source, unverified_import_source, trello_card_id, notes)
          VALUES ($1, $2, 'trello', 'trello', $3, $4) RETURNING id`,
         [
           name,
-          (row.annual_report_state ?? '').trim() || 'IL',
-          cardId,
-          `Created by the Trello import (${SOURCE_TAG}) from card ${cardId}. Unverified: Trello holds no EIN and no entity type, and the name was typed by hand.`,
+          String(values.state ?? '').trim() || 'IL',
+          sourceId,
+          `Created by the Trello import (${SOURCE_TAG}) from 04b ${factType} row ${sourceId}. Unverified: Trello holds no EIN and no entity type, and the name was typed by hand.`,
         ]
       );
       businessId = ins.rows[0]!.id;
+      matchedBizByKey.set(key, businessId); // later facts for the same name land on the same business
       t.recordsCreated++;
     }
-    if (!businessId) { t.skipped++; continue; }
 
-    /*
-     * THE SERVICE FACTS the 0105-0110 migrations exist for. Written on matched and created
-     * businesses alike, because a column nothing ever writes is an unproven migration.
-     *
-     * TWO ARE DELIBERATELY NOT WRITTEN. engagements.filing_frequency and engagements.payroll_provider
-     * live on an engagement, and this rehearsal creates no bookkeeping, sales-tax or payroll
-     * engagements — those are a service-line import, not this one. businesses.qbo_paid_by stays
-     * 'unknown' on Brian's explicit instruction: the bundle's values are from a 2022 pass.
-     */
-    const through = monthEnd(row.books_current_through ?? '');
-    const asOf = (row.bk_as_of ?? '').trim();
-    if (through && asOf) {
-      const r = await app.db.query(
-        `UPDATE businesses SET books_current_through = $2, books_current_through_as_of = $3
-          WHERE id = $1 AND books_current_through IS DISTINCT FROM $2::date`,
-        [businessId, through, asOf]
-      );
-      t.facts += r.rowCount ?? 0;
+    let wrote = 0;
+    if (factType === 'bookkeeping') {
+      const through = monthEnd(String(values.books_current_through ?? ''));
+      if (through) {
+        const r = await app.db.query(
+          `UPDATE businesses SET books_current_through = $2, books_current_through_as_of = $3
+            WHERE id = $1 AND books_current_through IS DISTINCT FROM $2::date`,
+          [businessId, through, asOf]
+        );
+        wrote += r.rowCount ?? 0;
+      }
+      // ONLY A TRUE IS A FACT. `false` here means the card carried no such label, not that the firm
+      // lacks access, and a row asserting the negative would be a claim nobody made.
+      if (values.firm_has_bank_access === true) {
+        wrote += await writeAccessFact(businessId, 'firm_has_bank_access', asOf);
+      }
+    } else if (factType === 'access') {
+      for (const fact of Array.isArray(values.facts) ? values.facts : []) {
+        wrote += await writeAccessFact(businessId, String(fact), asOf);
+      }
+    } else if (factType === 'annual_report_entity') {
+      const state = String(values.state ?? '').trim();
+      if (state) {
+        const r = await app.db.query(
+          `INSERT INTO entity_compliance (business_id, state) VALUES ($1, $2)
+           ON CONFLICT (business_id) DO NOTHING`,
+          [businessId, state]
+        );
+        wrote += r.rowCount ?? 0;
+      }
+    } else if (factType === 'annual_report_anniversary') {
+      const kind = ANNIVERSARY_KIND_IN_04B[String(values.anniversary_kind ?? '').trim().toLowerCase()];
+      const mmdd = String(values.anniversary_mmdd ?? '').trim();
+      /*
+       * BOTH OR NEITHER. 0108's CHECK refuses a month and day without the kind, deliberately: the
+       * state rule picks between an admission and an incorporation anniversary, and a date with the
+       * wrong kind produces the wrong due date with full confidence. 61 of 118 rows carry no kind, so
+       * they are deferred rather than guessed.
+       */
+      if (kind && /^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/.test(mmdd)) {
+        const r = await app.db.query(
+          `INSERT INTO entity_compliance (business_id, state, anniversary_mmdd, anniversary_kind)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (business_id) DO UPDATE SET anniversary_mmdd = $3, anniversary_kind = $4
+            WHERE entity_compliance.anniversary_mmdd IS NULL`,
+          [businessId, String(values.state ?? '').trim() || 'IL', mmdd, kind]
+        );
+        wrote += r.rowCount ?? 0;
+      } else {
+        t.deferred++;
+        continue; // no ledger row: a later bundle that supplies the kind must be able to apply it
+      }
     }
-    const facts = new Set((row.access_facts ?? '').split(/\s+/).filter(Boolean));
-    if ((row.bk_bank_access ?? '').trim().toLowerCase() === 'yes') facts.add('firm_has_bank_access');
-    for (const fact of facts) {
-      const r = await app.db.query(
-        `INSERT INTO business_access_facts (business_id, fact, as_of, source)
-         VALUES ($1, $2, $3, 'trello') ON CONFLICT DO NOTHING`,
-        [businessId, fact, asOf || BUNDLE_DATE]
-      );
-      t.facts += r.rowCount ?? 0;
-    }
-    const kind = ANNIVERSARY_KIND[(row.ar_anniversary_kind ?? '').trim().toLowerCase()];
-    const mmdd = (row.ar_anniversary_mmdd ?? '').trim();
-    if (kind && /^\d{2}\/\d{2}$/.test(mmdd)) {
-      const r = await app.db.query(
-        `INSERT INTO entity_compliance (business_id, state, anniversary_mmdd, anniversary_kind)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (business_id) DO UPDATE SET anniversary_mmdd = $3, anniversary_kind = $4
-          WHERE entity_compliance.anniversary_mmdd IS NULL`,
-        [businessId, (row.annual_report_state ?? '').trim() || 'IL', mmdd, kind]
-      );
-      t.facts += r.rowCount ?? 0;
-    }
+
+    await app.db.query(
+      `INSERT INTO service_fact_imports (source, trello_source_id, fact_type, business_id, match_key, as_of, applied_by, rows_written)
+       VALUES ('trello', $1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (source, trello_source_id, fact_type) DO NOTHING`,
+      [sourceId, factType, businessId, key, asOf, APPLIED_BY, wrote]
+    );
+    t.facts += wrote;
   }
+
+  // -- file 04 is MATCHING ONLY now (R21). Nothing here reads it for facts. --
+  tally['04_business_services.csv']!.deferred = f04.length;
 
   // ── files 01 and 02: the people who are not in SAOS ─────────────────────
   for (const [file, rows] of [['01_tax_wip.csv', f01], ['02_tax_ar_worklist.csv', f02]] as const) {
@@ -686,17 +930,26 @@ async function runImport(pass: 'first' | 'rerun'): Promise<Tallies> {
 
 console.log(`\nB — THE REAL IMPORT, inside the import context. No gate is stamped anywhere in it.`);
 const tally = await runInImportContext(IMPORT_LABEL, () => runImport('first'));
+/** The first pass's own numbers. The rerun's are asserted zero beside them, never added in. */
+const sumOf = (k: keyof FileTally): number => FILES.reduce((n, f) => n + tally[f]![k], 0);
 const afterFirst = await snapshot();
 console.log(`  AFTER   outbox=${afterFirst.outbox} (pending ${afterFirst.pending}) audit=${afterFirst.audit} tasks=${afterFirst.tasks}`);
 console.log(`  created: ${afterFirst.contacts - before.contacts} contact(s), ${afterFirst.businesses - before.businesses} business(es), ` +
   `${afterFirst.engagements - before.engagements} engagement(s), ${afterFirst.returns - before.returns} return(s); ` +
   `${afterFirst.attestations - before.attestations} attestation(s)`);
 console.log(`  refused client-facing sends, audited: ${afterFirst.refusals - before.refusals}`);
+console.log(
+  `  R22: ${sumOf('preparerDefaulted')} return(s) took the default preparer, ${sumOf('letterInherited')} inherited a standing letter. ` +
+    `R23: ${sumOf('declaredByDefault')} filed-awaiting-ack, ${sumOf('notifyTasks')} accepted-not-notified, ${sumOf('completedSilently')} paper-filed. ` +
+    `R21: ${await ledgerCount()} ledger row(s), ${sumOf('deferred')} row(s) deferred for want of a home.`
+);
 
 // ── C: THE RERUN ───────────────────────────────────────────────────────────
 
 console.log(`\nC — THE RERUN. The same bundle, the same script. Every delta must be zero.`);
+const ledgerBeforeRerun = await ledgerCount();
 const rerunTally = await runInImportContext(IMPORT_LABEL, () => runImport('rerun'));
+const ledgerRows = await ledgerCount();
 const afterRerun = await snapshot();
 const rerunSum = (k: keyof FileTally): number => FILES.reduce((n, f) => n + rerunTally[f]![k], 0);
 const rerunDeltas = {
@@ -707,6 +960,7 @@ const rerunDeltas = {
   tasks: afterRerun.tasks - afterFirst.tasks,
   attestations: afterRerun.attestations - afterFirst.attestations,
   facts: rerunSum('facts'),
+  ledger: ledgerRows - ledgerBeforeRerun,
   outbox: afterRerun.outbox - afterFirst.outbox,
 };
 console.log(`  rerun deltas: ${Object.entries(rerunDeltas).map(([k, v]) => `${k} ${v}`).join(', ')}`);
@@ -737,21 +991,56 @@ if (readyToFileId) {
 
 // ── the logs ───────────────────────────────────────────────────────────────
 
-/** The first pass's own numbers. The rerun's are asserted zero beside them, never added in. */
-const sumOf = (k: keyof FileTally): number => FILES.reduce((n, f) => n + tally[f]![k], 0);
+/*
+ * TWO BREAKDOWNS READ FROM THE DATABASE RATHER THAN COUNTED IN THE SCRIPT.
+ *
+ * The per-file tally is what the import BELIEVES it did; these two are what the copy actually holds.
+ * They are not the same claim, and a report that only carries the first one cannot notice a write
+ * that silently did nothing.
+ */
+const tasksByType = (
+  await app.db.query<{ source_type: string; n: string }>(
+    `SELECT source_type, count(*)::text AS n FROM tasks
+      WHERE trello_card_id IS NOT NULL GROUP BY source_type ORDER BY source_type`
+  )
+).rows;
+const factsByType = (
+  await app.db.query<{ fact_type: string; applied: string; wrote: string }>(
+    `SELECT fact_type, count(*)::text AS applied, sum(rows_written)::text AS wrote
+       FROM service_fact_imports GROUP BY fact_type ORDER BY fact_type`
+  )
+).rows;
+/** Which 04b fact types the import read and applied nothing for, so "no home yet" is a number. */
+const deferredByType = (() => {
+  const applied = new Set(factsByType.map((r) => r.fact_type));
+  const counts = new Map<string, number>();
+  for (const r of f04b) {
+    const ft = (r.fact_type ?? '').trim();
+    if (!ft || applied.has(ft) || ft === 'qbo_paid_by_2022_DO_NOT_IMPORT') continue;
+    counts.set(ft, (counts.get(ft) ?? 0) + 1);
+  }
+  return [...counts].sort((a, b) => a[0].localeCompare(b[0]));
+})();
+
 const row = (f: (typeof FILES)[number], rows: number, rerunNote: string): string => {
   const t = tally[f]!;
-  return `${f} | ${rows} | ${t.recordsCreated} | ${t.returnsCreated} | ${t.attested} | ${t.tasks} | ${t.facts} | ${t.refused} | ${t.skipped} | ${rerunNote}`;
+  return `${f} | ${rows} | ${t.recordsCreated} | ${t.returnsCreated} | ${t.attested} | ${t.tasks} | ${t.facts} | ${t.deferred} | ${t.refused} | ${t.skipped} | ${rerunNote}`;
 };
 const rehearsal = [
-  'source file | rows | records created | returns created | attested at a stage | tasks | service fact rows | refused or not importable | skipped (already imported, or no unique match) | second pass',
+  'source file | rows | records created | returns created | attested at a stage | tasks | service fact rows written | deferred (no home in SAOS yet) | refused or never imported | skipped (already imported, or no unique match) | second pass',
   row('01_tax_wip.csv', f01.length, `engagements ${rerunDeltas.engagements}, returns ${rerunDeltas.returns}, attestations ${rerunDeltas.attestations}`),
   row('02_tax_ar_worklist.csv', f02.length, `tasks ${rerunDeltas.tasks}`),
   row('03_tax_completed_roster.csv', 388, `never imported: the script refuses it in code, and its ${enrichmentCount} missing row(s) go to out/enrichment_file03.csv and are not created`),
-  row('04_business_services.csv', f04.length, `businesses ${rerunDeltas.businesses}, service facts ${rerunDeltas.facts}`),
-  `ALL FILES | ${f01.length + f02.length + 388 + f04.length} | ${sumOf('recordsCreated')} | ${sumOf('returnsCreated')} | ${sumOf('attested')} | ${sumOf('tasks')} | ${sumOf('facts')} | ${sumOf('refused')} | ${sumOf('skipped')} | every delta on the second pass: ${Object.entries(rerunDeltas).map(([k, v]) => `${k} ${v}`).join(', ')}`,
-  `REFUSED CLIENT SENDS (audited, both passes) | - | - | - | - | - | - | ${afterRerun.refusals - before.refusals} | - | outbox rows the import itself added: ${afterRerun.outbox - before.outbox - probeOn.delta - (probeOff ? probeOff.delta : 0)}`,
-  `THE 8879 GATE ON AN IMPORTED ready_to_file RETURN | - | - | - | - | - | - | - | - | ${proof}`,
+  row('04_business_services.csv', f04.length, `R21: matching only — every one of its ${f04.length} rows is deferred here by design, and no fact is read from it`),
+  row('04b_service_facts.csv', f04b.length, `businesses ${rerunDeltas.businesses}, service facts ${rerunDeltas.facts}, ledger rows ${rerunDeltas.ledger}`),
+  `ALL FILES | ${f01.length + f02.length + 388 + f04.length + f04b.length} | ${sumOf('recordsCreated')} | ${sumOf('returnsCreated')} | ${sumOf('attested')} | ${sumOf('tasks')} | ${sumOf('facts')} | ${sumOf('deferred')} | ${sumOf('refused')} | ${sumOf('skipped')} | every delta on the second pass: ${Object.entries(rerunDeltas).map(([k, v]) => `${k} ${v}`).join(', ')}`,
+  `R22 THE PREPARER DEFAULT | ${pre.activePreparers} active tax_preparer(s) | - | ${sumOf('preparerDefaulted')} return(s) took the sole active preparer | - | ${sumOf('letterInherited')} inherited a standing engagement letter | - | - | - | - | the import refuses outright when none is active; that refusal is in the sabotage manifest and in test/trello-import.spec.ts`,
+  `R23 AT OR PAST FILED | ${sumOf('declaredByDefault') + sumOf('notifyTasks') + sumOf('completedSilently')} return(s) | - | - | - | - | - | - | - | - | filed-awaiting-ack ${sumOf('declaredByDefault')} (jurisdictions by address default, e-file, flagged, + a confirm task); accepted-not-notified ${sumOf('notifyTasks')} (completed, no acceptance row, + a notify task); paper-filed ${sumOf('completedSilently')} (completed, no acceptance and no mailing invented)`,
+  `REFUSED CLIENT SENDS (audited, both passes) | - | - | - | - | - | - | - | ${afterRerun.refusals - before.refusals} | - | outbox rows the import itself added: ${afterRerun.outbox - before.outbox - probeOn.delta - (probeOff ? probeOff.delta : 0)}`,
+  `THE 8879 GATE ON AN IMPORTED ready_to_file RETURN | - | - | - | - | - | - | - | - | - | ${proof}`,
+  `TASKS BY TYPE (on the copy, from the tasks table) | ${tasksByType.reduce((n, r) => n + Number(r.n), 0)} | - | - | - | - | - | - | - | - | ${tasksByType.map((r) => `${r.source_type} ${r.n}`).join(', ')}`,
+  `04b SERVICE FACTS BY TYPE (from the ledger) | ${factsByType.reduce((n, r) => n + Number(r.applied), 0)} source row(s) applied | - | - | - | - | ${factsByType.reduce((n, r) => n + Number(r.wrote), 0)} | - | - | - | ${factsByType.map((r) => `${r.fact_type}: ${r.applied} applied, ${r.wrote} row(s) written`).join('; ')}`,
+  `04b DEFERRED BY TYPE (read, no home in SAOS yet) | ${deferredByType.reduce((n, r) => n + r[1], 0)} | - | - | - | - | - | ${deferredByType.reduce((n, r) => n + r[1], 0)} | - | - | ${deferredByType.map(([t, n]) => `${t} ${n}`).join(', ')}; plus qbo_paid_by_2022_DO_NOT_IMPORT ${f04b.filter((r) => (r.fact_type ?? '').trim() === 'qbo_paid_by_2022_DO_NOT_IMPORT').length} REFUSED outright (Brian ruled the 2022 values out)`,
 ];
 writeFileSync(resolve(LOGS, 'import-rehearsal.log'), rehearsal.join('\n') + '\n');
 console.log('\n' + rehearsal.join('\n'));

@@ -871,6 +871,75 @@ A backup nobody has restored is a hope, not a backup. This runs quarterly.
 4. If it fails, that is the top priority above everything else, because it means
    the backups are not real.
 `),
+  // ── The Trello cutover (Brian, 2026-09-20, R20/R23) ────────────────────────
+  //
+  // Five task types the Trello import creates, and their procedures. These are NOT skeletons in
+  // the usual sense: Brian dictated the A/R steps and the rules under them, so that one says what
+  // he said. The other four are short because the work is short.
+  sop('rene-trello-ar-worklist', 'Trello A/R worklist item', 'comms_billing', 'Billing', `
+## Why you have this task
+A Trello card said this client's return was accepted and the balance was still open when the board
+was last touched. The card is not an invoice and the import created none — SAOS has no invoice for
+this work, and **the legacy billing system may already have one**.
+
+1. **Look the client up in the legacy billing system.** Those invoices live there, not in SAOS.
+   That is the first step and not the second: everything else depends on the answer.
+2. **If the client was invoiced there, chase the payment there** and close this task when it is
+   paid. The collection happens where the invoice is.
+3. **If no invoice exists anywhere**, reassign this task to the CEO for pricing. You are not
+   deciding what this return should have cost.
+
+## Two rules, and neither has an exception
+- **Never create a SAOS invoice for a return the legacy system already invoiced.** That is how a
+  client gets billed twice for one return, and the second bill is the one they remember.
+- **Never chase a client on the amount written on the Trello card.** The card is a note somebody
+  typed; it is not a priced engagement and it was not read by the client.
+`),
+  sop('ana-trello-amendment', 'Trello amendment card', 'tax_preparer', 'Tax pipeline', `
+## Why you have this task
+A Trello card said an amendment was in progress. SAOS has no amendment stage and no 1040-X in the
+return type list, so the import created **no return** — a return typed 1040 sitting at a stage would
+claim the original return was being prepared again.
+
+1. **Confirm the status in ATX** — whether the 1040-X was prepared, signed, filed, or only started.
+2. **Record what you found on this task**, in the words ATX shows. That record is what Brian rules
+   the 1040-X return type from.
+3. Close the task once the status is written down. Do not create a return for it by hand.
+`),
+  sop('brian-trello-books-review', 'Trello books-review card', 'ceo', 'Client health', `
+## Why you have this task
+A Trello card said a client's financials were awaiting **your** review. That is a review of the
+BOOKS, which \`internal_review\` — the review of a tax return — is not, so nothing was forced into
+the return pipeline.
+
+1. Read the statements the bookkeeper produced for the period named on the task.
+2. Either sign off, or say what has to change and hand it back to the bookkeeper.
+3. Close the task. When the close-cycle module carries this client, the cycle's
+   statements-ready step replaces this task.
+`),
+  sop('ana-trello-confirm-jurisdictions', 'Confirm the jurisdictions on an imported return', 'tax_preparer', 'Tax pipeline', `
+## Why you have this task
+A return was imported as filed and awaiting an acknowledgment. The Trello card never said **where**
+it was filed, so the jurisdictions on it came from the client's address — a default, not a
+declaration. The rows are flagged as such until you confirm them.
+
+1. Open the return and read the declared list against ATX: federal, and which states.
+2. Add or remove states so the list is what was actually filed. A state on the list that was never
+   filed will wait for an acknowledgment forever.
+3. Confirming the list clears the flag. The acknowledgment upload then completes the return
+   normally — nothing about completion changed.
+`),
+  sop('rene-trello-notify-client', 'Tell a client their imported return was accepted', 'comms_billing', 'Client communications', `
+## Why you have this task
+A Trello card said the return was accepted and the client had not been told. The import wrote **no
+acceptance row and sent nothing** — it does not invent an acknowledgment it never saw, and an
+imported record never triggers a client message.
+
+1. Confirm the acceptance in ATX before you say anything. The card is a note, not an acknowledgment.
+2. Call or email the client yourself. There is no automation behind this one and there should not be:
+   the ack notice belongs to a real acknowledgment landing in SAOS, not to a Trello list.
+3. Close the task with what you told them and how.
+`),
 ];
 
 /**

@@ -207,7 +207,25 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   // did not do on purpose, and when a repeat infection stops being an accident.
   document_infected: { sop: 'brian-infected-upload' },
 
-  // ── Ops tasks whose title is the whole instruction ─────────────────────────
+  /*
+   * -- THE TRELLO CUTOVER (Brian, 2026-09-20, R20 and R23) -------------------
+   *
+   * Five types the Trello import creates. All five carry a real SOP rather than `sop: null`, and
+   * three of them are why: the A/R item routes a collection into a system that is not SAOS, the
+   * amendment card exists because SAOS has no shape for it yet, and the jurisdictions task is the
+   * only thing that turns an imported default into a declaration. None of those is a task whose
+   * title is the whole instruction — each one has a place to go wrong.
+   *
+   * They left the PROPOSED pen in scripts/check-task-sop-hooks.mjs when these entries landed: the
+   * pen is for a type Brian has not ruled on, and he ruled.
+   */
+  trello_ar_worklist: { sop: 'rene-trello-ar-worklist' },
+  trello_amendment: { sop: 'ana-trello-amendment' },
+  trello_books_review: { sop: 'brian-trello-books-review' },
+  trello_confirm_jurisdictions: { sop: 'ana-trello-confirm-jurisdictions' },
+  trello_notify_client: { sop: 'rene-trello-notify-client' },
+
+  // -- Ops tasks whose title is the whole instruction -------------------------
   backup_stale: {
     sop: null,
     reason: 'The alert states the fix (check the cron and the B2 credentials); the restore-drill SOP covers the deeper procedure.',

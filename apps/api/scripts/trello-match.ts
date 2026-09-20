@@ -49,7 +49,7 @@
  *   DATABASE_URL=postgresql://…/saos_trello_copy \
  *     node --experimental-strip-types scripts/trello-match.ts [--dir /opt/saos/imports/trello_import]
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pg from 'pg';
 import { parseCsvObjects } from '../src/migration/csv.ts';
@@ -60,11 +60,18 @@ import { assertCopyDatabase, contactNorm, similarity, splitHousehold, STAGE_MAP,
 const argv = process.argv.slice(2);
 const dirArg = argv.indexOf('--dir');
 /** --dir wins, then TRELLO_IMPORT_DIR, then Brian's machine. Never a path inside the repo. */
-const DEFAULT_DIR = 'C:/Users/brian/saos-imports/trello_import';
+const DEFAULT_DIR = 'C:/Users/brian/saos-imports/trello_import_v2/trello_import';
 const DIR = resolve(dirArg >= 0 ? argv[dirArg + 1]! : process.env.TRELLO_IMPORT_DIR ?? DEFAULT_DIR);
 const OUT = resolve(DIR, 'out');
 const LOGS = resolve(DIR, 'logs');
 const DATE = '2026-09-20';
+/**
+ * WHERE BRIAN'S PICKS LIVE (R24). Outside the repo and outside Dropbox, beside the bundles rather
+ * than inside any one of them: a decision about who a name is survives the bundle it was made from,
+ * and every later bundle has to read the same file. A copy per bundle would mean re-deciding 88 rows
+ * at every cutover.
+ */
+const DECISIONS = resolve(process.env.TRELLO_DECISIONS_FILE ?? 'C:/Users/brian/saos-imports/decisions.json');
 
 const url = process.env.DATABASE_URL ?? '';
 const dbName = assertCopyDatabase(url);
@@ -81,6 +88,48 @@ const files = {
   '04_business_services.csv': load('04_business_services.csv'),
 };
 const review = load('05_name_match_review.csv');
+
+/*
+ * -- R24: MATCH DECISIONS PERSIST -------------------------------------------
+ *
+ * THE PROBLEM THIS SOLVES. "No production import now; Phase 2 runs at each role's cutover from a
+ * fresh bundle" means this matcher runs five more times, on five bundles, against a SAOS that has
+ * grown in between. Without a memory, every run hands Brian the same review file and the same 88
+ * judgements — and the second time through, a person skims. Worse, a pick made in September and a
+ * pick made in November can differ for no reason except who was tired.
+ *
+ * SO A PICK IS A FACT, STORED ONCE, KEYED BY match_key. It is read FIRST and applied BEFORE the
+ * tiers, which is the whole point: a decision Brian made outranks anything a similarity score can
+ * work out, including a later exact match. If SAOS later grows a record whose normalized name
+ * matches exactly and Brian had already said this Trello name is somebody else, the tiers must not
+ * quietly overrule him.
+ *
+ * THREE ANSWERS, and 'skip' is not the absence of one: it means "this name is not a client of ours
+ * and no record should exist for it", which is a decision the importer must obey by creating nothing
+ * — different from not-in-SAOS, where the importer creates.
+ */
+interface Decision { pick: string; decided_at?: string; note?: string }
+const decisions: Record<string, Decision> = (() => {
+  if (!existsSync(DECISIONS)) return {};
+  try {
+    const raw = JSON.parse(readFileSync(DECISIONS, 'utf8')) as Record<string, Decision | string>;
+    const out: Record<string, Decision> = {};
+    for (const [k, v] of Object.entries(raw)) out[k] = typeof v === 'string' ? { pick: v } : v;
+    return out;
+  } catch (err) {
+    /*
+     * A CORRUPT DECISIONS FILE IS A HARD STOP, not an empty object. Falling back to "no decisions"
+     * would silently re-derive every pick from the tiers and look like a clean run — which is
+     * exactly the failure a persisted decision exists to prevent.
+     */
+    throw new Error(
+      `refusing: ${DECISIONS} is not readable JSON (${err instanceof Error ? err.message : String(err)}). ` +
+        `Fix or move the file; running without Brian's picks would silently re-decide every one of them.`
+    );
+  }
+})();
+const decisionCount = Object.keys(decisions).length;
+console.log(`  decisions file ${existsSync(DECISIONS) ? DECISIONS : '(none yet)'}: ${decisionCount} pick(s), applied BEFORE the tiers`);
 
 console.log(`trello-match: database '${dbName}', bundle ${DIR}`);
 for (const [f, rows] of Object.entries(files)) console.log(`  ${f}: ${rows.length} row(s)`);
@@ -162,7 +211,7 @@ function variantKeys(key: string): string[] {
 
 type Verdict = 'matched' | 'ambiguous' | 'not_in_saos';
 /** Which rule accepted a row. '' when nothing did. */
-type Tier = '' | 'exact' | 'household_both' | 'household_first' | 'trigram_090' | 'owner_in_parens';
+type Tier = '' | 'decision' | 'exact' | 'household_both' | 'household_first' | 'trigram_090' | 'owner_in_parens';
 interface Result {
   file: string; trelloCardId: string; trelloKey: string; saosType: string; saosId: string;
   score: string; candidates: string; reason: string; verdict: Verdict;
@@ -250,6 +299,39 @@ const conPool = contacts.map((c) => ({ id: c.id, cmp: c.full }));
 const TIER2_MIN = 0.9;
 const TIER2_GAP = 0.15;
 
+/** Live SAOS ids, so a stale pick (a record since archived or merged away) is caught rather than used. */
+const liveBusinessIds = new Set(businesses.map((b) => b.id));
+const liveContactIds = new Set(contacts.map((c) => c.id));
+
+/**
+ * TIER 0: BRIAN'S OWN PICK (R24). Consulted before every other rule.
+ *
+ * Returns the verdict to use, or null when there is no decision for this key. A pick naming an id
+ * that is no longer live returns a deliberate 'ambiguous' rather than falling through to the tiers:
+ * the record Brian chose has been archived or merged since, and re-deciding it silently with a score
+ * is the one thing this mechanism exists to stop.
+ */
+function applyDecision(
+  key: string,
+  base: { file: string; trelloCardId: string; trelloKey: string }
+): Result | null {
+  const d = decisions[key];
+  if (!d) return null;
+  const pick = (d.pick ?? '').trim();
+  const why = d.note ? ` (${d.note})` : '';
+  if (pick === 'skip') {
+    return { ...base, saosType: 'skip', saosId: '', score: '', candidates: '', reason: `tier 0: Brian's pick — SKIP, create nothing for this name${why}`, verdict: 'matched', tier1Verdict: 'ambiguous', tier: 'decision' };
+  }
+  if (pick === 'create') {
+    return { ...base, saosType: 'create', saosId: '', score: '', candidates: '', reason: `tier 0: Brian's pick — CREATE a new record for this name${why}`, verdict: 'not_in_saos', tier1Verdict: 'ambiguous', tier: 'decision' };
+  }
+  const type = liveBusinessIds.has(pick) ? 'business' : liveContactIds.has(pick) ? 'contact' : null;
+  if (!type) {
+    return { ...base, saosType: '', saosId: '', score: '', candidates: pick, reason: `tier 0: Brian's pick names a SAOS id that is no longer live (archived, merged or gone). Not re-decided by score — a person looks again${why}`, verdict: 'ambiguous', tier1Verdict: 'ambiguous', tier: 'decision' };
+  }
+  return { ...base, saosType: type, saosId: pick, score: '1.00', candidates: '', reason: `tier 0: Brian's pick${why}`, verdict: 'matched', tier1Verdict: 'ambiguous', tier: 'decision' };
+}
+
 /** The tier-2 similarity rule, over a ranked candidate list. Returns the accepted id or null. */
 function acceptBySimilarity(ranked: Array<[string, number]>): { id: string; score: number } | null {
   const top = ranked[0];
@@ -281,6 +363,8 @@ function matchBusiness(row: Record<string, string>): Result {
   const key = (row.match_key ?? '').trim();
   const exact = bizByKey.get(key) ?? [];
   const base = { file: '04_business_services.csv', trelloCardId: (row.bk_card_id ?? '').trim(), trelloKey: key };
+  const decided = applyDecision(key, base);
+  if (decided) return decided;
   if (exact.length === 1) {
     return { ...base, saosType: 'business', saosId: exact[0]!.id, score: '1.00', candidates: '', reason: 'unique exact normalized match', verdict: 'matched', tier1Verdict: 'matched', tier: 'exact' };
   }
@@ -346,6 +430,8 @@ function matchContact(file: string, row: Record<string, string>): Result {
   const key = (row.match_key ?? '').trim();
   const needle = contactNorm(nameClean);
   const base = { file, trelloCardId: (row.trello_card_id ?? '').trim(), trelloKey: key };
+  const decided = applyDecision(key, base);
+  if (decided) return decided;
   const exact = conByFull.get(needle) ?? [];
   if (exact.length === 1) {
     return { ...base, saosType: 'contact', saosId: exact[0]!.id, score: '1.00', candidates: '', reason: 'unique exact normalized match', verdict: 'matched', tier1Verdict: 'matched', tier: 'exact' };
@@ -501,12 +587,16 @@ const activeServiceKeys = new Set(
   files['04_business_services.csv'].filter(activeService).map((r) => (r.match_key ?? '').trim())
 );
 
-/** A row belongs in the review file if it is ambiguous AND one of the three admitted kinds. */
-function inReviewFile(r: Result): boolean {
-  if (r.verdict !== 'ambiguous') return false;
+/** The three admitted kinds, whatever the verdict: files 01 and 02, and file 04 with a live service. */
+function admittedFile(r: Result): boolean {
   if (r.file === '01_tax_wip.csv' || r.file === '02_tax_ar_worklist.csv') return true;
   if (r.file === '04_business_services.csv') return activeServiceKeys.has(r.trelloKey);
-  return false; // 03_tax_completed_roster.csv
+  return false; // 03_tax_completed_roster.csv is an existence check only
+}
+
+/** A row belongs in the review file if it is ambiguous AND one of the three admitted kinds. */
+function inReviewFile(r: Result): boolean {
+  return r.verdict === 'ambiguous' && admittedFile(r);
 }
 
 // -- out/*.csv ---------------------------------------------------------------
@@ -524,6 +614,94 @@ for (const v of ['matched', 'ambiguous', 'not_in_saos'] as const) {
   written[v] = rows.length;
   console.log(`  out/trello_match_${v}.csv: ${rows.length} row(s)${v === 'ambiguous' ? ' (the review file: files 01, 02 and active 04 only)' : ''}`);
 }
+
+/*
+ * -- R24: THE REVIEW FILE IS A DECISION FORM ---------------------------------
+ *
+ * out/review.csv: ONE ROW PER TRELLO NAME, up to three candidates with their name, id and score,
+ * and a `pick` column Brian fills in with a candidate id, `create` or `skip`.
+ *
+ * ONE ROW PER NAME, NOT PER CARD, and that is the shape change that matters. A single client can
+ * appear on four cards across files 01, 02, 03 and 04, and the 2026-09-19 file asked about each one
+ * separately — four judgements about the same person, which is both four times the work and four
+ * chances to answer differently. The key is `match_key`, which is also the key the decisions file
+ * uses, so a row here and a saved pick are the same unit.
+ *
+ * THE CANDIDATE NAME IS IN THE FILE, and it has to be: a column of UUIDs is not something a person
+ * can decide from. That is also why this file never enters the repo and never goes in a report —
+ * it lives under the bundle directory, outside Dropbox, and the reports carry counts only.
+ *
+ * WHICH NAMES GET A ROW: every ambiguous name admitted to the review set (files 01, 02 and active
+ * 04 — item e), plus every not-in-SAOS name from those same files, because "create or skip" is a
+ * decision too and the importer needs it. A name Brian has already decided carries his answer in
+ * the `pick` column, so re-exporting the file never loses a decision.
+ */
+const reviewable = results.filter((r) => inReviewFile(r) || (r.verdict === 'not_in_saos' && admittedFile(r)));
+interface ReviewRow { key: string; name: string; files: Set<string>; verdict: Verdict; reason: string; candidates: Array<[string, number]> }
+const byName = new Map<string, ReviewRow>();
+const nameOfCard = new Map<string, string>();
+for (const [file, rows] of Object.entries(files)) {
+  for (const row of rows) {
+    const card = (row.trello_card_id ?? row.bk_card_id ?? '').trim();
+    if (card) nameOfCard.set(`${file}:${card}`, (row.name_clean ?? row.name_most_common ?? '').trim());
+  }
+}
+/** "id:score id:score" out of the candidates column, best score per id, own and via05 alike. */
+function parseCandidates(text: string): Array<[string, number]> {
+  const seen = new Map<string, number>();
+  for (const m of text.matchAll(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(\d\.\d\d)/g)) {
+    const id = m[1]!;
+    const score = Number(m[2]);
+    seen.set(id, Math.max(seen.get(id) ?? 0, score));
+  }
+  return [...seen].sort((a, b) => b[1] - a[1]);
+}
+for (const r of reviewable) {
+  let row = byName.get(r.trelloKey);
+  if (!row) {
+    row = { key: r.trelloKey, name: '', files: new Set(), verdict: r.verdict, reason: r.reason, candidates: [] };
+    byName.set(r.trelloKey, row);
+  }
+  row.files.add(r.file.slice(0, 2));
+  if (!row.name) row.name = nameOfCard.get(`${r.file}:${r.trelloCardId}`) ?? '';
+  // The richest candidate list across this name's cards wins; a name ambiguous on one card and
+  // missing on another is ambiguous, because there is something to choose between.
+  const cands = parseCandidates(r.candidates);
+  if (cands.length > row.candidates.length) {
+    row.candidates = cands;
+    row.reason = r.reason;
+  }
+  if (r.verdict === 'ambiguous') row.verdict = 'ambiguous';
+}
+const nameOfBiz = new Map(businesses.map((b) => [b.id, b.name]));
+const nameOfCon = new Map(contacts.map((c) => [c.id, `${c.first} ${c.last}`]));
+const reviewRows = [...byName.values()].sort((a, b) => a.key.localeCompare(b.key));
+const q = (v: string): string => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+writeFileSync(
+  resolve(OUT, 'review.csv'),
+  [
+    'match_key,trello_name,source_files,verdict,candidate1_name,candidate1_id,candidate1_score,candidate2_name,candidate2_id,candidate2_score,candidate3_name,candidate3_id,candidate3_score,pick,reason',
+    ...reviewRows.map((r) => {
+      const cells: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const c = r.candidates[i];
+        cells.push(
+          c ? q(nameOfBiz.get(c[0]) ?? nameOfCon.get(c[0]) ?? '(not live)') : '',
+          c ? c[0] : '',
+          c ? c[1].toFixed(2) : ''
+        );
+      }
+      // An existing decision comes back in the pick column: re-exporting must never lose one.
+      const already = decisions[r.key]?.pick ?? '';
+      return [q(r.key), q(r.name), q([...r.files].sort().join(' ')), r.verdict, ...cells, q(already), q(r.reason)].join(',');
+    }),
+  ].join('\n') + '\n'
+);
+const decidedAlready = reviewRows.filter((r) => decisions[r.key]).length;
+console.log(
+  `  out/review.csv: ${reviewRows.length} Trello name(s) to decide — a candidate id, "create" or "skip" in the pick column; ` +
+    `${decidedAlready} already carry a saved pick. Save picks to ${DECISIONS}.`
+);
 
 /**
  * THE FILE-03 ENRICHMENT LIST (item f). A file-03 row with no SAOS record at all is a client whose

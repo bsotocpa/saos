@@ -48,7 +48,8 @@
 import type { FastifyInstance } from 'fastify';
 import { AppError } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
-import { TAX_STAGES, type TaxStage } from './pipeline.ts';
+import { acceptanceStatus, TAX_STAGES, type TaxStage } from './pipeline.ts';
+import { filingLane } from './resolution.ts';
 
 /** The columns this module must never write, and the reason each one is evidence rather than position. */
 const GATE_FACTS = [
@@ -179,4 +180,135 @@ export async function setImportedStage(
   });
 
   return { stage: input.stage, attestation: line };
+}
+
+
+// -- R22: THE CUTOVER PRECONDITION ------------------------------------------
+
+/**
+ * AN IMPORT OF TAX RETURNS REFUSES TO RUN WITH NO ACTIVE TAX PREPARER (Brian, 2026-09-20, R22).
+ *
+ * WHY THIS IS A REFUSAL AND NOT A WARNING. R11 gives a new return the firm's sole active tax
+ * preparer as its default, and the pipeline refuses `in_preparation` to a return with nobody on it.
+ * Import 44 returns into a system where `tax_preparer` is unfilled and every one of them lands
+ * unassigned: they appear on no My Tasks, no owner rollup asks after them, and the first person to
+ * notice is the client. That is not a degraded import, it is 44 returns in a queue that belongs to
+ * nobody — and it is silent, which is the part that makes it worth a hard stop.
+ *
+ * It is a CUTOVER PRECONDITION, which is the other half of the reasoning: "no production import
+ * now; Phase 2 runs at each role's cutover". A role's cutover means that role's account exists. So
+ * the import asks the question the cutover has already answered, and the refusal names what to do.
+ *
+ * SEVERAL ACTIVE PREPARERS IS NOT AN ERROR HERE. `soleActiveTaxPreparerId` returns null for both
+ * none and several, and only NONE is refused: with several the firm has to choose, which is a
+ * decision the import does not get to make, so returns import unassigned and the count is reported.
+ * Conflating the two would refuse an import for a firm that had grown.
+ */
+export async function assertImportPreconditions(
+  app: FastifyInstance
+): Promise<{ activePreparers: number; defaultPreparerId: string | null }> {
+  const { rows } = await app.db.query<{ id: string }>(
+    `SELECT s.id FROM staff s JOIN roles r ON r.id = s.role_id
+      WHERE s.is_active AND r.key = 'tax_preparer' ORDER BY s.id`
+  );
+  if (rows.length === 0) {
+    throw new AppError(
+      409,
+      'no_active_tax_preparer',
+      'Refusing to import tax returns: no active tax_preparer. Every imported return would land ' +
+        'unassigned — on no My Tasks, in no owner rollup — and the pipeline would then refuse to ' +
+        'move it into preparation. Create the preparer account first; that is part of the role ' +
+        'cutover this import belongs to (Brian, 2026-09-20, R22).'
+    );
+  }
+  return { activePreparers: rows.length, defaultPreparerId: rows.length === 1 ? rows[0]!.id : null };
+}
+
+// -- R23: A RETURN IMPORTED AS FILED AND AWAITING AN ACKNOWLEDGMENT ---------
+
+/**
+ * Declare an imported return's jurisdictions from the R2 DEFAULT, marked as a default.
+ *
+ * ── WHY DECLARE ANYTHING AT ALL ──
+ *
+ * A return at `filed` with no declared jurisdictions can never complete: completion is measured
+ * against the declared list, and an empty list means nothing is awaited and nothing arrives. So a
+ * return imported as "filed, awaiting ack" needs a list, and the Trello card does not carry one.
+ * The R2 default — federal, plus the entity's or the contact's state unless it is one of the nine
+ * with no income tax — is what SAOS itself uses when a preparer files without saying otherwise, so
+ * it is the same guess the app already makes rather than a new one invented for the import.
+ *
+ * ── AND WHY IT IS FLAGGED ──
+ *
+ * A guess that looks like a declaration is worse than no guess. `declared_by_import_default` (0114)
+ * separates the two, and the import pairs every one of these returns with a preparer task to
+ * confirm the list against ATX. Until that task closes, the rows say "this came from an address".
+ *
+ * ── THE ONE REFUSAL ──
+ *
+ * CLAUDE.md, non-negotiable: "Never route an old year to e-file." R23 says the method is e-file,
+ * which is right for a return whose ack is pending — that only happens electronically — but the
+ * combination would break the hard rule if the card were for a year in the paper lane. Rather than
+ * choose between a ruling and a hard rule, this refuses the row and says so, so the importer makes
+ * it a preparer task instead. No old year gets an e-file jurisdiction written by an import.
+ */
+export interface ImportedJurisdictionsInput {
+  taxEngagementId: string;
+  trelloCardId: string;
+  asOf: string;
+}
+export async function declareImportedJurisdictions(
+  app: FastifyInstance,
+  actor: { staffId: string | null; label: string },
+  input: ImportedJurisdictionsInput
+): Promise<{ jurisdictions: string[] }> {
+  const { rows } = await app.db.query<{ tax_year: number; stage: TaxStage; contact_id: string }>(
+    `SELECT te.tax_year, te.stage, e.contact_id
+       FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
+      WHERE te.id = $1`,
+    [input.taxEngagementId]
+  );
+  const row = rows[0];
+  if (!row) throw new AppError(404, 'not_found', 'Tax engagement not found.');
+  if (filingLane(row.tax_year) !== 'efile') {
+    throw new AppError(
+      409,
+      'old_year_is_paper_lane',
+      `Refusing: tax year ${row.tax_year} is in the paper lane, and R23 declares an imported ` +
+        `"filed, awaiting ack" return as e-file. CLAUDE.md: never route an old year to e-file. ` +
+        `Import this card as a preparer task instead of guessing its lane.`
+    );
+  }
+
+  const status = await acceptanceStatus(app, input.taxEngagementId);
+  const list = status.declaredJurisdictions.length > 0 ? status.declaredJurisdictions : status.defaultJurisdictions;
+  for (const jurisdiction of list) {
+    await app.db.query(
+      `INSERT INTO tax_engagement_jurisdictions (tax_engagement_id, jurisdiction, filing_method, declared_by_import_default)
+       VALUES ($1, $2, 'efile', true)
+       ON CONFLICT (tax_engagement_id, jurisdiction) DO NOTHING`,
+      [input.taxEngagementId, jurisdiction]
+    );
+  }
+  await writeAudit(app.db, {
+    actorType: actor.staffId ? 'staff' : 'system',
+    actorId: actor.staffId,
+    actorLabel: actor.label,
+    action: 'tax_engagement.jurisdictions_declared_by_import_default',
+    objectType: 'tax_engagement',
+    objectId: input.taxEngagementId,
+    contactId: row.contact_id,
+    details: {
+      jurisdictions: list,
+      filing_method: 'efile',
+      declared_by: 'import default',
+      note:
+        'The Trello card did not say where this return was filed. The list is the address default ' +
+        'SAOS itself uses when a preparer files without saying otherwise, flagged as a default and ' +
+        'paired with a preparer task to confirm it against ATX.',
+      trello_card_id: input.trelloCardId,
+      as_of: input.asOf,
+    },
+  });
+  return { jurisdictions: list };
 }

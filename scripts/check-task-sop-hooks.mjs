@@ -76,41 +76,15 @@ const SCANNED = /\.(ts|js|mjs|cjs|sql)$/;
  * TASK_TYPE_SOPS this guard says the proposal is ruled and the entry can be deleted.
  */
 const PROPOSED = new Map([
-  [
-    'trello_ar_worklist',
-    {
-      file: 'apps/api/scripts/trello-import.ts',
-      why:
-        'Introduced by the Trello import rehearsal (phase 1, report-only). The A/R worklist card becomes a ' +
-        'task so the collection work carried on a Trello card is visible in My Tasks — but whether that work ' +
-        'follows the existing dunning procedure or needs its own is Brian\'s call, and the import lane it ' +
-        'arrives on is still a rehearsal. Owned by the Trello track, not this one; proposal in the ' +
-        '2026-09-20 report.',
-    },
-  ],
-  [
-    'trello_amendment',
-    {
-      file: 'apps/api/scripts/trello-import.ts',
-      why:
-        'Ruling R16, item g: an "amendment in progress" Trello card has no SAOS stage and no 1040-X in the ' +
-        'return_type enum, so it imports as a PREPARER TASK rather than a return placed at an approximate ' +
-        'stage. Its procedure is the amendment procedure, and there is none to link yet because the return ' +
-        'type it would describe does not exist — Brian rules on the 1040-X type first, and the SOP follows ' +
-        'that ruling. Owned by the Trello track; proposal in the 2026-09-20 report.',
-    },
-  ],
-  [
-    'trello_books_review',
-    {
-      file: 'apps/api/scripts/trello-import.ts',
-      why:
-        'Ruling R16, item g: the one "awaiting CPA review of financials" card is Brian reviewing the BOOKS ' +
-        '(close_cycles.statements_ready_at), which internal_review — the review of the RETURN — is not, so ' +
-        'it imports as a CEO TASK. Whether that review follows the close-cycle procedure or is simply ' +
-        'Brian reading a statement is his call. Owned by the Trello track; proposal in the 2026-09-20 report.',
-    },
-  ],
+  /*
+   * EMPTY, AND IT EMPTIED THE WAY IT WAS MEANT TO (2026-09-20). Its one occupant plus the two the
+   * Trello import added the same day — trello_ar_worklist, trello_amendment, trello_books_review —
+   * were ruled by Brian in R20 and moved into TASK_TYPE_SOPS with real SOP pages behind them, and
+   * R23's two new types (trello_confirm_jurisdictions, trello_notify_client) were registered
+   * straight away rather than parked here. A holding pen with nothing in it is the goal state, not
+   * a sign nobody is using it: the next unruled type goes here with its reason and comes out when
+   * Brian decides.
+   */
 ]);
 
 function* walk(dir) {

@@ -34,6 +34,11 @@
  * discriminator, and it will have to say so rather than discover it. Named here because a
  * constraint whose limits are undocumented gets worked around instead of extended.
  *
+ * AND IT HAPPENED THE NEXT DAY, from the other direction: R23 gives one card two TASKS (an A/R
+ * worklist item and a notify-the-client item), so migration 0114 replaces the tasks index with
+ * (source, trello_card_id, source_type). The other four tables keep the key below. Read 0114's
+ * header before assuming this one describes the tasks table.
+ *
  * ── WHY contacts GETS unverified_import_source ──
  *
  * Migration 0103 tags an unverified imported BUSINESS by setting businesses.unverified_import_source

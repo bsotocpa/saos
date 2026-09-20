@@ -38,4 +38,24 @@ export const items = [
     },
     expectRed: /import context|refused|effect/i,
   },
+  {
+    /*
+     * R22's refusal is the second control in this batch worth a manifest entry, and for the same
+     * reason as the first: it fails SILENTLY. With no active tax_preparer and no refusal, the import
+     * runs to completion, reports its counts, and leaves every return it created assigned to nobody —
+     * on no My Tasks, in no owner rollup, and then refused entry to preparation by the pipeline. The
+     * run looks green. The first person to notice is the client.
+     */
+    item: 'R22 cutover precondition: the no-active-tax-preparer refusal made unreachable',
+    file: 'apps/api/src/modules/tax/import.ts',
+    change:
+      'the refusal branch in assertImportPreconditions never taken, so an import runs with no active tax_preparer and every return it creates lands unassigned',
+    test: api('test/trello-import.spec.ts'),
+    apply: (t) => {
+      const a = '  if (rows.length === 0) {';
+      must(t, a);
+      return t.replace(a, '  if (false && rows.length === 0) {');
+    },
+    expectRed: /tax_preparer|R22|refus/i,
+  },
 ];
