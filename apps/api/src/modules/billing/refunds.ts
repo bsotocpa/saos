@@ -25,6 +25,12 @@
  * holds money in: invoices.amount_refunded_cents (gross, cumulative, as Stripe reports it),
  * the engagement's payment_status, and deposit credit — which reads paid minus refunded, so
  * a refunded deposit can never be applied to the invoice that follows it.
+ *
+ * THE DOOR (R29, 2026-09-20). Everything above was SAOS listening. `refundInvoice` below is SAOS
+ * ACTING: a person with billing.manage refunds a paid invoice from Ops, the refund is created at
+ * Stripe, and the row it writes carries the person. When Stripe's own charge.refunded arrives for
+ * that refund id, `applyRefund` finds the row, updates it, and audits a RECONCILIATION rather than
+ * a second refund — so the money is counted once, against the person who moved it.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -37,6 +43,7 @@ import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { isAutomationEnabled } from '../../automations.ts';
 import { formatUsd } from './service.ts';
+import { noticesForInvoices, type NoticeState } from './notices.ts';
 import type { DisputeClosedEvent, DisputeOpenedEvent, PaymentEvent, RefundEvent } from './stripe.ts';
 
 export interface StripeOutcome {
@@ -53,6 +60,14 @@ export interface StripeOutcome {
   invoiceNumber?: string;
   /** Refund rows written by THIS delivery (0 on a replay). */
   recorded?: number;
+  /** Refund rows this delivery found already on the record and updated in place (R29). */
+  reconciled?: number;
+  /**
+   * True when every refund in this event was created by a member of staff through the Ops door, so
+   * the webhook only confirmed what SAOS already knew: no second row, no second receipt, and no
+   * second money action on the CEO's line.
+   */
+  reconciledToTheDoor?: boolean;
   taskId?: string;
 }
 
@@ -227,18 +242,26 @@ export async function recordRefunds(
     refunds: Array<{ id: string; amountCents: number; reason: string | null }>;
     amountRefundedCents: number;
     stripeEventId: string | null;
+    /**
+     * Set ONLY by the Ops refund door (R29): the staff member who created the refund. A refund that
+     * arrived from Stripe — the webhook, the dashboard, a re-sync — has no actor, and that absence
+     * is the fact the money line reads as "outside the door".
+     */
+    actor?: { id: string; label: string } | undefined;
   }
-): Promise<{ status: 'refunded' | 'partially_refunded'; amountRefundedCents: number; recorded: number }> {
+): Promise<{ status: 'refunded' | 'partially_refunded'; amountRefundedCents: number; recorded: number; reconciled: number }> {
   const inv = await invoiceById(app, input.invoice.id);
   if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
   let recorded = 0;
+  let reconciled = 0;
   for (const r of input.refunds) {
     const ins = await app.db.query<{ id: string }>(
-      `INSERT INTO invoice_refunds (invoice_id, stripe_refund_id, amount_cents, reason, stripe_event_id)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO invoice_refunds (invoice_id, stripe_refund_id, amount_cents, reason, stripe_event_id,
+                                    refunded_by_staff_id, refunded_by_label)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (stripe_refund_id) DO NOTHING
        RETURNING id`,
-      [inv.id, r.id, r.amountCents, r.reason, input.stripeEventId]
+      [inv.id, r.id, r.amountCents, r.reason, input.stripeEventId, input.actor?.id ?? null, input.actor?.label ?? null]
     );
     if (ins.rows[0]) {
       recorded += 1;
@@ -250,11 +273,170 @@ export async function recordRefunds(
         objectType: 'invoice_refund',
         objectId: ins.rows[0].id,
       });
+    } else {
+      /*
+       * THE RECONCILIATION (R29, 2026-09-20). This refund id is already on the record — the door
+       * created it and Stripe's charge.refunded has now caught up, or the event was redelivered.
+       * The row is UPDATED in place: it learns the Stripe event that confirmed it, and its amount
+       * becomes Stripe's (Stripe is the authority on how much moved). Not a second row, and
+       * deliberately no second receipt: the client is told about a refund once, by the row.
+       */
+      const upd = await app.db.query<{ id: string }>(
+        `UPDATE invoice_refunds
+            SET amount_cents = $4,
+                -- stripe_event_id NAMES THE EVENT THAT RECORDED THIS ROW, and only the door's own
+                -- rows may learn it late. A row a person put here by re-syncing from Stripe keeps
+                -- NULL for good: money-digest's matching rule reads "this row does not carry this
+                -- event's id" as "a person recorded it before the event arrived", which is what makes
+                -- the webhook's own row fold into the initiator's instead of being counted again.
+                -- Back-filling it there would quietly move that refund to "outside the door".
+                stripe_event_id = CASE WHEN refunded_by_staff_id IS NOT NULL
+                                       THEN COALESCE(stripe_event_id, $3) ELSE stripe_event_id END
+          WHERE invoice_id = $1 AND stripe_refund_id = $2
+          RETURNING id`,
+        [inv.id, r.id, input.stripeEventId, r.amountCents]
+      );
+      if (upd.rows[0]) reconciled += 1;
     }
   }
   // Stripe's cumulative figure is the truth; the rows are the itemisation of it.
   const status = await applyRefundedAmount(app, inv, input.amountRefundedCents);
-  return { status, amountRefundedCents: Math.min(input.amountRefundedCents, inv.amount_paid_cents), recorded };
+  return { status, amountRefundedCents: Math.min(input.amountRefundedCents, inv.amount_paid_cents), recorded, reconciled };
+}
+
+/**
+ * THE OPS REFUND DOOR (Brian, ruling R29, 2026-09-20).
+ *
+ * Until tonight the only way money went back was the Stripe dashboard, with SAOS finding out later
+ * from a webhook or a nightly drift check. A firm whose refunds happen outside its own system has no
+ * refund policy — it has a habit. This is the door: a paid (or partly refunded) invoice, an amount
+ * no larger than what is still refundable, a standalone reason that stands on its own for the next
+ * reader, and the refund created AT STRIPE before SAOS writes anything down.
+ *
+ * ORDER MATTERS, AND IT IS THE SAME ORDER AS THE VOID'S SESSION EXPIRY. Everything that can refuse
+ * refuses first, with words. Then the outward call — which cannot be rolled back — is made. Only
+ * then, in ONE transaction: the refund row with the Stripe id AND the person, the invoice's amounts
+ * and status, the audit line as a money action, and the client's receipt behind its automation gate.
+ * If that transaction failed after Stripe moved the money, the nightly drift check finds the
+ * disagreement the next morning and "Re-sync from Stripe" records it: the failure mode is a day of
+ * lag on the record, never money that moved with nothing to find it.
+ *
+ * The receipt is NOT sent here and is not exempt from anything: it is the same
+ * `invoice.refund_receipt` effect the webhook queues, gated by `refund_receipt`, suppressed and
+ * counted while Brian has that automation off.
+ */
+export async function refundInvoice(
+  app: FastifyInstance,
+  invoiceId: string,
+  input: { amountCents: number; reason: string },
+  actor: { id: string; fullName: string }
+): Promise<{
+  invoiceId: string;
+  invoiceNumber: string;
+  status: 'refunded' | 'partially_refunded';
+  stripeRefundId: string;
+  amountCents: number;
+  amountRefundedCents: number;
+  refundableCents: number;
+  reason: string;
+  refundedBy: string;
+  notice: NoticeState | null;
+}> {
+  const reason = input.reason.trim();
+  const inv = await invoiceById(app, invoiceId);
+  if (!inv) throw new AppError(404, 'not_found', 'Invoice not found.');
+
+  // Every refusal, in words, before a cent moves anywhere.
+  if (inv.status === 'disputed') {
+    throw new AppError(409, 'not_refundable', `${inv.invoice_number} is under a card dispute. The dispute decides where this money goes; refunding it now would return it twice.`);
+  }
+  // Said before the wider refusal, because "SR-2026-0002 is refunded; only a paid invoice can be
+  // refunded" is a sentence that argues with itself.
+  if (inv.status === 'refunded') {
+    throw new AppError(409, 'nothing_refundable', `${inv.invoice_number} has already been refunded in full.`);
+  }
+  if (inv.status !== 'paid' && inv.status !== 'partially_refunded') {
+    throw new AppError(409, 'not_refundable', `${inv.invoice_number} is ${inv.status.replace('_', ' ')}; only a paid invoice can be refunded.`);
+  }
+  const refundable = inv.amount_paid_cents - inv.amount_refunded_cents;
+  if (refundable <= 0) {
+    throw new AppError(409, 'nothing_refundable', `${inv.invoice_number} has already been refunded in full.`);
+  }
+  if (input.amountCents > refundable) {
+    throw new AppError(409, 'amount_too_large', `The most that can still be refunded on ${inv.invoice_number} is ${formatUsd(refundable)}.`);
+  }
+  const { rows: payment } = await app.db.query<{ pi: string | null }>(
+    `SELECT stripe_payment_intent_id AS pi FROM invoices WHERE id = $1`,
+    [inv.id]
+  );
+  const paymentIntentId = payment[0]?.pi ?? null;
+  if (!paymentIntentId) {
+    throw new AppError(409, 'no_payment', `${inv.invoice_number} carries no Stripe payment, so there is nothing for Stripe to refund. Return this money the way it arrived and record it on the invoice by hand.`);
+  }
+
+  /*
+   * THE OUTWARD CALL. The idempotency key is the invoice, what had already been refunded, and this
+   * amount: a double-pressed control repeats the key and Stripe returns the SAME refund, while a
+   * genuine second refund of the same size comes after the first has moved amount_refunded_cents
+   * and therefore carries a different key.
+   *
+   * TWO PEOPLE AT ONCE. The bound above is read without a row lock deliberately — a lock held
+   * across an HTTP call to Stripe is a worse failure than the one it prevents. Two presses of the
+   * same amount are one refund (same key, same refund id, and the insert below conflicts to
+   * nothing). Two presses of DIFFERENT amounts that together exceed the charge are refused by
+   * STRIPE, which is the authority on how much of a charge is left to refund; that refusal reaches
+   * the person in the modal. SAOS therefore cannot over-refund a charge even where its own view of
+   * the balance is a moment stale.
+   */
+  const refund = await app.stripe.createRefund({
+    paymentIntentId,
+    amountCents: input.amountCents,
+    idempotencyKey: `saos-refund-${inv.id}-${inv.amount_refunded_cents}-${input.amountCents}`,
+  });
+
+  const result = await withTransaction(app.db, async () => {
+    // THE one recording path, with the actor: the row, the amounts, the status, the receipt.
+    const recorded = await recordRefunds(app, {
+      invoice: { id: inv.id },
+      refunds: [{ id: refund.id, amountCents: refund.amountCents, reason }],
+      amountRefundedCents: inv.amount_refunded_cents + refund.amountCents,
+      stripeEventId: null,
+      actor: { id: actor.id, label: actor.fullName },
+    });
+    await writeAudit(app.db, {
+      actorType: 'staff',
+      actorId: actor.id,
+      actorLabel: actor.fullName,
+      action: 'invoice.refund_issued',
+      objectType: 'invoice',
+      objectId: inv.id,
+      contactId: inv.contact_id,
+      details: {
+        invoice_number: inv.invoice_number,
+        amount_cents: refund.amountCents,
+        reason,
+        stripe_refund_id: refund.id,
+        stripe_payment_intent_id: paymentIntentId,
+        refundable_before_cents: refundable,
+        to_status: recorded.status,
+      },
+    });
+    return recorded;
+  });
+
+  const notice = (await noticesForInvoices(app, [inv.id]))[inv.id]?.find((n) => n.kind === 'refund_receipt') ?? null;
+  return {
+    invoiceId: inv.id,
+    invoiceNumber: inv.invoice_number,
+    status: result.status,
+    stripeRefundId: refund.id,
+    amountCents: refund.amountCents,
+    amountRefundedCents: result.amountRefundedCents,
+    refundableCents: refundable - refund.amountCents,
+    reason,
+    refundedBy: actor.fullName,
+    notice,
+  };
 }
 
 export async function applyRefund(app: FastifyInstance, e: RefundEvent): Promise<StripeOutcome> {
@@ -268,16 +450,34 @@ export async function applyRefund(app: FastifyInstance, e: RefundEvent): Promise
     }
 
     const refunds = e.refunds.length > 0 ? e.refunds : await app.stripe.listRefunds(e.chargeId);
-    // THE one recording path (shared with re-sync): rows by refund id, gross amount, status,
-    // engagement reversal, and a receipt per newly recorded refund.
-    const { status, recorded } = await recordRefunds(app, {
+    // THE one recording path (shared with re-sync and the Ops door): rows by refund id, gross
+    // amount, status, engagement reversal, and a receipt per NEWLY recorded refund.
+    const { status, recorded, reconciled } = await recordRefunds(app, {
       invoice: { id: inv.id }, refunds, amountRefundedCents: e.amountRefundedCents, stripeEventId: e.eventId || null,
     });
+
+    /*
+     * WHOSE MONEY ACTION IS THIS (R29, 2026-09-20)? A refund every one of whose ids was created by a
+     * member of staff through the Ops door is not a second money action — it is Stripe confirming
+     * one SAOS already made and already put on the CEO's money line. So it is audited as a
+     * RECONCILIATION, an action deliberately absent from MONEY_ACTIONS: the money is counted once,
+     * at the door, attributed to the person who pressed it.
+     *
+     * Anything else keeps `invoice.refunded`: a refund SAOS heard about first (the dashboard) is
+     * money that moved outside the door and belongs on its own line, and a re-synced one is folded
+     * into its initiator by money-digest's own matching rule.
+     */
+    const doorOwned = refunds.length === 0 ? 0 : (await app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM invoice_refunds
+        WHERE invoice_id = $1 AND stripe_refund_id = ANY($2::text[]) AND refunded_by_staff_id IS NOT NULL`,
+      [inv.id, refunds.map((r) => r.id)]
+    )).rows[0]!.n;
+    const reconciledToTheDoor = recorded === 0 && refunds.length > 0 && doorOwned === refunds.length;
 
     await writeAudit(app.db, {
       actorType: 'system',
       actorLabel: 'stripe webhook',
-      action: 'invoice.refunded',
+      action: reconciledToTheDoor ? 'invoice.refund_reconciled' : 'invoice.refunded',
       objectType: 'invoice',
       objectId: inv.id,
       contactId: inv.contact_id,
@@ -287,11 +487,15 @@ export async function applyRefund(app: FastifyInstance, e: RefundEvent): Promise
         refund_ids: refunds.map((r) => r.id),
         amount_refunded_cents: Math.min(e.amountRefundedCents, inv.amount_paid_cents),
         status,
+        ...(reconciledToTheDoor ? { reconciled_to_staff_refund: true } : {}),
       },
     });
 
 
-    const out: StripeOutcome = { status, invoiceId: inv.id, invoiceNumber: inv.invoice_number, recorded };
+    const out: StripeOutcome = {
+      status, invoiceId: inv.id, invoiceNumber: inv.invoice_number, recorded, reconciled,
+      ...(reconciledToTheDoor ? { reconciledToTheDoor: true } : {}),
+    };
     await recordOutcome(app, e.eventId, out);
     return out;
   });

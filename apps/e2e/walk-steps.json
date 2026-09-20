@@ -7,6 +7,8 @@
         { "id": "A1", "text": "Add the business with its EIN, make it primary", "device": "laptop" },
         { "id": "A2", "text": "Business-tax quote against it, $0 deposit override with a reason, send", "device": "laptop" },
         { "id": "A3", "text": "Accept the quote, sign Schedule B, business onboarding form, upload a document", "device": "phone" },
+        { "id": "A3b", "text": "Engagement packet created and sent for signature", "device": "laptop" },
+        { "id": "A3c", "text": "Section 7216 consent answered", "device": "phone" },
         { "id": "A4", "text": "Lock the estimate, walk the stages to internal review, deliver the return PDF to the portal", "device": "laptop" },
         { "id": "A5", "text": "My Returns shows it", "device": "phone" },
         { "id": "A6", "text": "Upload the signed 8879-CORP scan with its signed date and the PTIN holder", "device": "laptop" },
@@ -38,10 +40,11 @@
       ]
     },
     "D": {
-      "title": "Doors: void and test-client flag",
+      "title": "Doors: void, test-client flag and refund",
       "steps": [
         { "id": "D1", "text": "Void a sent invoice from the client page: a reason, and the row reads cancelled with that reason and the actor", "device": "phone + laptop" },
-        { "id": "D2", "text": "Flag a contact as a test record: the note, and the record leaves every report and list", "device": "phone + laptop" }
+        { "id": "D2", "text": "Flag a contact as a test record: the note, and the record leaves every report and list", "device": "phone + laptop" },
+        { "id": "D3", "text": "Refund a paid invoice from Ops", "device": "phone + laptop" }
       ]
     }
   }

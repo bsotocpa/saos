@@ -176,7 +176,6 @@ test.describe('Path B', () => {
     test.setTimeout(900_000); // fifteen steps across two apps, plus a wait on the outbox sweep
     const shot = testInfo.outputPath(`path-b-${viewport}.png`);
     const steps: string[] = [];
-    const defects: string[] = [];
     let passed = false;
 
     /* The card is Stripe's; the harness never loads an external host. */
@@ -585,23 +584,26 @@ test.describe('Path B', () => {
       expect((mailed.taxEngagement as Record<string, unknown>).stage, 'the mailing was the last thing the return waited on, so it completes').toBe('completed');
       steps.push(`B11|/clients/:id Returns card, button "Record mailing — ${who.state}" (modal: "Mailed on", "Method" USPS certified (tracked), "Tracking number", no receipt) → the return completes|${ROLES.returnControls}|tap`);
       /*
-       * WHAT THE COMPLETED RETURN NO LONGER SHOWS. The jurisdiction status block lives inside the
-       * return controls, which apply before filing and at filed/rejected — not at completed. So the
-       * instant the mailing completes the return, "Mailed <date>" leaves the screen with it, and the
-       * client-page row prints only the federal/state ACCEPTED dates, of which Illinois has none. The
-       * paper mailing that finished this return is not readable anywhere in Ops afterwards.
+       * WHERE THE COMPLETED RETURN CARRIES ITS MAILING (R25, 2026-09-20). The jurisdiction block
+       * inside the return controls still leaves the row at completed — it is the block the Record
+       * mailing control hangs off, and there is nothing left to record. What used to leave with it
+       * was the RECORD: the row printed the e-file acceptance dates alone, both null for a paper
+       * jurisdiction, so the mailing that finished this return was readable nowhere in Ops. The row
+       * prints it now, per declared jurisdiction, at every stage — read back here after a fresh load
+       * of the page, which is how it will be read a month from now.
        */
       await expect(jStatus, 'the jurisdiction status leaves the row with the controls at completed').toHaveCount(0);
-      const rowText = await card.innerText();
-      expect(rowText, "and nothing else on the row carries the mailing: the paper lane's own record is invisible once complete")
-        .not.toContain('Mailed');
-      defects.push(
-        `R15 gap: once the recorded mailing completes the return, Ops shows the mailing nowhere. The jurisdiction status ` +
-        `(testid jurisdiction-status, "Mailed <date>") lives in ReturnControls, which renders only for pre-filed and ` +
-        `filed/rejected stages (mailingControlsApply excludes 'completed'), and the client-page return row prints only ` +
-        `federal_accepted_on / state_accepted_on — both null for a paper jurisdiction. A completed paper filing's mailing ` +
-        `date, method and tracking number are readable only through GET /tax-engagements/:id.`
-      );
+      await page.goto(clientPage);
+      await expect(page.getByRole('heading', { name: 'Returns' })).toBeVisible();
+      const ilLine = card.getByTestId(`jurisdiction-line-${who.state}`);
+      await expect(ilLine, 'the paper jurisdiction prints the day it was mailed on the completed return').toContainText(`Mailed ${dayText(today)}`);
+      await expect(ilLine, 'how it went out').toContainText('USPS certified (tracked)');
+      await expect(ilLine, 'and the number it can be traced by').toContainText(tracking);
+      await expect(
+        card.getByTestId('jurisdiction-line-federal'),
+        'and the e-filed jurisdiction reads its acceptance beside it, never a mailing'
+      ).toContainText(`Accepted ${dayText(today)}`);
+      steps.push(`B11|/clients/:id Returns card, the completed return's row: jurisdiction-line-${who.state} reads "Mailed <date> · USPS certified (tracked) · <tracking>" and jurisdiction-line-federal reads "Accepted <date>"|${ROLES.returnControls}|tap`);
 
       // ── B14. THE FINAL INVOICE PAID ───────────────────────────────────────────────────
       await signInPortal(page, who.portalMagicTokens[1]!);
@@ -636,7 +638,6 @@ test.describe('Path B', () => {
       if (!existsSync(shot)) await page.screenshot({ path: shot, fullPage: true }).catch(() => undefined);
       testInfo.annotations.push({ type: 'screenshot', description: keepScreenshot(`path-b-${viewport}`, passed, shot) });
       for (const s of steps) testInfo.annotations.push({ type: 'walk-step', description: s });
-      for (const d of defects) testInfo.annotations.push({ type: 'defect', description: d });
     }
   });
 });

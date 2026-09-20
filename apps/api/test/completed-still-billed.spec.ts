@@ -26,6 +26,8 @@ const silentMailer: Mailer = { transport: 'console', async send() { return { id:
 const seen: string[] = [];
 const stripe: StripeAdapter = {
   mode: 'stub', keyMode: null,
+  // R29 (2026-09-20): the adapter can create refunds; this spec never asks it to.
+  async createRefund(): Promise<never> { throw new Error('this spec does not refund'); },
   async createCheckoutSession(input) { return { sessionId: `cs_c_${input.invoiceId}`, url: 'https://checkout.stripe.example/c' }; },
   async retrieveCheckoutSession() { return { status: 'open', paymentStatus: 'unpaid' }; },
   parseWebhookEvent() { throw new Error('not used'); },

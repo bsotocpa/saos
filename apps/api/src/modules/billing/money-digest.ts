@@ -33,6 +33,17 @@ export const MONEY_ACTIONS = [
   'invoice.refunded',
   // A person in SAOS recording Stripe's refunds onto the invoice: the SAOS-initiated refund.
   'invoice.refunds_resynced',
+  /*
+   * THE REFUND DOOR (R29, 2026-09-20): a member of staff created the refund in Ops, and Stripe
+   * moved the money because SAOS asked. Class staff when a staff member presses it, neither line
+   * when the CEO does — the ordinary classes, no special case.
+   *
+   * There is deliberately no entry here for `invoice.refund_reconciled`, the webhook's audit row
+   * when Stripe confirms a refund this door already made. That row is Stripe agreeing with us, not
+   * money moving: counting it would put the same dollars on the line twice, once as the person's
+   * action and once as "outside the door".
+   */
+  'invoice.refund_issued',
   'invoice.deposit_transferred',
   'engagement.deposit_transferred',
   'engagement.deposit_restamped',
@@ -67,6 +78,7 @@ const LABEL: Record<string, string> = {
   'invoice.voided': 'Void',
   'invoice.refunded': 'Refund',
   'invoice.refunds_resynced': 'Refund',
+  'invoice.refund_issued': 'Refund',
   'invoice.deposit_transferred': 'Deposit moved',
   'engagement.deposit_transferred': 'Deposit moved',
   'engagement.deposit_restamped': 'Deposit restamped',

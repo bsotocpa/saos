@@ -45,3 +45,33 @@ test('a void row with nothing recorded says so instead of printing blanks', () =
   // No money record reads "unknown" (2026-09-10): an unrecorded actor says where to look.
   assert.equal(line, 'void · (no reason recorded) · actor not recorded — see the audit log · (date unknown)');
 });
+
+// R29 (2026-09-20): a refund made through the Ops door reads like a void — amount, reason, actor,
+// date — and a refund that arrived FROM Stripe carries neither reason nor actor and must not print
+// a blank or an "unknown" where the person would be.
+test('a refund made in Ops reads the amount, the reason and the person', () => {
+  const line = invoiceStatusLine(
+    {
+      invoice_number: 'SX-6', status: 'partially_refunded', total_cents: 20000, amount_paid_cents: 20000,
+      amount_refunded_cents: 5000, refunded_at: '2026-09-20T14:02:00.000Z',
+      refund_reason: 'the client cancelled the quarter before it started',
+      refunded_by: 'Synthetic Rene',
+    },
+    fmt
+  );
+  assert.equal(line, 'partially refunded $50.00 of $200.00 · the client cancelled the quarter before it started · Synthetic Rene · 2026-09-20');
+  assert.doesNotMatch(line, /@/, 'a name, never an email');
+});
+
+test('a refund that came from Stripe leaves the reason and the actor out rather than printing blanks', () => {
+  const line = invoiceStatusLine(
+    {
+      invoice_number: 'SX-7', status: 'refunded', total_cents: 2000, amount_paid_cents: 2000,
+      amount_refunded_cents: 2000, refunded_at: '2026-09-20T14:02:00.000Z',
+      refund_reason: 'requested_by_customer', refunded_by: null,
+    },
+    fmt
+  );
+  // Stripe's own enum is the only "reason" a dashboard refund has, and there is no person at all.
+  assert.equal(line, 'refunded · $20.00 · requested_by_customer · 2026-09-20');
+});

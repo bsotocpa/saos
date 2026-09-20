@@ -79,6 +79,20 @@ export function signatureFailure(
   return Object.assign(err, { webhook: { livemode, eventId, eventType, configuredMode, endpointId, reason } });
 }
 
+/**
+ * THE REFUND REQUEST (R29, 2026-09-20). SAOS names the payment intent it settled on — Stripe finds
+ * the charge from it — the amount in cents, and an idempotency key so a double-pressed control
+ * cannot create two refunds at Stripe. `reason` is STRIPE's enum (requested_by_customer |
+ * duplicate | fraudulent), not the staff member's sentence: that sentence is the SAOS record and
+ * lives on invoice_refunds.reason, never in a field a card network reads.
+ */
+export interface RefundRequest {
+  paymentIntentId: string;
+  amountCents: number;
+  reason?: 'requested_by_customer' | 'duplicate' | 'fraudulent' | undefined;
+  idempotencyKey: string;
+}
+
 export interface StripeChargeState {
   chargeId: string;
   amountCents: number;
@@ -235,6 +249,18 @@ export interface StripeAdapter {
    */
   listRefunds(chargeId: string): Promise<StripeRefund[]>;
   /**
+   * CREATE a refund at Stripe (R29, 2026-09-20). The money door's outward call: until this
+   * returned a refund id, no refund existed and SAOS records nothing. Idempotent on the caller's
+   * key, so a retried press is the same refund rather than a second one.
+   *
+   * The stub mints a synthetic id and remembers it, so listRefunds / retrieveCharge answer with it
+   * afterwards; it does NOT post charge.refunded back at the server. A webhook is Stripe's call,
+   * and the harness and the specs make it exactly as Stripe does (POST /webhooks/stripe with the
+   * shared secret) — an adapter that fired its own event would be re-entering the door's own
+   * transaction and would prove the reconciliation against itself.
+   */
+  createRefund(input: RefundRequest): Promise<StripeRefund>;
+  /**
    * Expire an OPEN Checkout session so the link in a client's inbox stops working at
    * Stripe's end (a voided invoice, 2026-09-09). Already-complete or expired sessions are
    * left alone — Stripe refuses to expire those, and there is nothing to protect.
@@ -249,9 +275,36 @@ export interface StripeAdapter {
 }
 
 function stubAdapter(endpointId: string | null): StripeAdapter {
+  /*
+   * The refunds this stub has been asked to create, by the synthetic charge id it derives from the
+   * payment intent, and by idempotency key. The map is what makes the stub honest about the two
+   * things a real Stripe does: it answers listRefunds with the refunds that exist, and a repeated
+   * idempotency key returns the SAME refund instead of a second one.
+   */
+  const stubRefunds = new Map<string, StripeRefund[]>();
+  const byKey = new Map<string, StripeRefund>();
+  let n = 0;
   return {
     mode: 'stub',
     keyMode: null,
+    async createRefund(input) {
+      const existing = byKey.get(input.idempotencyKey);
+      if (existing) return existing;
+      n += 1;
+      const charge = `ch_stub_${input.paymentIntentId}`;
+      const refund: StripeRefund = {
+        id: `re_stub_${input.paymentIntentId}_${n}`,
+        amountCents: input.amountCents,
+        reason: input.reason ?? null,
+        createdAt: new Date().toISOString(),
+      };
+      byKey.set(input.idempotencyKey, refund);
+      stubRefunds.set(charge, [...(stubRefunds.get(charge) ?? []), refund]);
+      return refund;
+    },
+    async listRefunds(chargeId) {
+      return stubRefunds.get(chargeId) ?? [];
+    },
     async createCheckoutSession(input) {
       const sessionId = `cs_stub_${input.invoiceId}`;
       return { sessionId, url: `https://checkout.stripe.example/${sessionId}` };
@@ -269,9 +322,6 @@ function stubAdapter(endpointId: string | null): StripeAdapter {
         throw signatureFailure(rawBody, 'stub', endpointId, 'bad webhook secret');
       }
       return mapStripeEvent(JSON.parse(rawBody.toString('utf8')) as RawStripeEvent);
-    },
-    async listRefunds() {
-      return [];
     },
     async expireCheckoutSession() {
       // Nothing to expire: the stub never minted a session Stripe knows about.
@@ -360,6 +410,29 @@ function liveAdapter(config: Config): StripeAdapter {
         refunded: charge.refunded,
         disputed: charge.disputed,
         refunds,
+      };
+    },
+    /*
+     * THE REAL REFUND (R29). refunds.create against the payment intent, with the caller's
+     * idempotency key on the request so a retry is the same refund. UNTESTED HERE, and said so
+     * plainly: nothing in this repository calls Stripe live, so the only proof this shape is right
+     * is Stripe's own API contract and the first live refund Brian makes. What IS tested is that
+     * live mode routes here and not to the stub (refund-control.spec.ts reads this file).
+     */
+    async createRefund(input) {
+      const refund = await stripe.refunds.create(
+        {
+          payment_intent: input.paymentIntentId,
+          amount: input.amountCents, // runtime data from the invoice — not a literal
+          ...(input.reason ? { reason: input.reason } : {}),
+        },
+        { idempotencyKey: input.idempotencyKey }
+      );
+      return {
+        id: refund.id,
+        amountCents: refund.amount,
+        reason: refund.reason ?? null,
+        createdAt: new Date(refund.created * 1000).toISOString(),
       };
     },
     async listRefunds(chargeId) {

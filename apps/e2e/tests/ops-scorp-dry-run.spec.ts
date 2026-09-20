@@ -202,8 +202,32 @@ test.describe('The 1120S dry run', () => {
       const engagementId = engagements.find((e) => e.service_line === 'tax')!.id;
 
       // The packet the client signs, assembled by staff on the client page (Schedule B, from the return type).
-      await page.getByRole('button', { name: 'Create engagement packet' }).click();
+      await expect(page.getByRole('heading', { name: 'Engagement packet' })).toBeVisible();
+      /*
+       * THE CONTROL IS ASSERTED BEFORE IT IS TAPPED, here and below. A click on a locator that
+       * matches nothing waits out the whole test timeout; an expect on it fails in fifteen seconds.
+       * The difference is what makes a sabotage on either packet control a red worth running.
+       */
+      const createPacket = page.getByRole('button', { name: 'Create engagement packet' });
+      await expect(createPacket, 'the packet door is on the client page').toBeVisible();
+      await createPacket.click();
       await expect(page.getByText(/^Packet created with B\b/), 'a business return resolves Schedule B, not A').toBeVisible();
+
+      /*
+       * A3b THE PACKET GOES OUT (R27, 2026-09-20). Creating it is half the door: the client is
+       * emailed the Master when staff SEND it, and the row then says what it is waiting on. The
+       * business path has the same two controls the individual one does — the manifest was the only
+       * place that did not say so, because this walk had never annotated either of them.
+       */
+      const sendPacket = page.getByRole('button', { name: 'Send for signature' });
+      await expect(sendPacket, 'the created packet offers the send').toBeVisible();
+      await sendPacket.click();
+      await expect(dialog, 'the send is confirmed in its own modal').toBeVisible();
+      await dialog.getByRole('button', { name: 'Send for signature', exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByText(/Sent for signature\. The client was emailed the Master/), 'the send says what left').toBeVisible();
+      await expect(page.getByText(/Waiting on the client.s signature/), 'and the row says what it now waits on').toBeVisible();
+      steps.push('A3b|/clients/:id Engagement packet card, button "Create engagement packet" → button "Send for signature" (modal "Send this packet for signature?")|ceo (engagements.create)|tap');
 
       /*
        * GATE 1 IS THE CLIENT'S OWN TAP NOW (R10, 2026-09-20). The return is created unstamped — the
@@ -224,6 +248,24 @@ test.describe('The 1120S dry run', () => {
       await packetCard.getByLabel('Type your full name to sign').fill(`Synthetic ${scorp.markers.business} Owner`);
       await packetCard.getByRole('button', { name: 'Sign the agreement' }).click();
       await expect(page.getByRole('heading', { name: 'Signed — thank you' }), 'the signature is recorded').toBeVisible();
+
+      /*
+       * A3c THE §7216 CONSENT, ON ITS OWN SCREEN (R27, 2026-09-20). The business path shows it too:
+       * the USE consent is offered to EVERY client once the Master is signed — entity or individual,
+       * consentsToPresent draws no line there — so the onward button on the thank-you reads Continue
+       * and routes to /consent rather than home. Rev. Proc. 2013-14: that screen's content pertains
+       * solely to the consent, and a decline sits on it with the same weight as a yes.
+       */
+      const onward = page.getByRole('button', { name: 'Continue', exact: true });
+      await expect(onward, 'the thank-you reads Continue, which is the label a consent being owed puts on it').toBeVisible();
+      await onward.click();
+      await expect(page, 'a consent is owed, so the thank-you hands the owner to its own screen').toHaveURL(/\/consent$/);
+      await expect(page.getByRole('button', { name: 'No, thank you' }), 'a decline carries the same weight as a yes').toBeVisible();
+      const consentYes = page.getByRole('button', { name: 'Yes, you have my permission' });
+      await expect(consentYes, 'and the screen offers the answer').toBeVisible();
+      await consentYes.click();
+      await expect(page.getByRole('heading', { name: 'Permission given. You can withdraw it any time.' }), 'the answer is recorded').toBeVisible();
+      steps.push(`A3c|portal /consent (its own screen, reached from the signed packet), button "Yes, you have my permission"|${CLIENT_ROLE}|tap`);
 
       await page.goto(`${PORTAL}/questionnaire`);
       await expect(page.getByRole('heading', { name: 'A few questions about how you work' })).toBeVisible();

@@ -19,6 +19,7 @@ import { useAsk } from '../../../components/ask';
 import { AddBusinessModal } from '../../../components/add-business';
 import { ReturnControls } from '../../../components/return-controls';
 import { consent7216Label, engagementStatusLabel, invoiceStatusLabel, letterStatusLabel, quoteStatusLabel } from '../../../lib/labels';
+import { dollarsToCents, jurisdictionLabel, jurisdictionStatusText, MAILING_METHOD_LABEL, type JurisdictionView } from '../../../lib/return-controls';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
 import { badgeToneFor, invoiceStatusLine } from '../../../lib/invoice-display';
 
@@ -96,6 +97,12 @@ interface Invoice {
   amount_refunded_cents?: number | null;
   void_reason?: string | null; voided_by?: string | null; voided_at?: string | null;
   refunded_at?: string | null;
+  /** R29 (2026-09-20): what the refund door recorded — the reason, the person, Stripe's own id. */
+  refund_reason?: string | null;
+  refunded_by?: string | null;
+  refund_stripe_id?: string | null;
+  /** What is still refundable: paid minus refunded, from the server, never computed on the page. */
+  refundable_cents?: number | null;
   has_stripe_payment?: boolean;
   has_open_drift_finding?: boolean;
   stripe_check_waived_at?: string | null; stripe_check_waived_reason?: string | null; stripe_check_waived_by?: string | null;
@@ -201,6 +208,28 @@ function linkExpired(sentAt: string, ttlMinutes: number): boolean {
   return Date.now() - new Date(sentAt).getTime() > ttlMinutes * 60_000;
 }
 
+/**
+ * ONE DECLARED JURISDICTION, IN THE WORDS THE RETURN'S ROW PRINTS (Brian, 2026-09-20, ruling 25).
+ *
+ * A recorded paper mailing used to be readable only while the return sat at filed: the jurisdiction
+ * block lives inside ReturnControls, which leaves the row the instant the mailing completes the
+ * return, and the row itself printed the e-file acceptance dates alone — both null for a paper
+ * jurisdiction. So the one thing that finished the return was on the record and nowhere on the
+ * screen. The row prints it now, at every stage, completed included.
+ *
+ * The status wording is the shared helper's — "Mailed <date>" for a paper lane, "Accepted <date>"
+ * for an e-file one, and what it is waiting for when neither has happened — and a paper lane with a
+ * mailing carries the two things only it has: how it went out, and the number it can be traced by.
+ * Every day goes through formatDate; a *On column is a calendar day, never an instant.
+ */
+function jurisdictionLine(j: JurisdictionView): string {
+  const day = j.filingMethod === 'paper' ? j.mailedOn : j.acceptedOn;
+  const status = jurisdictionStatusText(j, day ? formatDate(day) : '');
+  if (j.filingMethod !== 'paper' || !j.mailedOn) return status;
+  const method = j.mailingMethod ? MAILING_METHOD_LABEL[j.mailingMethod] : null;
+  return [status, method, j.trackingNumber].filter(Boolean).join(' · ');
+}
+
 export default function ClientPacketPage() {
   const router = useRouter();
   // Item 12 (2026-09-09): every "are you sure / why" is the in-app modal, never the browser's.
@@ -208,6 +237,13 @@ export default function ClientPacketPage() {
   const params = useParams<{ id: string }>();
   const [packet, setPacket] = useState<Packet | null>(null);
   const [returns, setReturns] = useState<TaxEngagement[]>([]);
+  /*
+   * THE DECLARED JURISDICTIONS PER RETURN (ruling 25, 2026-09-20). The list endpoint carries the
+   * summary acceptance columns only, so it cannot say anything about a paper lane; the rows come
+   * from GET /tax-engagements/:id, one read per return — the same read return-controls.tsx makes,
+   * done here as well because the row must print the mailing after the controls have gone.
+   */
+  const [jurisdictions, setJurisdictions] = useState<Record<string, JurisdictionView[]>>({});
   const [docs, setDocs] = useState<Doc[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [error, setError] = useState('');
@@ -244,6 +280,8 @@ export default function ClientPacketPage() {
    */
   const [canAddBusiness, setCanAddBusiness] = useState(false);
   const [canFlagTest, setCanFlagTest] = useState(false);
+  // R29: the refund door is billing.manage (Rene's role) or the CEO's '*', decided from /auth/me.
+  const [canRefund, setCanRefund] = useState(false);
   const [flaggedTest, setFlaggedTest] = useState('');
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -260,8 +298,19 @@ export default function ClientPacketPage() {
       // These are separate reads so a failure in one does not blank the packet.
       await Promise.all([
         api<{ taxEngagements: TaxEngagement[] }>(`/tax-engagements?contactId=${params.id}`)
-          .then((r) => setReturns(r.taxEngagements))
-          .catch(() => setReturns([])),
+          .then(async (r) => {
+            setReturns(r.taxEngagements);
+            // A return whose detail cannot be read prints its summary line and no jurisdictions,
+            // rather than costing the card every other return's.
+            const rows = await Promise.all(
+              r.taxEngagements.map(async (t) => {
+                const detail = await api<{ jurisdictions?: JurisdictionView[] }>(`/tax-engagements/${t.id}`).catch(() => null);
+                return [t.id, detail?.jurisdictions ?? []] as const;
+              })
+            );
+            setJurisdictions(Object.fromEntries(rows));
+          })
+          .catch(() => { setReturns([]); setJurisdictions({}); }),
         api<{ documents: Doc[] }>(`/documents?contactId=${params.id}`)
           .then((r) => setDocs(r.documents ?? []))
           .catch(() => setDocs([])),
@@ -346,8 +395,9 @@ export default function ClientPacketPage() {
         setCanAddBusiness(['*', 'contacts.write', 'businesses.write'].some((p) => m.permissions.includes(p)));
         // The test flag rides on POST /contacts/:id/archive, whose preHandler is contacts.write alone.
         setCanFlagTest(['*', 'contacts.write'].some((p) => m.permissions.includes(p)));
+        setCanRefund(['*', 'billing.manage'].some((p) => m.permissions.includes(p)));
       })
-      .catch(() => { if (alive) { setCanAddBusiness(false); setCanFlagTest(false); } });
+      .catch(() => { if (alive) { setCanAddBusiness(false); setCanFlagTest(false); setCanRefund(false); } });
     return () => { alive = false; };
   }, []);
 
@@ -1213,6 +1263,20 @@ export default function ClientPacketPage() {
                     ? `est. ${formatMoney(t.estimated_fee_max_cents)}`
                     : '—'}
               </span>
+              {/* WHERE A RECORDED MAILING IS READABLE (ruling 25, 2026-09-20): here, on the row, per
+                  declared jurisdiction, at every stage. The identical block inside ReturnControls is
+                  the one with the Record mailing control beside it and it stops at filed/rejected;
+                  this one is the record, and it stays. */}
+              {(jurisdictions[t.id] ?? []).length > 0 ? (
+                <ul className="list" style={{ flex: '1 1 100%' }}>
+                  {(jurisdictions[t.id] ?? []).map((j) => (
+                    <li key={j.jurisdiction} data-testid={`jurisdiction-line-${j.jurisdiction}`}>
+                      <span className="badge">{jurisdictionLabel(j.jurisdiction)}</span>{' '}
+                      <span className="grow muted small">{jurisdictionLine(j)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               {/* STEP-7 CONTROLS (Brian, 2026-09-19, item 2): estimate lock, final fee, the legal next
                   stage, and the signed-8879 upload — for a session holding engagements.tax.manage;
                   nothing for anyone else. Each refusal renders beside its control. */}
@@ -1297,6 +1361,75 @@ export default function ClientPacketPage() {
                     </details>
                   ) : null}
                 </span>
+                {/*
+                  THE REFUND DOOR (Brian, ruling R29, 2026-09-20). Money went back through the Stripe
+                  dashboard until tonight, with SAOS finding out from a webhook. Here: a paid (or partly
+                  refunded) invoice with something still refundable, an amount that opens on the whole
+                  refundable balance so the common case is one tap, and the standalone reason that becomes
+                  the record. The server owns every bound — this control sends what was typed and shows
+                  the refusal where it was typed.
+                */}
+                {canRefund && (inv.status === 'paid' || inv.status === 'partially_refunded') && (inv.refundable_cents ?? 0) > 0 ? (
+                  <button
+                    className="btn ghost"
+                    type="button"
+                    data-testid={`refund-invoice-${inv.id}`}
+                    disabled={busy}
+                    title="Refund this payment at Stripe, in full or in part, with a reason"
+                    onClick={async () => {
+                      const refundable = inv.refundable_cents ?? 0;
+                      const got: { refund: { amountCents: number; status: string; notice: NoticeState | null } | null } = { refund: null };
+                      const a = await ask({
+                        title: `Refund ${inv.invoice_number}?`,
+                        body: (
+                          <p className="small">
+                            The refund is created in Stripe against the payment that settled this invoice.{' '}
+                            <strong>{formatMoney(refundable)}</strong> of it can still be refunded. The client's refund
+                            receipt follows its setting in Admin → Automations, so it may be held until that automation
+                            is on.
+                          </p>
+                        ),
+                        amount: {
+                          label: 'How much to refund, in dollars',
+                          initial: (refundable / 100).toFixed(2),
+                          hint: `at most ${formatMoney(refundable)}`,
+                          testId: `refund-amount-${inv.id}`,
+                        },
+                        reason: {
+                          label: 'Why (this is the record)',
+                          required: true,
+                          placeholder: 'e.g. the client paid for a quarter of bookkeeping they cancelled before it started',
+                        },
+                        choices: [{ key: 'refund', label: 'Refund', tone: 'danger' }],
+                        run: async (r) => {
+                          const amountCents = dollarsToCents(r.amount);
+                          if (amountCents === null) throw new Error('Enter the amount to refund in dollars.');
+                          got.refund = await api<{ amountCents: number; status: string; notice: NoticeState | null }>(
+                            `/invoices/${inv.id}/refund`,
+                            { method: 'POST', body: { amountCents, reason: r.reason } }
+                          );
+                        },
+                      });
+                      if (!a) return;
+                      setBusy(true);
+                      // The refund's REAL state, from the server: the amount it moved, what the invoice now
+                      // reads, and whether the receipt is queued or held — never "the client has been told".
+                      setActionMsg(
+                        `${formatMoney(got.refund?.amountCents ?? 0)} refunded on ${inv.invoice_number}; it now reads ${
+                          invoiceStatusLabel(got.refund?.status ?? '').toLowerCase()
+                        }. ${
+                          got.refund?.notice
+                            ? describeNotice(got.refund.notice, (iso) => formatTime(iso))
+                            : 'No refund receipt was queued (no email on file)'
+                        } — see the send log under the invoice.`
+                      );
+                      await load();
+                      setBusy(false);
+                    }}
+                  >
+                    Refund…
+                  </button>
+                ) : null}
                 {['paid', 'refunded', 'partially_refunded', 'disputed'].includes(inv.status) ? (
                   <button
                     className="btn ghost"

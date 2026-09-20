@@ -14,6 +14,9 @@ export interface InvoiceForDisplay {
   voided_by?: string | null;
   voided_at?: string | null;
   refunded_at?: string | null;
+  /** The latest refund's reason and author (R29, 2026-09-20). Absent on a refund that came from Stripe. */
+  refund_reason?: string | null;
+  refunded_by?: string | null;
 }
 
 export type BadgeTone = 'ok' | 'warn' | 'danger' | '';
@@ -39,6 +42,11 @@ export function badgeToneFor(status: string): BadgeTone {
  * alone. `money` and `date` are injected so the page's own formatters (Chicago time, USD) are
  * the ones used.
  */
+/** The reason and the author of the latest refund, each only if it exists. */
+function refundBy(inv: InvoiceForDisplay): string[] {
+  return [inv.refund_reason, inv.refunded_by].filter((v): v is string => Boolean(v && v.trim()));
+}
+
 export function invoiceStatusLine(
   inv: InvoiceForDisplay,
   fmt: { money: (cents: number) => string; date: (iso: string) => string }
@@ -50,10 +58,20 @@ export function invoiceStatusLine(
       // no actor recorded say where to look instead of shrugging.
       return ['void', inv.void_reason ?? '(no reason recorded)', inv.voided_by ?? 'actor not recorded — see the audit log', inv.voided_at ? fmt.date(inv.voided_at) : '(date unknown)']
         .join(' · ');
+    /*
+     * R29 (2026-09-20): a refund made in Ops reads like a void — amount, reason, actor, date. A
+     * refund that arrived FROM Stripe (the dashboard, a webhook, a re-sync) has no author and often
+     * no sentence, and those parts are left out rather than printed as blanks or "unknown": the
+     * absence of an actor on a refund line is itself the fact that it did not come through the door.
+     */
     case 'refunded':
-      return ['refunded', fmt.money(refunded), inv.refunded_at ? fmt.date(inv.refunded_at) : '(date unknown)'].join(' · ');
+      return ['refunded', fmt.money(refunded), ...refundBy(inv), inv.refunded_at ? fmt.date(inv.refunded_at) : '(date unknown)'].join(' · ');
     case 'partially_refunded':
-      return [`partially refunded ${fmt.money(refunded)} of ${fmt.money(inv.amount_paid_cents)}`, inv.refunded_at ? fmt.date(inv.refunded_at) : '(date unknown)'].join(' · ');
+      return [
+        `partially refunded ${fmt.money(refunded)} of ${fmt.money(inv.amount_paid_cents)}`,
+        ...refundBy(inv),
+        inv.refunded_at ? fmt.date(inv.refunded_at) : '(date unknown)',
+      ].join(' · ');
     default:
       return inv.status;
   }

@@ -32,6 +32,8 @@ const charges = new Map<string, StripeChargeState>();
 const fakeStripe: StripeAdapter = {
   mode: 'stub',
   keyMode: null,
+  // R29 (2026-09-20): the adapter can create refunds; this spec never asks it to.
+  async createRefund(): Promise<never> { throw new Error('this spec does not refund'); },
   async createCheckoutSession(input) {
     return { sessionId: `cs_fake_${input.invoiceId}`, url: 'https://checkout.stripe.example/x' };
   },

@@ -38,6 +38,14 @@ export interface AskChoice {
 export interface AskOptions {
   title: string;
   body?: ReactNode;
+  /**
+   * AN AMOUNT, IN DOLLARS (R29, 2026-09-20). The refund door needs a number as well as a reason,
+   * and a number typed into a native prompt is the dialog Ops does not use. `initial` is what the
+   * field opens with — for a refund, the refundable balance, so the common case is one tap. The
+   * bounds are the SERVER's: this field never decides what is allowed, it only carries what was
+   * typed, and a refusal lands under it in the server's words like any other.
+   */
+  amount?: { label: string; initial: string; hint?: ReactNode; testId?: string };
   /** When present the modal shows a reason field; `required` blocks the primary choices until it is filled. */
   reason?: { label: string; required: boolean; placeholder?: string; initial?: string };
   /** Action buttons besides Cancel. Default: one "Confirm". */
@@ -53,6 +61,8 @@ export interface AskOptions {
 export interface AskResult {
   choice: string;
   reason: string;
+  /** What was typed in the amount field, as typed (dollars). Empty when the modal had no amount. */
+  amount: string;
 }
 
 type AskFn = (opts: AskOptions) => Promise<AskResult | null>;
@@ -67,13 +77,16 @@ interface Pending {
 export function AskProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [reason, setReason] = useState('');
+  const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
   const [working, setWorking] = useState(false);
   const reasonRef = useRef<HTMLTextAreaElement | null>(null);
+  const amountRef = useRef<HTMLInputElement | null>(null);
 
   const ask = useCallback<AskFn>((opts) => {
     return new Promise<AskResult | null>((resolve) => {
       setReason(opts.reason?.initial ?? '');
+      setAmount(opts.amount?.initial ?? '');
       setError('');
       setWorking(false);
       setPending({ opts, resolve });
@@ -90,7 +103,7 @@ export function AskProvider({ children }: { children: ReactNode }) {
   const choose = useCallback(
     async (key: string) => {
       if (!pending) return;
-      const r: AskResult = { choice: key, reason: reason.trim() };
+      const r: AskResult = { choice: key, reason: reason.trim(), amount: amount.trim() };
       if (!pending.opts.run) { finish(r); return; }
       setWorking(true);
       setError('');
@@ -100,17 +113,18 @@ export function AskProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         // The server's words, beside the field, with the text kept. Nothing reaches the page top.
         setError(err instanceof Error && err.message ? err.message : 'The request was refused.');
-        reasonRef.current?.focus();
+        (pending.opts.amount ? amountRef.current : reasonRef.current)?.focus();
       } finally {
         setWorking(false);
       }
     },
-    [pending, reason, finish]
+    [pending, reason, amount, finish]
   );
 
   useEffect(() => {
     if (!pending) return;
-    if (pending.opts.reason) reasonRef.current?.focus();
+    if (pending.opts.amount) amountRef.current?.select();
+    else if (pending.opts.reason) reasonRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !working) finish(null);
     };
@@ -123,6 +137,8 @@ export function AskProvider({ children }: { children: ReactNode }) {
     [pending]
   );
   const needsReason = Boolean(pending?.opts.reason?.required) && reason.trim().length === 0;
+  // An amount field is always required: a modal that asks for one has nothing to do without it.
+  const needsAmount = Boolean(pending?.opts.amount) && amount.trim().length === 0;
 
   return (
     <AskContext.Provider value={ask}>
@@ -145,7 +161,7 @@ export function AskProvider({ children }: { children: ReactNode }) {
                   key={c.key}
                   type="button"
                   className={c.tone === 'danger' ? 'btn danger' : c.tone === 'ghost' ? 'btn ghost' : 'btn accent'}
-                  disabled={needsReason || working}
+                  disabled={needsReason || needsAmount || working}
                   onClick={() => void choose(c.key)}
                 >
                   {working ? 'Working…' : c.label}
@@ -155,6 +171,23 @@ export function AskProvider({ children }: { children: ReactNode }) {
           }
         >
           {pending.opts.body ? <div className="ask-body">{pending.opts.body}</div> : null}
+          {pending.opts.amount ? (
+            <label className="ask-reason">
+              {pending.opts.amount.label}
+              <input
+                ref={amountRef}
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={amount}
+                {...(pending.opts.amount.testId ? { 'data-testid': pending.opts.amount.testId } : {})}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? 'ask-error' : undefined}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+              {pending.opts.amount.hint ? <span className="muted small">{pending.opts.amount.hint}</span> : null}
+            </label>
+          ) : null}
           {pending.opts.reason ? (
             <label className="ask-reason">
               {pending.opts.reason.label}

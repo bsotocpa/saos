@@ -54,6 +54,8 @@ const fakeStripe: StripeAdapter = {
   // prefix rule stays out of the way), and a cs_test_ session stored on an invoice is
   // from the other world.
   keyMode: 'live',
+  // R29 (2026-09-20): the adapter can create refunds; this spec never asks it to.
+  async createRefund(): Promise<never> { throw new Error('this spec does not refund'); },
   async retrieveCharge() { return null; },
   async createCheckoutSession(input) {
     const sessionId = `cs_fake_${input.invoiceId}`;

@@ -235,7 +235,7 @@ table.dense .title-cell { max-width: 340px; overflow: hidden; text-overflow: ell
 .ask-modal { max-width: 520px; align-self: center; }
 .ask-body { margin-bottom: 10px; }
 .ask-reason { display: block; margin-top: 8px; font-weight: 600; }
-.ask-reason textarea { display: block; width: 100%; margin-top: 6px; font-weight: 400; }
+.ask-reason textarea, .ask-reason input { display: block; width: 100%; margin-top: 6px; font-weight: 400; }
 .ask-modal footer { flex-wrap: wrap; }
 @media (max-width: 600px) { .ask-modal footer .btn { flex: 1 1 auto; } }
 

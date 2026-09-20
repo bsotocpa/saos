@@ -182,6 +182,32 @@ export function registerBillingRoutes(app: FastifyInstance): void {
     return voidInvoice(app, id, body, request.staff!);
   });
 
+  /**
+   * REFUND (Brian, ruling R29, 2026-09-20). The money door in the other direction.
+   *
+   * A paid or partly refunded invoice, an amount in cents no larger than what is still refundable,
+   * and a standalone reason through the same validator every permanent reason passes. The refund is
+   * created AT STRIPE and then recorded — see refunds.ts for why that order, and for what the
+   * nightly drift check does if the record loses the race.
+   *
+   * billing.manage, like every other control on this card: Rene's role (comms_billing) holds it,
+   * the bookkeeper does not, and the CEO holds everything.
+   */
+  app.post<{ Params: { id: string } }>('/invoices/:id/refund', billing, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const body = z
+      .object({
+        amountCents: z
+          .number('Say how much to refund.')
+          .int('A refund is a whole number of cents.')
+          .positive('A refund has to be more than zero.'),
+        reason: reasonText(5, 1000),
+      })
+      .parse(request.body);
+    const { refundInvoice } = await import('./refunds.ts');
+    return refundInvoice(app, id, body, request.staff!);
+  });
+
   /** The Stripe drift waiver (2026-09-12): a reason, an actor, the nightly check skips it from now on. */
   app.post<{ Params: { id: string } }>('/invoices/:id/waive-stripe-check', billing, async (request) => {
     const id = z.uuid().parse(request.params.id);
@@ -238,7 +264,20 @@ export function registerBillingRoutes(app: FastifyInstance): void {
               -- The joined staff name when a person did it; the recorded label when a cascade did
               -- (2026-09-10). Never null on a void, so the row never reads "unknown".
               COALESCE(vs.full_name, i.voided_by_label) AS voided_by,
-              (SELECT max(r.created_at) FROM invoice_refunds r WHERE r.invoice_id = i.id) AS refunded_at
+              (SELECT max(r.created_at) FROM invoice_refunds r WHERE r.invoice_id = i.id) AS refunded_at,
+              -- The LATEST refund, so a refunded row reads like a voided one: amount, reason, actor,
+              -- date (R29, 2026-09-20). A refund that came from Stripe has no actor and the line
+              -- says so by leaving it out rather than printing a blank.
+              (SELECT r.reason FROM invoice_refunds r WHERE r.invoice_id = i.id
+                ORDER BY r.created_at DESC, r.id DESC LIMIT 1) AS refund_reason,
+              (SELECT COALESCE(rs.full_name, r.refunded_by_label) FROM invoice_refunds r
+                 LEFT JOIN staff rs ON rs.id = r.refunded_by_staff_id
+                WHERE r.invoice_id = i.id ORDER BY r.created_at DESC, r.id DESC LIMIT 1) AS refunded_by,
+              -- Stripe's own refund id: what the harness posts charge.refunded for, and what a
+              -- person searches Stripe with when the two records have to be compared by hand.
+              (SELECT r.stripe_refund_id FROM invoice_refunds r WHERE r.invoice_id = i.id
+                ORDER BY r.created_at DESC, r.id DESC LIMIT 1) AS refund_stripe_id,
+              GREATEST(i.amount_paid_cents - i.amount_refunded_cents, 0) AS refundable_cents
        FROM invoices i JOIN contacts c ON c.id = i.contact_id
        LEFT JOIN staff vs ON vs.id = i.voided_by_staff_id
        LEFT JOIN staff ws ON ws.id = i.stripe_check_waived_by_staff_id
