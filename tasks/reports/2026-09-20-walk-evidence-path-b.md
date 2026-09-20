@@ -1,11 +1,11 @@
 # walk-evidence-path-b (2026-09-20)
 
-Generated 2026-09-20T04:45:36.795Z by scripts/report-table.mjs from the log walk-B.log; 44 row(s).
+Generated 2026-09-20T07:32:22.801Z by scripts/report-table.mjs from the log walk-B.log; 46 row(s).
 
-Path B, the 1040 on extension with a walk-in wet signature; B1 is inserted by the fixture and its tap is proven in ops-add-client.spec.ts; how=api is the Stripe event beside a passing Pay tap.
+Path B; B11 now includes the mailing read back on the client page (R25); B1 is the fixture's person, its tap is in ops-add-client.spec.ts.
 
 ```sql
-node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from the harness run of 2026-09-20: 40 passed)
+node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from the harness run of 2026-09-20, batch 3: 44 passed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
@@ -42,8 +42,10 @@ node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from 
 | B10 | Filed with the PTIN holder | laptop | /clients/:id Returns card, button "Ready to file" then "Mark filed" (modal: PTIN holder, Jurisdictions filed + a filing method select per jurisdiction — "Paper (mailed)" for IL, E-filed for federal) | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:167 | desk | passed | tap | yes |
 | B11 | Acknowledgment report uploaded and released | laptop | /efile-acks input[type=file] "Upload ATX report", the review rows, button "Release 1 to clients" + modal "Release 1" | ceo (efile.manage) | apps/e2e/tests/ops-path-b.spec.ts:167 | phone | passed | tap | yes |
 | B11 | Acknowledgment report uploaded and released | laptop | /clients/:id Returns card, button "Record mailing — IL" (modal: "Mailed on", "Method" USPS certified (tracked), "Tracking number", no receipt) → the return completes | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:167 | phone | passed | tap | yes |
+| B11 | Acknowledgment report uploaded and released | laptop | /clients/:id Returns card, the completed return's row: jurisdiction-line-IL reads "Mailed <date> · USPS certified (tracked) · <tracking>" and jurisdiction-line-federal reads "Accepted <date>" | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:167 | phone | passed | tap | yes |
 | B11 | Acknowledgment report uploaded and released | laptop | /efile-acks input[type=file] "Upload ATX report", the review rows, button "Release 1 to clients" + modal "Release 1" | ceo (efile.manage) | apps/e2e/tests/ops-path-b.spec.ts:167 | desk | passed | tap | yes |
 | B11 | Acknowledgment report uploaded and released | laptop | /clients/:id Returns card, button "Record mailing — IL" (modal: "Mailed on", "Method" USPS certified (tracked), "Tracking number", no receipt) → the return completes | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:167 | desk | passed | tap | yes |
+| B11 | Acknowledgment report uploaded and released | laptop | /clients/:id Returns card, the completed return's row: jurisdiction-line-IL reads "Mailed <date> · USPS certified (tracked) · <tracking>" and jurisdiction-line-federal reads "Accepted <date>" | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:167 | desk | passed | tap | yes |
 | B12 | Acceptance emails sent | phone | /efile-acks reopened from the list (button "Open"), the federal row reading Sent | ceo (efile.manage) | apps/e2e/tests/ops-path-b.spec.ts:167 | phone | passed | tap | yes |
 | B12 | Acceptance emails sent | phone | /efile-acks reopened from the list (button "Open"), the federal row reading Sent | ceo (efile.manage) | apps/e2e/tests/ops-path-b.spec.ts:167 | desk | passed | tap | yes |
 | B13 | Final invoice issued | laptop | /clients/:id Returns card, "Set final fee" (modal: Final fee + Reason) then "Mark filed" issues it; the Invoices card shows it with the paid deposit credited | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:167 | phone | passed | tap | yes |

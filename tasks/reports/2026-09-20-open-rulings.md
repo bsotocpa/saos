@@ -1,6 +1,6 @@
 # open-rulings (2026-09-20)
 
-Generated 2026-09-20T04:46:12.506Z by scripts/report-table.mjs from the log open-rulings.log; 84 row(s).
+Generated 2026-09-20T07:33:09.210Z by scripts/report-table.mjs from the log open-rulings.log; 98 row(s).
 
 ```sql
 node scripts/open-rulings.mjs  (one row per checkbox line of tasks/todo.md OPEN RULINGS)
@@ -85,10 +85,24 @@ node scripts/open-rulings.mjs  (one row per checkbox line of tasks/todo.md OPEN 
 | R-75 | 2026-09-20 | RULED 2026-09-20 (BUILD), 1 | closed | DONE: every item shipped and tapped; Path A and Path B carry no API row but the Stripe events; ten sabotages logged in tasks/sabotage/2026-0 |
 | R-76 | 2026-09-20 | RULED 2026-09-20 (REPORT; tables are files written by scripts): 5 the full Path A and Path B walk-evidence tables pasted into the report bod | closed | DONE: tables pasted; tasks/reports/2026-09-20-dropbox-paths.md (the repository is inside the Dropbox root; the bundle synced from 2026-09-19 |
 | R-77 | 2026-09-20 | SENT BACK 2026-09-20: the Dropbox question (which paths sync), the three failed background tasks unmentioned, the rehearsal script's task ty | closed | closed |
-| R-78 |  | Then the Monday walk as written. | OPEN |  |
-| R-79 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
-| R-80 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |
-| R-81 | 2026-09-12 | RULED 2026-09-12 | OPEN |  |
-| R-82 | 2026-09-12 | RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks th | OPEN |  |
-| R-83 | 2026-09-12 | Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12). | closed | closed |
-| R-84 | 2026-09-12 | FIRST REAL-DATA RUN (Brian, 2026-09-12) | OPEN |  |
+| R-78 | 2026-09-20 | RULED 2026-09-20 (batch 3), item 0: read-only preflight against production; tasks/reports/2026-09-20-item0-preflight.md; R28 does not apply | closed | closed |
+| R-79 | 2026-09-20 | RULED 2026-09-20 (batch 3), R28 (conditional, not triggered): the PTIN holder is a fact about the filing, not a login state; the select list | closed | closed |
+| R-80 | 2026-09-20 | RULED 2026-09-20 (batch 3), R19: move the checkout out of Dropbox: a fresh clone at C:\Users\brian\saos; every untracked or ignored file the | closed | closed |
+| R-81 | 2026-09-20 | RULED 2026-09-20 (batch 3), R20: register the three task types: trello_ar_worklist (comms_billing; step 1 look the client up in the legacy b | closed | SHIPPED: five types registered with SOP pages (trello_ar_worklist to comms_billing, trello_amendment to the preparer, trello_books_review to |
+| R-82 | 2026-09-20 | RULED 2026-09-20 (batch 3), R21: 04b_service_facts.csv is the import source for service facts; idempotency key (source, trello_source_id, fa | closed | SHIPPED: migration 0114 service_fact_imports ledger keyed (source, trello_source_id, fact_type); 04b is the source; 04 matches only; qbo_pai |
+| R-83 | 2026-09-20 | RULED 2026-09-20 (batch 3), R22: imported returns take the R11 default preparer at import; the file 01 import refuses to run when no tax_pre | closed | SHIPPED: imported returns take the sole active tax_preparer; the file 01 import refuses no_active_tax_preparer (proven on the copy by deacti |
+| R-84 | 2026-09-20 | RULED 2026-09-20 (batch 3), R23: imports at or past filed: "filed, awaiting ack" declares jurisdictions by the R2 default, method e-file, ma | closed | SHIPPED: filed-awaiting-ack declares by the R2 default, e-file, flagged declared_by_import_default, plus a confirm task (zero such rows in t |
+| R-85 | 2026-09-20 | RULED 2026-09-20 (batch 3), R24: match decisions persist: the review file has one row per Trello name, up to three candidates (name, id, sco | closed | SHIPPED: review.csv (one row per name, up to three candidates, a pick column); decisions file outside the repo keyed by match_key, read firs |
+| R-86 | 2026-09-20 | RULED 2026-09-20 (batch 3), R25: a recorded paper mailing prints on the client page with its method, date and tracking number. | closed | SHIPPED: the client page prints per jurisdiction Mailed <date> · method · tracking (or Accepted <date>) at every stage; Path B asserts it af |
+| R-87 | 2026-09-20 | RULED 2026-09-20 (batch 3), R26: after this restart the four design-plugin servers are still listed, so: stop, leave them unauthenticated, s | closed | closed |
+| R-88 | 2026-09-20 | RULED 2026-09-20 (batch 3), R27: the Path A manifest gains the Ops packet step ("Create engagement packet" then "Send for signature"); conse | closed | SHIPPED: A3b (packet created and sent for signature) and A3c (consent answered; the business path does show the consent screen) in walk-step |
+| R-89 | 2026-09-20 | RULED 2026-09-20 (batch 3), R29: the refund control, built now: on a paid invoice in Ops, billing role and the CEO; full or partial amount a | closed | SHIPPED: POST /invoices/:id/refund under billing.manage (amount within the refundable balance, reason validated) creates the refund through |
+| R-90 | 2026-09-20 | RULED 2026-09-20 (batch 3, BUILD): 1 item 0 and R28 first. 2 R19 preparation: the fresh clone and the file list, the old checkout not delete | closed | DONE: every item shipped; six new sabotage rows logged; harness 44 passed. |
+| R-91 | 2026-09-20 | RULED 2026-09-20 (batch 3, REPORT; tables are files written by scripts): 5 the Path A table with the packet rows. 6 rehearsal counts against | closed | DONE in the 2026-09-20 batch 3 report; the switch to the clone outside Dropbox waits for Brian's word. |
+| R-92 |  | Then the Monday walk as written. | OPEN |  |
+| R-93 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
+| R-94 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |
+| R-95 | 2026-09-12 | RULED 2026-09-12 | OPEN |  |
+| R-96 | 2026-09-12 | RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks th | OPEN |  |
+| R-97 | 2026-09-12 | Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12). | closed | closed |
+| R-98 | 2026-09-12 | FIRST REAL-DATA RUN (Brian, 2026-09-12) | OPEN |  |
