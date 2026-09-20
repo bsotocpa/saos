@@ -46,15 +46,34 @@ export default function EfileAcksPage() {
   const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
   const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const fileRef = useRef<HTMLInputElement>(null);
+  /*
+   * WHO SEES THE UPLOAD (2026-09-19): efile.manage is the permission all six routes require, so the
+   * control renders only for a session that holds it — the tax preparer and the CEO. A role without it
+   * reads why, in the server's own words, instead of a screen whose every control refuses.
+   */
+  const [canManage, setCanManage] = useState(false);
 
   const loadList = useCallback(async () => {
-    const r = await api<{ reports: ReportSummary[] }>('/efile-acks');
-    setReports(r.reports);
+    try {
+      const r = await api<{ reports: ReportSummary[] }>('/efile-acks');
+      setReports(r.reports);
+      setErr('');
+    } catch (e) {
+      setReports([]);
+      setErr(e instanceof Error ? e.message : 'The report list could not be read.');
+    }
   }, []);
   const loadReport = useCallback(async (id: string) => {
     setOpen(await api<ReportView>(`/efile-acks/${id}`));
   }, []);
   useEffect(() => { void loadList(); }, [loadList]);
+  useEffect(() => {
+    let alive = true;
+    api<{ permissions: string[] }>('/auth/me')
+      .then((m) => { if (alive) setCanManage(m.permissions.includes('*') || m.permissions.includes('efile.manage')); })
+      .catch(() => { if (alive) setCanManage(false); });
+    return () => { alive = false; };
+  }, []);
 
   const upload = async (file: File) => {
     setBusy(true); setInlineErr(null); setMsg('');
@@ -123,11 +142,13 @@ export default function EfileAcksPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
         <h1 style={{ margin: 0 }}>E-file acknowledgments</h1>
         <span style={{ flex: 1 }} />
-        <label className="btn accent" style={{ cursor: busy ? 'wait' : 'pointer' }}>
-          Upload ATX report
-          <input ref={fileRef} type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" hidden disabled={busy}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
-        </label>
+        {canManage ? (
+          <label className="btn accent" style={{ cursor: busy ? 'wait' : 'pointer' }}>
+            Upload ATX report
+            <input ref={fileRef} type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" hidden disabled={busy}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
+          </label>
+        ) : null}
       </div>
       {errAt('upload')}
       {msg ? <p className="alert ok" role="status">{msg}</p> : null}
@@ -135,7 +156,7 @@ export default function EfileAcksPage() {
 
       <section className="card">
         <h2>Reports</h2>
-        {reports.length === 0 ? <p className="muted small">No report uploaded yet. Export the acknowledgment report from ATX as CSV and upload it here.</p> : null}
+        {reports.length === 0 && !err ? <p className="muted small">No report uploaded yet. Export the acknowledgment report from ATX as CSV and upload it here.</p> : null}
         <ul className="list">
           {reports.map((r) => (
             <li key={r.id}>

@@ -92,6 +92,17 @@ test.describe('Ops → client page', () => {
       const badges = await page.evaluate(() => [...document.querySelectorAll('.badge')].map((b) => (b.textContent ?? '').trim()));
       const rawEnum = badges.filter(RAW_ENUM);
       expect(rawEnum, 'no raw enum on a badge').toEqual([]);
+      /*
+       * 6b. A PERIOD BADGE ONLY WHERE A PERIOD MEANS SOMETHING (Brian, 2026-09-19, defect 4). The
+       *     bookkeeping line is ongoing work: it has no tax year, so neither the period badge nor the
+       *     control that records one belongs on it. Asserted on the row itself, not on the page text,
+       *     so restoring it on non-tax lines fails here and not only where a tax line happens to be.
+       */
+      const booksRow = page.locator('.quote-line', { has: page.getByText('Books, monthly') }).first();
+      await expect(booksRow, 'the bookkeeping engagement is on the page').toBeVisible();
+      await expect(booksRow, 'no period badge on the bookkeeping line').not.toContainText(/period not recorded/i);
+      await expect(booksRow.getByRole('button', { name: /period/i }), 'and no set-period control on it').toHaveCount(0);
+
       // 7. The send log opens, and every row wraps inside the viewport.
       // Real taps here too, one summary at a time, for the same reason as step 8.
       const logs = page.locator('details summary', { hasText: /send log/i });

@@ -237,9 +237,12 @@ export default function ClientPacketPage() {
   const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const [previewErr, setPreviewErr] = useState('');
   const [addingBusiness, setAddingBusiness] = useState(false);
-  // WHO SEES THE DOOR (2026-09-19, walk step 1 role proof): the button renders for a session holding
-  // contacts.write, the permission the route requires; anyone else gets nothing, not a disabled button.
-  const [canWriteContacts, setCanWriteContacts] = useState(false);
+  /*
+   * WHO SEES THE DOOR (2026-09-19, walk step 1 role proof): the button renders for a session holding
+   * either permission the route accepts — contacts.write (front desk, CEO) or businesses.write (the
+   * entity VA). Anyone else gets nothing, not a disabled button.
+   */
+  const [canAddBusiness, setCanAddBusiness] = useState(false);
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -336,8 +339,8 @@ export default function ClientPacketPage() {
   useEffect(() => {
     let alive = true;
     api<{ permissions: string[] }>('/auth/me')
-      .then((m) => { if (alive) setCanWriteContacts(m.permissions.includes('*') || m.permissions.includes('contacts.write')); })
-      .catch(() => { if (alive) setCanWriteContacts(false); });
+      .then((m) => { if (alive) setCanAddBusiness(['*', 'contacts.write', 'businesses.write'].some((p) => m.permissions.includes(p))); })
+      .catch(() => { if (alive) setCanAddBusiness(false); });
     return () => { alive = false; };
   }, []);
 
@@ -598,7 +601,7 @@ export default function ClientPacketPage() {
         <section className="card">
           <h2>Businesses</h2>
           {/* THE DOOR (Brian, 2026-09-19): a business is added here, on the client's record. */}
-          {canWriteContacts ? (
+          {canAddBusiness ? (
             <p>
               <button type="button" className="btn ghost small" disabled={busy} onClick={() => setAddingBusiness(true)}>Add a business</button>
             </p>

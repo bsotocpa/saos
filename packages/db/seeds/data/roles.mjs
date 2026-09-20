@@ -48,6 +48,10 @@ export const roles = [
       'engagements.read',
       'engagements.tax.manage',
       'irs_notices.manage',
+      // The ATX acknowledgment report is hers end to end (2026-09-19): upload, review row by row,
+      // release. Named separately from engagements.tax.manage so the screen can be granted to a
+      // preparer without granting every tax engagement action, and taken back the same way.
+      'efile.manage',
       'documents.read',
       'documents.read.all', // every category: the preparer is inside the wall
       'documents.write',
@@ -67,6 +71,9 @@ export const roles = [
     description: 'Laura. Entity module, admin tickets. Fully remote. Behind the §7216 wall (phase 2): entity filings only among documents, no SSN last-4, no interview content, no sessions. The EIN stays visible: she files with it.',
     permissions: [
       'contacts.read',
+      // Adding a business is the entity module's own door (2026-09-19). She needs it to file, and it
+      // is narrower than contacts.write, which would also open every identity field on the record.
+      'businesses.write',
       'entity.manage',
       'documents.read',
       'documents.read.entity', // formation papers, SOS filings, EIN letters, annual reports

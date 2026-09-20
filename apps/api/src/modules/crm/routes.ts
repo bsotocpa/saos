@@ -106,6 +106,13 @@ export function registerCrmRoutes(app: FastifyInstance): void {
   const read = { preHandler: [app.authenticate, requirePermission('contacts.read')] };
   const write = { preHandler: [app.authenticate, requirePermission('contacts.write')] };
   const taxManage = { preHandler: [app.authenticate, requirePermission('engagements.tax.manage')] };
+  /*
+   * ADDING A BUSINESS HAS ITS OWN DOOR (2026-09-19). The entity VA files annual reports and needs to
+   * record the business she is filing for; contacts.write would have handed her every identity field
+   * on the record instead. businesses.write is that one act, and contacts.write still opens it so the
+   * front desk and the CEO are unchanged.
+   */
+  const businessWrite = { preHandler: [app.authenticate, requireAnyPermission('contacts.write', 'businesses.write')] };
   // Merging two records is a money-adjacent act (invoices move): billing.manage, or the CEO.
   const merge = { preHandler: [app.authenticate, requireAnyPermission('billing.manage')] };
 
@@ -395,7 +402,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
   });
 
   // ── Businesses ──────────────────────────────────────────────────────────
-  app.post<{ Params: { id: string } }>('/contacts/:id/businesses', write, async (request, reply) => {
+  app.post<{ Params: { id: string } }>('/contacts/:id/businesses', businessWrite, async (request, reply) => {
     const contactId = z.uuid().parse(request.params.id);
     const b = BusinessBody.parse(request.body);
     const actor = request.staff!;
