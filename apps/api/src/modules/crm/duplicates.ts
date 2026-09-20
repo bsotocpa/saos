@@ -21,7 +21,8 @@ import { writeAudit } from '../../audit.ts';
 import { mergeContacts, sharedIdentifiers, type MergeActor } from './merge.ts';
 
 export const PROTECTED_NAMES = new Set(['jackson flores', 'josean irizarry', 'joseph basilone']);
-const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim();
+/** One spelling of a name, an email or any typed identifier: lowercase, single spaces, trimmed. */
+export const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim();
 
 export interface DuplicateRecord {
   id: string; name: string; source: string; isTest: boolean; createdAt: string;

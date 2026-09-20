@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
+import { AddClientModal } from '../../components/add-client';
 
 interface ClientRow {
   id: string;
@@ -45,6 +46,14 @@ export default function ClientsPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * THE DOOR (Brian, ruling R14, 2026-09-20). This page searched 426 clients and could create
+   * none of them. The button renders only for a session holding the permission the route requires
+   * — contacts.write (the front desk, the CEO) — and anyone else gets nothing, not a disabled
+   * button, the same rule as Add a business on the record.
+   */
+  const [canAddClient, setCanAddClient] = useState(false);
+  const [adding, setAdding] = useState(false);
   const LIMIT = 25;
 
   const load = useCallback(async () => {
@@ -80,6 +89,13 @@ export default function ClientsPage() {
     const handle = setTimeout(() => void load(), 250);
     return () => clearTimeout(handle);
   }, [load, router]);
+  useEffect(() => {
+    let alive = true;
+    api<{ permissions: string[] }>('/auth/me')
+      .then((m) => { if (alive) setCanAddClient(['*', 'contacts.write'].some((p) => m.permissions.includes(p))); })
+      .catch(() => { if (alive) setCanAddClient(false); });
+    return () => { alive = false; };
+  }, []);
 
   const showing = rows.length === 0 ? '0' : `${offset + 1}–${offset + rows.length}`;
 
@@ -113,8 +129,18 @@ export default function ClientsPage() {
               <option value="none">None</option>
             </select>
           </label>
+          {canAddClient ? (
+            <button type="button" className="btn accent" onClick={() => setAdding(true)}>Add a client</button>
+          ) : null}
         </div>
       </section>
+
+      {adding ? (
+        <AddClientModal
+          onClose={() => setAdding(false)}
+          onAdded={(id) => { setAdding(false); router.push(`/clients/${id}`); }}
+        />
+      ) : null}
 
       {error ? (
         <section className="card">

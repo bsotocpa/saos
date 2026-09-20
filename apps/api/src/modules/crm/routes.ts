@@ -9,6 +9,7 @@ import { writeAudit } from '../../audit.ts';
 import { holds, requireAnyPermission, requirePermission } from '../../plugins/auth.ts';
 import { reasonText } from '../../reasons.ts';
 import { mergeContacts } from './merge.ts';
+import { norm } from './duplicates.ts';
 import { calendarDay, todayChicago } from '../tax/deadlines.ts';
 import { archiveBusiness, mergeBusinesses } from './businesses.ts';
 import { archiveContact } from './lifecycle.ts';
@@ -88,6 +89,39 @@ const GroupMemberBody = z
   .refine((b) => (b.businessId === undefined) !== (b.contactId === undefined), {
     message: 'Provide exactly one of businessId or contactId.',
   });
+
+/*
+ * THE DUPLICATE CHECK BEFORE A CONTACT IS CREATED (Brian, ruling R14, 2026-09-20).
+ *
+ * The duplicate scan (crm/duplicates.ts) finds the twins already in the book, nightly, after the
+ * fact. This is the same question asked one record early, while someone is still typing the name:
+ * the front desk types a client who called last spring, the book already holds her, and two records
+ * start accumulating work that a merge later has to untangle. Same normalizer (norm), same three
+ * identifiers the merge itself trusts — name, email, phone — so what the check calls a likely
+ * duplicate is what the scan and the merge would call one.
+ *
+ * Archived records are out: the point is a record someone can open and use. A TEST record is out on
+ * a name alone (rehearsal residue is not a person), but IN when it shares an email or a phone,
+ * because then the thing being typed is the rehearsal, and saying so saves the confusion.
+ */
+const DuplicateCheckQuery = z.object({
+  firstName: z.string().trim().optional(),
+  lastName: z.string().trim().optional(),
+  email: z.string().trim().optional(),
+  phone: z.string().trim().optional(),
+});
+type DuplicateReason = 'name' | 'email' | 'phone';
+const REASON_WORDS: Record<DuplicateReason, string> = {
+  name: 'the same name',
+  email: 'the same email address',
+  phone: 'the same phone number',
+};
+/** "the same name and the same phone number" — the server's words, rendered as they arrive. */
+function reasonSentence(reasons: DuplicateReason[]): string {
+  const words = reasons.map((r) => REASON_WORDS[r]);
+  if (words.length <= 1) return words[0] ?? '';
+  return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]!}`;
+}
 
 const SearchQuery = z.object({
   search: z.string().optional(),
@@ -229,8 +263,63 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     return { contacts: rows, total: totalRow.rows[0]!.n, limit: q.limit, offset: q.offset };
   });
 
+  /**
+   * Likely duplicates for a contact about to be created. contacts.write, because this is part of
+   * creating one — the same door, asked a question first. Five at most, the strongest first.
+   */
+  app.get('/contacts/duplicate-check', write, async (request) => {
+    const q = DuplicateCheckQuery.parse(request.query);
+    const name = q.firstName && q.lastName ? norm(`${q.firstName} ${q.lastName}`) : null;
+    const email = q.email ? norm(q.email) : null;
+    const digits = (q.phone ?? '').replace(/\D/g, '');
+    // Ten digits is the comparison the merge makes (sharedIdentifiers): a partial number is not a match.
+    const phone = digits.length >= 10 ? digits.slice(-10) : null;
+    if (name === null && email === null && phone === null) return { duplicates: [] };
+    const { rows } = await app.db.query<{
+      id: string; first_name: string; last_name: string; email: string | null; phone: string | null;
+      is_test: boolean; same_name: boolean; same_email: boolean; same_phone: boolean;
+    }>(
+      `SELECT m.* FROM (
+         SELECT c.id, c.first_name, c.last_name, c.email::text AS email, c.phone, c.is_test, c.created_at,
+                ($1::text IS NOT NULL
+                  AND lower(regexp_replace(btrim(c.first_name || ' ' || c.last_name), '\\s+', ' ', 'g')) = $1) AS same_name,
+                ($2::text IS NOT NULL AND c.email IS NOT NULL AND lower(btrim(c.email::text)) = $2) AS same_email,
+                ($3::text IS NOT NULL
+                  AND length(regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g')) >= 10
+                  AND right(regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g'), 10) = $3) AS same_phone
+           FROM contacts c
+          WHERE NOT c.is_archived AND c.contact_status <> 'archived'
+       ) m
+        WHERE (m.same_name OR m.same_email OR m.same_phone)
+          AND (NOT m.is_test OR m.same_email OR m.same_phone)
+        ORDER BY m.same_email DESC, m.same_phone DESC, m.same_name DESC, m.created_at
+        LIMIT 5`,
+      [name, email, phone]
+    );
+    const duplicates = rows.map((r) => {
+      const reasons: DuplicateReason[] = [];
+      if (r.same_name) reasons.push('name');
+      if (r.same_email) reasons.push('email');
+      if (r.same_phone) reasons.push('phone');
+      return {
+        id: r.id, firstName: r.first_name, lastName: r.last_name, email: r.email, phone: r.phone,
+        isTest: r.is_test, reasons, reason: reasonSentence(reasons),
+      };
+    });
+    return { duplicates };
+  });
+
   app.post('/contacts', write, async (request, reply) => {
     const b = ContactCreateBody.parse(request.body);
+    /*
+     * CREATED ANYWAY (R14, 2026-09-20). The duplicate check warns; a person decides. The decision is
+     * not a contact field — it is a fact about this act — so it is parsed off the body separately
+     * (ContactCreateBody and the PATCH body it derives from stay exactly as they were) and lands on
+     * the creation's own audit row. A merge later reads it and knows the twin was seen, not missed.
+     */
+    const ack = z
+      .object({ duplicateAcknowledged: z.boolean().default(false), duplicateIds: z.array(z.uuid()).max(5).optional() })
+      .parse(request.body);
     const actor = request.staff!;
     const { rows } = await app.db.query<{ id: string }>(
       `INSERT INTO contacts (first_name, last_name, email, phone, secondary_phone, language,
@@ -249,6 +338,9 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     await writeAudit(app.db, {
       actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'contact.created', objectType: 'contact', objectId: id, contactId: id, ...meta(request),
+      ...(ack.duplicateAcknowledged
+        ? { details: { duplicate_acknowledged: true, ...(ack.duplicateIds ? { duplicateIds: ack.duplicateIds } : {}) } }
+        : {}),
     });
     return reply.code(201).send({ id });
   });
