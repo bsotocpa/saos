@@ -17,6 +17,7 @@
  * rendered client emails would be exactly that.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { FastifyInstance } from 'fastify';
 import { AppError } from './types.ts';
 import { writeAudit } from './audit.ts';
@@ -46,6 +47,64 @@ export const OUTBOX_EFFECTS = [
   'schedule.added_notice',
 ] as const;
 export type OutboxEffect = (typeof OUTBOX_EFFECTS)[number];
+
+/**
+ * EVERY EFFECT ABOVE PUTS A MESSAGE IN FRONT OF A CLIENT. That is not a coincidence: the outbox
+ * exists for outward effects, and an internal one (a task, a staff alert, a notification) has
+ * nothing to gain from it — it is a row in a table that the same transaction can write. So the
+ * import mode below refuses the WHOLE set rather than a subset of it, and `createTask` /
+ * `notifyOnce` are untouched by it. If an internal effect is ever added here, it needs a
+ * `recipientClass` on the effect and this refusal needs to read it.
+ */
+
+// ── IMPORT MODE (Brian, 2026-09-20, ruling R16) ─────────────────────────────
+
+/**
+ * WHY AN AMBIENT CONTEXT AND NOT A PARAMETER.
+ *
+ * An import walks a record through the SAME doors a person uses — createEngagement, the stage move,
+ * recordSigned8879, createTask — precisely so the import cannot produce a record the app could not.
+ * Those doors call each other, and several of them enqueue a client email four or five frames down
+ * (`filed` → `invoiceForFiledEngagement` → `enqueueEffect('invoice.send')`). Threading a
+ * `suppressSends: true` flag down every one of those call chains would mean editing every module on
+ * the path, and the refusal would then be exactly as reliable as the least careful of them: one
+ * function that forgets to forward the flag is one client who gets an invoice for a return we
+ * imported as already filed.
+ *
+ * AsyncLocalStorage puts the fact at the bottom of the stack instead of carrying it down. The
+ * import announces itself once; every enqueue inside that async tree sees it, including ones in
+ * modules written after the import and ones nobody remembered were on the path. That inversion is
+ * the whole design: a NEW client-facing effect added tomorrow is refused under import mode without
+ * anybody thinking about the import.
+ *
+ * NOT A REPLACEMENT FOR THE AUTOMATION GATES. `isAutomationEnabled()` is Brian's decision about
+ * whether a class of message is armed at all; this is a fact about the process that is running.
+ * A send can be armed, justified and correct, and still must not leave the building because what
+ * caused it was a spreadsheet row rather than a client.
+ */
+const importContext = new AsyncLocalStorage<{ label: string }>();
+
+/**
+ * Run `fn` with every client-facing outbox effect refused and audited.
+ *
+ * `label` names the import in the audit row — it is what a person reads in six months to know which
+ * run refused what, so it says which bundle and which date, not "import".
+ */
+export async function runInImportContext<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  if (!label.trim()) {
+    throw new AppError(
+      500,
+      'import_label_required',
+      'An import context must be labelled: the refusal audit rows are only readable if they say which import refused the send.'
+    );
+  }
+  return importContext.run({ label }, fn);
+}
+
+/** The label of the import currently running, or null outside one. */
+export function isImportContext(): string | null {
+  return importContext.getStore()?.label ?? null;
+}
 
 /** How many times the drain tries before giving up and asking a person. */
 export const MAX_ATTEMPTS = 5;
@@ -91,12 +150,37 @@ function assertKnownEffect(effect: string): asserts effect is OutboxEffect {
  * Idempotent per (effect, object): a unique partial index means a second enqueue for the same
  * pending effect is a no-op rather than a second email. Returns null when it was already
  * queued.
+ *
+ * UNDER IMPORT MODE NOTHING IS ENQUEUED (R16). The row is not written — refusing at the drain
+ * instead would leave a real pending row that any later drain, on any container, could perform, and
+ * the whole point is that the message does not exist. The refusal is audited, one row per refusal,
+ * naming the effect and the import: an import that quietly sends nothing is indistinguishable from
+ * an import whose sends all failed, and only one of those is fine.
  */
 export async function enqueueEffect(
   app: FastifyInstance,
   input: EnqueueInput
 ): Promise<{ id: string } | null> {
   assertKnownEffect(input.effect);
+  const importLabel = isImportContext();
+  if (importLabel !== null) {
+    await writeAudit(app.db, {
+      actorType: 'system',
+      actorLabel: importLabel,
+      action: 'outbox.refused_in_import',
+      objectType: input.objectType ?? 'outbox',
+      objectId: input.objectId ?? null,
+      contactId: input.contactId ?? null,
+      details: {
+        effect: input.effect,
+        import: importLabel,
+        reason:
+          'client-facing effect refused: an import is running, and nothing a spreadsheet row ' +
+          'caused is sent to a client (Brian, 2026-09-20, R16)',
+      },
+    });
+    return null;
+  }
   const { rows } = await app.db.query<{ id: string }>(
     `INSERT INTO outbox (effect, payload, contact_id, object_type, object_id)
      VALUES ($1, $2::jsonb, $3, $4, $5)

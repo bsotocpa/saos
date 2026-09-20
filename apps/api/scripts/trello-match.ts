@@ -1,8 +1,14 @@
 /*
  * TRELLO IMPORT, PHASE 1 — MATCHING AND MAPPING, REPORT ONLY (Brian, 2026-09-19, items 11–13).
  *
- * Reads the staging bundle (imports/trello_import, gitignored; the raw Trello JSON never enters
- * the repo) and answers three questions against a COPY of production:
+ * THE BUNDLE IS NOT IN THE REPO AND NOT IN DROPBOX (Brian, 2026-09-20). It lives at
+ * C:/Users/brian/saos-imports/trello_import on Brian's machine and /opt/saos/imports/trello_import
+ * on the box, and the directory comes from TRELLO_IMPORT_DIR (or --dir, which wins). It moved
+ * because the repo sits inside Dropbox and Dropbox syncs the whole tree: a gitignored path under it
+ * is still a client file leaving the machine. Outputs go to <dir>/out and <dir>/logs — never into
+ * the repo.
+ *
+ * Reads the staging bundle and answers three questions against a COPY of production:
  *
  *   item 11  which Trello rows are already SAOS records, which are ambiguous, which are missing
  *   item 12  which SAOS stage each plain-English Trello stage maps to, and which have none
@@ -47,16 +53,18 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pg from 'pg';
 import { parseCsvObjects } from '../src/migration/csv.ts';
-import { assertCopyDatabase, contactNorm, similarity, splitHousehold, trelloKey } from './trello-normalize.ts';
+import { assertCopyDatabase, contactNorm, similarity, splitHousehold, STAGE_MAP, trelloKey } from './trello-normalize.ts';
 
 // ── the run ─────────────────────────────────────────────────────────────────
 
 const argv = process.argv.slice(2);
 const dirArg = argv.indexOf('--dir');
-const DIR = resolve(dirArg >= 0 ? argv[dirArg + 1]! : '/opt/saos/imports/trello_import');
+/** --dir wins, then TRELLO_IMPORT_DIR, then Brian's machine. Never a path inside the repo. */
+const DEFAULT_DIR = 'C:/Users/brian/saos-imports/trello_import';
+const DIR = resolve(dirArg >= 0 ? argv[dirArg + 1]! : process.env.TRELLO_IMPORT_DIR ?? DEFAULT_DIR);
 const OUT = resolve(DIR, 'out');
 const LOGS = resolve(DIR, 'logs');
-const DATE = '2026-09-19';
+const DATE = '2026-09-20';
 
 const url = process.env.DATABASE_URL ?? '';
 const dbName = assertCopyDatabase(url);
@@ -120,6 +128,17 @@ for (const c of contacts) {
   if (!conByLast.has(c.lastKey)) conByLast.set(c.lastKey, []);
   conByLast.get(c.lastKey)!.push(c);
 }
+/**
+ * Which live contacts are members of which business. Built from the same rows the contact query
+ * already returned, so the owner-in-parentheses rule below costs no extra query.
+ */
+const membersByBiz = new Map<string, string[]>();
+for (const c of contacts) {
+  for (const b of c.households) {
+    if (!membersByBiz.has(b)) membersByBiz.set(b, []);
+    membersByBiz.get(b)!.push(c.id);
+  }
+}
 console.log(`  SAOS: ${businesses.length} live business(es), ${contacts.length} live contact(s)`);
 
 /** File 05 clusters: a Trello key → the OTHER spellings in its cluster. Widens candidates only. */
@@ -142,9 +161,18 @@ function variantKeys(key: string): string[] {
 // ── matching ────────────────────────────────────────────────────────────────
 
 type Verdict = 'matched' | 'ambiguous' | 'not_in_saos';
+/** Which rule accepted a row. '' when nothing did. */
+type Tier = '' | 'exact' | 'household_both' | 'household_first' | 'trigram_090' | 'owner_in_parens';
 interface Result {
   file: string; trelloCardId: string; trelloKey: string; saosType: string; saosId: string;
   score: string; candidates: string; reason: string; verdict: Verdict;
+  /**
+   * The verdict the 2026-09-19 rule would have given — unique exact normalized match and nothing
+   * else. Carried on every row so the counts report shows old against new from ONE run rather than
+   * two, which is the only way the two columns are comparable.
+   */
+  tier1Verdict: Verdict;
+  tier: Tier;
 }
 
 const CAND_MIN = 0.45;
@@ -183,46 +211,135 @@ function combine(own: Array<[string, number]>, via05: Array<[string, number]>): 
 const bizPool = businesses.map((b) => ({ id: b.id, cmp: b.key }));
 const conPool = contacts.map((c) => ({ id: c.id, cmp: c.full }));
 
-/** File 04: match_key → businesses. Auto-accept only a unique exact normalized match. */
+/*
+ * -- SECOND-TIER AUTO-ACCEPT (Brian, 2026-09-20, item d) --------------------
+ *
+ * The 2026-09-19 rule was one rule: a unique EXACT match on the normalized key, and everything else
+ * to a person. It left 320 of 1066 rows ambiguous, and the counts report said why: 73 household rows
+ * auto-accepted ZERO of the time, and hundreds of business rows sat at 0.90-plus similarity with one
+ * obvious candidate. A review pile that large does not get reviewed; it gets skimmed, which is worse
+ * than a rule.
+ *
+ * So three more rules, each narrow enough to name the failure it would make.
+ *
+ *   HOUSEHOLDS -- the FIRST-NAMED person's exact normalized first and last name, when that lands on
+ *   exactly one contact. "A & B Lastname" is one Trello card for one return, and the first name on
+ *   it is the one Trello treated as the client. The failure this could make: attaching the return to
+ *   the husband when the wife is the primary filer -- a wrong PRIMARY on a joint return, not a wrong
+ *   household, and visible and fixable on the return's own page. It cannot attach the return to the
+ *   wrong family, because the surname and one exact first name both have to land.
+ *
+ *   BUSINESSES, BY SIMILARITY -- trigram >= 0.90 with a UNIQUE candidate whose runner-up is at least
+ *   0.15 lower. Both halves matter and for different reasons: 0.90 is close enough that the
+ *   difference is punctuation or a dropped word, and the 0.15 gap is what stops the rule firing
+ *   between two businesses that resemble EACH OTHER -- "SOTO HOLDINGS" and "SOTO HOLDINGS II" both
+ *   score high against "SOTO HOLDING", and a rule that took the top one would silently pick a
+ *   sibling entity. A tight cluster stays ambiguous by design.
+ *
+ *   BUSINESSES, BY OWNER -- the person named in parentheses on the Trello card matches, exactly and
+ *   uniquely, a contact who is ALREADY a member of the candidate business in SAOS. This is the
+ *   strongest of the three and the one with the least to do with spelling: the name of an entity is
+ *   evidence about a string, and the identity of its owner is evidence about a relationship SAOS
+ *   already records. It accepts candidates the similarity rule refuses.
+ *
+ * WHAT DID NOT CHANGE. A score alone still never accepts anything below 0.90, a name shared by two
+ * SAOS records still never accepts, and file 05's spelling variants are still hints only -- a variant
+ * that matches is a reason for a person to look, never an accept (the 2026-09-19 reasoning, intact).
+ */
+
+const TIER2_MIN = 0.9;
+const TIER2_GAP = 0.15;
+
+/** The tier-2 similarity rule, over a ranked candidate list. Returns the accepted id or null. */
+function acceptBySimilarity(ranked: Array<[string, number]>): { id: string; score: number } | null {
+  const top = ranked[0];
+  if (!top || top[1] < TIER2_MIN) return null;
+  const runnerUp = ranked[1];
+  if (runnerUp && top[1] - runnerUp[1] < TIER2_GAP) return null;
+  return { id: top[0], score: top[1] };
+}
+
+/**
+ * The tier-2 owner rule. `owner` is file 04's entity_owner_in_parens, free text typed by hand, and it
+ * carries junk ('SM', 'CLOSED', a note about a client who died) alongside real names. The junk is
+ * filtered by the requirement itself: it has to be a unique exact normalized contact name AND that
+ * contact has to already be a member of exactly one of the candidate businesses.
+ */
+function acceptByOwner(owner: string, candidateIds: string[]): { id: string; contactId: string } | null {
+  const needle = contactNorm(owner.trim());
+  if (!needle) return null;
+  const hits = conByFull.get(needle) ?? [];
+  if (hits.length !== 1) return null;
+  const contactId = hits[0]!.id;
+  const linked = candidateIds.filter((b) => (membersByBiz.get(b) ?? []).includes(contactId));
+  if (linked.length !== 1) return null;
+  return { id: linked[0]!, contactId };
+}
+
+/** File 04: match_key -> businesses. Tier 1 is a unique exact normalized match; then the two business rules. */
 function matchBusiness(row: Record<string, string>): Result {
   const key = (row.match_key ?? '').trim();
   const exact = bizByKey.get(key) ?? [];
   const base = { file: '04_business_services.csv', trelloCardId: (row.bk_card_id ?? '').trim(), trelloKey: key };
   if (exact.length === 1) {
-    return { ...base, saosType: 'business', saosId: exact[0]!.id, score: '1.00', candidates: '', reason: 'unique exact normalized match', verdict: 'matched' };
+    return { ...base, saosType: 'business', saosId: exact[0]!.id, score: '1.00', candidates: '', reason: 'unique exact normalized match', verdict: 'matched', tier1Verdict: 'matched', tier: 'exact' };
   }
   const variants = variantKeys(key);
   const own = rank(key, bizPool);
   const via05 = rankVariants(variants, bizPool);
+  /** Tier 1's answer, before the new rules get a turn. */
+  const tier1: Verdict = exact.length > 1 || own.length || via05.length ? 'ambiguous' : 'not_in_saos';
+
+  // Tier 2, rule 2: similarity, on this key's OWN candidates. Never on a file-05 variant's.
+  const bySim = exact.length === 0 ? acceptBySimilarity(own) : null;
+  if (bySim) {
+    return {
+      ...base, saosType: 'business', saosId: bySim.id, score: bySim.score.toFixed(2), candidates: combine(own, via05),
+      reason: `tier 2: trigram ${bySim.score.toFixed(2)} on a unique candidate, runner-up at least ${TIER2_GAP} lower`,
+      verdict: 'matched', tier1Verdict: tier1, tier: 'trigram_090',
+    };
+  }
+  // Tier 2, rule 3: the owner in parentheses is already a member of exactly one candidate business.
+  const candidateIds = [...new Set([...exact.map((b) => b.id), ...own.map(([id]) => id)])];
+  const byOwner = acceptByOwner(row.entity_owner_in_parens ?? '', candidateIds);
+  if (byOwner) {
+    return {
+      ...base, saosType: 'business', saosId: byOwner.id, score: topScore(own), candidates: combine(own, via05),
+      reason: `tier 2: the owner named in parentheses is already a member of this SAOS business (contact ${byOwner.contactId})`,
+      verdict: 'matched', tier1Verdict: tier1, tier: 'owner_in_parens',
+    };
+  }
+
   if (exact.length > 1) {
     return {
       ...base, saosType: 'business', saosId: '', score: '1.00',
       candidates: exact.map((b) => `${b.id}:1.00`).join(' '),
       reason: `${exact.length} SAOS businesses share this normalized name`, verdict: 'ambiguous',
+      tier1Verdict: tier1, tier: '',
     };
   }
   if (own.length || via05.length) {
     return {
       ...base, saosType: 'business', saosId: '', score: topScore(own), candidates: combine(own, via05),
       reason: own.length
-        ? (via05.length ? 'near matches on this key, plus file-05 spelling variants (never auto-accepted)' : 'near matches only, no exact normalized match')
+        ? (via05.length ? 'near matches on this key, plus file-05 spelling variants (never auto-accepted)' : 'near matches only, below the tier-2 bar')
         : 'no near match on this key; a file-05 spelling variant does match, which is a hint for a person, not an accept',
-      verdict: 'ambiguous',
+      verdict: 'ambiguous', tier1Verdict: tier1, tier: '',
     };
   }
-  return { ...base, saosType: 'business', saosId: '', score: '', candidates: '', reason: 'no SAOS business at or near this normalized name', verdict: 'not_in_saos' };
+  return { ...base, saosType: 'business', saosId: '', score: '', candidates: '', reason: 'no SAOS business at or near this normalized name', verdict: 'not_in_saos', tier1Verdict: tier1, tier: '' };
 }
 
 /**
- * Files 01–03: name_clean → contacts, with the household rule.
+ * Files 01-03: name_clean -> contacts, with the household rules.
  *
- * A household row ("A & B Lastname") resolves ONLY when both first names land on exactly one
- * contact each, those contacts share the surname, and they share an address or a business
- * household. Anything less is ambiguous: "unique exact normalized match" is the auto-accept bar
- * and a two-person string does not clear it on its own.
+ * TIER 1 households resolve only when BOTH first names land on exactly one contact each and those two
+ * contacts share an address or a business household. TIER 2 accepts the FIRST-NAMED person alone when
+ * that name is unique -- see the block comment above for what that can and cannot get wrong.
  *
- * A row from the BUSINESS board whose name is an entity, not a person, is matched against
- * businesses as a fallback — otherwise 90 business returns would be counted as missing people.
+ * A row from the BUSINESS board whose name is an entity, not a person, is matched against businesses
+ * as a fallback -- otherwise 90 business returns would be counted as missing people -- and the tier-2
+ * similarity rule applies there too, because it is a rule about business names wherever they appear.
  */
 function matchContact(file: string, row: Record<string, string>): Result {
   const nameClean = (row.name_clean ?? '').trim();
@@ -231,13 +348,14 @@ function matchContact(file: string, row: Record<string, string>): Result {
   const base = { file, trelloCardId: (row.trello_card_id ?? '').trim(), trelloKey: key };
   const exact = conByFull.get(needle) ?? [];
   if (exact.length === 1) {
-    return { ...base, saosType: 'contact', saosId: exact[0]!.id, score: '1.00', candidates: '', reason: 'unique exact normalized match', verdict: 'matched' };
+    return { ...base, saosType: 'contact', saosId: exact[0]!.id, score: '1.00', candidates: '', reason: 'unique exact normalized match', verdict: 'matched', tier1Verdict: 'matched', tier: 'exact' };
   }
   if (exact.length > 1) {
     return {
       ...base, saosType: 'contact', saosId: '', score: '1.00',
       candidates: exact.map((c) => `${c.id}:1.00`).join(' '),
       reason: `${exact.length} live SAOS contacts share this name (the duplicate scan's own territory)`, verdict: 'ambiguous',
+      tier1Verdict: 'ambiguous', tier: '',
     };
   }
 
@@ -255,22 +373,31 @@ function matchContact(file: string, row: Record<string, string>): Result {
           ...base, saosType: 'contact_household', saosId: a.id, score: '1.00',
           candidates: `${a.id}:1.00 ${b.id}:1.00`,
           reason: `household: both first names resolve uniquely and the two contacts share ${sameAddress ? 'an address' : 'a business household'}`,
-          verdict: 'matched',
+          verdict: 'matched', tier1Verdict: 'matched', tier: 'household_both',
         };
       }
+    }
+    /*
+     * TIER 2, RULE 1. The first-named person, exactly and uniquely. Reached whether or not the second
+     * name resolved: a pair that resolves to two contacts sharing neither an address nor a household
+     * is precisely the pair where the card's first name is the better evidence, and a pair where only
+     * the first name is in SAOS is the common shape (37 of the 73 household rows on 2026-09-19).
+     */
+    const resolvedHalves = halves.filter((h) => h.length === 1).length;
+    const first = halves[0] ?? [];
+    if (first.length === 1) {
       return {
-        ...base, saosType: 'contact_household', saosId: '', score: '1.00',
-        candidates: `${a.id}:1.00 ${b.id}:1.00`,
-        reason: 'household: both names resolve but the contacts share neither address nor household',
-        verdict: 'ambiguous',
+        ...base, saosType: 'contact_household', saosId: first[0]!.id, score: '1.00',
+        candidates: halves.flat().map((c) => `${c.id}:1.00`).join(' '),
+        reason: `tier 2: the first-named person resolves to exactly one contact (${resolvedHalves} of 2 names resolve); the return attaches to them`,
+        verdict: 'matched', tier1Verdict: 'ambiguous', tier: 'household_first',
       };
     }
     /*
-     * How many of the two halves landed on exactly one contact? The number is the finding: a
-     * household where one spouse is in SAOS and the other is not is a different piece of work
-     * from one where neither is, and "ambiguous" alone hides which.
+     * How many of the two halves landed on exactly one contact? The number is the finding: a household
+     * where one spouse is in SAOS and the other is not is a different piece of work from one where
+     * neither is, and "ambiguous" alone hides which.
      */
-    const resolvedHalves = halves.filter((h) => h.length === 1).length;
     const surnamePool = (conByLast.get(lastKey) ?? []).map((c) => ({ id: c.id, cmp: c.full }));
     const pool2 = surnamePool.length ? surnamePool : conPool;
     const own = rank(needle, pool2);
@@ -279,21 +406,33 @@ function matchContact(file: string, row: Record<string, string>): Result {
       return {
         ...base, saosType: 'contact_household', saosId: '', score: topScore(own), candidates: combine(own, halfHits),
         reason: `household: ${resolvedHalves} of 2 first name(s) resolve to exactly one contact; ${(conByLast.get(lastKey) ?? []).length} live contact(s) share the surname`,
-        verdict: 'ambiguous',
+        verdict: 'ambiguous', tier1Verdict: 'ambiguous', tier: '',
       };
     }
-    return { ...base, saosType: 'contact_household', saosId: '', score: '', candidates: '', reason: `household: neither name is in SAOS (${(conByLast.get(lastKey) ?? []).length} live contact(s) share the surname)`, verdict: 'not_in_saos' };
+    return { ...base, saosType: 'contact_household', saosId: '', score: '', candidates: '', reason: `household: neither name is in SAOS (${(conByLast.get(lastKey) ?? []).length} live contact(s) share the surname)`, verdict: 'not_in_saos', tier1Verdict: 'not_in_saos', tier: '' };
   }
 
   // Entity fallback: a business-board row whose name is the entity.
   const bizExact = bizByKey.get(key) ?? [];
   if (bizExact.length === 1) {
-    return { ...base, saosType: 'business', saosId: bizExact[0]!.id, score: '1.00', candidates: '', reason: 'unique exact normalized match against a SAOS business (entity return)', verdict: 'matched' };
+    return { ...base, saosType: 'business', saosId: bizExact[0]!.id, score: '1.00', candidates: '', reason: 'unique exact normalized match against a SAOS business (entity return)', verdict: 'matched', tier1Verdict: 'matched', tier: 'exact' };
   }
   const variants = variantKeys(key);
   const conRanked = rank(needle, conPool);
   const bizRanked = rank(key, bizPool);
   const bizVia05 = rankVariants(variants, bizPool);
+  const tier1: Verdict = bizExact.length > 1 || conRanked.length || bizRanked.length || bizVia05.length ? 'ambiguous' : 'not_in_saos';
+
+  // Tier 2, rule 2 again: an entity name at 0.90 with a clear winner is the same evidence here.
+  const bySim = bizExact.length === 0 ? acceptBySimilarity(bizRanked) : null;
+  if (bySim) {
+    return {
+      ...base, saosType: 'business', saosId: bySim.id, score: bySim.score.toFixed(2),
+      candidates: [conRanked.length ? `contact own ${render(conRanked)}` : '', `business own ${render(bizRanked)}`].filter(Boolean).join(' | '),
+      reason: `tier 2: entity return, trigram ${bySim.score.toFixed(2)} on a unique SAOS business, runner-up at least ${TIER2_GAP} lower`,
+      verdict: 'matched', tier1Verdict: tier1, tier: 'trigram_090',
+    };
+  }
   if (conRanked.length || bizRanked.length || bizVia05.length) {
     return {
       ...base, saosType: conRanked.length ? 'contact' : 'business', saosId: '',
@@ -304,12 +443,12 @@ function matchContact(file: string, row: Record<string, string>): Result {
         bizVia05.length && `business via05 ${render(bizVia05)}`,
       ].filter(Boolean).join(' | '),
       reason: (conRanked.length || bizRanked.length)
-        ? 'near matches only, no exact normalized match'
+        ? 'near matches only, below the tier-2 bar'
         : 'no near match on this key; a file-05 spelling variant does match a business, which is a hint for a person, not an accept',
-      verdict: 'ambiguous',
+      verdict: 'ambiguous', tier1Verdict: tier1, tier: '',
     };
   }
-  return { ...base, saosType: '', saosId: '', score: '', candidates: '', reason: 'no SAOS contact or business at or near this name', verdict: 'not_in_saos' };
+  return { ...base, saosType: '', saosId: '', score: '', candidates: '', reason: 'no SAOS contact or business at or near this name', verdict: 'not_in_saos', tier1Verdict: tier1, tier: '' };
 }
 
 const results: Result[] = [];
@@ -329,53 +468,140 @@ function activeBookkeeping(row: Record<string, string>): boolean {
 }
 const activeBkKeys = new Set(files['04_business_services.csv'].filter(activeBookkeeping).map((r) => (r.match_key ?? '').trim()));
 
-// ── out/*.csv ───────────────────────────────────────────────────────────────
+// -- the review file's admission rule, and the enrichment list ---------------
 
-const HEAD = 'source_file,trello_card_id,trello_key,saos_type,saos_id,score,candidates,reason';
+/**
+ * WHAT GOES IN THE REVIEW FILE (Brian, 2026-09-20, item e): three kinds of row and no others.
+ *
+ *   file 01 -- work in progress. Every ambiguous row is a return somebody has to place.
+ *   file 02 -- the AR worklist. Every ambiguous row is money owed against a return.
+ *   file 04 -- ONLY where a service is actually live (a bookkeeping cadence, sales tax, or payroll).
+ *
+ * AND FILE 03'S AMBIGUOUS ROWS ARE NOT IN IT. File 03 is 388 accepted-and-paid TY2025 returns and
+ * the bundle's own import intent for it is "existence check only -- do not import". An ambiguous row
+ * there resolves to no work: the return is filed, the invoice is paid, and nothing about which SAOS
+ * contact the card meant changes anything anyone does. Putting 133 of them in the review file made it
+ * 40% noise, and a review file that is mostly noise is a review file nobody finishes. The file-03
+ * rows that DO mean something -- the ones with no SAOS record at all -- are a different artefact: an
+ * enrichment list, below.
+ *
+ * The same reasoning excludes an inactive file-04 row. A business whose bookkeeping is marked Lost
+ * and whose payroll is closed has no live service to attach; matching it is archaeology.
+ */
+const DEAD_SERVICE = ['closed', 'not_client', 'lost', 'inactive', 'dissolved'];
+function activeService(row: Record<string, string>): boolean {
+  if (activeBookkeeping(row)) return true;
+  const stFreq = (row.sales_tax_frequency ?? '').trim();
+  const stStatus = (row.sales_tax_status ?? '').toLowerCase();
+  if (stFreq && !DEAD_SERVICE.some((d) => stStatus.includes(d))) return true;
+  if ((row.payroll ?? '').trim().toLowerCase() === 'yes') return true;
+  return false;
+}
+const activeServiceKeys = new Set(
+  files['04_business_services.csv'].filter(activeService).map((r) => (r.match_key ?? '').trim())
+);
+
+/** A row belongs in the review file if it is ambiguous AND one of the three admitted kinds. */
+function inReviewFile(r: Result): boolean {
+  if (r.verdict !== 'ambiguous') return false;
+  if (r.file === '01_tax_wip.csv' || r.file === '02_tax_ar_worklist.csv') return true;
+  if (r.file === '04_business_services.csv') return activeServiceKeys.has(r.trelloKey);
+  return false; // 03_tax_completed_roster.csv
+}
+
+// -- out/*.csv ---------------------------------------------------------------
+
+const HEAD = 'source_file,trello_card_id,trello_key,saos_type,saos_id,score,tier,candidates,reason';
 const csvLine = (r: Result): string =>
-  [r.file, r.trelloCardId, r.trelloKey, r.saosType, r.saosId, r.score, r.candidates, r.reason]
+  [r.file, r.trelloCardId, r.trelloKey, r.saosType, r.saosId, r.score, r.tier, r.candidates, r.reason]
     .map((v) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v))
     .join(',');
+const written: Record<string, number> = {};
 for (const v of ['matched', 'ambiguous', 'not_in_saos'] as const) {
-  const rows = results.filter((r) => r.verdict === v);
-  const path = resolve(OUT, `trello_match_${v}.csv`);
-  writeFileSync(path, [HEAD, ...rows.map(csvLine)].join('\n') + '\n');
-  console.log(`  out/trello_match_${v}.csv: ${rows.length} row(s)`);
+  // The ambiguous file IS the review file, so it is the filtered set rather than every ambiguous row.
+  const rows = v === 'ambiguous' ? results.filter(inReviewFile) : results.filter((r) => r.verdict === v);
+  writeFileSync(resolve(OUT, `trello_match_${v}.csv`), [HEAD, ...rows.map(csvLine)].join('\n') + '\n');
+  written[v] = rows.length;
+  console.log(`  out/trello_match_${v}.csv: ${rows.length} row(s)${v === 'ambiguous' ? ' (the review file: files 01, 02 and active 04 only)' : ''}`);
 }
 
-// ── logs/match-counts.log (item 11's table) ─────────────────────────────────
+/**
+ * THE FILE-03 ENRICHMENT LIST (item f). A file-03 row with no SAOS record at all is a client whose
+ * TY2025 return we filed and who is not in the system -- which is a real finding and NOT a thing the
+ * import creates, because a completed-and-paid roster row carries no engagement, no stage and no
+ * money: creating a contact from it would put a name in the directory with nothing attached and
+ * nobody accountable. It goes on a list for a person to enrich.
+ */
+const enrichment = results.filter((r) => r.file === '03_tax_completed_roster.csv' && r.verdict === 'not_in_saos');
+const f03ByCard = new Map(files['03_tax_completed_roster.csv'].map((r) => [(r.trello_card_id ?? '').trim(), r]));
+writeFileSync(
+  resolve(OUT, 'enrichment_file03.csv'),
+  [
+    'trello_card_id,trello_key,name_clean,form_type,last_activity,reason',
+    ...enrichment.map((r) => {
+      const row = f03ByCard.get(r.trelloCardId) ?? {};
+      return [r.trelloCardId, r.trelloKey, row.name_clean ?? '', row.form_type ?? '', row.last_activity ?? '', r.reason]
+        .map((v) => (/[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v))
+        .join(',');
+    }),
+  ].join('\n') + '\n'
+);
+console.log(`  out/enrichment_file03.csv: ${enrichment.length} row(s) — listed for enrichment, NEVER created`);
 
-const countLines = ['source file | total | matched | ambiguous | not in SAOS | findings'];
+// -- logs/match-counts.log (item 11's table, old rule against new) -----------
+
+/*
+ * OLD AND NEW FROM ONE RUN. Every Result carries tier1Verdict -- what the 2026-09-19 exact-match-only
+ * rule would have said -- alongside the verdict the tier-2 rules produced. Two columns from two
+ * separate runs against two moments of the copy would not be comparable; these are the same 1066 rows
+ * judged twice.
+ */
+const countLines = [
+  'source file | total | matched old | matched new | ambiguous old | ambiguous new | not in SAOS old | not in SAOS new | in the review file',
+];
+const tally = (rows: Result[], v: Verdict, which: 'tier1Verdict' | 'verdict'): number =>
+  rows.filter((r) => r[which] === v).length;
 for (const f of Object.keys(files)) {
   const rows = results.filter((r) => r.file === f);
-  const matched = rows.filter((r) => r.verdict === 'matched').length;
-  const ambiguous = rows.filter((r) => r.verdict === 'ambiguous').length;
-  const missing = rows.filter((r) => r.verdict === 'not_in_saos');
-  const findings =
-    f === '04_business_services.csv'
-      ? missing.filter((r) => activeBkKeys.has(r.trelloKey)).length
-      : missing.length;
-  countLines.push(`${f} | ${rows.length} | ${matched} | ${ambiguous} | ${missing.length} | ${findings}`);
+  countLines.push(
+    [
+      f, rows.length,
+      tally(rows, 'matched', 'tier1Verdict'), tally(rows, 'matched', 'verdict'),
+      tally(rows, 'ambiguous', 'tier1Verdict'), tally(rows, 'ambiguous', 'verdict'),
+      tally(rows, 'not_in_saos', 'tier1Verdict'), tally(rows, 'not_in_saos', 'verdict'),
+      rows.filter(inReviewFile).length,
+    ].join(' | ')
+  );
 }
-const all = results.length;
 countLines.push(
-  `ALL FOUR FILES | ${all} | ${results.filter((r) => r.verdict === 'matched').length} | ` +
-    `${results.filter((r) => r.verdict === 'ambiguous').length} | ${results.filter((r) => r.verdict === 'not_in_saos').length} | ` +
-    `${countLines.slice(1).reduce((n, l) => n + Number(l.split(' | ')[5]), 0)}`
+  [
+    'ALL FOUR FILES', results.length,
+    tally(results, 'matched', 'tier1Verdict'), tally(results, 'matched', 'verdict'),
+    tally(results, 'ambiguous', 'tier1Verdict'), tally(results, 'ambiguous', 'verdict'),
+    tally(results, 'not_in_saos', 'tier1Verdict'), tally(results, 'not_in_saos', 'verdict'),
+    results.filter(inReviewFile).length,
+  ].join(' | ')
 );
 writeFileSync(resolve(LOGS, 'match-counts.log'), countLines.join('\n') + '\n');
 console.log('\n' + countLines.join('\n'));
 
 // Breakdown that belongs in the report's note, not in the table.
+const byTier = new Map<string, number>();
+for (const r of results.filter((x) => x.verdict === 'matched')) byTier.set(r.tier, (byTier.get(r.tier) ?? 0) + 1);
 const entityFallback = results.filter((r) => r.file !== '04_business_services.csv' && r.verdict === 'matched' && r.saosType === 'business').length;
 const households = results.filter((r) => r.saosType === 'contact_household').length;
 const householdMatched = results.filter((r) => r.saosType === 'contact_household' && r.verdict === 'matched').length;
 const widened = results.filter((r) => r.candidates.includes('via05')).length;
-const onlyVia05 = results.filter((r) => r.reason.includes('hint for a person')).length;
+const promoted = results.filter((r) => r.verdict === 'matched' && r.tier1Verdict !== 'matched').length;
+const activeMissing04 = results.filter((r) => r.file === '04_business_services.csv' && r.verdict === 'not_in_saos' && activeServiceKeys.has(r.trelloKey)).length;
 console.log(
-  `\nnote: ${entityFallback} row(s) in files 01–03 matched a SAOS business rather than a contact (entity returns); ` +
+  `\nnote: matched by tier — ${[...byTier].map(([t, n]) => `${t || '(none)'} ${n}`).join(', ')}; ` +
+    `${promoted} row(s) promoted from ambiguous/not-in-SAOS by the tier-2 rules; ` +
+    `${entityFallback} row(s) in files 01–03 matched a SAOS business rather than a contact (entity returns); ` +
     `${households} household row(s), ${householdMatched} of them matched; ` +
-    `${widened} ambiguous row(s) carry a file-05 variant candidate, ${onlyVia05} of them ONLY because of the variant.`
+    `${widened} ambiguous row(s) carry a file-05 variant candidate; ` +
+    `file 04: ${activeServiceKeys.size} row(s) carry an active service, ${activeMissing04} of those are not in SAOS; ` +
+    `review file ${written.ambiguous} row(s) against ${tally(results, 'ambiguous', 'verdict')} ambiguous overall.`
 );
 
 // ── logs/stage-map.log (item 12's table) ────────────────────────────────────
@@ -383,46 +609,30 @@ console.log(
 /**
  * Every plain-English Trello stage, and where it lands in SAOS.
  *
- * TAX_STAGES (apps/api/src/modules/tax/pipeline.ts) and engagement_status are the only real
- * targets. A value with no equivalent is marked GAP and is NOT forced into the nearest enum
- * member — Brian's instruction, and the reason the Trello lists cannot simply be renamed.
+ * THE MAP ITSELF MOVED to scripts/trello-normalize.ts on 2026-09-20, because the import now reads
+ * it too (item g) and a reporting copy that could drift from the acting copy is a report that lies
+ * about what the import did. TAX_STAGES (apps/api/src/modules/tax/pipeline.ts) and engagement_status
+ * are still the only real targets; a value with no equivalent is marked GAP and is NOT forced into
+ * the nearest enum member, and the import turns it into a task instead.
  */
-const STAGE_MAP: Array<[string, string, string]> = [
-  ['ready to prepare', 'in_preparation', 'maps; entering in_preparation needs estimate_locked_at (gate 2), so an import lands these behind a lock that Trello never held'],
-  ['awaiting client response', 'pending_client_response', 'maps exactly; waiting_on = client'],
-  ['awaiting documents', 'documents_requested', 'maps exactly'],
-  ['awaiting documents (exempt org)', 'documents_requested', 'maps exactly; the exempt-org part is return_type 990/990ez, not a stage'],
-  ['awaiting signature', 'ready_to_file', 'maps; the 8879 gate sits on entering filed, so "awaiting signature" IS ready_to_file'],
-  ['prepared, not yet sent for signature', 'internal_review', 'maps'],
-  ['extended, awaiting documents', 'documents_requested', 'maps; Extended is tax_engagements.extension_filed, a parallel flag, never a stage'],
-  ['e-file rejected', 'rejected', 'maps exactly; a reject also carries a perfection_deadline SAOS computes, which Trello has no field for'],
-  ['prior-year return in progress', 'in_preparation', 'maps; the filing lane is derived from the year (filingLane), never carried over from Trello'],
-  ['accepted, client not yet notified', 'completed', 'maps; acceptance is recorded per jurisdiction by the ATX acknowledgment ingest, and "not yet notified" is the efile_acknowledgment automation, not a stage'],
-  ['accepted, balance open', 'completed', 'maps; "balance open" is an invoice status (invoices.status), not a stage'],
-  ['paper filed', 'filed', 'PARTIAL: filed exists, and so do filing_lane/paper_mailed_on/certified_tracking, but no acceptance can ever be RECORDED for a paper return (ack rows come only from the ATX report upload), so completion is a bare hand move with nothing accepted — see the R2 answer in the report'],
-  ['amendment in progress', 'GAP', 'no amendment stage and no 1040X in the return_type enum; amendments exist only as the price-book item IND_AMENDMENT_1040X'],
-  ['blocked on business return/financials', 'GAP', 'no blocked stage; the dependency is a task_dependencies row ("blocked by"), so this is a task shape, not a stage'],
-  ['awaiting year-end financials (bookkeeping dependency)', 'GAP', 'same shape: documents_requested is close but the wait is on a close_cycles period, which is a task dependency, not a return stage'],
-  ['awaiting CPA review of financials', 'GAP', 'internal_review is the REVIEW OF THE RETURN; this is Brian reviewing the books (close_cycles.statements_ready_at). Not the same thing, not forced'],
-];
 const stageCount = (f: '01_tax_wip.csv' | '02_tax_ar_worklist.csv', v: string): number =>
   files[f].filter((r) => (r.proposed_stage_plain ?? '').trim() === v).length;
-const seen = new Set<string>();
+const seenStages = new Set<string>();
 for (const f of ['01_tax_wip.csv', '02_tax_ar_worklist.csv'] as const) {
-  for (const r of files[f]) seen.add((r.proposed_stage_plain ?? '').trim());
+  for (const r of files[f]) seenStages.add((r.proposed_stage_plain ?? '').trim());
 }
-const stageLines = ['proposed_stage_plain | file 01 | file 02 | total | SAOS stage | mapping'];
-for (const [value, target, why] of STAGE_MAP) {
-  if (!seen.has(value)) continue;
+const stageLines = ['proposed_stage_plain | file 01 | file 02 | total | SAOS stage | import handling | mapping'];
+for (const [value, m] of Object.entries(STAGE_MAP)) {
+  if (!seenStages.has(value)) continue;
   const a = stageCount('01_tax_wip.csv', value);
   const b = stageCount('02_tax_ar_worklist.csv', value);
-  stageLines.push(`${value} | ${a} | ${b} | ${a + b} | ${target} | ${why}`);
+  stageLines.push(`${value} | ${a} | ${b} | ${a + b} | ${m.saosStage} | ${m.handling} | ${m.mapping}`);
 }
-const unlisted = [...seen].filter((v) => v && !STAGE_MAP.some(([x]) => x === v));
+const unlisted = [...seenStages].filter((v) => v && !(v in STAGE_MAP));
 for (const v of unlisted) {
   const a = stageCount('01_tax_wip.csv', v);
   const b = stageCount('02_tax_ar_worklist.csv', v);
-  stageLines.push(`${v} | ${a} | ${b} | ${a + b} | UNREVIEWED | this value is in the bundle and not in the map above — a person decides it, not this script`);
+  stageLines.push(`${v} | ${a} | ${b} | ${a + b} | UNREVIEWED | refused | this value is in the bundle and not in the map — a person decides it, and the import refuses the row rather than picking a near stage`);
 }
 writeFileSync(resolve(LOGS, 'stage-map.log'), stageLines.join('\n') + '\n');
 console.log(`\nstage map: ${stageLines.length - 1} distinct proposed_stage_plain value(s), ${stageLines.filter((l) => l.includes('| GAP |')).length} gap(s), ${unlisted.length} unreviewed`);
@@ -434,21 +644,26 @@ console.log(`\nstage map: ${stageLines.length - 1} distinct proposed_stage_plain
  *
  * The verdict column is not an opinion: each candidate column is looked up in the copy's
  * information_schema, so "schema gap" means the column is not there, checked rather than
- * remembered. The proposed migration is named and NOT built (Brian's instruction).
+ * remembered — which is also what makes this table self-correcting now that the migrations exist:
+ * run against a copy carrying 0105-0111 and the gaps read "exists on the copy".
+ *
+ * On 2026-09-19 the migration column named what was PROPOSED and not built (Brian's instruction at
+ * the time). On 2026-09-20 Brian ruled them in and they are 0105-0111; the column names the real
+ * migration and says BUILT, so the two never have to be reconciled by hand.
  */
 const FIELD_MAP: Array<{ field: string; col: string; note: string; migration: string }> = [
-  { field: 'bk_cadence_label (bookkeeping cadence)', col: 'engagements.prep_cadence', note: 'prep_cadence enum is weekly|monthly|quarterly|semi_annual; the bundle also carries "annual" (35 rows), which the enum does not hold', migration: '0104_prep_cadence_annual: ALTER TYPE prep_cadence ADD VALUE \'annual\'' },
-  { field: 'books_current_through', col: 'close_cycles.period_end', note: 'the LAST closed cycle\'s period_end is the fact, but there is no column saying "books are current through" on the business or the engagement; deriving it needs the cycles to exist first, and the import creates none', migration: '0105_books_current_through: businesses.books_current_through date, businesses.books_current_through_as_of date' },
-  { field: 'bk_as_of (the 2026-07-01 as-of date)', col: 'businesses.books_current_through_as_of', note: 'no as-of column anywhere; the bundle is explicit that the fact is stale, and a stale fact with no as-of date reads as current', migration: '0105_books_current_through (same migration, second column)' },
-  { field: 'sales_tax_frequency', col: 'engagements.service_line', note: 'sales_tax is a SERVICE LINE, so the engagement exists; the FREQUENCY has no column (prep_cadence belongs to the bookkeeping dials)', migration: '0106_sales_tax_frequency: engagements.filing_frequency text CHECK (monthly|quarterly|annual)' },
+  { field: 'bk_cadence_label (bookkeeping cadence)', col: 'engagements.prep_cadence', note: 'prep_cadence enum is weekly|monthly|quarterly|semi_annual; the bundle also carries "annual" (35 rows), which the enum does not hold', migration: '0105_bookkeeping_facts — BUILT: ALTER TYPE prep_cadence ADD VALUE \'annual\'' },
+  { field: 'books_current_through', col: 'close_cycles.period_end', note: 'the LAST closed cycle\'s period_end is the fact, but there is no column saying "books are current through" on the business or the engagement; deriving it needs the cycles to exist first, and the import creates none', migration: '0105_bookkeeping_facts — BUILT: businesses.books_current_through, businesses.books_current_through_as_of, with a CHECK that refuses the first without the second' },
+  { field: 'bk_as_of (the 2026-07-01 as-of date)', col: 'businesses.books_current_through_as_of', note: 'no as-of column anywhere; the bundle is explicit that the fact is stale, and a stale fact with no as-of date reads as current', migration: '0105_bookkeeping_facts — BUILT: businesses.books_current_through_as_of, required whenever books_current_through is set' },
+  { field: 'sales_tax_frequency', col: 'engagements.service_line', note: 'sales_tax is a SERVICE LINE, so the engagement exists; the FREQUENCY has no column (prep_cadence belongs to the bookkeeping dials)', migration: '0106_sales_tax_frequency — BUILT: engagements.filing_frequency, CHECK (monthly|quarterly|annual|quarterly_or_annual), scoped to service_line = sales_tax. The fourth value keeps the 11 rows whose card never said which' },
   { field: 'payroll (flag)', col: 'engagements.service_line', note: 'an active payroll engagement IS the flag; no boolean needed', migration: '—' },
-  { field: 'payroll_provider', col: 'engagements.notes', note: 'no provider column; "QBO Payroll" would land in free text, which no report can group by', migration: '0107_payroll_provider: engagements.payroll_provider text' },
+  { field: 'payroll_provider', col: 'engagements.notes', note: 'no provider column; "QBO Payroll" would land in free text, which no report can group by', migration: '0107_payroll_provider — BUILT: engagements.payroll_provider text, scoped to service_line = payroll' },
   { field: 'annual_report_state', col: 'entity_compliance.state', note: 'exact home', migration: '—' },
-  { field: 'ar_anniversary_kind / ar_anniversary_mmdd', col: 'entity_compliance.annual_report_due_date', note: 'SAOS stores the DUE DATE, derived per state; the anniversary (admission or incorporation date, MM/DD) is the input that derives it and has no column — businesses.formation_date is the incorporation date only, and 57 of 61 rows are admission dates', migration: '0108_annual_report_anniversary: entity_compliance.anniversary_mmdd text, entity_compliance.anniversary_kind text CHECK (admission|incorporation)' },
-  { field: 'access_facts (firm_holds_login, mfa_code_goes_to_*, sales_source_*)', col: '—', note: 'no column and no table; these are operational facts about who holds what, and CLAUDE.md keeps credentials out of SAOS entirely, so the honest home is a fact row, never a secret', migration: '0109_business_access_facts: business_access_facts (business_id uuid, fact text, recorded_at timestamptz, PRIMARY KEY (business_id, fact))' },
-  { field: 'qbo_paid_by_2022', col: '—', note: 'who pays the QBO subscription; price_book_items.is_pass_through is the closest existing idea and it is a price-book fact, not a per-client one. The bundle calls this a 2022 roster hint', migration: '0110_qbo_subscription_payer: businesses.qbo_paid_by text CHECK (client|soto), businesses.qbo_paid_by_as_of date' },
+  { field: 'ar_anniversary_kind / ar_anniversary_mmdd', col: 'entity_compliance.annual_report_due_date', note: 'SAOS stores the DUE DATE, derived per state; the anniversary (admission or incorporation date, MM/DD) is the input that derives it and has no column — businesses.formation_date is the incorporation date only, and 57 of 61 rows are admission dates', migration: '0108_annual_report_anniversary — BUILT: entity_compliance.anniversary_mmdd (MM/DD, shape-checked) and anniversary_kind CHECK (admission|incorporation), declared together' },
+  { field: 'access_facts (firm_holds_login, mfa_code_goes_to_*, sales_source_*)', col: '—', note: 'no column and no table; these are operational facts about who holds what, and CLAUDE.md keeps credentials out of SAOS entirely, so the honest home is a fact row, never a secret', migration: '0109_business_access_facts — BUILT: business_access_facts (business_id, fact, as_of NOT NULL, source, recorded_at), PK (business_id, fact), with a CHECK that refuses any fact that is not one of three derived shapes — so the column cannot hold a credential' },
+  { field: 'qbo_paid_by_2022', col: '—', note: 'who pays the QBO subscription; price_book_items.is_pass_through is the closest existing idea and it is a price-book fact, not a per-client one. The bundle calls this a 2022 roster hint', migration: '0110_qbo_paid_by — BUILT: qbo_payer enum (client|soto|unknown), businesses.qbo_paid_by NOT NULL DEFAULT unknown + qbo_paid_by_as_of. The 2022 values are NOT imported (Brian): every row stays unknown' },
 ];
-const fieldLines = ['trello field (file 04) | rows with a value | SAOS table.column | verdict | proposed migration (not built)'];
+const fieldLines = ['trello field (file 04) | rows with a value | SAOS table.column | verdict | migration'];
 for (const fm of FIELD_MAP) {
   const key = fm.field.match(/^([a-z0-9_]+)/)?.[1] ?? '';
   const filled = key ? files['04_business_services.csv'].filter((r) => (r[key] ?? '').trim()).length : 0;
