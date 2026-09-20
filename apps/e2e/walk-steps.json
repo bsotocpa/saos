@@ -7,7 +7,7 @@
         { "id": "A1", "text": "Add the business with its EIN, make it primary", "device": "laptop" },
         { "id": "A2", "text": "Business-tax quote against it, $0 deposit override with a reason, send", "device": "laptop" },
         { "id": "A3", "text": "Accept the quote, sign Schedule B, business onboarding form, upload a document", "device": "phone" },
-        { "id": "A4", "text": "Deliver the return PDF to the portal", "device": "laptop" },
+        { "id": "A4", "text": "Lock the estimate, walk the stages to internal review, deliver the return PDF to the portal", "device": "laptop" },
         { "id": "A5", "text": "My Returns shows it", "device": "phone" },
         { "id": "A6", "text": "Upload the signed 8879-CORP scan with its signed date and the PTIN holder", "device": "laptop" },
         { "id": "A7", "text": "Set the final fee, ready to file, filed with the PTIN holder", "device": "laptop" },
