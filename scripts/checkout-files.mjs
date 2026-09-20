@@ -32,10 +32,10 @@ const rows = [['path', 'needed by the new checkout', 'lives now', 'under the Dro
 for (const p of ignored) {
   if (/node_modules|\.next\/|^dist\/|tsbuildinfo|coverage/.test(p)) continue;
   const abs = resolve(repo, p);
-  const [needed, holds] = known[p] ?? [p.startsWith('migration-data/') ? 'no: legacy import inputs, finished' : 'unknown', p.startsWith('migration-data/') ? (p.includes('vaultwarden') ? 'a Vaultwarden export (12 items; the file says encrypted)' : 'legacy client data (Dubsado, Zoho, grant tracker, legal text)') : ''];
+  const [needed, holds] = known[p] ?? [p.startsWith('migration-data/') ? 'no: legacy import inputs, finished' : 'unknown', p.startsWith('migration-data/') ? (p.includes('vaultwarden') ? 'a Vaultwarden export (12 login items, encrypted: false; deleted 2026-09-20 under R19)' : 'legacy client data (Dubsado, Zoho, grant tracker, legal text)') : ''];
   let rotation = 'no';
   if (p === '.env' || p === '.env.production') rotation = `yes: ${envNames(p).filter(secretish).join(', ')}`;
-  if (p.includes('vaultwarden-import.json')) rotation = 'yes: every credential inside it (12 items)';
+  if (p.includes('vaultwarden-import.json')) rotation = 'yes: every credential inside it (6 of 12 items carried a password)';
   if (p === 'apps/e2e/.artifacts/') rotation = 'no (synthetic)';
   rows.push([p, needed, abs, under(abs) ? 'yes' : 'no', holds, rotation]);
 }

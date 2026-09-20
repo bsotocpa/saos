@@ -14,6 +14,12 @@ export MSYS_NO_PATHCONV=1
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO"
 
+# THE CHECKOUT NEVER SITS UNDER A CLOUD-SYNC ROOT (Brian, 2026-09-20, R19). A checkout inside
+# Dropbox, OneDrive or Google Drive ships .env.production and every ignored export to that service;
+# this refuses before anything is read. `--preflight-only` stops here (the sabotage runner's door).
+node scripts/check-sync-root.mjs
+if [ "${1:-}" = "--preflight-only" ]; then echo "deploy: preflight only, stopping before the receipt check"; exit 0; fi
+
 # THE PUSH REFUSES WITHOUT A GREEN ROOT-SUITE RUN ON THIS EXACT TREE (Brian, 2026-09-12). Twice in
 # one week "ran only the spec" reached the box. scripts/green-run.mjs: the root `npm test` writes a
 # receipt keyed to the tree hash; this refuses without one, or with a dirty tree (deploy ships HEAD).
