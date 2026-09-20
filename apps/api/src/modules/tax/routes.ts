@@ -12,7 +12,11 @@ import { AppError } from '../../types.ts';
 import { createEngagement } from '../engagements/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { computeComplexityScore } from './complexity.ts';
-import { TAX_STAGES, acceptanceStatus, legalNextStages, markDocumentsRequested, recordEfileResult, transitionStage, type TaxStage } from './pipeline.ts';
+import {
+  FILING_METHODS, MAILING_METHODS, PREPARER_ROLE_KEYS, TAX_STAGES, acceptanceStatus, applyNewReturnDefaults,
+  legalNextStages, markDocumentsRequested, recordEfileResult, recordJurisdictionMailing, soleActiveTaxPreparerId,
+  transitionStage, type TaxStage,
+} from './pipeline.ts';
 import { preparerQueue } from './queue.ts';
 import { todayChicago } from './deadlines.ts';
 import { returnTypeForItems } from './return-type.ts';
@@ -54,6 +58,14 @@ const TransitionBody = z.object({
    * assertJurisdictions in pipeline.ts — so a direct caller hears the same words.
    */
   jurisdictions: z.array(z.string().min(1).max(20)).max(60).optional(),
+  /**
+   * PAPER FILING IS PER JURISDICTION (Brian, 2026-09-20, ruling 15). Read only at 'filed': how each
+   * declared jurisdiction went out, from the select beside its row in the Mark filed modal. A
+   * jurisdiction left out takes the lane its YEAR implies (filingLane), which is the answer for
+   * every return that is not a mixed filing. What the map may contain is checked in one place —
+   * assertFilingMethods in pipeline.ts — so a direct caller hears the same words.
+   */
+  filingMethods: z.record(z.string().min(1).max(20), z.enum(FILING_METHODS)).optional(),
 });
 
 const EstimateBody = z.object({
@@ -88,12 +100,20 @@ const ComplexityBody = z.object({
   irsNotice: z.boolean().optional(),
 });
 
+/**
+ * THE RETIRED WET-SIGNATURE ROUTE. Both types are uploads now: the 8879 since 2026-09-12, the
+ * engagement letter since 2026-09-20. The type stays in the schema so a caller that still posts
+ * here is told where the door moved to, in words, instead of getting a shape error.
+ */
 const WetSignatureBody = z.object({
   type: z.enum(['engagement_letter', 'f8879']),
   note: z.string().optional(),
   /** The scanned signed document (uploaded to Signed Authorizations first). */
   documentId: z.uuid().optional(),
 });
+
+/** Who a return may be assigned to: a tax preparer, or the CEO working a return himself. */
+const AssignPreparerBody = z.object({ staffId: z.uuid() });
 
 const ListQuery = z.object({
   stage: z.enum(TAX_STAGES).optional(),
@@ -138,14 +158,34 @@ async function loadTaxEngagement(app: FastifyInstance, id: string) {
 export interface QuotedRange { min_cents: number; max_cents: number; price_book_version: number }
 
 /**
- * THE QUOTED RANGE A FINAL FEE IS MEASURED AGAINST (Brian, 2026-09-19, item 2).
+ * THE QUOTED RANGE A FINAL FEE IS MEASURED AGAINST (Brian, 2026-09-19 item 2; 2026-09-20 ruling 13).
  *
  * Once the estimate is locked, the locked range IS the range: that is the number the client was
- * given and it no longer moves. Before that, the accepted quote's line for this return: the
- * engagement's scope snapshot (#47) names the base return item, and the price book in force
- * prices it — a flat item is a range of one number. The version reported is the one in force
- * today, which is what the fee is read against. A return with neither (opened by hand, no scope
- * rows) has no range, and a fee on it needs no reason for being outside one.
+ * given and it no longer moves.
+ *
+ * Before that: THE WHOLE ACCEPTED QUOTE FOR THIS RETURN, SCHEDULES INCLUDED. It used to be the base
+ * return line alone, which made every quote with a Schedule C, an extra state or the prior-year
+ * surcharge on it read LOW — so the honest final fee, the exact figure the client accepted, landed
+ * "outside the quoted range" and asked the preparer to justify quoted scope as if it were scope
+ * creep. Min of mins, max of maxes; a flat line contributes its one amount to both ends.
+ *
+ * WHICH ROWS, AND WHY THOSE. The engagement's own scope snapshot (#47) — not `quote_line_items`.
+ * The snapshot IS the accepted quote's lines, copied by value at acceptance, and #47 is explicit
+ * that a quote edited next week must not reach an agreement already made: reading the live quote
+ * lines for a total is the exact join that migration forbids. The snapshot carries the item code,
+ * the quantity and the version that was pinned when the client accepted.
+ *
+ * AT WHICH PRICES. The version PINNED ON THE SNAPSHOT, which is the quote's price lock — never the
+ * book in force. A price rise between acceptance and filing must not widen the range the client was
+ * quoted (and a price cut must not narrow it): the version's rows never move, because a price
+ * change creates a NEW version and edits only that one (admin/routes.ts). A ranged item contributes
+ * its min and max, a flat item its amount, each times the quantity on the line; a pass-through
+ * (client software billed at cost) contributes nothing, because it is shown to the client and is
+ * never our fee.
+ *
+ * THE FALLBACK, only when no accepted quote exists: the base return item under the book in force —
+ * what a scope snapshot written by hand, or a return with no quote behind it, has always read. A
+ * return with neither has no range, and a fee on it needs no reason for being outside one.
  */
 export async function quotedRangeFor(
   app: FastifyInstance,
@@ -155,6 +195,8 @@ export async function quotedRangeFor(
   if (te.estimated_fee_min_cents !== null && te.estimated_fee_max_cents !== null) {
     return { min_cents: te.estimated_fee_min_cents, max_cents: te.estimated_fee_max_cents, price_book_version: version.versionNumber };
   }
+  const quoted = await acceptedQuoteRange(app, te.engagement_id);
+  if (quoted) return quoted;
   const scope = await app.db.query<{ item_code: string }>(
     `SELECT item_code FROM engagement_scope_items WHERE engagement_id = $1 ORDER BY sort_order`,
     [te.engagement_id]
@@ -172,6 +214,59 @@ export async function quotedRangeFor(
   const max = ranged ? it.price_max_cents : it.amount_cents;
   if (min === null || max === null) return null;
   return { min_cents: min, max_cents: max, price_book_version: version.versionNumber };
+}
+
+/**
+ * The sum of the accepted quote's lines for this engagement, at the prices that quote locked.
+ *
+ * `source_quote_id` is read as PROVENANCE — does an accepted quote stand behind this scope? — and
+ * never for amounts; every figure comes from the snapshot rows and the version pinned on them.
+ * Null when no accepted quote stands behind the scope, or when nothing on it carries a price at
+ * all, and the caller falls back to the base item under the book in force.
+ */
+async function acceptedQuoteRange(app: FastifyInstance, engagementId: string): Promise<QuotedRange | null> {
+  const { rows } = await app.db.query<{
+    quantity: string; unit_cents: number | null; line_cents: number | null; is_pass_through: boolean;
+    version_number: number; amount_cents: number | null; price_min_cents: number | null; price_max_cents: number | null;
+  }>(
+    `SELECT s.quantity::text AS quantity, s.unit_cents, s.line_cents, s.is_pass_through,
+            v.version_number, i.amount_cents, i.price_min_cents, i.price_max_cents
+       FROM engagement_scope_items s
+       JOIN quotes q ON q.id = s.source_quote_id AND q.status = 'accepted'
+       JOIN price_book_versions v ON v.id = s.price_book_version_id
+       LEFT JOIN price_book_items i ON i.version_id = s.price_book_version_id AND i.item_code = s.item_code
+      WHERE s.engagement_id = $1
+      ORDER BY s.sort_order`,
+    [engagementId]
+  );
+  let min = 0;
+  let max = 0;
+  let counted = 0;
+  for (const r of rows) {
+    if (r.is_pass_through) continue;
+    const qty = Number(r.quantity);
+    if (r.price_min_cents !== null && r.price_max_cents !== null) {
+      min += Math.round(r.price_min_cents * qty);
+      max += Math.round(r.price_max_cents * qty);
+      counted++;
+      continue;
+    }
+    // A flat line: what the client agreed to on that line, else the book's amount for it.
+    const flat =
+      r.line_cents !== null
+        ? r.line_cents
+        : r.unit_cents !== null
+          ? Math.round(r.unit_cents * qty)
+          : r.amount_cents !== null
+            ? Math.round(r.amount_cents * qty)
+            : null;
+    if (flat === null) continue;
+    min += flat;
+    max += flat;
+    counted++;
+  }
+  if (counted === 0) return null;
+  return { min_cents: min, max_cents: max, price_book_version: rows[0]!.version_number };
 }
 
 export function registerTaxRoutes(app: FastifyInstance): void {
@@ -240,7 +335,13 @@ export function registerTaxRoutes(app: FastifyInstance): void {
        VALUES ($1, 'intake_started', $2, 'staff', 'created')`,
       [id, actor.id]
     );
-    return reply.code(201).send({ id, engagementId: parent.id });
+    /*
+     * WHAT THE NEW RETURN ALREADY HOLDS (Brian, 2026-09-20): the engagement letter the client has
+     * already signed, and the firm's only tax preparer when there is only one. Both creation paths
+     * — here and quote acceptance — go through the same helper so they cannot drift.
+     */
+    const defaults = await applyNewReturnDefaults(app, id, b.contactId);
+    return reply.code(201).send({ id, engagementId: parent.id, ...defaults });
   });
 
   /**
@@ -320,7 +421,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       f8879_document_id: string | null; f8879_signed_at: Date | null;
       estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null;
     };
-    const [quotedRange, jurisdictions, assigned, staffOptions] = await Promise.all([
+    const [quotedRange, jurisdictions, assigned, staffOptions, solePreparer] = await Promise.all([
       quotedRangeFor(app, te),
       // The Mark filed modal's jurisdiction list: what the address suggests, and what the return
       // already declares (Brian, 2026-09-19 evening, ruling 2).
@@ -328,10 +429,16 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       te.preparer_id
         ? app.db.query<{ id: string; name: string }>(`SELECT id, display_name AS name FROM staff WHERE id = $1`, [te.preparer_id])
         : Promise.resolve({ rows: [] as Array<{ id: string; name: string }> }),
+      // One list, two selects: who may hold the PTIN at filing, and who the return may be assigned
+      // to (Brian, 2026-09-20). The same rule in both places, read from the roles table.
       app.db.query<{ id: string; name: string }>(
         `SELECT s.id, s.display_name AS name FROM staff s JOIN roles r ON r.id = s.role_id
-          WHERE s.is_active AND r.key IN ('tax_preparer', 'ceo') ORDER BY s.display_name`
+          WHERE s.is_active AND r.key = ANY($1) ORDER BY s.display_name`,
+        [PREPARER_ROLE_KEYS]
       ),
+      // The firm's only tax preparer, when there is one: what the Assign preparer select opens on
+      // for a return that has nobody yet.
+      soleActiveTaxPreparerId(app),
     ]);
     return {
       taxEngagement: rows[0],
@@ -340,9 +447,20 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       default_jurisdictions: jurisdictions.defaultJurisdictions,
       declared_jurisdictions: jurisdictions.declaredJurisdictions,
       jurisdictions_awaiting: jurisdictions.awaiting,
+      /*
+       * PAPER FILING (ruling 15): each declared jurisdiction with how it was filed and what has
+       * answered for it — an acceptance date on an e-file row, a mailing on a paper one — so the row
+       * can read "Mailed <date>" for paper and "Accepted <date>" for e-file and never the wrong one.
+       * `default_filing_method` is the lane the YEAR implies: what the modal's per-jurisdiction
+       * select opens on, derived here rather than re-derived in Ops.
+       */
+      jurisdictions: jurisdictions.rows,
+      default_filing_method: jurisdictions.defaultFilingMethod,
+      paper_awaiting_mailing: jurisdictions.paperAwaitingMailing,
       legal_next_stages: legalNextStages(te.stage),
       signed_authorization_on_file: Boolean(te.f8879_document_id && te.f8879_signed_at),
       assigned_preparer: assigned.rows[0] ?? null,
+      sole_tax_preparer_id: solePreparer,
       staff_options: staffOptions.rows,
     };
   });
@@ -351,10 +469,45 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     const id = z.uuid().parse(request.params.id);
     const b = TransitionBody.parse(request.body);
     const result = await transitionStage(app, actorOf(request), id, b.toStage, {
-      note: b.note, preparerPtinHolderId: b.preparerPtinHolderId, jurisdictions: b.jurisdictions, ...meta(request),
+      note: b.note, preparerPtinHolderId: b.preparerPtinHolderId, jurisdictions: b.jurisdictions,
+      filingMethods: b.filingMethods, ...meta(request),
     });
     return { status: 'ok', ...result };
   });
+
+  /**
+   * THE PAPER LANE'S ACCEPTANCE (Brian, 2026-09-20, ruling 15): the mailing of one declared paper
+   * jurisdiction. A paper filing gets no acknowledgment — there is nothing to wait for — so the
+   * recorded mailing is what satisfies the jurisdiction, and completion follows when it was the last
+   * one the return waited on. The receipt scan is uploaded through /documents first (category
+   * mailing_receipts) and arrives here as a document id; no bytes come through this route.
+   */
+  app.post<{ Params: { id: string; jurisdiction: string } }>(
+    '/tax-engagements/:id/jurisdictions/:jurisdiction/mailing',
+    manage,
+    async (request) => {
+      const id = z.uuid().parse(request.params.id);
+      const jurisdiction = z.string().min(1).max(20).parse(request.params.jurisdiction);
+      const b = z.object({
+        mailedOn: z.iso.date(),
+        method: z.enum(MAILING_METHODS),
+        trackingNumber: z.string().max(60).optional(),
+        receiptDocumentId: z.uuid().optional(),
+        asOf: z.iso.date().optional(), // clock injection for tests
+      }).parse(request.body);
+      const out = await recordJurisdictionMailing(
+        app,
+        { staffId: request.staff!.id, label: request.staff!.fullName, ...meta(request) },
+        id,
+        jurisdiction,
+        {
+          mailedOn: b.mailedOn, method: b.method, trackingNumber: b.trackingNumber ?? null,
+          receiptDocumentId: b.receiptDocumentId ?? null, today: b.asOf,
+        }
+      );
+      return { status: 'ok', ...out };
+    }
+  );
 
   // v4.3 flow 1: record an e-file acknowledgement. Accepted → completed once every
   // jurisdiction has accepted (2026-09-19); rejected → re-queued with the perfection clock + owned fix task.
@@ -511,34 +664,58 @@ export function registerTaxRoutes(app: FastifyInstance): void {
   app.post<{ Params: { id: string } }>('/tax-engagements/:id/signatures/wet', manage, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const b = WetSignatureBody.parse(request.body);
-    const te = await loadTaxEngagement(app, id);
+    await loadTaxEngagement(app, id);
 
     if (b.type === 'f8879') {
       // 2026-09-12: the signed 8879 is the uploaded document. This route no longer stamps it.
       throw new AppError(410, 'f8879_is_an_upload', 'Upload the wet-signed, scanned 8879 to the return under Signed Authorizations, with the signed date and the preparer of record. That upload authorizes the return.');
     }
-    if (b.type === 'engagement_letter') {
-      await app.db.query(
-        `UPDATE tax_engagements SET engagement_letter_signed_at = COALESCE(engagement_letter_signed_at, now()) WHERE id = $1`,
-        [id]
-      );
-      await app.db.query(`UPDATE contacts SET engagement_letter_status = 'signed' WHERE id = $1`, [te.contact_id]);
-    }
-    // Completed envelope record — one queryable source of signature status,
-    // wet or remote (the signed scan links in when provided).
-    await app.db.query(
-      `INSERT INTO signature_envelopes
-         (contact_id, tax_engagement_id, type, status, signature_method, signed_document_id, completed_at, created_by_staff_id)
-       VALUES ($1, $2, $3::envelope_type, 'completed', 'in_person_wet', $4, now(), $5)`,
-      [te.contact_id, id, 'engagement_letter', b.documentId ?? null, request.staff!.id]
+    /*
+     * 2026-09-20: so is the engagement letter. A bare POST that stamped a compliance gate with
+     * now() and no document behind it is the same claim the 8879 rule forbids — nothing on file,
+     * nothing to read, no date the client actually signed. The client who signs in the portal is
+     * stamped by that signature; the client who signs on paper is stamped by the scan.
+     */
+    throw new AppError(
+      410,
+      'engagement_letter_is_an_upload',
+      'Upload the signed, scanned engagement letter to the return under Signed Authorizations, with the date the client signed it. That upload stamps the letter on the return; a client who signed the packet in the portal is stamped by that signature.'
     );
+  });
+
+  /*
+   * WHO PREPARES THIS RETURN (Brian, 2026-09-20). A return assigned to nobody sits in no queue: it
+   * is on no My Tasks, no owner rollup asks after it, and the first person to notice is the client.
+   * The row names a preparer, and preparation cannot start until it does (pipeline gate 2b).
+   *
+   * Assignable: an ACTIVE staff member holding tax_preparer, or the CEO working a return himself —
+   * the same set the PTIN-holder select offers, refused by name and role rather than by silence.
+   */
+  app.post<{ Params: { id: string } }>('/tax-engagements/:id/preparer', manage, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = AssignPreparerBody.parse(request.body);
+    const te = await loadTaxEngagement(app, id);
+    const { rows } = await app.db.query<{ id: string; name: string; role_key: string; is_active: boolean }>(
+      `SELECT s.id, s.display_name AS name, r.key AS role_key, s.is_active
+         FROM staff s JOIN roles r ON r.id = s.role_id WHERE s.id = $1`,
+      [b.staffId]
+    );
+    const s = rows[0];
+    if (!s) throw new AppError(404, 'staff_not_found', 'That staff member does not exist.');
+    if (!s.is_active) {
+      throw new AppError(409, 'preparer_inactive', `${s.name} is not an active staff member; a return is prepared by somebody who still works here.`);
+    }
+    if (!PREPARER_ROLE_KEYS.includes(s.role_key as (typeof PREPARER_ROLE_KEYS)[number])) {
+      throw new AppError(409, 'preparer_wrong_role', `${s.name} holds the ${s.role_key} role; a return is prepared by a tax preparer.`);
+    }
+    await app.db.query(`UPDATE tax_engagements SET preparer_id = $2 WHERE id = $1`, [id, s.id]);
     await writeAudit(app.db, {
       actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
-      action: 'signature.recorded_wet', objectType: 'tax_engagement', objectId: id,
+      action: 'tax_engagement.preparer_assigned', objectType: 'tax_engagement', objectId: id,
       contactId: te.contact_id, ...meta(request),
-      details: { type: b.type, note: b.note ?? null },
+      details: { preparer_id: s.id, preparer_role: s.role_key },
     });
-    return { status: 'ok' };
+    return { status: 'ok', preparer: { id: s.id, name: s.name } };
   });
 
   // Document-request creation (automation 4): itemized request → client email

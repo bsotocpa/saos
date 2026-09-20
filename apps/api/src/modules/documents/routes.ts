@@ -16,7 +16,11 @@ import { todayChicago } from '../tax/deadlines.ts';
 
 const CLIENT_CATEGORIES = ['tax_documents', 'business_records', 'id_verification', 'irs_notices', 'other'] as const;
 // entity_filings (0094): formation papers, SOS filings, EIN letters, annual reports — Laura's category.
-const STAFF_CATEGORIES = [...CLIENT_CATEGORIES, 'signed_authorizations', 'return_deliverable', 'entity_filings'] as const;
+// mailing_receipts (0113): the certified-mail receipt for a paper filing — proof a return went out,
+// which is neither a tax document nor a signed authorization (ruling 15).
+const STAFF_CATEGORIES = [
+  ...CLIENT_CATEGORIES, 'signed_authorizations', 'return_deliverable', 'entity_filings', 'mailing_receipts',
+] as const;
 
 const ClientUploadFields = z.object({
   category: z.enum(CLIENT_CATEGORIES),
@@ -33,6 +37,12 @@ const StaffUploadFields = z.object({
   /** A signed 8879 (category signed_authorizations + taxEngagementId): the date on the signature and whose PTIN is on it. */
   signedOn: z.iso.date().optional(),
   preparerPtinHolderId: z.uuid().optional(),
+  /**
+   * A signed engagement letter on paper (category signed_authorizations + taxEngagementId): the
+   * date the CLIENT signed it. Its own field, not `signedOn`, because one upload is one document —
+   * a single date field would leave the route guessing which paper it just received.
+   */
+  engagementLetterSignedOn: z.iso.date().optional(),
 });
 
 const StatusBody = z.object({
@@ -248,6 +258,18 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         });
         signed8879 = true;
       }
+      /*
+       * THE ENGAGEMENT LETTER SIGNED ON PAPER (Brian, 2026-09-20): the same door, for the client who
+       * signed across the desk instead of in the portal. The upload stamps gate 1 on the return.
+       */
+      let signedEngagementLetter = false;
+      if (fields.category === 'signed_authorizations' && fields.taxEngagementId && fields.engagementLetterSignedOn) {
+        const { recordSignedEngagementLetter } = await import('../tax/signed-8879.ts');
+        await recordSignedEngagementLetter(app, { staffId: staff.id, label: staff.fullName, ip: request.ip, userAgent: request.headers['user-agent'] ?? null }, {
+          taxEngagementId: fields.taxEngagementId, documentId: result.id, signedOn: fields.engagementLetterSignedOn,
+        });
+        signedEngagementLetter = true;
+      }
       // Return delivery: notify the client + advance the stage (MP ATX handoff).
       let stageMoved = false;
       if (fields.category === 'return_deliverable' && fields.taxEngagementId) {
@@ -258,7 +280,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         );
         stageMoved = delivered.stageMoved;
       }
-      return reply.code(201).send({ ...result, stageMoved, signed8879 });
+      return reply.code(201).send({ ...result, stageMoved, signed8879, signedEngagementLetter });
     }
   );
 

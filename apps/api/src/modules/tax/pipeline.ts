@@ -15,6 +15,7 @@ import { AppError } from '../../types.ts';
 import { alertRecipientForRole, firstActiveByRole, notifyOnce } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { addDays, daysBetween, todayChicago, calendarDay } from './deadlines.ts';
+import { certifiedMailFollowUp, filingLane } from './resolution.ts';
 import { invoiceForFiledEngagement } from '../billing/service.ts';
 
 export const TAX_STAGES = [
@@ -83,8 +84,111 @@ interface GateRow {
   f8879_signed_at: Date | null;
   f8879_document_id: string | null;
   estimate_locked_at: Date | null;
+  preparer_id: string | null;
   filed_date: string | null;
   contact_id: string;
+}
+
+/*
+ * WHAT A NEW RETURN ALREADY HOLDS (Brian, 2026-09-20).
+ *
+ * Two things a return used to start without and somebody had to remember:
+ *
+ *   THE ENGAGEMENT LETTER. The client signs the packet in the portal once; that signature covers
+ *   the relationship, so every return under it is covered and a return opened next week is covered
+ *   too. It used to cover none of them on the return record — the packet set the contact's status
+ *   and pipeline gate 1 reads the RETURN's timestamp, so the first move past Scheduled was blocked
+ *   on a letter the client had already signed. A return created while the letter stands inherits
+ *   the stamp here.
+ *
+ *   THE PREPARER. A firm with one tax preparer has one answer to "who prepares this", and asking
+ *   is ceremony. When exactly one active tax preparer exists, a new return gets them. Two or more
+ *   and nothing is guessed: the return starts with no preparer and the preparation gate below says
+ *   so at the moment it matters.
+ *
+ * Called by both creation paths — the staff route and quote acceptance — right after the row
+ * exists, so neither can drift from the other.
+ */
+
+/** The roles a return may be assigned to: a tax preparer, or the CEO working a return himself. */
+export const PREPARER_ROLE_KEYS = ['tax_preparer', 'ceo'] as const;
+
+/**
+ * THE LETTER STANDS. `contacts.engagement_letter_status` is the one flag every gate already reads,
+ * and 'signed' is the only value that means signed: the enum has no superseded state and no path
+ * voids a signature once it is recorded (a signed packet refuses void; a change order withdraws
+ * the ENGAGEMENT, not the Master). So a status that is anything but 'signed' inherits nothing.
+ */
+export async function engagementLetterStands(app: FastifyInstance, contactId: string): Promise<boolean> {
+  const { rows } = await app.db.query<{ status: string }>(
+    `SELECT engagement_letter_status::text AS status FROM contacts WHERE id = $1`,
+    [contactId]
+  );
+  return rows[0]?.status === 'signed';
+}
+
+/** The single active tax preparer, when there is exactly one; null when there are none or several. */
+export async function soleActiveTaxPreparerId(app: FastifyInstance): Promise<string | null> {
+  const { rows } = await app.db.query<{ id: string }>(
+    `SELECT s.id FROM staff s JOIN roles r ON r.id = s.role_id
+      WHERE s.is_active AND r.key = 'tax_preparer' ORDER BY s.id LIMIT 2`
+  );
+  return rows.length === 1 ? rows[0]!.id : null;
+}
+
+/**
+ * Stamp a just-created return with what it already holds: the standing engagement letter, and the
+ * firm's only tax preparer when there is only one. Neither overwrites a value the caller set.
+ */
+export async function applyNewReturnDefaults(
+  app: FastifyInstance,
+  taxEngagementId: string,
+  contactId: string
+): Promise<{ engagementLetterInherited: boolean; preparerId: string | null }> {
+  const inherit = await engagementLetterStands(app, contactId);
+  if (inherit) {
+    await app.db.query(
+      `UPDATE tax_engagements SET engagement_letter_signed_at = COALESCE(engagement_letter_signed_at, now()) WHERE id = $1`,
+      [taxEngagementId]
+    );
+  }
+  const sole = await soleActiveTaxPreparerId(app);
+  if (sole) {
+    await app.db.query(
+      `UPDATE tax_engagements SET preparer_id = COALESCE(preparer_id, $2) WHERE id = $1`,
+      [taxEngagementId, sole]
+    );
+  }
+  const { rows } = await app.db.query<{ preparer_id: string | null }>(
+    `SELECT preparer_id FROM tax_engagements WHERE id = $1`,
+    [taxEngagementId]
+  );
+  return { engagementLetterInherited: inherit, preparerId: rows[0]?.preparer_id ?? null };
+}
+
+/**
+ * THE LETTER THE CLIENT ALREADY SIGNED, ON EVERY RETURN IT COVERS (Brian, 2026-09-20). One packet
+ * signature, N returns: the stamp lands on every tax return belonging to the signing CONTACT that
+ * does not already carry one. Keyed on the contact and not on an engagement id because that is
+ * what the packet is scoped to — `engagement_packets` carries contact_id and schedule codes, never
+ * an engagement — and the Master it executes is the agreement with the client, which every
+ * engagement of theirs incorporates. Returns the ids stamped so the caller can record them.
+ */
+export async function stampEngagementLetterOnContactReturns(
+  app: FastifyInstance,
+  contactId: string
+): Promise<string[]> {
+  const { rows } = await app.db.query<{ id: string }>(
+    `UPDATE tax_engagements te
+        SET engagement_letter_signed_at = now()
+       FROM engagements e
+      WHERE e.id = te.engagement_id
+        AND e.contact_id = $1
+        AND te.engagement_letter_signed_at IS NULL
+      RETURNING te.id`,
+    [contactId]
+  );
+  return rows.map((r) => r.id);
 }
 
 export async function transitionStage(
@@ -96,11 +200,17 @@ export async function transitionStage(
     note?: string | undefined; ip?: string | null; userAgent?: string | null; preparerPtinHolderId?: string | undefined;
     /** Only read at 'filed': the jurisdictions this return declares (federal plus states). */
     jurisdictions?: readonly string[] | undefined;
+    /**
+     * Only read at 'filed': how each declared jurisdiction was filed, e-file or paper (R15). What
+     * the modal's per-jurisdiction select sends. A jurisdiction left out takes the lane the return's
+     * YEAR implies, which is the answer for every return that is not a mixed filing.
+     */
+    filingMethods?: Readonly<Record<string, FilingMethod>> | undefined;
   } = {}
 ): Promise<{ from: TaxStage; to: TaxStage; jurisdictions?: string[] }> {
   const { rows } = await app.db.query<GateRow>(
     `SELECT te.id, te.stage, te.engagement_letter_signed_at, te.f8879_signed_at, te.f8879_document_id,
-            te.estimate_locked_at, te.filed_date, e.contact_id
+            te.estimate_locked_at, te.preparer_id, te.filed_date, e.contact_id
      FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
      WHERE te.id = $1`,
     [taxEngagementId]
@@ -134,6 +244,19 @@ export async function transitionStage(
       'Blocked: the estimated fee range is not locked. Lock the estimate to unlock preparation (automation 8).'
     );
   }
+  /*
+   * Gate 2b — A RETURN IS PREPARED BY A PERSON (Brian, 2026-09-20). Preparation starting with
+   * nobody assigned is how a return sits in a queue that belongs to no one: it appears on no My
+   * Tasks, no owner rollup asks after it, and the first person to notice is the client. Named
+   * before the work starts, not after it is late.
+   */
+  if (toStage === 'in_preparation' && !row.preparer_id) {
+    throw new AppError(
+      409,
+      'preparer_required',
+      'Blocked: no preparer is assigned to this return. Assign the preparer before preparation starts, so the work sits in somebody\'s queue.'
+    );
+  }
   // Gate 3 — no return files without a signed 8879 ON FILE: the uploaded scan, not a timestamp (2026-09-12).
   if (toStage === 'filed' && (!row.f8879_signed_at || !row.f8879_document_id)) {
     throw new AppError(
@@ -160,7 +283,8 @@ export async function transitionStage(
     }
     // Validated before anything is written: a bad list must not leave the return filed with the
     // wrong jurisdictions declared, or filed with none.
-    if (opts.jurisdictions) assertJurisdictions(opts.jurisdictions);
+    const list = opts.jurisdictions ? assertJurisdictions(opts.jurisdictions) : null;
+    if (opts.filingMethods) assertFilingMethods(opts.filingMethods, list);
   }
   await app.db.query(
     `UPDATE tax_engagements
@@ -175,7 +299,8 @@ export async function transitionStage(
    * return says where it went, in the preparer's words, at the moment it went — not derived from an
    * address afterwards. Completion then reads the list (acceptanceStatus).
    */
-  const declared = toStage === 'filed' ? await declareJurisdictions(app, taxEngagementId, opts.jurisdictions) : null;
+  const declared =
+    toStage === 'filed' ? await declareJurisdictions(app, taxEngagementId, opts.jurisdictions, opts.filingMethods) : null;
   await app.db.query(
     `INSERT INTO engagement_stage_history (tax_engagement_id, stage, changed_by_staff_id, waiting_on, note)
      VALUES ($1, $2::tax_stage, $3, $4::waiting_on, $5)`,
@@ -264,6 +389,71 @@ export function assertJurisdictions(raw: readonly string[]): string[] {
   return ['federal', ...list.filter((j) => j !== 'federal').sort()];
 }
 
+/*
+ * ═══ PAPER FILING (Brian, 2026-09-20, ruling 15) ════════════════════════════════════════════════
+ *
+ * HOW a jurisdiction was filed is a property of the jurisdiction, not of the return. One return
+ * goes to the IRS electronically and to a state on paper, because that state will not take it any
+ * other way; the return has one filing and two methods.
+ *
+ * And the two methods are satisfied by DIFFERENT FACTS. An e-file jurisdiction is satisfied by an
+ * acknowledgment. A paper one never gets an acknowledgment — there is nothing to wait for and no
+ * date that will ever arrive — so it is satisfied by a recorded MAILING: the day it went out, how
+ * it went, and the tracking or the receipt where those exist. Before this, a return declared on
+ * paper waited forever on an acceptance that does not exist, which is the same defect ruling 2
+ * removed for the no-income-tax states, one lane over.
+ */
+
+/** How a jurisdiction was filed. Derived from the year by default (filingLane), settable per row. */
+export const FILING_METHODS = ['efile', 'paper'] as const;
+export type FilingMethod = (typeof FILING_METHODS)[number];
+
+/** What was actually done with a paper filing, in the words the preparer would use. */
+export const MAILING_METHODS = ['certified', 'first_class', 'hand_delivered', 'mailed_by_client'] as const;
+export type MailingMethod = (typeof MAILING_METHODS)[number];
+
+/** Only a certified mailing is chased: it has tracking, so there is something to check. */
+export const CHASED_MAILING_METHOD: MailingMethod = 'certified';
+
+/**
+ * The per-jurisdiction methods a filing declares, validated against the list it declares them for.
+ * A method for a jurisdiction that is not on the list is refused rather than dropped: the preparer
+ * said something about a jurisdiction this return does not file in, and silently ignoring it is how
+ * a mixed filing ends up recorded as all-electronic.
+ */
+export function assertFilingMethods(
+  methods: Readonly<Record<string, FilingMethod>>,
+  jurisdictions: readonly string[] | null
+): Record<string, FilingMethod> {
+  const out: Record<string, FilingMethod> = {};
+  for (const [raw, method] of Object.entries(methods)) {
+    const jurisdiction = raw === 'federal' ? 'federal' : raw.trim().toUpperCase();
+    if (!(FILING_METHODS as readonly string[]).includes(method)) {
+      throw new AppError(400, 'filing_method_invalid', `'${method}' is not a filing method: say 'efile' or 'paper'.`);
+    }
+    if (jurisdictions && !jurisdictions.includes(jurisdiction)) {
+      throw new AppError(
+        400,
+        'filing_method_undeclared_jurisdiction',
+        `${jurisdiction} carries a filing method but is not on the jurisdiction list (${jurisdictions.join(', ')}). Declare it, or drop the method.`
+      );
+    }
+    out[jurisdiction] = method;
+  }
+  return out;
+}
+
+/** One declared jurisdiction, with how it was filed and what has answered for it. */
+export interface DeclaredJurisdiction {
+  jurisdiction: string;
+  filingMethod: FilingMethod;
+  acceptedOn: string | null;
+  mailedOn: string | null;
+  mailingMethod: MailingMethod | null;
+  trackingNumber: string | null;
+  receiptDocumentId: string | null;
+}
+
 export interface AcceptanceStatus {
   /** What the address suggests, before the preparer edits it. */
   defaultJurisdictions: string[];
@@ -271,8 +461,17 @@ export interface AcceptanceStatus {
   declaredJurisdictions: string[];
   /** What completion is measured against: the declared list, or the defaults while nothing is declared. */
   expected: string[];
+  /** The e-file acceptances: a jurisdiction that ACKNOWLEDGED. A paper row is never in here. */
   accepted: string[];
+  /** What has answered at all: an acceptance on an e-file row, a recorded mailing on a paper one. */
+  satisfied: string[];
   awaiting: string[];
+  /** The declared rows in canonical order, each with its method and its dates. */
+  rows: DeclaredJurisdiction[];
+  /** The lane the return's YEAR implies: what an undeclared method falls back to, and what the modal opens on. */
+  defaultFilingMethod: FilingMethod;
+  /** Declared on paper with no mailing recorded — each one needs a Record mailing before completion. */
+  paperAwaitingMailing: string[];
   /** Compatibility: the summary columns every other reader still uses. */
   federalAcceptedOn: string | null;
   stateAcceptedOn: string | null;
@@ -297,15 +496,22 @@ export interface AcceptanceStatus {
  * (federal_accepted_on, and state_accepted_on when state_accepted_code is an expected state).
  * An acknowledgment for a jurisdiction the return does not declare is never counted — it is
  * surfaced for review instead (see ingestReport).
+ *
+ * SATISFIED, NOT ACCEPTED (Brian, 2026-09-20, ruling 15). A PAPER jurisdiction has no
+ * acknowledgment to wait for, so what satisfies it is a recorded mailing. `accepted` stays what it
+ * says — the e-file acknowledgments — and `awaiting` is measured against `satisfied`, which is the
+ * acceptance on an e-file row and the mailing on a paper one. A paper row is never reported as
+ * accepted anywhere, because nobody accepted anything.
  */
 export async function acceptanceStatus(
   app: FastifyInstance,
   taxEngagementId: string
 ): Promise<AcceptanceStatus> {
   const { rows } = await app.db.query<{
+    tax_year: number;
     federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null; derived_state: string | null;
   }>(
-    `SELECT te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
+    `SELECT te.tax_year, te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
             CASE WHEN e.business_id IS NOT NULL THEN b.state ELSE c.state END AS derived_state
        FROM tax_engagements te
        JOIN engagements e ON e.id = te.engagement_id
@@ -317,29 +523,59 @@ export async function acceptanceStatus(
   const r = rows[0];
   if (!r) throw new AppError(404, 'not_found', 'Tax engagement not found.');
   const defaults = defaultJurisdictions(r.derived_state);
+  /*
+   * THE LANE THE YEAR IMPLIES. filingLane is the authority (CLAUDE.md: the filing method DERIVES
+   * from the year, staff never pick the lane) and a row that says nothing reads as that lane rather
+   * than as e-file — a 2021 return whose row was written by anything but the filing route must not
+   * claim a lane 2021 cannot use.
+   */
+  const defaultFilingMethod: FilingMethod = filingLane(r.tax_year);
   // Federal first, then the states alphabetically: the order the modal and every note read in.
-  const decl = await app.db.query<{ jurisdiction: string; accepted_on: string | null }>(
-    `SELECT jurisdiction, accepted_on::text AS accepted_on FROM tax_engagement_jurisdictions
+  const decl = await app.db.query<{
+    jurisdiction: string; accepted_on: string | null; filing_method: string | null;
+    mailed_on: string | null; mailing_method: string | null; tracking_number: string | null; receipt_document_id: string | null;
+  }>(
+    `SELECT jurisdiction, accepted_on::text AS accepted_on, filing_method,
+            mailed_on::text AS mailed_on, mailing_method, tracking_number, receipt_document_id
+       FROM tax_engagement_jurisdictions
       WHERE tax_engagement_id = $1 ORDER BY (jurisdiction <> 'federal'), jurisdiction`,
     [taxEngagementId]
   );
-  const declaredJurisdictions = decl.rows.map((d) => d.jurisdiction);
+  const declared: DeclaredJurisdiction[] = decl.rows.map((d) => ({
+    jurisdiction: d.jurisdiction,
+    filingMethod: (d.filing_method as FilingMethod | null) ?? defaultFilingMethod,
+    acceptedOn: d.accepted_on,
+    mailedOn: d.mailed_on,
+    mailingMethod: d.mailing_method as MailingMethod | null,
+    trackingNumber: d.tracking_number,
+    receiptDocumentId: d.receipt_document_id,
+  }));
+  const declaredJurisdictions = declared.map((d) => d.jurisdiction);
   const expected = declaredJurisdictions.length > 0 ? declaredJurisdictions : defaults;
   const stateCode = normaliseState(r.state_accepted_code);
+  const summaryAccepted = [
+    ...(r.federal_accepted_on ? ['federal'] : []),
+    ...(r.state_accepted_on && stateCode && expected.includes(stateCode) ? [stateCode] : []),
+  ];
   const accepted =
+    declaredJurisdictions.length > 0 ? declared.filter((d) => d.acceptedOn).map((d) => d.jurisdiction) : summaryAccepted;
+  const satisfied =
     declaredJurisdictions.length > 0
-      ? decl.rows.filter((d) => d.accepted_on).map((d) => d.jurisdiction)
-      : [
-          ...(r.federal_accepted_on ? ['federal'] : []),
-          ...(r.state_accepted_on && stateCode && expected.includes(stateCode) ? [stateCode] : []),
-        ];
-  const awaiting = expected.filter((j) => !accepted.includes(j));
+      ? declared
+          .filter((d) => (d.filingMethod === 'paper' ? d.mailedOn !== null : d.acceptedOn !== null))
+          .map((d) => d.jurisdiction)
+      : summaryAccepted;
+  const awaiting = expected.filter((j) => !satisfied.includes(j));
   return {
     defaultJurisdictions: defaults,
     declaredJurisdictions,
     expected,
     accepted,
+    satisfied,
     awaiting,
+    rows: declared,
+    defaultFilingMethod,
+    paperAwaitingMailing: declared.filter((d) => d.filingMethod === 'paper' && !d.mailedOn).map((d) => d.jurisdiction),
     federalAcceptedOn: r.federal_accepted_on,
     stateAcceptedOn: r.state_accepted_on,
     stateAcceptedCode: r.state_accepted_code,
@@ -354,20 +590,29 @@ export async function jurisdictionsAwaiting(app: FastifyInstance, taxEngagementI
 /**
  * Record that ONE jurisdiction accepted, and say whether it was this return's to record.
  *
- * `false` means the jurisdiction is not declared on the return: nothing is stamped, and the caller
- * surfaces the row for a person rather than filing it away quietly. The summary columns on
- * tax_engagements are written beside the row — the FIRST state to accept fills the state pair —
- * so every existing reader keeps working (migration 0104).
+ * Two ways it is not. `not_declared`: the jurisdiction is not on the return's list. `paper`
+ * (Brian, 2026-09-20, ruling 15): it IS on the list and it was filed on paper, so there is no
+ * acknowledgment for it and an ack row claiming one is about some other return or some other
+ * filing. Either way nothing is stamped and the caller surfaces the row for a person rather than
+ * filing it away quietly.
+ *
+ * The summary columns on tax_engagements are written beside the row — the FIRST state to accept
+ * fills the state pair — so every existing reader keeps working (migration 0104).
  */
+export type StampResult = { ok: true } | { ok: false; reason: 'not_declared' | 'paper' };
+
 export async function stampJurisdictionAccepted(
   app: FastifyInstance,
   taxEngagementId: string,
   jurisdiction: string,
   acceptedOn: string | null,
   submissionId: string | null = null
-): Promise<boolean> {
+): Promise<StampResult> {
   const status = await acceptanceStatus(app, taxEngagementId);
-  if (!status.expected.includes(jurisdiction)) return false;
+  if (!status.expected.includes(jurisdiction)) return { ok: false, reason: 'not_declared' };
+  if (status.rows.find((d) => d.jurisdiction === jurisdiction)?.filingMethod === 'paper') {
+    return { ok: false, reason: 'paper' };
+  }
   if (status.declaredJurisdictions.length > 0) {
     await app.db.query(
       `UPDATE tax_engagement_jurisdictions
@@ -391,7 +636,7 @@ export async function stampJurisdictionAccepted(
       [taxEngagementId, acceptedOn, jurisdiction]
     );
   }
-  return true;
+  return { ok: true };
 }
 
 /**
@@ -399,11 +644,19 @@ export async function stampJurisdictionAccepted(
  * the list — a jurisdiction the preparer removed on a re-file goes away unless it has already
  * accepted, because an acceptance is a fact and not a preference. No list means: keep what is
  * already declared, or take the defaults on the first filing.
+ *
+ * EACH ROW ALSO SAYS HOW IT WAS FILED (ruling 15). The method comes from the preparer when the
+ * modal sent one for that jurisdiction, and from the YEAR otherwise — never from nothing, so no row
+ * this route writes leaves the lane to be guessed later. A method already on the row is not
+ * overwritten by a re-file that says nothing about it, and IS overwritten when the preparer says
+ * something: a return that went out on paper and is re-filed electronically changed lane, and the
+ * row is the record of the latest filing.
  */
 async function declareJurisdictions(
   app: FastifyInstance,
   taxEngagementId: string,
-  requested: readonly string[] | undefined
+  requested: readonly string[] | undefined,
+  methods: Readonly<Record<string, FilingMethod>> | undefined
 ): Promise<string[]> {
   const status = await acceptanceStatus(app, taxEngagementId);
   const list = requested
@@ -411,11 +664,14 @@ async function declareJurisdictions(
     : status.declaredJurisdictions.length > 0
       ? status.declaredJurisdictions
       : status.defaultJurisdictions;
+  const said = methods ? assertFilingMethods(methods, list) : {};
   for (const jurisdiction of list) {
+    const method: FilingMethod = said[jurisdiction] ?? status.defaultFilingMethod;
     await app.db.query(
-      `INSERT INTO tax_engagement_jurisdictions (tax_engagement_id, jurisdiction) VALUES ($1, $2)
-       ON CONFLICT (tax_engagement_id, jurisdiction) DO NOTHING`,
-      [taxEngagementId, jurisdiction]
+      `INSERT INTO tax_engagement_jurisdictions (tax_engagement_id, jurisdiction, filing_method) VALUES ($1, $2, $3)
+       ON CONFLICT (tax_engagement_id, jurisdiction)
+         DO UPDATE SET filing_method = CASE WHEN $4 THEN $3 ELSE COALESCE(tax_engagement_jurisdictions.filing_method, $3) END`,
+      [taxEngagementId, jurisdiction, method, said[jurisdiction] !== undefined]
     );
   }
   if (requested) {
@@ -432,6 +688,230 @@ async function declareJurisdictions(
 export function normaliseState(raw: string | null | undefined): string | null {
   const v = (raw ?? '').trim().toUpperCase();
   return v ? v : null;
+}
+
+/**
+ * NOTHING POSTS AN E-FILE RESULT FOR A PAPER JURISDICTION (ruling 15) — one refusal, in one
+ * wording, for the manual door and for anything else that tries. The ATX ingest does not raise it:
+ * a report row is surfaced for review instead of refused, because the report is a file somebody
+ * uploaded whole and a single bad row must not reject the rest of it.
+ */
+export function paperJurisdictionRefusal(jurisdiction: string): AppError {
+  return new AppError(
+    409,
+    'jurisdiction_is_paper',
+    `${jurisdiction} was filed on paper on this return, so there is no e-file acknowledgment for it — ` +
+      'record the mailing instead. If it really went electronically, change its filing method on the return first.'
+  );
+}
+
+/**
+ * THE RETURN IS FINISHED WHEN NOTHING IS AWAITED — whichever fact finished it.
+ *
+ * Extracted because there are now two: the last acknowledgment, and the last MAILING. A paper
+ * jurisdiction is satisfied by its mailing (ruling 15), so a return declared federal-e-file plus
+ * IL-paper completes on the federal ack when IL is already mailed, and on the IL mailing when the
+ * federal ack came first. Both paths must do the same three things or the two orders leave the
+ * record telling different stories.
+ *
+ * `efile_accepted_at` is stamped ONLY when an e-file jurisdiction actually accepted. A return filed
+ * entirely on paper has no e-file acceptance and stamping one would be a comfortable lie on the
+ * one column every report reads as "the IRS said yes".
+ *
+ * #44 §4 — and the engagement holding the return might be finished too. `completed` was terminal
+ * here from the start and nothing propagated it: the return ended, the engagement stayed active
+ * forever, and the client kept reading as active because an "open" engagement existed. Only closes
+ * when EVERY return on the engagement is terminal.
+ */
+async function completeNowNothingIsAwaited(
+  app: FastifyInstance,
+  actor: { staffId: string | null; label: string },
+  taxEngagementId: string,
+  note: string
+): Promise<void> {
+  const status = await acceptanceStatus(app, taxEngagementId);
+  if (status.accepted.length > 0) {
+    await app.db.query(`UPDATE tax_engagements SET efile_accepted_at = COALESCE(efile_accepted_at, now()) WHERE id = $1`, [taxEngagementId]);
+  }
+  await transitionStage(app, actor, taxEngagementId, 'completed', { note });
+  const { closeEngagementIfAllReturnsDone } = await import('../engagements/close.ts');
+  await closeEngagementIfAllReturnsDone(app, taxEngagementId, {
+    type: 'staff', id: actor.staffId, label: actor.label,
+  });
+}
+
+/**
+ * THE FOLLOW-UP A CERTIFIED MAILING EARNS (Brian, 2026-09-20, ruling 15).
+ *
+ * Certified mail has tracking, so there is something to check and a day by which to check it
+ * (certifiedMailFollowUp: the expected delivery window). Owned by the return's preparer, else the
+ * role's alert recipient — the same owner rule and the same door as the re-file task, so an unfilled
+ * role is a RECORDED fact that falls back to the CEO rather than a silently unowned follow-up.
+ *
+ * `jurisdiction` is null for the resolution lane's whole-return mailing, which is recorded before
+ * the return declares anything. Shared by both doors so the two cannot drift.
+ */
+export async function certifiedMailingFollowUpTask(
+  app: FastifyInstance,
+  taxEngagementId: string,
+  jurisdiction: string | null,
+  mailedOn: string,
+  tracking: string | null
+): Promise<string | null> {
+  const { rows } = await app.db.query<{
+    tax_year: number; return_type: string; preparer_id: string | null;
+    contact_id: string; first_name: string; last_name: string;
+  }>(
+    `SELECT te.tax_year, te.return_type, te.preparer_id, c.id AS contact_id, c.first_name, c.last_name
+       FROM tax_engagements te
+       JOIN engagements e ON e.id = te.engagement_id
+       JOIN contacts c ON c.id = e.contact_id
+      WHERE te.id = $1`,
+    [taxEngagementId]
+  );
+  const te = rows[0];
+  if (!te) throw new AppError(404, 'not_found', 'Tax engagement not found.');
+  const followUp = certifiedMailFollowUp(mailedOn);
+  const label = `${te.first_name} ${te.last_name} ${te.tax_year} ${te.return_type.toUpperCase()}`;
+  const who = jurisdiction === null || jurisdiction === 'federal' ? 'the IRS' : jurisdiction;
+  const owner = te.preparer_id ?? (await alertRecipientForRole(app.db, 'tax_preparer', 'paper_mailing_followup'));
+  const task = await createTask(app, {
+    title: `Check certified mail delivery: ${label} (${who}) — mailed ${mailedOn}`,
+    description:
+      `${label} went to ${who} on paper, certified, on ${mailedOn}` +
+      `${tracking ? ` under tracking ${tracking}` : ' with no tracking number recorded'}.\n` +
+      `Check the carrier's tracking by ${followUp} and file the receipt to the client record. ` +
+      'A paper filing has no acknowledgment to wait for: this is the only confirmation the return gets.',
+    assignedStaffId: owner,
+    contactId: te.contact_id,
+    dueDate: followUp,
+    priority: 2,
+    source: 'automation',
+    sourceType: 'paper_mailing_followup',
+    sourceId: `${taxEngagementId}:${jurisdiction ?? 'return'}`,
+  });
+  return task.id;
+}
+
+/**
+ * RECORD THE MAILING OF ONE PAPER JURISDICTION (Brian, 2026-09-20, ruling 15).
+ *
+ * This is the paper lane's acceptance. The jurisdiction must be declared on the return and must be
+ * filed on paper — a mailing on an e-file jurisdiction is a category error and is refused by name,
+ * because the two are satisfied by different facts and confusing them is how a return gets counted
+ * as filed twice or not at all.
+ *
+ * WHAT IT WRITES: the mailing on the jurisdiction row, and the return's summary columns
+ * (paper_mailed_on / certified_tracking, migration 0026) beside it, so the resolution case view and
+ * everything else already reading those keep working — the FIRST mailing fills them, the same rule
+ * the state acceptance pair follows.
+ *
+ * A CERTIFIED mailing gets its follow-up task: tracking exists, so somebody checks it by the
+ * expected-delivery day (certifiedMailFollowUp). The other methods have nothing to check and raise
+ * nothing — a task nobody can act on is worse than no task.
+ *
+ * COMPLETION FOLLOWS, when this was the last thing the return waited on. Only from 'filed': a
+ * rejected return is not completed by a mailing, it is completed by the re-file that fixes it.
+ */
+export async function recordJurisdictionMailing(
+  app: FastifyInstance,
+  actor: { staffId: string | null; label: string; ip?: string | null; userAgent?: string | null },
+  taxEngagementId: string,
+  jurisdiction: string,
+  input: {
+    mailedOn: string;
+    method: MailingMethod;
+    trackingNumber?: string | null;
+    receiptDocumentId?: string | null;
+    today?: string | undefined;
+  }
+): Promise<{ jurisdiction: string; mailedOn: string; followUpTaskId: string | null; stage: TaxStage; awaiting: string[] }> {
+  const code = jurisdiction === 'federal' ? 'federal' : normaliseState(jurisdiction);
+  if (!code || (code !== 'federal' && !/^[A-Z]{2}$/.test(code))) {
+    throw new AppError(400, 'jurisdiction_invalid', `'${jurisdiction}' is not a jurisdiction: say 'federal' or a two-letter state code in upper case (IL, WI).`);
+  }
+  if (!(MAILING_METHODS as readonly string[]).includes(input.method)) {
+    throw new AppError(400, 'mailing_method_invalid', `'${input.method}' is not a mailing method: certified, first_class, hand_delivered or mailed_by_client.`);
+  }
+  const { rows } = await app.db.query<{
+    stage: TaxStage; tax_year: number; return_type: string; preparer_id: string | null;
+    contact_id: string; first_name: string; last_name: string;
+  }>(
+    `SELECT te.stage, te.tax_year, te.return_type, te.preparer_id, c.id AS contact_id, c.first_name, c.last_name
+       FROM tax_engagements te
+       JOIN engagements e ON e.id = te.engagement_id
+       JOIN contacts c ON c.id = e.contact_id
+      WHERE te.id = $1`,
+    [taxEngagementId]
+  );
+  const te = rows[0];
+  if (!te) throw new AppError(404, 'not_found', 'Tax engagement not found.');
+
+  const today = input.today ?? todayChicago();
+  if (calendarDay(input.mailedOn, 'mailedOn') > calendarDay(today)) {
+    throw new AppError(400, 'mailed_on_future', 'A mailing is recorded on the day it went out or after it: the date cannot be in the future.');
+  }
+
+  const status = await acceptanceStatus(app, taxEngagementId);
+  const row = status.rows.find((d) => d.jurisdiction === code);
+  if (!row) {
+    throw new AppError(
+      409,
+      'jurisdiction_not_declared',
+      `${code} is not declared on this return — it files in ${status.expected.join(', ')}. Declare ${code} on the return before recording a mailing for it.`
+    );
+  }
+  if (row.filingMethod !== 'paper') {
+    throw new AppError(
+      409,
+      'jurisdiction_is_efile',
+      `${code} was e-filed on this return, so it is satisfied by an acknowledgment rather than a mailing. Change its filing method on the return if it actually went out on paper.`
+    );
+  }
+  if (row.mailedOn) {
+    throw new AppError(
+      409,
+      'mailing_already_recorded',
+      `${code} was already recorded as mailed on ${row.mailedOn}. The mailing that went out is the one that counts.`
+    );
+  }
+
+  const tracking = input.trackingNumber?.trim() || null;
+  await app.db.query(
+    `UPDATE tax_engagement_jurisdictions
+        SET mailed_on = $3::date, mailing_method = $4, tracking_number = $5, receipt_document_id = $6
+      WHERE tax_engagement_id = $1 AND jurisdiction = $2`,
+    [taxEngagementId, code, input.mailedOn, input.method, tracking, input.receiptDocumentId ?? null]
+  );
+  // The summary pair on the return, kept in step for every reader that already uses it (0026).
+  await app.db.query(
+    `UPDATE tax_engagements
+        SET paper_mailed_on = COALESCE(paper_mailed_on, $2::date),
+            certified_tracking = COALESCE(certified_tracking, $3)
+      WHERE id = $1`,
+    [taxEngagementId, input.mailedOn, tracking]
+  );
+  await writeAudit(app.db, {
+    actorType: actor.staffId ? 'staff' : 'system', actorId: actor.staffId, actorLabel: actor.label,
+    action: 'tax_engagement.paper_mailed', objectType: 'tax_engagement', objectId: taxEngagementId,
+    contactId: te.contact_id, ip: actor.ip, userAgent: actor.userAgent,
+    details: {
+      jurisdiction: code, mailed_on: input.mailedOn, mailing_method: input.method,
+      tracking_number: tracking, receipt_document_id: input.receiptDocumentId ?? null,
+    },
+  });
+
+  const followUpTaskId =
+    input.method === CHASED_MAILING_METHOD
+      ? await certifiedMailingFollowUpTask(app, taxEngagementId, code, input.mailedOn, tracking)
+      : null;
+
+  const after = await acceptanceStatus(app, taxEngagementId);
+  if (after.awaiting.length === 0 && te.stage === 'filed') {
+    await completeNowNothingIsAwaited(app, actor, taxEngagementId, `paper filing mailed to ${code} — every jurisdiction has answered`);
+    return { jurisdiction: code, mailedOn: input.mailedOn, followUpTaskId, stage: 'completed', awaiting: [] };
+  }
+  return { jurisdiction: code, mailedOn: input.mailedOn, followUpTaskId, stage: te.stage, awaiting: after.awaiting };
 }
 
 export async function recordEfileResult(
@@ -520,8 +1000,10 @@ async function applyEfileResult(
      * is not declared is REFUSED here rather than swallowed. The route used to ignore another
      * state's acceptance silently, which reads as "recorded" to whoever sent it.
      */
-    if (!(await stampJurisdictionAccepted(app, taxEngagementId, code, asOf))) {
+    const stamped = await stampJurisdictionAccepted(app, taxEngagementId, code, asOf);
+    if (!stamped.ok) {
       const { expected } = await acceptanceStatus(app, taxEngagementId);
+      if (stamped.reason === 'paper') throw paperJurisdictionRefusal(code);
       throw new AppError(
         409,
         'jurisdiction_not_declared',
@@ -538,27 +1020,7 @@ async function applyEfileResult(
       return { stage: 'filed', perfectionDeadline: null, awaiting };
     }
 
-    await app.db.query(`UPDATE tax_engagements SET efile_accepted_at = now() WHERE id = $1`, [taxEngagementId]);
-    await transitionStage(app, actor, taxEngagementId, 'completed', { note: 'e-file ACCEPTED by every jurisdiction' });
-
-    /*
-     * #44 §4 — the return is finished, so the engagement holding it might be too.
-     *
-     * `completed` was terminal here from the start and nothing above this line propagated
-     * it: the return ended, the engagement stayed active forever, and the client kept
-     * reading as active because an "open" engagement existed. That is the same untruth as
-     * #42's "lead", one level down, and it was waiting for the first IRS acceptance.
-     *
-     * Only closes when EVERY return on the engagement is terminal. In today's schema that
-     * is always exactly one — `tax_engagements.engagement_id` is UNIQUE, so two tax years
-     * are two engagements — and the check is a formality. It stays because reporting an
-     * engagement finished with a return still open is the one failure mode worse than
-     * never closing at all, and it costs a subquery to be right if that constraint moves.
-     */
-    const { closeEngagementIfAllReturnsDone } = await import('../engagements/close.ts');
-    await closeEngagementIfAllReturnsDone(app, taxEngagementId, {
-      type: 'staff', id: actor.staffId, label: actor.label,
-    });
+    await completeNowNothingIsAwaited(app, actor, taxEngagementId, 'e-file ACCEPTED by every jurisdiction');
     return { stage: 'completed', perfectionDeadline: null, awaiting: [] };
   }
 

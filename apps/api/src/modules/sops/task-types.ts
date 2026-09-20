@@ -144,6 +144,19 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   efile_reject: { sop: 'ana-efile-reject' },
   // 2026-09-12: a row on the ATX acknowledgment report SAOS could not apply (rejected on an unfiled return, unmatched, ambiguous).
   efile_ack_review: { sop: 'ana-efile-ack-review' },
+  /*
+   * 2026-09-20 (ruling 15): a paper jurisdiction was mailed certified, so there is tracking to check
+   * by the expected-delivery day. `sop: null` and the reason is the honest one: the task carries the
+   * tracking number, the jurisdiction and the day to check by, and the procedure is the carrier's own
+   * tracking page plus filing the receipt — which the task says. An SOP page would repeat the task
+   * and add nothing Brian has ruled on; the paper-lane checklist (tax/resolution.ts) already names
+   * the two steps this closes.
+   */
+  paper_mailing_followup: {
+    sop: null,
+    reason:
+      'The task names the jurisdiction, the tracking number and the day to check delivery by, and the work is to read the carrier\'s tracking and file the receipt to the client record. A procedure page would restate the task; the paper-lane checklist already names both steps.',
+  },
   extension_batch_review: { sop: 'ana-extension-batch' },
   resolution_year: { sop: 'ana-resolution-year' },
   transcript_request: { sop: 'ana-transcript-request' },

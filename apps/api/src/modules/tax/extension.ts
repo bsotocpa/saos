@@ -15,6 +15,7 @@ import { createTask } from '../tasks/service.ts';
 import {
   AUTOMATIC_EXTENSION_TYPES,
   addDays,
+  calendarDay,
   daysBetween,
   extendedDeadline,
   nextAg990Deadline,
@@ -22,6 +23,20 @@ import {
   upcomingEstimateDates,
   type DeadlineReturnType,
 } from './deadlines.ts';
+
+/**
+ * THE FORM THE EXTENSION WENT IN ON (Brian, 2026-09-20). Two real forms: 4868 for an individual
+ * return, 7004 for an entity return. The person filing says which — this is only the default the
+ * control opens on, derived from the return type. The extended DEADLINE is never typed: it stays
+ * derived from the return type and the fiscal year end by the deadline engine.
+ */
+export const EXTENSION_FORMS = ['4868', '7004'] as const;
+export type ExtensionForm = (typeof EXTENSION_FORMS)[number];
+
+/** The individual returns extend on 4868; every other return type extends on 7004. */
+export function defaultExtensionForm(returnType: string): ExtensionForm {
+  return returnType === '1040' || returnType === '1040_expat' ? '4868' : '7004';
+}
 
 /** Stages "not yet at Internal Review" (MP: decision-list population). */
 const PRE_INTERNAL_REVIEW = [
@@ -244,26 +259,48 @@ export async function setExtensionPaymentEstimate(
 }
 
 /** MP step 4: extension filed in ATX → Extended tag + DERIVED deadline swap. */
+/**
+ * Record an extension that already went in: WHICH form carried it and WHEN it was filed. Both
+ * default — the form from the return type, the date to today — so the batch path and any caller
+ * that knew neither keeps working. The extended deadline is derived, never passed in.
+ */
 export async function markExtensionFiled(
   app: FastifyInstance,
   actor: { staffId: string; label: string },
   taxEngagementId: string,
-  today: string
-): Promise<{ extendedDeadline: string | null }> {
+  today: string,
+  opts: { form?: ExtensionForm | undefined; filedOn?: string | undefined } = {}
+): Promise<{ extendedDeadline: string | null; form: ExtensionForm; filedOn: string }> {
   const te = await loadForExtension(app, taxEngagementId);
+  const form = opts.form ?? defaultExtensionForm(te.return_type);
+  const filedOn = opts.filedOn ?? today;
+  /*
+   * A FILED DATE IS A PAST FACT (the same window the signed 8879 keeps). An extension is recorded
+   * after it goes in; a date after today is not a filing anybody has made, and it would buy a
+   * deadline off a filing that does not exist yet.
+   */
+  if (calendarDay(filedOn, 'filedOn') > calendarDay(today, 'today')) {
+    throw new AppError(
+      409,
+      'extension_filed_date_in_future',
+      `The filed date ${filedOn} is after today; an extension is recorded after it goes in, not before.`
+    );
+  }
   const ext = extendedDeadline(te.return_type, te.tax_year, te.fiscal_year_end_month ?? 12);
   await app.db.query(
     `UPDATE tax_engagements
      SET extension_filed = true,
          extension_filed_date = $2,
+         extension_form = $5,
          extended_deadline = $3,
          original_deadline = COALESCE(original_deadline, $4)
      WHERE id = $1`,
     [
       taxEngagementId,
-      today,
+      filedOn,
       ext,
       originalDeadline(te.return_type, te.tax_year, te.fiscal_year_end_month ?? 12),
+      form,
     ]
   );
   await writeAudit(app.db, {
@@ -274,9 +311,9 @@ export async function markExtensionFiled(
     objectType: 'tax_engagement',
     objectId: taxEngagementId,
     contactId: te.contact_id,
-    details: { extended_deadline: ext },
+    details: { extended_deadline: ext, extension_form: form, filed_on: filedOn },
   });
-  return { extendedDeadline: ext };
+  return { extendedDeadline: ext, form, filedOn };
 }
 
 /**

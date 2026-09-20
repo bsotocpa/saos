@@ -12,6 +12,8 @@
  *     owned by the return's preparer, else the role holder, else the CEO (recorded as unfilled);
  *   - a completed engagement with a sent invoice reports open_balance_cents on GET /engagements
  *     and is counted in completedUnpaid on the executive dashboard.
+ * Plus ruling 15 (2026-09-20): a PAPER jurisdiction is satisfied by its recorded mailing, not by an
+ * acknowledgment that will never come, and an acknowledgment for one is surfaced for review.
  * Synthetic data only.
  */
 import { test, before, after } from 'node:test';
@@ -24,6 +26,7 @@ import type { Config } from '../src/config.ts';
 import type { Mailer } from '../src/mailer.ts';
 import { ingestReport } from '../src/modules/tax/efile-ack.ts';
 import { jurisdictionsAwaiting } from '../src/modules/tax/pipeline.ts';
+import { certifiedMailFollowUp, currentTaxYear, filingLane } from '../src/modules/tax/resolution.ts';
 
 let app: FastifyInstance;
 let config: Config;
@@ -350,4 +353,286 @@ test('a completed engagement with a sent invoice shows its open balance on GET /
   assert.deepEqual(after.json().completedUnpaid, { count: 0, balanceCents: 0 });
   const paidList = await app.inject({ method: 'GET', url: `/engagements?contactId=${r.contactId}`, headers: auth(brian) });
   assert.equal((paidList.json().engagements as Array<{ id: string; open_balance_cents: number }>).find((e) => e.id === r.engagementId)!.open_balance_cents, 0);
+});
+
+/*
+ * ═══ 2026-09-20, RULING 15: PAPER FILING ═══════════════════════════════════════════════════════
+ *
+ * A jurisdiction carries HOW it was filed, and the two methods are satisfied by different facts: an
+ * e-file jurisdiction by an acknowledgment, a paper one by a recorded MAILING. Before this, a return
+ * declared on paper waited forever on an acceptance that does not exist — the same defect ruling 2
+ * removed for the no-income-tax states, one lane over.
+ *
+ *   · federal e-file + IL paper completes on the federal ack PLUS the IL mailing;
+ *   · an IL acknowledgment for that return is refused and surfaced for review, the way an undeclared
+ *     state is: needs-review disposition, the reason on the row, an owned task, nothing counted;
+ *   · an old year defaults every jurisdiction to paper and completes on mailings alone, with no
+ *     e-file acceptance stamped on it;
+ *   · a current-year return defaults to e-file and the preparer switches one state to paper.
+ */
+
+/**
+ * A return filed THROUGH THE DOOR: the transition route, which is what the Mark filed modal calls,
+ * so the declared list and its filing methods are written the way production writes them.
+ */
+async function readyToFileReturn(
+  last: string,
+  taxYear: number
+): Promise<{ contactId: string; teId: string; engagementId: string; entity: string }> {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: last, email: `${last.toLowerCase()}-completion@example.test` });
+  const entity = `Synthetic ${last}, LLC`;
+  const biz = await app.inject({ method: 'POST', url: `/contacts/${c.id}/businesses`, headers: auth(brian), payload: { name: entity, ein: '55-5555555', entityType: 's_corp', state: 'IL' } });
+  assert.equal(biz.statusCode, 201, biz.body);
+  const created = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(ana), payload: {
+    reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows',
+    contactId: c.id, businessId: biz.json().id as string, taxYear, returnType: '1120s', clientType: 'business', preparerId: ana.id,
+  } });
+  assert.equal(created.statusCode, 201, created.body);
+  const teId = created.json().id as string;
+  await signed8879OnFile(app, teId, ana.id, `${taxYear + 1}-02-01`);
+  await app.db.query(
+    `UPDATE tax_engagements SET stage = 'ready_to_file', engagement_letter_signed_at = now(), estimate_locked_at = now() WHERE id = $1`,
+    [teId]);
+  return { contactId: c.id, teId, engagementId: created.json().engagementId as string, entity };
+}
+
+async function filedThroughTheDoor(
+  last: string,
+  taxYear: number,
+  jurisdictions: readonly string[],
+  filingMethods?: Record<string, 'efile' | 'paper'>
+): Promise<{ contactId: string; teId: string; engagementId: string; entity: string }> {
+  const r = await readyToFileReturn(last, taxYear);
+  const filed = await app.inject({
+    method: 'POST', url: `/tax-engagements/${r.teId}/transition`, headers: auth(ana),
+    payload: { toStage: 'filed', preparerPtinHolderId: ana.id, jurisdictions, ...(filingMethods ? { filingMethods } : {}) },
+  });
+  assert.equal(filed.statusCode, 200, filed.body);
+  return r;
+}
+
+async function jurisdictionRows(teId: string): Promise<Array<{
+  jurisdiction: string; filing_method: string | null; accepted_on: string | null; mailed_on: string | null;
+  mailing_method: string | null; tracking_number: string | null; receipt_document_id: string | null;
+}>> {
+  const { rows } = await app.db.query<{
+    jurisdiction: string; filing_method: string | null; accepted_on: string | null; mailed_on: string | null;
+    mailing_method: string | null; tracking_number: string | null; receipt_document_id: string | null;
+  }>(
+    `SELECT jurisdiction, filing_method, accepted_on::text AS accepted_on, mailed_on::text AS mailed_on,
+            mailing_method, tracking_number, receipt_document_id
+       FROM tax_engagement_jurisdictions WHERE tax_engagement_id = $1
+      ORDER BY (jurisdiction <> 'federal'), jurisdiction`, [teId]);
+  return rows;
+}
+
+const MAILED_ON = '2026-09-18';
+
+test('a return declared federal e-file + IL paper completes on the federal acknowledgment plus the IL mailing', async () => {
+  const r = await filedThroughTheDoor('Mixedlane', 2025, ['federal', 'IL'], { IL: 'paper' });
+  const declared = await jurisdictionRows(r.teId);
+  assert.deepEqual(declared.map((d) => [d.jurisdiction, d.filing_method]), [['federal', 'efile'], ['IL', 'paper']],
+    'the modal said IL went on paper; federal took the lane the year implies');
+  assert.deepEqual(await jurisdictionsAwaiting(app, r.teId), ['federal', 'IL']);
+
+  // The federal acknowledgment alone does not finish it: IL has not been mailed.
+  const fed = await ingest([BIZ_HEADER, bizRow(r.entity, 'Federal', 'Accepted')]);
+  assert.equal(fed.queued, 1, JSON.stringify(fed));
+  let s = await returnState(r.teId);
+  assert.equal(s.stage, 'filed');
+  assert.deepEqual(await jurisdictionsAwaiting(app, r.teId), ['IL'], 'the paper jurisdiction is what is left');
+  assert.match((await notesFor(fed.reportId))[0]!.note, /waits on IL/);
+
+  // The mailing is the paper lane's acceptance — and it completes the return.
+  const mailed = await app.inject({
+    method: 'POST', url: `/tax-engagements/${r.teId}/jurisdictions/IL/mailing`, headers: auth(ana),
+    payload: { mailedOn: MAILED_ON, method: 'certified', trackingNumber: '9407 1111 2222 3333 4444 55', asOf: '2026-09-19' },
+  });
+  assert.equal(mailed.statusCode, 200, mailed.body);
+  assert.equal(mailed.json().stage, 'completed');
+  assert.deepEqual(mailed.json().awaiting, []);
+
+  const rows = await jurisdictionRows(r.teId);
+  const il = rows.find((d) => d.jurisdiction === 'IL')!;
+  assert.equal(il.mailed_on, MAILED_ON);
+  assert.equal(il.mailing_method, 'certified');
+  assert.match(il.tracking_number!, /9407/);
+  assert.equal(il.accepted_on, null, 'nothing accepted IL: a paper filing gets no acknowledgment');
+
+  s = await returnState(r.teId);
+  assert.equal(s.stage, 'completed');
+  assert.equal(s.engagement_status, 'completed', 'closeEngagementIfAllReturnsDone followed the mailing');
+  assert.ok(s.efile_accepted_at, 'federal really did accept, so the e-file stamp is honest');
+  const summary = await app.db.query<{ paper_mailed_on: string | null; certified_tracking: string | null }>(
+    `SELECT paper_mailed_on::text AS paper_mailed_on, certified_tracking FROM tax_engagements WHERE id = $1`, [r.teId]);
+  assert.equal(summary.rows[0]!.paper_mailed_on, MAILED_ON, 'the summary columns are kept in step (0026)');
+
+  const audited = await app.db.query<{ details: Record<string, unknown> }>(
+    `SELECT details FROM audit_log WHERE action = 'tax_engagement.paper_mailed' AND object_id = $1`, [r.teId]);
+  assert.equal(audited.rows.length, 1);
+  assert.equal(audited.rows[0]!.details['jurisdiction'], 'IL');
+  assert.equal(audited.rows[0]!.details['mailing_method'], 'certified');
+
+  // Certified mail has tracking, so it earns a follow-up owned by the return's preparer.
+  const task = await app.db.query<{ id: string; assigned_staff_id: string | null; due_date: string | null; source: string; priority: number; title: string }>(
+    `SELECT id, assigned_staff_id, due_date::text AS due_date, source::text AS source, priority, title
+       FROM tasks WHERE source_type = 'paper_mailing_followup' AND source_id = $1`, [`${r.teId}:IL`]);
+  assert.equal(task.rows.length, 1, 'one follow-up, through the one door');
+  assert.equal(task.rows[0]!.assigned_staff_id, ana.id);
+  assert.equal(task.rows[0]!.due_date, certifiedMailFollowUp(MAILED_ON), 'due on the expected-delivery day, derived');
+  assert.equal(task.rows[0]!.source, 'automation');
+  assert.match(task.rows[0]!.title, /certified mail delivery/i);
+  assert.equal(task.rows[0]!.id !== null, true);
+
+  // A second mailing for the same jurisdiction is refused: the one that went out is the one that counts.
+  const again = await app.inject({
+    method: 'POST', url: `/tax-engagements/${r.teId}/jurisdictions/IL/mailing`, headers: auth(ana),
+    payload: { mailedOn: MAILED_ON, method: 'first_class', asOf: '2026-09-19' } });
+  assert.equal(again.statusCode, 409, again.body);
+  assert.equal(again.json().error, 'mailing_already_recorded');
+});
+
+test('an acknowledgment for a jurisdiction filed on paper is refused and surfaced for review, and counts for nothing', async () => {
+  const r = await filedThroughTheDoor('Paperack', 2025, ['federal', 'IL'], { IL: 'paper' });
+
+  const rep = await ingest([BIZ_HEADER, bizRow(r.entity, 'Federal', 'Accepted'), bizRow(r.entity, 'IL', 'Accepted')]);
+  assert.equal(rep.queued, 1, `only the federal row will send: ${JSON.stringify(rep)}`);
+  assert.equal(rep.tasks, 1, 'the paper jurisdiction is a review row');
+  const notes = await notesFor(rep.reportId);
+  assert.equal(notes[1]!.state_code, 'IL');
+  assert.equal(notes[1]!.disposition, 'task', 'it reads as needing review, not as something that will send');
+  assert.match(notes[1]!.note, /needs review/);
+  assert.match(notes[1]!.note, /filed on PAPER/);
+  assert.match(notes[1]!.note, /nothing sent/i);
+
+  const task = await app.db.query<{ id: string; assigned_staff_id: string | null; source_type: string; title: string; description: string; priority: number }>(
+    `SELECT id, assigned_staff_id, source_type, title, description, priority FROM tasks WHERE source_type = 'efile_ack_review' AND source_id = $1`,
+    [`${rep.reportId}:2`]);
+  assert.equal(task.rows.length, 1, 'one task, through the one door');
+  assert.equal(task.rows[0]!.assigned_staff_id, ana.id, "owned by the return's preparer");
+  assert.equal(task.rows[0]!.priority, 1);
+  assert.match(task.rows[0]!.title, /filed on paper/i);
+  assert.match(task.rows[0]!.description, /no acknowledgment/);
+  const linked = await app.db.query<{ task_id: string | null }>(
+    `SELECT task_id FROM efile_acknowledgments WHERE report_id = $1 AND row_index = 2`, [rep.reportId]);
+  assert.equal(linked.rows[0]!.task_id, task.rows[0]!.id);
+
+  const rows = await jurisdictionRows(r.teId);
+  assert.equal(rows.find((d) => d.jurisdiction === 'IL')!.accepted_on, null, 'nothing was stamped on the paper row');
+  assert.equal((await returnState(r.teId)).state_accepted_code, null, 'and nothing reached the summary pair');
+  assert.deepEqual(await jurisdictionsAwaiting(app, r.teId), ['IL'], 'IL still waits on its mailing');
+  assert.equal((await returnState(r.teId)).stage, 'filed');
+
+  // The manual door refuses it by name rather than swallowing it.
+  const manual = await app.inject({
+    method: 'POST', url: `/tax-engagements/${r.teId}/efile-result`, headers: auth(ana),
+    payload: { result: 'accepted', jurisdiction: 'state', stateCode: 'IL', asOf: '2026-09-19' } });
+  assert.equal(manual.statusCode, 409, manual.body);
+  assert.equal(manual.json().error, 'jurisdiction_is_paper');
+  assert.match(manual.json().message, /filed on paper/);
+
+  // And a mailing on the E-FILE jurisdiction is the same category error, the other way round.
+  const wrongWay = await app.inject({
+    method: 'POST', url: `/tax-engagements/${r.teId}/jurisdictions/federal/mailing`, headers: auth(ana),
+    payload: { mailedOn: MAILED_ON, method: 'certified', asOf: '2026-09-19' } });
+  assert.equal(wrongWay.statusCode, 409, wrongWay.body);
+  assert.equal(wrongWay.json().error, 'jurisdiction_is_efile');
+});
+
+test('an old year defaults every jurisdiction to paper and completes on the mailings alone', async () => {
+  // 2021 is more than two years back, so the lane is paper — derived from the year, never chosen.
+  const year = 2021;
+  assert.equal(filingLane(year, '2026-09-19'), 'paper', 'the lane the year implies');
+  const r = await filedThroughTheDoor('Oldyear', year, ['federal', 'IL']);
+  const declared = await jurisdictionRows(r.teId);
+  assert.deepEqual(declared.map((d) => [d.jurisdiction, d.filing_method]), [['federal', 'paper'], ['IL', 'paper']],
+    'nobody said, so the year did');
+
+  const detail = (await app.inject({ method: 'GET', url: `/tax-engagements/${r.teId}`, headers: auth(ana) })).json() as {
+    default_filing_method: string; paper_awaiting_mailing: string[];
+    jurisdictions: Array<{ jurisdiction: string; filingMethod: string; mailedOn: string | null; acceptedOn: string | null }>;
+  };
+  assert.equal(detail.default_filing_method, 'paper', 'what the modal opens on for this return');
+  assert.deepEqual(detail.paper_awaiting_mailing, ['federal', 'IL'], 'both need a Record mailing');
+  assert.ok(detail.jurisdictions.every((j) => j.filingMethod === 'paper' && j.acceptedOn === null));
+
+  const first = await app.inject({
+    method: 'POST', url: `/tax-engagements/${r.teId}/jurisdictions/federal/mailing`, headers: auth(ana),
+    payload: { mailedOn: MAILED_ON, method: 'certified', trackingNumber: '9407 5555 6666 7777 8888 99', asOf: '2026-09-19' } });
+  assert.equal(first.statusCode, 200, first.body);
+  assert.equal(first.json().stage, 'filed', 'IL has not been mailed');
+  assert.deepEqual(first.json().awaiting, ['IL']);
+
+  const second = await app.inject({
+    method: 'POST', url: `/tax-engagements/${r.teId}/jurisdictions/IL/mailing`, headers: auth(ana),
+    payload: { mailedOn: MAILED_ON, method: 'hand_delivered', asOf: '2026-09-19' } });
+  assert.equal(second.statusCode, 200, second.body);
+  assert.equal(second.json().stage, 'completed', 'the second mailing finished it');
+  assert.equal(second.json().followUpTaskId, null, 'a hand-delivered filing has nothing to chase');
+
+  const s = await returnState(r.teId);
+  assert.equal(s.stage, 'completed');
+  assert.equal(s.engagement_status, 'completed');
+  assert.equal(s.efile_accepted_at, null, 'nothing was e-filed, so no e-file acceptance is stamped');
+  assert.equal(s.federal_accepted_on, null);
+  const tasks = await app.db.query<{ n: string }>(
+    `SELECT count(*) AS n FROM tasks WHERE source_type = 'paper_mailing_followup' AND source_id LIKE $1`, [`${r.teId}:%`]);
+  assert.equal(tasks.rows[0]!.n, '1', 'one follow-up: the certified mailing, not the hand delivery');
+
+  // A future mailing date is refused: a mailing is recorded on the day it went out or after.
+  const later = await filedThroughTheDoor('Futuremail', year, ['federal']);
+  const future = await app.inject({
+    method: 'POST', url: `/tax-engagements/${later.teId}/jurisdictions/federal/mailing`, headers: auth(ana),
+    payload: { mailedOn: '2026-09-30', method: 'certified', asOf: '2026-09-19' } });
+  assert.equal(future.statusCode, 400, future.body);
+  assert.equal(future.json().error, 'mailed_on_future');
+});
+
+test('a current-year return defaults to e-file, and the preparer switches one state to paper', async () => {
+  const year = currentTaxYear('2026-09-19');
+  assert.equal(filingLane(year, '2026-09-19'), 'efile');
+  const r = await filedThroughTheDoor('Currentyear', year, ['federal', 'IL']);
+  assert.deepEqual((await jurisdictionRows(r.teId)).map((d) => d.filing_method), ['efile', 'efile'],
+    'the current year e-files, on both jurisdictions, without anybody saying so');
+
+  // The same year, the same state, the preparer saying IL went out on paper: one return, two lanes.
+  const mixed = await filedThroughTheDoor('Currentmixed', year, ['federal', 'IL'], { IL: 'paper' });
+  assert.deepEqual((await jurisdictionRows(mixed.teId)).map((d) => [d.jurisdiction, d.filing_method]),
+    [['federal', 'efile'], ['IL', 'paper']]);
+  const detail = (await app.inject({ method: 'GET', url: `/tax-engagements/${mixed.teId}`, headers: auth(ana) })).json() as {
+    default_filing_method: string; paper_awaiting_mailing: string[];
+  };
+  assert.equal(detail.default_filing_method, 'efile', 'the lane the year implies is still what the modal opens on');
+  assert.deepEqual(detail.paper_awaiting_mailing, ['IL'], 'only the switched jurisdiction needs a mailing');
+
+  // A filing method for a jurisdiction the filing does not declare is refused, not dropped: the
+  // preparer said something about a jurisdiction this return does not file in.
+  const undeclared = await readyToFileReturn('Methodstray', year);
+  const stray = await app.inject({
+    method: 'POST', url: `/tax-engagements/${undeclared.teId}/transition`, headers: auth(ana),
+    payload: { toStage: 'filed', preparerPtinHolderId: ana.id, jurisdictions: ['federal'], filingMethods: { WI: 'paper' } } });
+  assert.equal(stray.statusCode, 400, stray.body);
+  assert.equal(stray.json().error, 'filing_method_undeclared_jurisdiction');
+  assert.equal((await returnState(undeclared.teId)).stage, 'ready_to_file', 'and nothing was filed');
+});
+
+test('role proof (ruling 15): the mailing route refuses a bookkeeper; the preparer records one; the CEO by wildcard', async () => {
+  const r = await filedThroughTheDoor('Mailrole', 2021, ['federal', 'IL']);
+  const marian = await staffWithToken('marian-completion@example.test', 'bookkeeper');
+  const refused = await app.inject({
+    method: 'POST', url: `/tax-engagements/${r.teId}/jurisdictions/IL/mailing`, headers: auth(marian),
+    payload: { mailedOn: MAILED_ON, method: 'certified', asOf: '2026-09-19' } });
+  assert.equal(refused.statusCode, 403, refused.body);
+  assert.equal(refused.json().permission, 'engagements.tax.manage');
+
+  const byPreparer = await app.inject({
+    method: 'POST', url: `/tax-engagements/${r.teId}/jurisdictions/IL/mailing`, headers: auth(ana),
+    payload: { mailedOn: MAILED_ON, method: 'first_class', asOf: '2026-09-19' } });
+  assert.equal(byPreparer.statusCode, 200, byPreparer.body);
+
+  const byCeo = await app.inject({
+    method: 'POST', url: `/tax-engagements/${r.teId}/jurisdictions/federal/mailing`, headers: auth(brian),
+    payload: { mailedOn: MAILED_ON, method: 'certified', trackingNumber: '9407 0000 1111 2222 3333 44', asOf: '2026-09-19' } });
+  assert.equal(byCeo.statusCode, 200, byCeo.body);
+  assert.equal(byCeo.json().stage, 'completed', 'the CEO holds it by wildcard, and that mailing finished the return');
 });

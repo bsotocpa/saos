@@ -11,7 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer, MailMessage } from '../src/mailer.ts';
 import { generateToken } from '../src/crypto.ts';
-import { createTestConfig, makeStaff, multipartBody, type TestStaff } from './helpers.ts';
+import { createTestConfig, engagementLetterOnFile, makeStaff, multipartBody, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { addDays, todayChicago } from '../src/modules/tax/deadlines.ts';
 
@@ -186,10 +186,7 @@ test('itemized request: initial ES email, per-item fulfillment, completion stamp
     method: 'POST', url: `/tax-engagements/${teId}/transition`, headers: auth(ana),
     payload: { toStage: 'scheduled' },
   });
-  await app.inject({
-    method: 'POST', url: `/tax-engagements/${teId}/signatures/wet`, headers: auth(ana),
-    payload: { type: 'engagement_letter' },
-  });
+  await engagementLetterOnFile(app, teId, ana.id);
 
   const created = await app.inject({
     method: 'POST', url: '/document-requests', headers: auth(ana),
@@ -245,7 +242,7 @@ test('chase job: recurring reminders + one-time 7-day non-response alert (automa
   });
   const teId = eng.json().id as string;
   await app.inject({ method: 'POST', url: `/tax-engagements/${teId}/transition`, headers: auth(ana), payload: { toStage: 'scheduled' } });
-  await app.inject({ method: 'POST', url: `/tax-engagements/${teId}/signatures/wet`, headers: auth(ana), payload: { type: 'engagement_letter' } });
+  await engagementLetterOnFile(app, teId, ana.id);
   await app.inject({
     method: 'POST', url: '/document-requests', headers: auth(ana),
     payload: { taxEngagementId: teId, titleEn: 'Everything', items: [{ labelEn: '1099s' }] },

@@ -175,3 +175,30 @@ export async function signed8879OnFile(
   });
   return doc.rows[0]!.id;
 }
+
+/**
+ * THE SIGNED ENGAGEMENT LETTER ON FILE (2026-09-20). The bare staff route that stamped gate 1 with
+ * now() and nothing behind it is retired: the letter is either signed in the portal (which stamps
+ * every return it covers) or uploaded as a scan against the return. Fixtures that need a return
+ * past gate 1 go through the real recorder, which is what production does.
+ */
+export async function engagementLetterOnFile(
+  app: { db: Db },
+  taxEngagementId: string,
+  staffId: string,
+  signedOn = '2026-09-01'
+): Promise<string> {
+  const te = await app.db.query<{ contact_id: string }>(
+    `SELECT e.contact_id FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`, [taxEngagementId]);
+  const doc = await app.db.query<{ id: string }>(
+    `INSERT INTO documents (contact_id, tax_engagement_id, category, filename, minio_bucket, minio_key, uploaded_by_type)
+     VALUES ($1, $2, 'signed_authorizations', 'synthetic-signed-engagement-letter.pdf', 'saos-signed-docs', 'test/' || gen_random_uuid()::text || '.pdf', 'staff')
+     RETURNING id`,
+    [te.rows[0]!.contact_id, taxEngagementId]
+  );
+  const { recordSignedEngagementLetter } = await import('../src/modules/tax/signed-8879.ts');
+  await recordSignedEngagementLetter(app as never, { staffId, label: 'Synthetic Preparer' }, {
+    taxEngagementId, documentId: doc.rows[0]!.id, signedOn,
+  });
+  return doc.rows[0]!.id;
+}

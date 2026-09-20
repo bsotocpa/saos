@@ -166,6 +166,12 @@ test('a held row does not send when the report is released; the same file twice 
   assert.equal(rel.enqueued, 0);
   assert.equal(rel.held, 1);
   await drainOutbox(app);
+  if (sent.length !== 0) {
+    // A one-off red here in a full run (2026-09-20) had no evidence behind it. The next one carries
+    // what was sent and every outbox row, so the cause can be read instead of guessed.
+    const rows = await app.db.query(`SELECT id, effect, status, attempts, created_at, next_attempt_at, last_error FROM outbox ORDER BY created_at`);
+    console.error('[efile-ack held-row diagnostic] sent:', JSON.stringify(sent), 'outbox:', JSON.stringify(rows.rows));
+  }
   assert.equal(sent.length, 0);
 
   const again = await ingestReport(app, { id: ana.id, label: ana.fullName }, { filename: 'ack3-copy.csv', text: report });

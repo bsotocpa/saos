@@ -940,6 +940,14 @@ async function convertAcceptedQuote(
             WHERE te.id = $1 AND NOT (te.complexity_inputs ? 'states')`,
           [te.rows[0]!.id, row.contact_id]
         );
+        /*
+         * WHAT THE NEW RETURN ALREADY HOLDS (Brian, 2026-09-20): the engagement letter the client
+         * has already signed — a quote is only sent to a client whose Master is covered, so the
+         * return this acceptance opens is covered too — and the firm's only tax preparer when there
+         * is only one. The same helper the staff creation route calls, so the two cannot drift.
+         */
+        const { applyNewReturnDefaults } = await import('../tax/pipeline.ts');
+        await applyNewReturnDefaults(app, te.rows[0]!.id, row.contact_id);
       } else {
         app.log.warn({ engagementId: created.id, quoteId: quote.id }, 'tax line accepted with no base return item; no return record created');
       }

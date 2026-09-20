@@ -302,23 +302,39 @@ export async function ingestReport(
          */
         const jurisdiction = row.jurisdiction === 'federal' ? 'federal' : normaliseState(row.stateCode);
         const status = await acceptanceStatus(app, te.id);
-        if (!jurisdiction || !status.expected.includes(jurisdiction)) {
+        /*
+         * A PAPER JURISDICTION HAS NO ACKNOWLEDGMENT (Brian, 2026-09-20, ruling 15). A row claiming
+         * one for a jurisdiction this return filed on paper is surfaced exactly the way an
+         * undeclared state is — needs-review disposition, the reason on the row, an owned task
+         * through createTask, nothing counted and nothing sent — because it is the same kind of
+         * disagreement between the report and the return, and both endings are wrong to guess at:
+         * either the filing method on the return is wrong, or the row belongs to another return.
+         */
+        const isPaper = jurisdiction !== null && status.rows.find((d) => d.jurisdiction === jurisdiction)?.filingMethod === 'paper';
+        if (!jurisdiction || !status.expected.includes(jurisdiction) || isPaper) {
           const named = jurisdiction ?? row.stateCode ?? 'the agency on the row';
           const who = te.business_name ?? `${te.first_name} ${te.last_name}`;
           const declared = status.expected.join(', ');
           disposition = 'task';
-          note = `needs review: accepted by ${named}, but ${named} is not declared on this return (it files in ${declared}). Nothing counted, nothing sent.`;
+          note = isPaper
+            ? `needs review: accepted by ${named}, but ${named} was filed on PAPER on this return, which gets no acknowledgment. Nothing counted, nothing sent.`
+            : `needs review: accepted by ${named}, but ${named} is not declared on this return (it files in ${declared}). Nothing counted, nothing sent.`;
           /*
            * THE RETURN'S PREPARER OWNS IT, else the role's alert recipient — the same owner rule
            * and the same door as the re-file task in pipeline.ts. An unfilled role is recorded.
            */
           const owner = te.preparer_id ?? (await alertRecipientForRole(app.db, 'tax_preparer', 'efile_ack_undeclared_jurisdiction'));
           const t = await createTask(app, {
-            title: `E-file acknowledgment for a jurisdiction this return does not declare: ${named} on ${who} ${row.taxYear ?? '?'} ${(row.returnType ?? '?').toUpperCase()}`,
-            description:
-              `ATX report row ${row.rowIndex}: ${named} ACCEPTED this return, but the return declares ${declared} — ${named} is not on that list.\n` +
-              'Nothing was counted toward completion and nothing was sent to the client. Either this return really does file in ' +
-              `${named} (add it to the return's jurisdictions and re-apply the acknowledgment), or the row belongs to a different return. Then close this.`,
+            title: isPaper
+              ? `E-file acknowledgment for a jurisdiction this return filed on paper: ${named} on ${who} ${row.taxYear ?? '?'} ${(row.returnType ?? '?').toUpperCase()}`
+              : `E-file acknowledgment for a jurisdiction this return does not declare: ${named} on ${who} ${row.taxYear ?? '?'} ${(row.returnType ?? '?').toUpperCase()}`,
+            description: isPaper
+              ? `ATX report row ${row.rowIndex}: ${named} ACCEPTED this return, but ${named} is recorded on this return as filed on PAPER, and a paper filing gets no acknowledgment.\n` +
+                'Nothing was counted toward completion and nothing was sent to the client. Either this jurisdiction actually went out electronically ' +
+                `(change ${named}'s filing method on the return and re-apply the acknowledgment), or the row belongs to a different return. Then close this.`
+              : `ATX report row ${row.rowIndex}: ${named} ACCEPTED this return, but the return declares ${declared} — ${named} is not on that list.\n` +
+                'Nothing was counted toward completion and nothing was sent to the client. Either this return really does file in ' +
+                `${named} (add it to the return's jurisdictions and re-apply the acknowledgment), or the row belongs to a different return. Then close this.`,
             assignedStaffId: owner,
             contactId: te.contact_id,
             priority: 1,

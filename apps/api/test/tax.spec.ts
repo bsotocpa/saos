@@ -8,7 +8,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import { withTransaction } from '../src/db.ts';
-import { createTestConfig, makeStaff, makeContact, auditRows , signed8879OnFile } from './helpers.ts';
+import { createTestConfig, makeStaff, makeContact, auditRows , engagementLetterOnFile, signed8879OnFile } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { computeComplexityScore } from '../src/modules/tax/complexity.ts';
 import { recordEfileResult } from '../src/modules/tax/pipeline.ts';
@@ -120,11 +120,14 @@ test('full pipeline march with all three gates enforced', async () => {
   const blocked = await move(id, 'documents_requested', 409);
   assert.equal((blocked.body as { error: string }).error, 'engagement_letter_required');
 
+  // 2026-09-20: the bare staff route is retired — both signatures are uploads now.
   const wetLetter = await app.inject({
     method: 'POST', url: `/tax-engagements/${id}/signatures/wet`, headers: auth(preparer),
     payload: { type: 'engagement_letter' },
   });
-  assert.equal(wetLetter.statusCode, 200, wetLetter.body);
+  assert.equal(wetLetter.statusCode, 410, wetLetter.body);
+  assert.equal(wetLetter.json().error, 'engagement_letter_is_an_upload');
+  await engagementLetterOnFile(app, id, preparer.id);
   const contactRow = await app.db.query(
     `SELECT c.engagement_letter_status FROM contacts c JOIN engagements e ON e.contact_id = c.id JOIN tax_engagements te ON te.engagement_id = e.id WHERE te.id = $1`, [id]);
   assert.equal(contactRow.rows[0].engagement_letter_status, 'signed');

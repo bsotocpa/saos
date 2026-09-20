@@ -14,6 +14,15 @@
  *    category is never defaulted to 'other' (2026-09-19 evening, ruling 1);
  *  · the filed transition declares the return's jurisdictions, validated, and GET says what the
  *    modal should start from (2026-09-19 evening, ruling 2).
+ *
+ * Plus the 2026-09-20 rulings:
+ *  · the client's packet signature in the portal stamps the engagement letter on every return the
+ *    client has, a return opened later inherits it while the letter stands, and the paper path is an
+ *    upload against the return — the bare staff route stamps nothing any more (ruling 10);
+ *  · a return gets the firm's only active tax preparer at creation, preparation is refused until
+ *    somebody is named, and the assign route refuses an inactive or wrong-role choice (ruling 11);
+ *  · an extension records which form went in and the day it was filed, refuses a future date, and
+ *    takes its extended deadline from the deadline table rather than the request (ruling 12).
  * Synthetic data only.
  */
 import { test, before, after } from 'node:test';
@@ -22,9 +31,13 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, signed8879OnFile, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, multipartBody, signed8879OnFile, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
+import type { AuthedStaff } from '../src/types.ts';
 import { TAX_STAGES, legalNextStages } from '../src/modules/tax/pipeline.ts';
+import { createPacket, recordMasterSignature } from '../src/modules/engagements/packet.ts';
+import { defaultExtensionForm } from '../src/modules/tax/extension.ts';
+import { addDays, extendedDeadline, todayChicago } from '../src/modules/tax/deadlines.ts';
 import { currentPriceBookVersion } from '../src/modules/pricing/service.ts';
 
 let app: FastifyInstance;
@@ -32,6 +45,7 @@ let config: Config;
 let ana: TestStaff & { token: string };
 let brian: TestStaff & { token: string };
 let marian: TestStaff & { token: string };
+let ceoActor: AuthedStaff;
 const auth = (t: { token: string }) => ({ authorization: `Bearer ${t.token}` });
 
 async function staffWithToken(email: string, role: string, name: string): Promise<TestStaff & { token: string }> {
@@ -51,6 +65,7 @@ before(async () => {
   ana = await staffWithToken('ana-controls@example.test', 'tax_preparer', 'Synthetic Preparer');
   brian = await staffWithToken('brian-controls@example.test', 'ceo', 'Synthetic CEO');
   marian = await staffWithToken('marian-controls@example.test', 'bookkeeper', 'Synthetic Bookkeeper');
+  ceoActor = { id: brian.id, email: brian.email, permissions: ['*'] } as AuthedStaff;
 });
 after(async () => { await app.close(); });
 
@@ -59,24 +74,39 @@ after(async () => { await app.close(); });
  * leaves (#47) — the BIZ_1120S line under the price book in force — with the letter signed so the
  * gates past 'scheduled' are open, and Ana assigned.
  */
-async function quotedReturn(last: string, stage: string, opts: { lockEstimate?: boolean } = {}): Promise<{ id: string; contactId: string; engagementId: string }> {
-  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: last, email: `${last.toLowerCase()}-controls@example.test` });
+async function quotedReturn(
+  last: string,
+  stage: string,
+  opts: { lockEstimate?: boolean; letterSigned?: boolean; preparer?: boolean; taxYear?: number; contactId?: string } = {}
+): Promise<{ id: string; contactId: string; engagementId: string }> {
+  const contactId = opts.contactId
+    ?? (await makeContact(app.db, { firstName: 'Synthetic', lastName: last, email: `${last.toLowerCase()}-controls@example.test` })).id;
+  const taxYear = opts.taxYear ?? 2025;
   const version = await currentPriceBookVersion(app.db);
   const eng = await app.db.query<{ id: string }>(
-    `INSERT INTO engagements (contact_id, service_line, title, status, price_book_version_id) VALUES ($1, 'tax', '2025 1120S', 'active', $2) RETURNING id`,
-    [c.id, version.id]
+    `INSERT INTO engagements (contact_id, service_line, title, status, period_key, price_book_version_id)
+     VALUES ($1, 'tax', $2 || ' 1120S', 'active', $2, $3) RETURNING id`,
+    [contactId, String(taxYear), version.id]
   );
   await app.db.query(
     `INSERT INTO engagement_scope_items (engagement_id, price_book_version_id, item_code, description_en, quantity, unit_cents, line_cents)
      SELECT $1, $2, item_code, name_en, 1, amount_cents, amount_cents FROM price_book_items WHERE version_id = $2 AND item_code = 'BIZ_1120S'`,
     [eng.rows[0]!.id, version.id]
   );
+  // The letter and the preparer are on by default, because most tests want a return past the gates.
+  // The 2026-09-20 rulings turn each one off in turn, to prove the gate that asks for it.
   const te = await app.db.query<{ id: string }>(
     `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, client_type, stage, preparer_id, engagement_letter_signed_at, estimate_locked_at)
-     VALUES ($1, 2025, '1120s', 'business', $2::tax_stage, $3, now(), CASE WHEN $4 THEN now() ELSE NULL END) RETURNING id`,
-    [eng.rows[0]!.id, stage, ana.id, Boolean(opts.lockEstimate)]
+     VALUES ($1, $5, '1120s', 'business', $2::tax_stage,
+             CASE WHEN $6 THEN $3::uuid ELSE NULL END,
+             CASE WHEN $7 THEN now() ELSE NULL END,
+             CASE WHEN $4 THEN now() ELSE NULL END) RETURNING id`,
+    [
+      eng.rows[0]!.id, stage, ana.id, Boolean(opts.lockEstimate), taxYear,
+      opts.preparer !== false, opts.letterSigned !== false,
+    ]
   );
-  return { id: te.rows[0]!.id, contactId: c.id, engagementId: eng.rows[0]!.id };
+  return { id: te.rows[0]!.id, contactId, engagementId: eng.rows[0]!.id };
 }
 
 async function bookPrice(itemCode: string): Promise<{ cents: number; version: number }> {
@@ -118,7 +148,8 @@ test('GET /tax-engagements/:id carries the quoted range under the book in force,
     default_jurisdictions: string[]; declared_jurisdictions: string[];
     assigned_preparer: { id: string; name: string } | null; staff_options: Array<{ id: string; name: string }>;
   };
-  // The accepted quote's line for this return, priced from the current book: a flat item is a range of one number.
+  // No quote behind the scope snapshot, so the fallback stands: the base return item under the book
+  // in force, and a flat item is a range of one number (ruling 13 sums the whole quote when there is one).
   assert.deepEqual(j.quoted_range, { min_cents: price.cents, max_cents: price.cents, price_book_version: price.version });
   assert.deepEqual(j.legal_next_stages, ['filed']);
   assert.deepEqual(j.default_jurisdictions, ['federal'], 'a contact with no state on file suggests federal alone');
@@ -229,8 +260,9 @@ test('above a locked estimate BOTH the category and the reason are required, and
 });
 
 test('outside the quoted range but NOT above a locked estimate: the reason alone, as before, and no category is asked for', async () => {
-  // The estimate is unlocked, so the quoted range is the accepted quote's line under the book in
-  // force. Above it the fee is outside the range but there is no locked top to be over.
+  // The estimate is unlocked, so the quoted range is the base return item under the book in force
+  // (no quote stands behind this fixture's scope). Above it the fee is outside the range but there
+  // is no locked top to be over.
   const te = await quotedReturn('Nolock', 'ready_to_file');
   const price = await bookPrice('BIZ_1120S');
   const above = price.cents + 12000;
@@ -347,4 +379,410 @@ test('role proof: a bookkeeper gets 403 from estimate, final-fee and transition;
   assert.ok(ceo.permissions.includes('*'));
   const asCeo = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/estimate`, headers: auth(brian), payload: { minCents: 60000, maxCents: 80000 } });
   assert.equal(asCeo.statusCode, 200, asCeo.body);
+});
+
+/*
+ * ═══ 2026-09-20, RULING 10: THE ENGAGEMENT LETTER ═════════════════════════════════════════════
+ *
+ * One signature, every return it covers; a return opened later inherits it while it stands; and the
+ * client who signed on paper is stamped by the scan, through the same door the 8879 takes. The bare
+ * staff route that stamped the gate with now() and nothing behind it is gone.
+ */
+
+test('the packet signature in the portal stamps the engagement letter on every return the client has', async () => {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Packetletter', email: 'packetletter-controls@example.test' });
+  // Two years, two returns, neither stamped: the defect was that signing covered none of them.
+  const older = await quotedReturn('Packetletter', 'scheduled', { contactId: c.id, taxYear: 2024, letterSigned: false });
+  const newer = await quotedReturn('Packetletter', 'scheduled', { contactId: c.id, taxYear: 2025, letterSigned: false });
+  const before = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
+      WHERE e.contact_id = $1 AND te.engagement_letter_signed_at IS NOT NULL`, [c.id]);
+  assert.equal(before.rows[0]!.n, 0, 'nothing is stamped before the signature');
+
+  const packet = await createPacket(app, c.id, ceoActor);
+  const signed = await recordMasterSignature(app, packet.packetId, { method: 'portal_esign' });
+  assert.equal(signed.contactId, c.id);
+
+  const after = await app.db.query<{ id: string; signed: string | null }>(
+    `SELECT te.id, te.engagement_letter_signed_at::text AS signed
+       FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
+      WHERE e.contact_id = $1 ORDER BY te.tax_year`, [c.id]);
+  assert.equal(after.rows.length, 2);
+  assert.ok(after.rows.every((r) => r.signed), 'one signature stamped both returns');
+  assert.deepEqual(after.rows.map((r) => r.id).sort(), [older.id, newer.id].sort());
+
+  // Keyed on the contact, and the packet's own audit row says which returns it stamped.
+  const audit = await app.db.query<{ details: { tax_returns_stamped?: string[] } }>(
+    `SELECT details FROM audit_log WHERE action = 'packet.signed' AND object_id = $1`, [packet.packetId]);
+  assert.equal(audit.rows.length, 1);
+  assert.deepEqual([...(audit.rows[0]!.details.tax_returns_stamped ?? [])].sort(), [older.id, newer.id].sort());
+
+  // And gate 1 is actually open now: the return moves past Scheduled.
+  const moved = await app.inject({ method: 'POST', url: `/tax-engagements/${newer.id}/transition`, headers: auth(ana), payload: { toStage: 'documents_requested' } });
+  assert.equal(moved.statusCode, 200, moved.body);
+});
+
+test('a return created after the signature inherits the stamp while the letter stands; one created before it does not', async () => {
+  // No letter yet: the new return starts unstamped and gate 1 says so.
+  const fresh = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Inherit', email: 'inherit-controls@example.test' });
+  const unsigned = await app.inject({
+    method: 'POST', url: '/tax-engagements', headers: auth(ana),
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: fresh.id, taxYear: 2025, returnType: '1040' },
+  });
+  assert.equal(unsigned.statusCode, 201, unsigned.body);
+  assert.equal(unsigned.json().engagementLetterInherited, false, 'nothing is inherited from a letter nobody signed');
+  const notStamped = await app.db.query<{ signed: string | null }>(
+    `SELECT engagement_letter_signed_at::text AS signed FROM tax_engagements WHERE id = $1`, [unsigned.json().id]);
+  assert.equal(notStamped.rows[0]!.signed, null);
+
+  // The client signs; a return opened for the NEXT year inherits the stamp without asking again.
+  await app.db.query(`UPDATE contacts SET engagement_letter_status = 'signed' WHERE id = $1`, [fresh.id]);
+  const later = await app.inject({
+    method: 'POST', url: '/tax-engagements', headers: auth(ana),
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: fresh.id, taxYear: 2026, returnType: '1040' },
+  });
+  assert.equal(later.statusCode, 201, later.body);
+  assert.equal(later.json().engagementLetterInherited, true);
+  const stamped = await app.db.query<{ signed: string | null }>(
+    `SELECT engagement_letter_signed_at::text AS signed FROM tax_engagements WHERE id = $1`, [later.json().id]);
+  assert.ok(stamped.rows[0]!.signed, 'the standing letter covers the return opened under it');
+});
+
+test('the paper letter door: the upload stamps the return, and refuses a future date and a date before the year closed', async () => {
+  const te = await quotedReturn('Paperletter', 'scheduled', { letterSigned: false });
+  const upload = (signedOn: string, filename: string) => {
+    const body = multipartBody(
+      { contactId: te.contactId, category: 'signed_authorizations', taxEngagementId: te.id, engagementLetterSignedOn: signedOn },
+      { field: 'file', filename, contentType: 'application/pdf', data: Buffer.from('%PDF-1.4 synthetic engagement letter\n%%EOF') }
+    );
+    return app.inject({ method: 'POST', url: '/documents', headers: { ...auth(ana), ...body.headers }, payload: body.payload });
+  };
+
+  // Gate 1 is shut, and the return says so.
+  const blocked = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/transition`, headers: auth(ana), payload: { toStage: 'documents_requested' } });
+  assert.equal(blocked.statusCode, 409, blocked.body);
+  assert.equal(blocked.json().error, 'engagement_letter_required');
+
+  // A signature dated after today is not a signature anybody has seen.
+  const future = await upload(addDays(todayChicago(), 3), 'synthetic-letter-future.pdf');
+  assert.equal(future.statusCode, 409, future.body);
+  assert.equal(future.json().error, 'signed_date_in_future');
+  assert.match(future.json().message, /after today/);
+
+  // And one dated before the return's tax year closed cannot authorize that year.
+  const tooEarly = await upload('2025-06-30', 'synthetic-letter-early.pdf');
+  assert.equal(tooEarly.statusCode, 409, tooEarly.body);
+  assert.equal(tooEarly.json().error, 'signed_before_year_end');
+
+  const stillNull = await app.db.query<{ signed: string | null }>(
+    `SELECT engagement_letter_signed_at::text AS signed FROM tax_engagements WHERE id = $1`, [te.id]);
+  assert.equal(stillNull.rows[0]!.signed, null, 'two refusals stamped nothing');
+
+  // The real date on the paper: the upload IS the stamp.
+  const signedOn = '2026-02-10';
+  const ok = await upload(signedOn, 'synthetic-letter-signed.pdf');
+  assert.equal(ok.statusCode, 201, ok.body);
+  assert.equal(ok.json().signedEngagementLetter, true);
+  const row = await app.db.query<{ signed: string | null }>(
+    `SELECT engagement_letter_signed_at::date::text AS signed FROM tax_engagements WHERE id = $1`, [te.id]);
+  assert.equal(row.rows[0]!.signed, signedOn, 'the date on the scan, not the date of the upload');
+  const contact = await app.db.query<{ status: string }>(
+    `SELECT engagement_letter_status::text AS status FROM contacts WHERE id = $1`, [te.contactId]);
+  assert.equal(contact.rows[0]!.status, 'signed', 'the client letter stands, so the next return inherits it');
+  const envelope = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM signature_envelopes
+      WHERE tax_engagement_id = $1 AND type = 'engagement_letter' AND status = 'completed' AND signed_document_id IS NOT NULL`, [te.id]);
+  assert.equal(envelope.rows[0]!.n, 1, 'one queryable envelope, with the scan on it');
+
+  // Gate 1 is open, and a second upload is refused rather than stamping twice.
+  const moved = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/transition`, headers: auth(ana), payload: { toStage: 'documents_requested' } });
+  assert.equal(moved.statusCode, 200, moved.body);
+  const again = await upload(signedOn, 'synthetic-letter-again.pdf');
+  assert.equal(again.statusCode, 409, again.body);
+  assert.equal(again.json().error, 'engagement_letter_already_on_file');
+});
+
+test('the bare wet-signature route no longer stamps the letter: it says where the door moved to', async () => {
+  const te = await quotedReturn('Wetgone', 'scheduled', { letterSigned: false });
+  const res = await app.inject({
+    method: 'POST', url: `/tax-engagements/${te.id}/signatures/wet`, headers: auth(ana),
+    payload: { type: 'engagement_letter', note: 'signed across the desk' },
+  });
+  assert.equal(res.statusCode, 410, res.body);
+  assert.equal(res.json().error, 'engagement_letter_is_an_upload');
+  assert.match(res.json().message, /Signed Authorizations/);
+  const untouched = await app.db.query<{ signed: string | null }>(
+    `SELECT engagement_letter_signed_at::text AS signed FROM tax_engagements WHERE id = $1`, [te.id]);
+  assert.equal(untouched.rows[0]!.signed, null, 'a retired route stamps nothing');
+});
+
+/*
+ * ═══ 2026-09-20, RULING 11: THE PREPARER ══════════════════════════════════════════════════════
+ */
+
+test('a new return gets the only active tax preparer the firm has, and GET says who that is', async () => {
+  const fresh = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Soleprep', email: 'soleprep-controls@example.test' });
+  const created = await app.inject({
+    method: 'POST', url: '/tax-engagements', headers: auth(ana),
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: fresh.id, taxYear: 2025, returnType: '1040' },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  assert.equal(created.json().preparerId, ana.id, 'one preparer in the firm, one answer to who prepares this');
+  const detail = (await app.inject({ method: 'GET', url: `/tax-engagements/${created.json().id}`, headers: auth(ana) })).json() as {
+    assigned_preparer: { id: string; name: string } | null; sole_tax_preparer_id: string | null;
+    staff_options: Array<{ id: string }>;
+  };
+  assert.deepEqual(detail.assigned_preparer, { id: ana.id, name: ana.fullName });
+  assert.equal(detail.sole_tax_preparer_id, ana.id, 'what the Assign preparer select opens on');
+  assert.ok(detail.staff_options.some((o) => o.id === brian.id), 'the CEO may take a return himself');
+});
+
+test('preparation is refused until a preparer is named; the assign route refuses an inactive or wrong-role choice', async () => {
+  const te = await quotedReturn('Noprep', 'documents_requested', { lockEstimate: true, preparer: false });
+  const start = () => app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/transition`, headers: auth(ana), payload: { toStage: 'in_preparation' } });
+
+  const refused = await start();
+  assert.equal(refused.statusCode, 409, refused.body);
+  assert.equal(refused.json().error, 'preparer_required');
+  assert.match(refused.json().message, /Assign the preparer/);
+  const stillThere = await app.db.query<{ stage: string }>(`SELECT stage::text AS stage FROM tax_engagements WHERE id = $1`, [te.id]);
+  assert.equal(stillThere.rows[0]!.stage, 'documents_requested', 'a refused move left the return where it was');
+
+  const assign = (staffId: string) =>
+    app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/preparer`, headers: auth(ana), payload: { staffId } });
+
+  const wrongRole = await assign(marian.id);
+  assert.equal(wrongRole.statusCode, 409, wrongRole.body);
+  assert.equal(wrongRole.json().error, 'preparer_wrong_role');
+  assert.match(wrongRole.json().message, new RegExp(marian.fullName), 'named, not a code');
+
+  // An inactive preparer is not a preparer.
+  const gone = await makeStaff(app.db, config, { email: 'gone-controls@example.test', name: 'Synthetic Departed', role: 'tax_preparer', password: 'tax_preparer-password-123456' });
+  await app.db.query(`UPDATE staff SET is_active = false WHERE id = $1`, [gone.id]);
+  const inactive = await assign(gone.id);
+  assert.equal(inactive.statusCode, 409, inactive.body);
+  assert.equal(inactive.json().error, 'preparer_inactive');
+
+  const ok = await assign(ana.id);
+  assert.equal(ok.statusCode, 200, ok.body);
+  assert.deepEqual(ok.json().preparer, { id: ana.id, name: ana.fullName });
+  const audited = await app.db.query<{ details: Record<string, unknown> }>(
+    `SELECT details FROM audit_log WHERE action = 'tax_engagement.preparer_assigned' AND object_id = $1`, [te.id]);
+  assert.equal(audited.rows.length, 1, 'assignment is on the record');
+  assert.equal(audited.rows[0]!.details['preparer_id'], ana.id);
+
+  const started = await start();
+  assert.equal(started.statusCode, 200, started.body);
+
+  // The bookkeeper cannot assign anybody.
+  const forbidden = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/preparer`, headers: auth(marian), payload: { staffId: ana.id } });
+  assert.equal(forbidden.statusCode, 403, forbidden.body);
+  assert.equal(forbidden.json().permission, 'engagements.tax.manage');
+});
+
+/*
+ * ═══ 2026-09-20, RULING 12: THE EXTENSION ═════════════════════════════════════════════════════
+ */
+
+test('recording an extension: the form, the day it was filed, and a derived deadline nobody types', async () => {
+  const te = await quotedReturn('Extension', 'in_preparation', { lockEstimate: true });
+  const file = (payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/extension/filed`, headers: auth(ana), payload });
+
+  // A filed date after today is not a filing anybody has made.
+  const future = await file({ form: '7004', filedOn: addDays(todayChicago(), 2) });
+  assert.equal(future.statusCode, 409, future.body);
+  assert.equal(future.json().error, 'extension_filed_date_in_future');
+  assert.match(future.json().message, /after today/);
+  const nothing = await app.db.query<{ filed: boolean; form: string | null }>(
+    `SELECT extension_filed AS filed, extension_form AS form FROM tax_engagements WHERE id = $1`, [te.id]);
+  assert.equal(nothing.rows[0]!.filed, false, 'a refused date filed no extension');
+  assert.equal(nothing.rows[0]!.form, null);
+
+  // Only the two real forms exist.
+  const notAForm = await file({ form: '8868', filedOn: todayChicago() });
+  assert.equal(notAForm.statusCode, 400, notAForm.body);
+
+  // An 1120S extends on 7004, and the deadline is what the table derives — never a typed date.
+  assert.equal(defaultExtensionForm('1120s'), '7004');
+  assert.equal(defaultExtensionForm('1040'), '4868', 'an individual return extends on 4868');
+  const filedOn = '2026-03-10';
+  const ok = await file({ form: '7004', filedOn });
+  assert.equal(ok.statusCode, 200, ok.body);
+  assert.equal(ok.json().form, '7004');
+  assert.equal(ok.json().filedOn, filedOn);
+  const derived = extendedDeadline('1120s', 2025, 12);
+  assert.equal(ok.json().extendedDeadline, derived, 'the deadline table, not the request body');
+  const row = await app.db.query<{ filed: boolean; form: string | null; filed_on: string | null; deadline: string | null }>(
+    `SELECT extension_filed AS filed, extension_form AS form, extension_filed_date::text AS filed_on,
+            extended_deadline::text AS deadline
+       FROM tax_engagements WHERE id = $1`, [te.id]);
+  assert.equal(row.rows[0]!.filed, true);
+  assert.equal(row.rows[0]!.form, '7004');
+  assert.equal(row.rows[0]!.filed_on, filedOn);
+  assert.equal(row.rows[0]!.deadline, derived);
+  const audited = await app.db.query<{ details: Record<string, unknown> }>(
+    `SELECT details FROM audit_log WHERE action = 'tax_engagement.extension_filed' AND object_id = $1`, [te.id]);
+  assert.equal(audited.rows[0]!.details['extension_form'], '7004');
+  assert.equal(audited.rows[0]!.details['filed_on'], filedOn);
+
+  // The row reads it back, which is what the badge on the card shows.
+  const detail = (await app.inject({ method: 'GET', url: `/tax-engagements/${te.id}`, headers: auth(ana) })).json() as {
+    taxEngagement: { extension_filed: boolean; extension_form: string | null; extended_deadline: string | null };
+  };
+  assert.equal(detail.taxEngagement.extension_filed, true);
+  assert.equal(detail.taxEngagement.extension_form, '7004');
+  assert.equal(detail.taxEngagement.extended_deadline, derived);
+});
+
+test('recording an extension with neither answer: the form follows the return type and the date is today', async () => {
+  const te = await quotedReturn('Extdefault', 'in_preparation', { lockEstimate: true });
+  const res = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/extension/filed`, headers: auth(ana), payload: {} });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(res.json().form, '7004', 'an 1120S extends on 7004 without being told');
+  assert.equal(res.json().filedOn, todayChicago());
+});
+
+/*
+ * ═══ 2026-09-20, RULING 13: THE QUOTED RANGE IS THE WHOLE ACCEPTED QUOTE ═══════════════════════
+ *
+ * The range a final fee is read against used to be the BASE return line alone, so every quote with a
+ * schedule on it read low: the exact figure the client accepted landed "outside the quoted range"
+ * and the preparer was asked to justify quoted scope as if it were scope creep. It is now the sum of
+ * the accepted quote's lines for this return — min of mins, max of maxes, a flat line contributing
+ * its amount to both — read from the engagement's scope snapshot at the price-book version that
+ * quote pinned, never the book in force.
+ */
+
+/** An accepted quote whose lines are snapshotted onto the engagement (#47): base plus add-ons. */
+async function acceptedQuoteReturn(
+  last: string,
+  items: readonly string[]
+): Promise<{ id: string; contactId: string; engagementId: string; quoteId: string }> {
+  const contactId = (await makeContact(app.db, {
+    firstName: 'Synthetic', lastName: last, email: `${last.toLowerCase()}-controls@example.test`,
+  })).id;
+  const version = await currentPriceBookVersion(app.db);
+  const quote = await app.db.query<{ id: string }>(
+    `INSERT INTO quotes (contact_id, status, price_book_version_id, accepted_at) VALUES ($1, 'accepted', $2, now()) RETURNING id`,
+    [contactId, version.id]
+  );
+  const eng = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, title, status, period_key, price_book_version_id)
+     VALUES ($1, 'tax', '2025 1120S', 'active', '2025', $2) RETURNING id`,
+    [contactId, version.id]
+  );
+  for (const [i, code] of items.entries()) {
+    await app.db.query(
+      `INSERT INTO engagement_scope_items
+         (engagement_id, source_quote_id, price_book_version_id, item_code, description_en, quantity, unit_cents, line_cents, sort_order)
+       SELECT $1, $2, $3, item_code, name_en, 1, amount_cents, amount_cents, $5
+         FROM price_book_items WHERE version_id = $3 AND item_code = $4`,
+      [eng.rows[0]!.id, quote.rows[0]!.id, version.id, code, i]
+    );
+  }
+  const te = await app.db.query<{ id: string }>(
+    `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, client_type, stage, preparer_id, engagement_letter_signed_at)
+     VALUES ($1, 2025, '1120s', 'business', 'ready_to_file', $2, now()) RETURNING id`,
+    [eng.rows[0]!.id, ana.id]
+  );
+  return { id: te.rows[0]!.id, contactId, engagementId: eng.rows[0]!.id, quoteId: quote.rows[0]!.id };
+}
+
+test('the quoted range covers the accepted quote’s schedules, and a fee equal to the quoted scope is inside it', async () => {
+  const te = await acceptedQuoteReturn('Schedule', ['BIZ_1120S', 'BIZ_ADDL_STATE']);
+  const base = await bookPrice('BIZ_1120S');
+  const schedule = await bookPrice('BIZ_ADDL_STATE');
+  const quoted = base.cents + schedule.cents;
+
+  const detail = (await app.inject({ method: 'GET', url: `/tax-engagements/${te.id}`, headers: auth(ana) })).json() as {
+    quoted_range: { min_cents: number; max_cents: number; price_book_version: number } | null;
+  };
+  assert.deepEqual(
+    detail.quoted_range,
+    { min_cents: quoted, max_cents: quoted, price_book_version: base.version },
+    'the base line AND the schedule, at the version the quote pinned'
+  );
+  assert.ok(quoted > base.cents, 'the schedule is really on the quote (the old range stopped at the base line)');
+
+  // The exact figure the client accepted: inside the range, and nothing is asked for.
+  const fee = await app.inject({
+    method: 'POST', url: `/tax-engagements/${te.id}/final-fee`, headers: auth(ana),
+    payload: { finalFeeCents: quoted },
+  });
+  assert.equal(fee.statusCode, 200, fee.body);
+  assert.deepEqual(fee.json(), { status: 'ok', scopeCreepFlag: false, outsideQuotedRange: false });
+  const audited = await app.db.query(
+    `SELECT 1 FROM audit_log WHERE action = 'tax_engagement.final_fee_outside_quote' AND object_id = $1`, [te.id]);
+  assert.equal(audited.rows.length, 0, 'quoted scope is not a departure from the quote');
+
+  // Above the whole quote it is still outside, and still refused without a reason.
+  const over = await app.inject({
+    method: 'POST', url: `/tax-engagements/${te.id}/final-fee`, headers: auth(ana),
+    payload: { finalFeeCents: quoted + 5000 },
+  });
+  assert.equal(over.statusCode, 409, over.body);
+  assert.equal(over.json().error, 'final_fee_reason_required');
+});
+
+test('a ranged line widens the quoted range at both ends; a pass-through is never part of the fee', async () => {
+  // IND_CPA_LETTER is priced as a RANGE in the book; the base 1120S is flat. Min of mins, max of maxes.
+  const te = await acceptedQuoteReturn('Ranged', ['BIZ_1120S', 'IND_CPA_LETTER']);
+  const version = await currentPriceBookVersion(app.db);
+  const ranged = await app.db.query<{ price_min_cents: number; price_max_cents: number }>(
+    `SELECT price_min_cents, price_max_cents FROM price_book_items WHERE version_id = $1 AND item_code = 'IND_CPA_LETTER'`,
+    [version.id]);
+  const base = await bookPrice('BIZ_1120S');
+  const detail = (await app.inject({ method: 'GET', url: `/tax-engagements/${te.id}`, headers: auth(ana) })).json() as {
+    quoted_range: { min_cents: number; max_cents: number } | null;
+  };
+  assert.equal(detail.quoted_range!.min_cents, base.cents + ranged.rows[0]!.price_min_cents);
+  assert.equal(detail.quoted_range!.max_cents, base.cents + ranged.rows[0]!.price_max_cents);
+
+  // A pass-through line is shown to the client and is never our fee: it moves neither end.
+  await app.db.query(
+    `INSERT INTO engagement_scope_items
+       (engagement_id, source_quote_id, price_book_version_id, item_code, description_en, quantity, unit_cents, line_cents, is_pass_through, sort_order)
+     SELECT $1, $2, $3, item_code, name_en, 1, amount_cents, amount_cents, true, 9
+       FROM price_book_items WHERE version_id = $3 AND item_code = 'PASS_QBO'`,
+    [te.engagementId, te.quoteId, version.id]);
+  const again = (await app.inject({ method: 'GET', url: `/tax-engagements/${te.id}`, headers: auth(ana) })).json() as {
+    quoted_range: { min_cents: number; max_cents: number } | null;
+  };
+  assert.deepEqual(again.quoted_range, detail.quoted_range, 'the pass-through changed neither end');
+});
+
+test('the locked estimate still wins over the quote, and a return with no accepted quote falls back to the base item', async () => {
+  const te = await acceptedQuoteReturn('Lockwins', ['BIZ_1120S', 'BIZ_ADDL_STATE']);
+  const lock = await app.inject({
+    method: 'POST', url: `/tax-engagements/${te.id}/estimate`, headers: auth(ana), payload: { minCents: 90000, maxCents: 95000 } });
+  assert.equal(lock.statusCode, 200, lock.body);
+  const locked = (await app.inject({ method: 'GET', url: `/tax-engagements/${te.id}`, headers: auth(ana) })).json() as {
+    quoted_range: { min_cents: number; max_cents: number } | null;
+  };
+  assert.deepEqual({ min: locked.quoted_range!.min_cents, max: locked.quoted_range!.max_cents }, { min: 90000, max: 95000 });
+
+  // No quote behind the scope (a return opened by hand): the base item under the book in force, as before.
+  const byHand = await quotedReturn('Noquote', 'ready_to_file');
+  const base = await bookPrice('BIZ_1120S');
+  const fallback = (await app.inject({ method: 'GET', url: `/tax-engagements/${byHand.id}`, headers: auth(ana) })).json() as {
+    quoted_range: { min_cents: number; max_cents: number; price_book_version: number } | null;
+  };
+  assert.deepEqual(fallback.quoted_range, { min_cents: base.cents, max_cents: base.cents, price_book_version: base.version });
+});
+
+test('role proof (ruling 13): the range is read by the same GET the controls use — a bookkeeper is refused, a preparer carries the full range', async () => {
+  const te = await acceptedQuoteReturn('Rangerole', ['BIZ_1120S', 'BIZ_ADDL_STATE']);
+  const quoted = (await bookPrice('BIZ_1120S')).cents + (await bookPrice('BIZ_ADDL_STATE')).cents;
+
+  const refused = await app.inject({ method: 'GET', url: `/tax-engagements/${te.id}`, headers: auth(marian) });
+  assert.equal(refused.statusCode, 403, refused.body);
+  assert.equal(refused.json().permission, 'engagements.read', 'the bookkeeper cannot read the return, so cannot read its range');
+
+  const preparer = await app.inject({ method: 'GET', url: `/tax-engagements/${te.id}`, headers: auth(ana) });
+  assert.equal(preparer.statusCode, 200, preparer.body);
+  assert.equal((preparer.json() as { quoted_range: { max_cents: number } }).quoted_range.max_cents, quoted);
+  const ceo = await app.inject({ method: 'GET', url: `/tax-engagements/${te.id}`, headers: auth(brian) });
+  assert.equal(ceo.statusCode, 200, ceo.body);
+  assert.equal((ceo.json() as { quoted_range: { max_cents: number } }).quoted_range.max_cents, quoted, 'the CEO by wildcard');
 });

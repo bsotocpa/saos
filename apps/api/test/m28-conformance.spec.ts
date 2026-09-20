@@ -21,6 +21,7 @@ import type { Mailer } from '../src/mailer.ts';
 import { createTestConfig, makeContact, makeStaff, auditRows, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { addDays, todayChicago } from '../src/modules/tax/deadlines.ts';
+import { defaultExtensionForm } from '../src/modules/tax/extension.ts';
 
 let app: FastifyInstance;
 let config: Config;
@@ -68,15 +69,22 @@ async function makeReturn(opts: {
    */
   const teId = await withTransaction(app.db, async () => {
     const te = await app.db.query<{ id: string }>(
+      /*
+       * AN EXTENDED RETURN SAYS ON WHICH FORM (2026-09-20). The database refuses
+       * extension_filed = true with no extension_form, because "extended" alone cannot answer
+       * "what did we actually send?" when a client calls about a notice. The fixture records the
+       * form the return type extends on, which is what the real path derives.
+       */
       `INSERT INTO tax_engagements
          (engagement_id, tax_year, return_type, stage, preparer_id, original_deadline, extended_deadline,
-          extension_filed, docs_received_at, perfection_deadline)
-       VALUES ($1, 2025, $2::return_type, $3::tax_stage, $4, $5::date, $6::date, $7, $8, $9::date)
+          extension_filed, extension_form, docs_received_at, perfection_deadline)
+       VALUES ($1, 2025, $2::return_type, $3::tax_stage, $4, $5::date, $6::date, $7, $10, $8, $9::date)
        RETURNING id`,
       [
         eng.rows[0]!.id, opts.returnType ?? '1040', opts.stage ?? 'in_preparation', opts.preparerId,
         opts.originalDeadline ?? null, opts.extendedDeadline ?? null, opts.extensionFiled ?? false,
         opts.docsReceived ? new Date() : null, opts.perfectionDeadline ?? null,
+        opts.extensionFiled ? defaultExtensionForm(opts.returnType ?? '1040') : null,
       ]
     );
     if (opts.perfectionDeadline) {

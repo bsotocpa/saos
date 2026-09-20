@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { todayChicago } from './deadlines.ts';
 import {
+  EXTENSION_FORMS,
   deadlineDashboard,
   extensionDecisionList,
   markExtensionDecision,
@@ -26,6 +27,16 @@ const PaymentEstimateBody = z.object({ amountCents: z.number().int().positive() 
 const PaymentMadeBody = z.object({ made: z.boolean() });
 const ListQuery = z.object({ deadline: z.iso.date() });
 const AsOfQuery = z.object({ asOf: z.iso.date().optional() });
+/**
+ * WHAT WENT IN AND WHEN (Brian, 2026-09-20). Both optional: the form defaults from the return type
+ * and the date defaults to today, so the auto-extension batch and every existing caller keep
+ * working. No deadline is accepted here — the extended deadline is derived from the return type and
+ * the fiscal year end, never typed.
+ */
+const ExtensionFiledBody = z.object({
+  form: z.enum(EXTENSION_FORMS).optional(),
+  filedOn: z.iso.date().optional(),
+});
 
 function actorOf(request: FastifyRequest) {
   return { staffId: request.staff!.id, label: request.staff!.fullName };
@@ -64,8 +75,11 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
 
   app.post<{ Params: { id: string } }>('/tax-engagements/:id/extension/filed', manage, async (request) => {
     const id = z.uuid().parse(request.params.id);
-    const result = await markExtensionFiled(app, actorOf(request), id, todayChicago());
-    return { status: 'ok', extendedDeadline: result.extendedDeadline };
+    const b = ExtensionFiledBody.parse(request.body ?? {});
+    const result = await markExtensionFiled(app, actorOf(request), id, todayChicago(), {
+      form: b.form, filedOn: b.filedOn,
+    });
+    return { status: 'ok', extendedDeadline: result.extendedDeadline, form: result.form, filedOn: result.filedOn };
   });
 
   app.get('/dashboards/deadlines', read, async (request) => {

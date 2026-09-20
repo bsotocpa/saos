@@ -18,7 +18,7 @@
 import type { AuthedStaff } from '../../types.ts';
 import { holds } from '../../plugins/auth.ts';
 
-/** Every value of the document_category enum (migrations 0004, 0009, 0024, 0094). */
+/** Every value of the document_category enum (migrations 0004, 0009, 0024, 0094, 0113). */
 export const DOCUMENT_CATEGORY_VALUES = [
   'tax_documents',
   'business_records',
@@ -30,12 +30,16 @@ export const DOCUMENT_CATEGORY_VALUES = [
   'recording',
   'financial_statements',
   'entity_filings',
+  // 0113: the receipt for a paper filing's certified mailing (ruling 15).
+  'mailing_receipts',
 ] as const;
 export type DocumentCategoryValue = (typeof DOCUMENT_CATEGORY_VALUES)[number];
 
 /** Return-adjacent: the §7216 wall proper. */
 export const RETURN_ADJACENT_CATEGORIES: readonly DocumentCategoryValue[] = [
-  'tax_documents', 'irs_notices', 'signed_authorizations', 'return_deliverable',
+  // A mailing receipt is proof of a FILING: it names the return, the year and the agency, which is
+  // return-adjacent by the same reasoning as the signed authorization it travelled with.
+  'tax_documents', 'irs_notices', 'signed_authorizations', 'return_deliverable', 'mailing_receipts',
 ];
 export const ENTITY_CATEGORIES: readonly DocumentCategoryValue[] = ['entity_filings'];
 export const RELATIONSHIP_CATEGORIES: readonly DocumentCategoryValue[] = DOCUMENT_CATEGORY_VALUES.filter(

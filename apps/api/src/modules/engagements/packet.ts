@@ -673,11 +673,21 @@ export async function recordMasterSignature(
       `UPDATE contacts SET engagement_letter_status = 'signed' WHERE id = $1`,
       [p.contact_id]
     );
+    /*
+     * AND ON THE RETURNS (Brian, 2026-09-20). Pipeline gate 1 reads the RETURN's
+     * engagement_letter_signed_at, not the contact's flag — so until now a client who had signed
+     * the packet in the portal still had every return blocked at Scheduled, and the only thing
+     * that could unblock it was a staff-only route on no screen. One signature, every return it
+     * covers: inside this transaction, so a signed packet and the returns it authorizes cannot
+     * disagree. Keyed on the CONTACT, which is what the packet is scoped to.
+     */
+    const { stampEngagementLetterOnContactReturns } = await import('../tax/pipeline.ts');
+    const stamped = await stampEngagementLetterOnContactReturns(app, p.contact_id);
     await writeAudit(app.db, {
       actorType: 'client', actorId: p.contact_id, actorLabel: 'master signature',
       action: 'packet.signed', objectType: 'engagement_packet', objectId: packetId,
       contactId: p.contact_id,
-      details: { schedules: p.schedule_codes, master_version: p.master_version, ...meta },
+      details: { schedules: p.schedule_codes, master_version: p.master_version, tax_returns_stamped: stamped, ...meta },
     });
     // #42: signing the Master is one half of "active" — the lifecycle asks the record
     // for the other half (an open engagement) rather than assuming it.

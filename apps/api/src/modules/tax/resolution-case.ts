@@ -312,7 +312,22 @@ export async function resolutionCaseView(app: FastifyInstance, caseId: string) {
   return { case: caseRow.rows[0], years: years.rows };
 }
 
-/** Paper lane: record the certified mailing (tracking number is required). */
+/**
+ * THE RESOLUTION LANE'S CERTIFIED MAILING — retired into the per-jurisdiction record (Brian,
+ * 2026-09-20, ruling 15).
+ *
+ * The mailing of a paper return is now a fact about a JURISDICTION, because one return can go out
+ * electronically to the IRS and on paper to a state. So when the return has already declared its
+ * jurisdictions — it is at or past 'filed' — this door hands straight to that record: one writer,
+ * one audit action, one follow-up task, and completion follows from there.
+ *
+ * It stays as a door because it keeps two rules the generic record cannot: the LANE check by year
+ * (certified mail on an e-file year is a category error, refused by name), and the certified-mail
+ * TRACKING requirement. And it stays reachable before filing, which is where the resolution lane
+ * actually uses it — a prior-year return is mailed and only then marked filed, so there is no
+ * jurisdiction row to write on yet. In that case the mailing lands on the return's summary columns
+ * and raises the same follow-up task through the same helper, so the two paths cannot drift.
+ */
 export async function recordPaperMailing(
   app: FastifyInstance,
   taxEngagementId: string,
@@ -332,13 +347,28 @@ export async function recordPaperMailing(
   if (!input.tracking.trim()) {
     throw new AppError(400, 'tracking_required', 'The certified-mail tracking number is required.');
   }
+  const tracking = input.tracking.trim();
+  const { acceptanceStatus, certifiedMailingFollowUpTask, recordJurisdictionMailing } = await import('./pipeline.ts');
+  const status = await acceptanceStatus(app, taxEngagementId);
+  const declaredPaper = status.rows.find((r) => r.filingMethod === 'paper' && !r.mailedOn);
+  if (declaredPaper) {
+    await recordJurisdictionMailing(
+      app,
+      { staffId: actor.id, label: actor.fullName },
+      taxEngagementId,
+      declaredPaper.jurisdiction,
+      { mailedOn: input.mailedOn, method: 'certified', trackingNumber: tracking }
+    );
+    return;
+  }
   await app.db.query(
     `UPDATE tax_engagements SET paper_mailed_on = $2, certified_tracking = $3 WHERE id = $1`,
-    [taxEngagementId, input.mailedOn, input.tracking.trim()]
+    [taxEngagementId, input.mailedOn, tracking]
   );
   await writeAudit(app.db, {
     actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
     action: 'tax_engagement.paper_mailed', objectType: 'tax_engagement', objectId: taxEngagementId,
-    details: { mailed_on: input.mailedOn, certified_tracking: input.tracking.trim() },
+    details: { mailed_on: input.mailedOn, certified_tracking: tracking, jurisdiction: null },
   });
+  await certifiedMailingFollowUpTask(app, taxEngagementId, null, input.mailedOn, tracking);
 }

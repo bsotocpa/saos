@@ -141,3 +141,160 @@ export function jurisdictionsSentence(list: readonly string[]): string {
     ? 'Federal only — no state return is declared on this filing.'
     : `Federal and ${states.join(', ')} — the return completes when every one of them has accepted.`;
 }
+
+/*
+ * ═══ 2026-09-20, ruling 15: PAPER FILING, PER JURISDICTION ═════════════════════════════════════
+ *
+ * A jurisdiction was filed one of two ways, and the two are satisfied by different facts: an e-file
+ * jurisdiction by an acknowledgment, a paper one by a recorded MAILING. So the row must never say
+ * "Accepted" for a paper filing — nobody accepted anything, and there is no acknowledgment coming.
+ *
+ * The lane the year implies is derived by the API (filingLane) and arrives on the detail as
+ * `default_filing_method`: this file does not re-derive it, the same way it grows no date formatter.
+ */
+
+export const FILING_METHODS = ['efile', 'paper'] as const;
+export type FilingMethod = (typeof FILING_METHODS)[number];
+
+export const FILING_METHOD_LABEL: Record<FilingMethod, string> = {
+  efile: 'E-filed',
+  paper: 'Paper (mailed)',
+};
+
+export const MAILING_METHODS = ['certified', 'first_class', 'hand_delivered', 'mailed_by_client'] as const;
+export type MailingMethod = (typeof MAILING_METHODS)[number];
+
+export const MAILING_METHOD_LABEL: Record<MailingMethod, string> = {
+  certified: 'USPS certified (tracked)',
+  first_class: 'USPS first-class',
+  hand_delivered: 'Hand-delivered',
+  mailed_by_client: 'Mailed by the client',
+};
+
+/** One declared jurisdiction as GET /tax-engagements/:id reports it. */
+export interface JurisdictionView {
+  jurisdiction: string;
+  filingMethod: FilingMethod;
+  acceptedOn: string | null;
+  mailedOn: string | null;
+  mailingMethod: MailingMethod | null;
+  trackingNumber: string | null;
+  receiptDocumentId: string | null;
+}
+
+/** 'federal' prints as Federal; a state prints as its code. */
+export function jurisdictionLabel(jurisdiction: string): string {
+  return jurisdiction === FEDERAL ? 'Federal' : jurisdiction.toUpperCase();
+}
+
+/**
+ * What the row says about one jurisdiction. The day arrives already formatted — this file has no
+ * date formatter and must not grow one. A paper jurisdiction reads "Mailed <date>" and an e-file one
+ * "Accepted <date>"; neither is ever printed for the other, and a jurisdiction that has not answered
+ * says what it is waiting for rather than nothing.
+ */
+export function jurisdictionStatusText(row: JurisdictionView, dayText: string): string {
+  if (row.filingMethod === 'paper') {
+    return row.mailedOn ? `Mailed ${dayText}` : 'Paper — no mailing recorded';
+  }
+  return row.acceptedOn ? `Accepted ${dayText}` : 'Awaiting acceptance';
+}
+
+/** The declared paper jurisdictions with no mailing on them: each one needs a Record mailing. */
+export function mailingsNeeded(rows: readonly JurisdictionView[] | null | undefined): JurisdictionView[] {
+  return (rows ?? []).filter((r) => r.filingMethod === 'paper' && !r.mailedOn);
+}
+
+/**
+ * The Record mailing control lives on a FILED return, which is where the pre-filing controls stop:
+ * a jurisdiction is declared at filing, so nothing can be mailed before then. A rejected return
+ * keeps it — the paper jurisdictions on it were still mailed — and a completed one does not, because
+ * nothing is awaited any more.
+ */
+const MAILABLE_STAGES = new Set(['filed', 'rejected']);
+export function mailingControlsApply(stage: string): boolean {
+  return MAILABLE_STAGES.has(stage);
+}
+
+/**
+ * What the Mark filed modal's per-jurisdiction select opens on: the method already on the row, else
+ * the lane the return's year implies. Never a guess and never e-file by habit — an old year defaults
+ * to paper because that is the only lane it has.
+ */
+export function startingFilingMethods(detail: {
+  jurisdictions?: readonly JurisdictionView[] | null;
+  default_filing_method?: FilingMethod | null;
+}, list: readonly string[]): Record<string, FilingMethod> {
+  const fallback: FilingMethod = detail.default_filing_method ?? 'efile';
+  const out: Record<string, FilingMethod> = {};
+  for (const j of normaliseJurisdictions(list)) {
+    out[j] = (detail.jurisdictions ?? []).find((r) => r.jurisdiction === j)?.filingMethod ?? fallback;
+  }
+  return out;
+}
+
+/** The map, kept to the list: a state removed from the filing takes its method with it. */
+export function filingMethodsFor(
+  list: readonly string[],
+  methods: Readonly<Record<string, FilingMethod>>,
+  fallback: FilingMethod
+): Record<string, FilingMethod> {
+  const out: Record<string, FilingMethod> = {};
+  for (const j of normaliseJurisdictions(list)) out[j] = methods[j] ?? fallback;
+  return out;
+}
+
+/*
+ * ═══ 2026-09-20: THE PREPARER, THE EXTENSION AND THE LETTER ON PAPER ═══════════════════════════
+ */
+
+/**
+ * WHO PREPARES THIS RETURN, in the words the row prints beside the control. A return with nobody on
+ * it says so plainly — "No preparer", not a blank — because a blank reads as "nothing to see" and
+ * the whole point is that somebody has to be named before preparation starts.
+ */
+export function preparerLine(assigned: { name: string } | null | undefined): string {
+  return assigned?.name ? `Preparer: ${assigned.name}` : 'No preparer';
+}
+
+/**
+ * What the Assign preparer select opens on: whoever is already assigned, else the firm's only
+ * active tax preparer when there is exactly one, else nothing — a select that opens on somebody
+ * nobody chose is the same mistake the scope-creep category made.
+ */
+export function defaultPreparerId(detail: {
+  assigned_preparer?: { id: string } | null;
+  sole_tax_preparer_id?: string | null;
+}): string {
+  return detail.assigned_preparer?.id ?? detail.sole_tax_preparer_id ?? '';
+}
+
+/**
+ * THE EXTENSION FORM (Brian, 2026-09-20). Two real forms: 4868 for an individual return, 7004 for
+ * an entity return. The same rule the API uses, so the control opens on the same answer the route
+ * would have defaulted to — and the person filing can still say the other one.
+ */
+export const EXTENSION_FORMS = ['4868', '7004'] as const;
+export type ExtensionForm = (typeof EXTENSION_FORMS)[number];
+
+export function defaultExtensionForm(returnType: string | null | undefined): ExtensionForm {
+  const t = (returnType ?? '').toLowerCase();
+  return t === '1040' || t === '1040_expat' ? '4868' : '7004';
+}
+
+export const EXTENSION_FORM_LABEL: Record<ExtensionForm, string> = {
+  '4868': 'Form 4868 (individual)',
+  '7004': 'Form 7004 (entity)',
+};
+
+/**
+ * The badge the row shows once an extension is recorded: which form went in and the deadline it
+ * bought. The deadline arrives already formatted — this file has no date formatter and must not
+ * grow one; an unrecorded form reads "form not recorded" rather than pretending to know.
+ */
+export function extensionBadgeText(form: string | null | undefined, extendedDeadlineText: string): string {
+  const which = form ? `Form ${form}` : 'form not recorded';
+  return extendedDeadlineText
+    ? `Extended · ${which} · deadline ${extendedDeadlineText}`
+    : `Extended · ${which}`;
+}
