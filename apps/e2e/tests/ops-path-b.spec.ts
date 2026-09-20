@@ -3,27 +3,34 @@
  *
  * One person, one return, fifteen steps, at 390 and again at 1280. Everything a person does is
  * done here through the screen they would touch: the quote built and sent from /pipeline, the
- * proposal accepted and the deposit paid in the portal, the packet created and sent from the
- * client page, the §7216 consent answered on its own screen, the questionnaire submitted, a
- * document uploaded by the client, the return delivered on /upload-return, the wet-signed 8879
- * uploaded to the return's row, the final fee set, the return filed with the PTIN holder, the
- * acknowledgment report uploaded and released, and the final invoice paid.
+ * proposal accepted and the deposit paid in the portal, the extension recorded and the preparer
+ * named on the return's row, the packet created and sent from the client page, the §7216 consent
+ * answered on its own screen, the questionnaire submitted, a document uploaded by the client, the
+ * return delivered on /upload-return, the wet-signed 8879 uploaded to the return's row, the final
+ * fee set, the return filed with a filing method per jurisdiction (federal e-filed, IL on paper),
+ * the acknowledgment report uploaded and released, the IL mailing recorded, and the final invoice
+ * paid.
  *
- * THE FOUR THINGS THAT ARE NOT TAPS, AND WHY (each reported as a defect, annotated how=fixture
- * or how=api so the evidence table says so rather than implying a screen exists):
+ * WHAT THE 2026-09-20 RULINGS TOOK OFF THIS LIST — both of the walk's API rows are gone:
  *
- *   B1  Ops has NO create-contact screen. /clients searches and nothing in apps/internal posts
- *       to /contacts, so the person cannot be created by hand at all. The fixture inserts them.
- *   --  THE EXTENSION has no control either. `extension_filed` is written only by
- *       POST /tax-engagements/:id/extension/filed, which no page in Ops calls; the client page
- *       renders the "extended" badge it produces and offers no way to produce it. The harness
- *       posts the route once the return exists (it cannot exist earlier — acceptance creates it)
- *       and reads the derived extended deadline back. The date is never typed.
- *   --  THE ENGAGEMENT LETTER ON THE RETURN is the same shape: the client signing the packet in
- *       the portal sets contacts.engagement_letter_status, and nothing sets the RETURN's
- *       engagement_letter_signed_at, which is gate 1 on every stage past Scheduled. The only
- *       writer is POST /tax-engagements/:id/signatures/wet, staff-only, on no screen. So the
- *       client signs, and the harness records it through the route.
+ *   R10  THE ENGAGEMENT LETTER ON THE RETURN. The client signing the packet in the portal now
+ *        stamps every return of that contact, so gate 1 is closed by the client's own tap at B5 and
+ *        POST /tax-engagements/:id/signatures/wet answers 410. The walk reads the stamp back and
+ *        asserts the paper lane's door ("Upload the signed engagement letter") is gone from the row.
+ *   R12  THE EXTENSION. "Record extension" is on the row: which form went in and the day it did.
+ *        The extended deadline is still derived by the route and never typed — the badge is what the
+ *        walk reads it off.
+ *   R11  THE PREPARER. "Assign preparer" is on the row too, and Ana-Maria is named by hand even
+ *        though she is the fixture's only active tax preparer and therefore already the default.
+ *   R15  THE FILING METHOD, per jurisdiction, at Mark filed. This return goes out federal-e-file and
+ *        IL-PAPER, so the ATX report carries the federal row alone and IL is satisfied by a recorded
+ *        MAILING instead — "Record mailing — IL", certified, with a tracking number.
+ *
+ * THE TWO THINGS THAT ARE STILL NOT TAPS, AND WHY (annotated how=fixture or how=api so the evidence
+ * table says so rather than implying a screen exists):
+ *
+ *   B1  The person is inserted by the fixture so this walk never collides with the Add a client
+ *       flow on a name; the Add a client tap itself is cleared in ops-add-client.spec.ts.
  *   B3/B14 THE CARD ITSELF is Stripe's. The Pay control is tapped, the navigation to the
  *       Checkout URL the stub adapter returns is asserted (intercepted — the harness never loads
  *       an external host), and the payment event Stripe would send is posted to /webhooks/stripe.
@@ -60,7 +67,17 @@ const PORTAL = `http://localhost:${fixtures.portalPort ?? 3106}`;
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
 const usDate = (iso: string): string => `${iso.slice(5, 7)}/${iso.slice(8, 10)}/${iso.slice(0, 4)}`;
 const money = (cents: number): string => `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** Every dollar amount in a line of screen text, as integer cents, in the order it printed. */
+const centsIn = (text: string): number[] =>
+  [...text.matchAll(/\$([\d,]+\.\d{2})/g)].map((m) => Math.round(Number(m[1]!.replace(/,/g, '')) * 100));
 const rx = (s: string): RegExp => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+/**
+ * A calendar day in the words Ops prints it — the same Intl call apps/internal/lib/dates.ts makes,
+ * written out here so a change to the formatter cannot agree with itself.
+ */
+const dayText = (iso: string): string =>
+  new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${iso.slice(0, 10)}T00:00:00Z`));
 
 /** The roles behind each door, as the routes require them — the evidence table's roles column. */
 const ROLES = {
@@ -122,13 +139,12 @@ async function signInPortal(page: Page, token: string): Promise<void> {
 async function read(page: Page, path: string): Promise<Record<string, unknown>> {
   return page.evaluate(async (p) => (await fetch(`/api${p}`)).json().catch(() => ({})), path);
 }
-/** A write the screens do not offer — each one is a reported defect, never a convenience. */
-async function post(page: Page, path: string, body: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
-  return page.evaluate(async ({ p, b }) => {
-    const r = await fetch(`/api${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
-    return { status: r.status, json: (await r.json().catch(() => ({}))) as Record<string, unknown> };
-  }, { p: path, b: body });
-}
+/*
+ * There is no `post` helper here any more. It existed for the two writes no screen offered — the
+ * extension and the engagement letter on the return — and the 2026-09-20 rulings gave both a door:
+ * R12 put "Record extension" on the row, and R10 made the client's own portal signature the thing
+ * that stamps the letter. Every write in this walk is now a tap on a control.
+ */
 
 function keepScreenshot(name: string, passed: boolean, file: string): string {
   const dir = passed ? resolve(here, '..', '.artifacts', today) : resolve(root, 'tasks', 'walks', today);
@@ -196,18 +212,16 @@ test.describe('Path B', () => {
     };
 
     try {
-      // ── B1. THE CONTACT — a defect: Ops cannot create one ───────────────────────────────
+      // ── B1. THE CONTACT. Ops creates a person on /clients since 2026-09-20 (Add a client, with the
+      // duplicate check); that tap is proven at both viewports in ops-add-client.spec.ts. This walk's
+      // person is inserted by the fixture so the two flows never collide on a name, and the row says so.
       await signInStaff(page, fixtures.staff);
       await page.goto('/clients');
       await expect(page.getByRole('heading', { name: 'Clients', exact: true })).toBeVisible();
-      for (const name of [/^new client$/i, /^add client$/i, /^new contact$/i, /^add contact$/i, /^create client$/i]) {
-        await expect(page.getByRole('button', { name }), 'the client directory offers no way to create a person').toHaveCount(0);
-        await expect(page.getByRole('link', { name }), 'nor a link to one').toHaveCount(0);
-      }
+      await expect(page.getByRole('button', { name: 'Add a client' }), 'the door exists; ops-add-client.spec.ts taps it').toBeVisible();
       await page.getByLabel('Search').fill(who.lastName);
-      await expect(page.getByRole('link', { name: rx(fullName) }).first(), 'the person the fixture had to insert is findable').toBeVisible();
-      defects.push('B1: Ops has no create-contact screen — /clients searches only, and nothing in apps/internal posts to /contacts. The fixture inserts the person.');
-      steps.push(`B1|DEFECT — no control: /clients offers search only and no page in Ops posts to /contacts; the person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts|${ROLES.quote}|fixture`);
+      await expect(page.getByRole('link', { name: rx(fullName) }).first(), 'the person the fixture inserted is findable').toBeVisible();
+      steps.push(`B1|this walk's person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts; the "Add a client" tap is cleared in ops-add-client.spec.ts|${ROLES.quote}|fixture`);
 
       // ── B2. THE QUOTE, built from the price book and sent ───────────────────────────────
       await page.goto('/pipeline');
@@ -253,24 +267,38 @@ test.describe('Path B', () => {
       steps.push(`B3|portal /quote/:token button "${COPY.accept}" → portal /invoices button "${COPY.pay}" → the Checkout URL the stub adapter returns (intercepted; never loaded)|${ROLES.client}|tap`);
       steps.push('B3|Stripe Checkout is outside SAOS; the harness posts the checkout.session.completed event to /webhooks/stripe with the harness webhook secret|client (card)|api');
 
-      // ── THE RETURN EXISTS NOW: record the extension, and read the derived deadline back ──
+      // ── THE RETURN EXISTS NOW: record the extension from its own row (R12) ──────────────
       await page.goto(clientPage);
+      const dialog = page.locator('[role=dialog]');
+      const card = page.locator('section.card', { has: page.getByRole('heading', { name: 'Returns' }) });
       const returns = (await read(page, `/tax-engagements?contactId=${who.contactId}`)).taxEngagements as Array<Record<string, unknown>>;
       expect(returns.length, 'accepting the quote created exactly one return').toBe(1);
       const te = String(returns[0]!.id);
       expect(returns[0]!.return_type, 'an individual base line names a 1040').toBe('1040');
       const taxYear = Number(returns[0]!.tax_year);
-      const ext = await post(page, `/tax-engagements/${te}/extension/filed`, {});
-      expect(ext.status, 'the extension is recorded').toBe(200);
+      /*
+       * THE EXTENSION THAT ALREADY WENT IN (R12, 2026-09-20). Two answers and no third: which form,
+       * and the day it was filed. A 1040 extends on Form 4868, which is what the select opens on from
+       * the return type, and NO DEADLINE IS TYPED — the route derives the extended deadline from the
+       * return type and the fiscal year end, and the badge on the row is where the walk reads it.
+       */
+      await card.getByTestId('record-extension').click();
+      await expect(dialog.getByTestId('extension-form'), 'the modal asks which form went in').toBeVisible();
+      await expect(dialog.getByTestId('extension-form').locator('select'), 'an individual return opens on 4868, from its return type').toHaveValue('4868');
+      await dialog.getByLabel('Date filed').fill(today);
+      await dialog.getByRole('button', { name: 'Record extension' }).click();
+      await expect(dialog).toHaveCount(0);
       const onExtension = (await read(page, `/tax-engagements/${te}`)).taxEngagement as Record<string, unknown>;
       expect(onExtension.extension_filed, 'the return is on extension').toBe(true);
-      expect(String(onExtension.extended_deadline), 'the extended deadline is derived from the return type and the year, never typed')
-        .toBe(String(ext.json.extendedDeadline));
+      expect(onExtension.extension_form, 'on the form the modal offered for a 1040').toBe('4868');
       expect(String(onExtension.extended_deadline) > String(onExtension.original_deadline), 'the extended deadline is later than the original').toBe(true);
       expect(Number(String(onExtension.extended_deadline).slice(0, 4)), 'a 1040 extends into the year after the tax year').toBe(taxYear + 1);
-      await page.reload();
-      await expect(page.getByText('extended').first(), 'the return\'s row says it is on extension').toBeVisible();
-      defects.push('On extension: no Ops control writes extension_filed — POST /tax-engagements/:id/extension/filed is called by no page. The client page renders the badge it produces and offers no way to produce it.');
+      await expect(
+        card.getByText(`Extended · Form 4868 · deadline ${dayText(String(onExtension.extended_deadline))}`),
+        'the badge names the form and the deadline the route derived'
+      ).toBeVisible();
+      await expect(page.getByText('extended').first(), "the return's row says it is on extension").toBeVisible();
+      steps.push(`B2|/clients/:id Returns card, button "Record extension" (modal: "Extension form" 4868, "Date filed") → the badge reads the form and the derived deadline|${ROLES.returnControls}|tap`);
 
       // ── B4. THE ENGAGEMENT PACKET, assembled and sent ───────────────────────────────────
       await expect(page.getByRole('heading', { name: 'Engagement packet' })).toBeVisible();
@@ -280,6 +308,28 @@ test.describe('Path B', () => {
       await expect(page.getByText(/Sent for signature\. The client was emailed the Master/)).toBeVisible();
       await expect(page.getByText(/Waiting on the client.s signature/)).toBeVisible();
       steps.push(`B4|/clients/:id Engagement packet card, button "Create engagement packet" → button "Send for signature" (modal "Send this packet for signature?")|${ROLES.packet}|tap`);
+
+      /*
+       * WHO PREPARES IT (R11, 2026-09-20). The fixture has exactly one active tax preparer, so the row
+       * already reads her name and the select opens on her — and she is chosen anyway, by hand,
+       * because the walk must prove the control works and not that the default happens to be right.
+       */
+      await expect(card.getByText(`Preparer: ${preparer.name}`), "the firm's only tax preparer is the new return's default").toBeVisible();
+      await card.getByTestId('assign-preparer').click();
+      await expect(dialog.getByTestId('preparer-select'), 'the modal asks who prepares it').toBeVisible();
+      await dialog.getByTestId('preparer-select').locator('select').selectOption(preparer.id);
+      await dialog.getByRole('button', { name: 'Assign preparer' }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(card.getByText(`Preparer: ${preparer.name}`), 'the row names the preparer it was given').toBeVisible();
+      steps.push(`B4|/clients/:id Returns card, button "Assign preparer" (modal: "Preparer" select) → the row reads "Preparer: ${preparer.name}"|${ROLES.returnControls}|tap`);
+
+      /*
+       * GATE 1 IS THE CLIENT'S OWN TAP NOW (R10). The return carries no engagement letter yet: the
+       * packet has been sent and not signed, so every stage past Scheduled is refused. B5 is what
+       * closes it, and the read after B7 is where the walk proves it closed.
+       */
+      const beforeSignature = (await read(page, `/tax-engagements/${te}`)).taxEngagement as Record<string, unknown>;
+      expect(beforeSignature.engagement_letter_signed_at, 'the return carries no engagement letter before the client signs').toBeNull();
 
       // ── B5. THE §7216 CONSENT, on its own screen, after the client signs ────────────────
       await page.goto(`${PORTAL}/sign`);
@@ -319,29 +369,42 @@ test.describe('Path B', () => {
       steps.push(`B7|portal /documents (Document Center), the "${COPY.docsCategory}" select + input[type=file]|${ROLES.client}|tap`);
 
       // ── THE RETURN WALKS TO INTERNAL REVIEW, from its own row ───────────────────────────
-      // Gate 1 is the engagement letter ON THE RETURN, which the portal signature does not set.
-      await page.goto(clientPage);
-      const letter = await post(page, `/tax-engagements/${te}/signatures/wet`, { type: 'engagement_letter', note: 'The client signed the engagement agreement in the portal.' });
-      expect(letter.status, 'the engagement letter is recorded against the return').toBe(200);
-      defects.push('The engagement letter on the return: the client signing the packet in the portal sets contacts.engagement_letter_status and NOT tax_engagements.engagement_letter_signed_at, which is gate 1 past Scheduled. The only writer is POST /tax-engagements/:id/signatures/wet, on no screen.');
-
-      await page.reload();
-      await expect(page.getByRole('heading', { name: 'Returns' })).toBeVisible();
       /*
-       * THE ESTIMATE IS LOCKED AT THE SCOPE THE CLIENT ACCEPTED. The modal prefills from the
-       * quoted range, which on a return is the BASE price-book line alone (quotedRangeFor prices
-       * the base item and nothing else) — so a quote with a schedule on it prefills LOW. The
-       * preparer locks the top at the committed total of the accepted quote, which is the figure
-       * the builder computed from the price book and the client agreed to. The final fee then
-       * sits inside the locked estimate, where it belongs: this is quoted scope, not scope creep.
+       * GATE 1 CLOSED BY THE SIGNATURE AT B5 (R10). Nothing is posted here any more: the client's own
+       * tap on "Sign the agreement" stamped the engagement letter on every return of that contact, so
+       * the stage chain below proceeds on the strength of the client's signature. The paper lane's
+       * door is asserted GONE from the row — there is nothing left for it to stamp. (A client who
+       * signs across the desk taps that door instead; this one signed in the portal.)
        */
-      const lockDialog = page.locator('[role=dialog]');
+      await page.goto(clientPage);
+      await expect(page.getByRole('heading', { name: 'Returns' })).toBeVisible();
+      const papered = (await read(page, `/tax-engagements/${te}`)).taxEngagement as Record<string, unknown>;
+      expect(papered.engagement_letter_signed_at, "the client's portal signature stamped the letter on the return").toBeTruthy();
+      await expect(card.getByTestId('upload-engagement-letter'), 'the paper door leaves the row once the letter is on the return').toHaveCount(0);
+
+      /*
+       * THE ESTIMATE IS LOCKED AT THE SCOPE THE CLIENT ACCEPTED, AND THE MODAL ALREADY KNOWS IT
+       * (R13, 2026-09-20). The quoted range used to be the BASE price-book line alone, so a quote
+       * with a schedule on it prefilled LOW and the honest final fee — the exact figure the client
+       * agreed to — landed "outside the quoted range" and asked the preparer to justify quoted scope
+       * as if it were scope creep. The range now covers the whole accepted quote, schedules included,
+       * so nothing is overridden here: the prefill is locked as it stands and the committed total the
+       * builder computed is what the modal is already offering.
+       */
       await page.getByRole('button', { name: 'Lock estimate' }).click();
-      await expect(lockDialog.getByText(/Quoted:/), 'the modal names the quoted range and the price book version').toContainText(/price book v\d+/);
-      await lockDialog.getByLabel('High end (dollars)').fill((committedCents / 100).toFixed(2));
-      await lockDialog.getByRole('button', { name: 'Lock estimate' }).click();
-      await expect(lockDialog).toHaveCount(0);
-      await expect(page.getByText(/Estimate locked/)).toContainText(rx(money(committedCents)));
+      const quotedLine = await dialog.getByText(/Quoted:/).innerText();
+      expect(quotedLine, 'the modal names the quoted range and the price book version').toMatch(/price book v\d+/);
+      const quoted = centsIn(quotedLine);
+      expect(quoted.length, `the modal names the quoted range: ${quotedLine}`).toBeGreaterThan(0);
+      const quotedMin = quoted[0]!;
+      const quotedMax = quoted[quoted.length - 1]!;
+      expect(
+        committedCents >= quotedMin && committedCents <= quotedMax,
+        `R13: the quoted range (${quotedLine}) covers the accepted quote's whole scope, so the committed total ${money(committedCents)} sits inside it and nothing here is overridden`
+      ).toBe(true);
+      await dialog.getByRole('button', { name: 'Lock estimate' }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByText(/Estimate locked/), 'locked at the numbers the modal offered, under the version that priced them').toContainText(/price book v\d+/);
       for (const stage of ['Schedule', 'Request documents', 'Start preparation', 'Internal review']) {
         await confirm(page, stage);
       }
@@ -378,13 +441,18 @@ test.describe('Path B', () => {
       expect(authorized.preparer_ptin_holder_id, 'the PTIN holder is recorded from the upload').toBe(preparer.id);
       steps.push(`B9|/clients/:id Returns card, input[type=file] + "Signed on" + "PTIN holder" + button "Upload the signed 8879"|${ROLES.returnControls}|tap`);
 
-      // ── B13 (set here, issued by B10). THE FINAL FEE, inside the locked estimate ─────────
-      const dialog = page.locator('[role=dialog]');
+      /*
+       * ── B13 (set here, issued by B10). THE FINAL FEE, INSIDE THE QUOTED SCOPE ───────────
+       *
+       * R13's whole point, asserted: the fee is exactly what the client accepted — base line plus
+       * schedule — and the modal reads it as INSIDE the range, with no scope-creep category asked
+       * for. Nothing was widened to make that true; the quoted range covers the accepted quote.
+       */
       await page.getByRole('button', { name: 'Set final fee' }).click();
       await expect(dialog).toBeVisible();
       const rangeLine = await dialog.getByText(/Quoted range:/).innerText();
       expect(rangeLine, 'the modal names the price book version the range came from').toMatch(/price book v\d+/);
-      expect(rangeLine, 'and the range it reads is the estimate just locked').toContain(money(committedCents));
+      expect(centsIn(rangeLine), 'and the range it reads is the estimate just locked').toEqual(centsIn(quotedLine));
       const finalFeeCents = committedCents;
       await dialog.getByLabel(/Final fee/).fill((finalFeeCents / 100).toFixed(2));
       await expect(dialog.getByText('Inside the quoted range — no reason needed.')).toBeVisible();
@@ -401,13 +469,25 @@ test.describe('Path B', () => {
       await expect(dialog.getByText('No signed authorization on file')).toHaveCount(0);
       await expect(dialog.getByText(`Issues the final-fee invoice for ${money(finalFeeCents)}`)).toBeVisible();
       await dialog.getByLabel(/PTIN holder/).selectOption(preparer.id);
+      /*
+       * A MIXED FILING (R15, 2026-09-20): federal went electronically and Illinois went out on PAPER.
+       * Both selects open on the lane this tax year has — e-file — and only IL is changed, which is
+       * exactly what a mixed filing needs. What follows from that choice is the rest of the walk: the
+       * ATX report can only carry the federal row, and IL is satisfied by a recorded mailing instead.
+       */
+      await expect(dialog.getByTestId('filing-method-federal'), 'federal opens on the lane this tax year has').toHaveValue('efile');
+      await expect(dialog.getByTestId(`filing-method-${who.state}`), 'so does the state, until somebody says otherwise').toHaveValue('efile');
+      await dialog.getByTestId(`filing-method-${who.state}`).selectOption('paper');
       await dialog.getByRole('button', { name: 'Mark filed' }).click();
       await expect(dialog).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Set final fee' }), 'the controls leave with the filing').toHaveCount(0);
       const filed = (await read(page, `/tax-engagements/${te}`)).taxEngagement as Record<string, unknown>;
       expect(filed.stage).toBe('filed');
       expect(filed.preparer_ptin_holder_id, 'the paid preparer of record is on the filing').toBe(preparer.id);
-      steps.push(`B10|/clients/:id Returns card, button "Ready to file" then "Mark filed" (modal: PTIN holder)|${ROLES.returnControls}|tap`);
+      const lanes = (await read(page, `/tax-engagements/${te}`)).jurisdictions as Array<{ jurisdiction: string; filingMethod: string }>;
+      expect(lanes.find((j) => j.jurisdiction === 'federal')?.filingMethod, 'federal was e-filed').toBe('efile');
+      expect(lanes.find((j) => j.jurisdiction === who.state)?.filingMethod, `${who.state} went out on paper`).toBe('paper');
+      steps.push(`B10|/clients/:id Returns card, button "Ready to file" then "Mark filed" (modal: PTIN holder, Jurisdictions filed + a filing method select per jurisdiction — "Paper (mailed)" for ${who.state}, E-filed for federal)|${ROLES.returnControls}|tap`);
 
       /*
        * ── B13. THE FINAL INVOICE, issued by the filing through the money door ─────────────
@@ -427,39 +507,43 @@ test.describe('Path B', () => {
       await expect(page.getByText(rx(money(owedCents))).first(), 'the Invoices card shows what is owed').toBeVisible();
       steps.push(`B13|/clients/:id Returns card, "Set final fee" (modal: Final fee + Reason) then "Mark filed" issues it; the Invoices card shows it with the paid deposit credited|${ROLES.returnControls}|tap`);
 
-      // ── B11. THE ACKNOWLEDGMENT REPORT, uploaded and released ──────────────────────────
-      // A 1040's entity name is the person's, and the taxpayer-id column carries the SSN last four.
+      /*
+       * ── B11. THE ACKNOWLEDGMENT REPORT, uploaded and released ──────────────────────────
+       *
+       * ONE ROW, NOT TWO (R15). A 1040's entity name is the person's and the taxpayer-id column
+       * carries the SSN last four — but Illinois went out on PAPER, and a paper filing gets no
+       * acknowledgment at all. So the report ATX produced for this return carries the federal row
+       * alone, and Illinois is satisfied further down, by the mailing.
+       */
       const ackFile = `HARNESS-ATX-ACK-1040-${viewport}.csv`;
       const report = [
         'Entity Name,EIN,Tax Year,Return Type,Agency,Status,Submission ID,Ack Date,Reject Code,Reject Reason',
         `"${fullName}",${who.ssnLast4},${taxYear},1040,Federal,Accepted,H-PB-FED-${viewport},${usDate(today)},,`,
-        `"${fullName}",${who.ssnLast4},${taxYear},1040,${who.state},Accepted,H-PB-ST-${viewport},${usDate(today)},,`,
       ].join('\n');
       await page.goto('/efile-acks');
       await expect(page.getByRole('heading', { name: 'E-file acknowledgments' })).toBeVisible();
       await page.locator('input[type=file]').setInputFiles({ name: ackFile, mimeType: 'text/csv', buffer: Buffer.from(report) });
-      await expect(page.getByRole('status')).toContainText('2 will send');
+      await expect(page.getByRole('status')).toContainText('1 will send');
       // The upload's own message lands before the review opens; the rows are what this reads.
       await expect(page.getByRole('heading', { name: ackFile }), 'the report opened with its rows').toBeVisible();
       const rowsText = await page.evaluate(() => document.body.innerText);
-      expect(rowsText, 'both rows matched the person').toContain(fullName);
+      expect(rowsText, 'the row matched the person').toContain(fullName);
       expect(rowsText, 'the federal row will send').toMatch(/Federal[\s\S]*Will send/);
-      expect(rowsText, `the ${who.state} row will send`).toMatch(new RegExp(`\\b${who.state}\\b[\\s\\S]*Will send`));
       await page.getByRole('button', { name: /^Release/ }).first().click();
-      await page.locator('[role=dialog]').getByRole('button', { name: /^Release 2/ }).click();
-      await expect(page.getByRole('status')).toContainText('Released: 2 queued to send');
-      steps.push(`B11|/efile-acks input[type=file] "Upload ATX report", the review rows, button "Release 2 to clients" + modal "Release 2"|${ROLES.efile}|tap`);
+      await page.locator('[role=dialog]').getByRole('button', { name: /^Release 1/ }).click();
+      await expect(page.getByRole('status')).toContainText('Released: 1 queued to send');
+      steps.push(`B11|/efile-acks input[type=file] "Upload ATX report", the review rows, button "Release 1 to clients" + modal "Release 1"|${ROLES.efile}|tap`);
 
-      // ── B12. THE ACCEPTANCE EMAILS LEAVE, and the rows say so ─────────────────────────
+      // ── B12. THE ACCEPTANCE EMAIL LEAVES, and the row says so ─────────────────────────
       const reportId = String(((await read(page, '/efile-acks')).reports as Array<{ id: string; filename: string }>)
         .find((r) => r.filename === ackFile)!.id);
       let sentRows = 0;
-      for (let i = 0; i < 90 && sentRows < 2; i++) {
+      for (let i = 0; i < 90 && sentRows < 1; i++) {
         await page.waitForTimeout(1000);
         const rows = (await read(page, `/efile-acks/${reportId}`)).rows as Array<{ disposition: string }>;
         sentRows = rows.filter((r) => r.disposition === 'sent').length;
       }
-      expect(sentRows, 'two acceptance emails left').toBe(2);
+      expect(sentRows, 'the federal acceptance email left').toBe(1);
       await page.reload();
       // By name, not by position: the list carries every report the suite has uploaded today.
       await page.locator('li', { hasText: ackFile }).getByRole('button', { name: 'Open' }).click();
@@ -467,9 +551,57 @@ test.describe('Path B', () => {
       await expect(page.getByText('Sent', { exact: true }).first(), 'the screen reads sent').toBeVisible();
       await page.screenshot({ path: shot, fullPage: true });
       const acked = (await read(page, `/tax-engagements/${te}`)).taxEngagement as Record<string, unknown>;
-      expect(acked.state_accepted_code, 'the state the return files in accepted it').toBe(who.state);
-      expect(acked.stage, 'federal and the state both accepted complete the return').toBe('completed');
-      steps.push(`B12|/efile-acks reopened from the list (button "Open"), both rows reading Sent|${ROLES.efile}|tap`);
+      expect(acked.federal_accepted_on, 'the IRS accepted the federal filing').toBeTruthy();
+      expect(acked.state_accepted_code, `${who.state} was filed on paper, so nothing accepted it and nothing pretends to have`).toBeNull();
+      expect(acked.stage, 'the return is not finished: the paper jurisdiction has not answered yet').toBe('filed');
+      steps.push(`B12|/efile-acks reopened from the list (button "Open"), the federal row reading Sent|${ROLES.efile}|tap`);
+
+      /*
+       * ── B11 (paper). THE MAILING IS THE PAPER LANE'S ACCEPTANCE (R15) ──────────────────
+       *
+       * The row says, jurisdiction by jurisdiction, where the return stands: federal accepted today,
+       * and Illinois "Paper — no mailing recorded" — never "Accepted", because nobody accepted
+       * anything and no acknowledgment is coming. What the return waits on is the mailing, so that is
+       * the control the row offers, and recording it is what finishes the return.
+       */
+      await page.goto(clientPage);
+      const jStatus = card.getByTestId('jurisdiction-status');
+      await expect(jStatus, 'the e-filed jurisdiction reads accepted, with the day').toContainText(`Accepted ${dayText(today)}`);
+      await expect(jStatus, 'the paper jurisdiction says what it is waiting for, and never "Accepted"').toContainText('Paper — no mailing recorded');
+      const tracking = `9400${who.ssnLast4}HARNESS${viewport.toUpperCase()}`;
+      await card.getByTestId(`record-mailing-${who.state}`).click();
+      await expect(dialog).toBeVisible();
+      await dialog.getByLabel('Mailed on').fill(today);
+      await dialog.getByTestId('mailing-method').locator('select').selectOption('certified');
+      await dialog.getByLabel('Tracking number').fill(tracking);
+      await dialog.getByRole('button', { name: 'Record mailing' }).click();
+      await expect(dialog).toHaveCount(0);
+      const mailed = await read(page, `/tax-engagements/${te}`);
+      const il = (mailed.jurisdictions as Array<Record<string, unknown>>).find((j) => j.jurisdiction === who.state)!;
+      expect(String(il.mailedOn).slice(0, 10), 'the mailing is recorded on the day it went out').toBe(today);
+      expect(il.mailingMethod, 'certified, because that is how a paper return with tracking goes').toBe('certified');
+      expect(il.trackingNumber, 'under the tracking number that was typed').toBe(tracking);
+      expect(il.receiptDocumentId, 'no receipt was scanned, and that is not a reason to leave the mailing unrecorded').toBeNull();
+      expect((mailed.taxEngagement as Record<string, unknown>).stage, 'the mailing was the last thing the return waited on, so it completes').toBe('completed');
+      steps.push(`B11|/clients/:id Returns card, button "Record mailing — ${who.state}" (modal: "Mailed on", "Method" USPS certified (tracked), "Tracking number", no receipt) → the return completes|${ROLES.returnControls}|tap`);
+      /*
+       * WHAT THE COMPLETED RETURN NO LONGER SHOWS. The jurisdiction status block lives inside the
+       * return controls, which apply before filing and at filed/rejected — not at completed. So the
+       * instant the mailing completes the return, "Mailed <date>" leaves the screen with it, and the
+       * client-page row prints only the federal/state ACCEPTED dates, of which Illinois has none. The
+       * paper mailing that finished this return is not readable anywhere in Ops afterwards.
+       */
+      await expect(jStatus, 'the jurisdiction status leaves the row with the controls at completed').toHaveCount(0);
+      const rowText = await card.innerText();
+      expect(rowText, "and nothing else on the row carries the mailing: the paper lane's own record is invisible once complete")
+        .not.toContain('Mailed');
+      defects.push(
+        `R15 gap: once the recorded mailing completes the return, Ops shows the mailing nowhere. The jurisdiction status ` +
+        `(testid jurisdiction-status, "Mailed <date>") lives in ReturnControls, which renders only for pre-filed and ` +
+        `filed/rejected stages (mailingControlsApply excludes 'completed'), and the client-page return row prints only ` +
+        `federal_accepted_on / state_accepted_on — both null for a paper jurisdiction. A completed paper filing's mailing ` +
+        `date, method and tracking number are readable only through GET /tax-engagements/:id.`
+      );
 
       // ── B14. THE FINAL INVOICE PAID ───────────────────────────────────────────────────
       await signInPortal(page, who.portalMagicTokens[1]!);

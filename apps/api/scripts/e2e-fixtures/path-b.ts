@@ -25,9 +25,9 @@
  *   NO EXTENSION FLAG HERE. 'On extension' belongs to the RETURN, and the return does not exist
  *   until the walk's client accepts the quote (acceptance creates it). Marking it here would mean
  *   creating a return by hand that then collides with the accepted quote's engagement on the
- *   one-active-per-line-period index. The spec records it through
- *   POST /tax-engagements/:id/extension/filed once the return exists, and the extended deadline
- *   is derived there from return type + year — never typed.
+ *   one-active-per-line-period index. The spec records it with the Record extension control on
+ *   the return row once the return exists (form 4868, the date filed), and the extended deadline
+ *   is derived from return type + year — never typed.
  *
  *   NO PRICE LITERALS. The line the walk quotes is read out of the price book in force (the
  *   individual base return that carries a deposit, so B3 has a deposit to pay); the spec taps it

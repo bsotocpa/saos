@@ -263,12 +263,11 @@ await drainOutbox(app);
  *                                       (A5) and the checkout walk. They must be minted at boot
  *                                       for that budget to hold.
  *
- * WHAT IS NOT HERE AND COULD NOT BE: the engagement letter stamp and the preparer assignment. Both
- * live on the tax_engagements row, and that row does not exist until the client accepts the quote —
- * which the spec taps. No route and no screen assigns a preparer to a return at all, and signing
- * the packet in the portal sets contacts.engagement_letter_status without stamping the return's own
- * engagement_letter_signed_at, so the pipeline's gate 1 stays shut. The spec does both after the
- * acceptance, through the one route that exists, and annotates them as api rather than tap.
+ * WHAT IS NOT HERE: the engagement letter stamp and the preparer assignment. Both live on the
+ * tax_engagements row, which does not exist until the client accepts the quote (a tap). Since
+ * 2026-09-20 the client's packet signature in the portal stamps the letter on every return of theirs,
+ * and the sole active tax_preparer is assigned at creation, with an Assign preparer control on the
+ * row; the spec taps the signature and the control, nothing goes through a bare route.
  */
 const anamaria = await makeStaff(app.db, config, { email: 'anamaria-walker@example.test', name: 'Synthetic Ana-Maria', role: 'tax_preparer', password: 'anamaria-synthetic-2026', totpSecret: TOTP_SECRET });
 /* ONE S CORPORATION PER VIEWPORT (2026-09-19, BUILD 3): the dry run taps its way from the quote to the paid
