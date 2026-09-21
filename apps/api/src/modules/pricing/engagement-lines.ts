@@ -153,16 +153,24 @@ export async function engagementLinesForQuote(
      * what the book calls the item today. They can differ, and the one that belongs on
      * the record of an agreement is the one that was on the page.
      */
-    `SELECT pbi.service_line::text AS service_line, qli.item_code, pbi.name_en, pbi.sort_order,
+    /*
+     * A CUSTOM LINE (2026-09-20) has no book item behind it: its service line is its own
+     * (qli.service_line), its name is what was written on it, and it sorts after the book's
+     * lines. The LEFT JOIN is what lets it reach the engagement at all.
+     */
+    `SELECT COALESCE(qli.service_line, pbi.service_line)::text AS service_line, qli.item_code,
+            COALESCE(pbi.name_en, qli.description_en) AS name_en,
+            COALESCE(pbi.sort_order, 1000000) AS sort_order,
             qli.id AS line_id, qli.description_en, qli.description_es,
             qli.quantity::text AS quantity, qli.unit_cents, qli.line_cents, qli.is_pass_through
        FROM quote_line_items qli
        JOIN quotes q ON q.id = qli.quote_id
-       JOIN price_book_items pbi
+       LEFT JOIN price_book_items pbi
          ON pbi.item_code = qli.item_code
         AND pbi.version_id = q.price_book_version_id
       WHERE qli.quote_id = $1 AND qli.chosen
-      ORDER BY pbi.sort_order, qli.item_code`,
+        AND COALESCE(qli.service_line, pbi.service_line) IS NOT NULL
+      ORDER BY COALESCE(pbi.sort_order, 1000000), qli.sort_order, qli.item_code`,
     [quoteId]
   );
 
@@ -216,13 +224,15 @@ export async function assertEveryLineCreatesWork(app: FastifyInstance, quoteId: 
   const { rows } = await app.db.query<{ service_line: string; item_code: string }>(
     // Version pinned to the quote's own, so a later reclassification cannot retroactively
     // change what this quote meant (quote-coverage.ts has the full reasoning).
-    `SELECT DISTINCT pbi.service_line::text AS service_line, qli.item_code
+    // A custom line carries its own service line (2026-09-20); the LEFT JOIN keeps it in the check.
+    `SELECT DISTINCT COALESCE(qli.service_line, pbi.service_line)::text AS service_line, qli.item_code
        FROM quote_line_items qli
        JOIN quotes q ON q.id = qli.quote_id
-       JOIN price_book_items pbi
+       LEFT JOIN price_book_items pbi
          ON pbi.item_code = qli.item_code
         AND pbi.version_id = q.price_book_version_id
       WHERE qli.quote_id = $1 AND qli.chosen
+        AND COALESCE(qli.service_line, pbi.service_line) IS NOT NULL
       ORDER BY 1`,
     [quoteId]
   );

@@ -417,3 +417,84 @@ label.inline-check input[type='checkbox'],
 
 /* A refusal, beside the control that caused it (2026-09-19). */
 .field-error { color: var(--danger); font-size: 13px; margin: 6px 0 0; }
+
+/* ── THE QUOTE BUILDER (Brian, 2026-09-20): grouped catalog rows beside "This quote" ────────
+   Existing tokens only. Desk: catalog left, the quote right. Phone: the quote below the catalog,
+   a fixed footer carrying the total and Create and send, every target at least 44px tall. */
+.qb { display: grid; grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr); gap: 16px; align-items: start; }
+.qb-toolbar { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: end; margin-bottom: 8px; }
+.qb-toolbar .field { margin-bottom: 0; }
+.qb-catalog { min-width: 0; }
+.qb-filter { min-width: 0; }
+.qb-package { min-width: 160px; }
+.qb-segment { display: flex; gap: 6px; }
+/* A line priced off the book: the struck-through book price sits under its amount box. */
+table.qb-lines tr.off-book td.line-name strong { color: var(--forest); }
+.qb-group { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: var(--card); }
+.qb-group > summary {
+  cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; font-weight: 700; font-size: 13px; color: var(--forest); min-height: 44px; box-sizing: border-box;
+}
+.qb-group > summary::-webkit-details-marker { display: none; }
+.qb-group > summary::after { content: '+'; color: var(--muted); font-weight: 600; }
+.qb-group[open] > summary::after { content: '–'; }
+.qb-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px 12px; align-items: center;
+  padding: 8px 12px; border-top: 1px solid var(--line); font-size: 13px;
+}
+.qb-row-main { display: flex; flex-direction: column; min-width: 0; }
+.qb-name { font-weight: 600; overflow-wrap: anywhere; }
+.qb-desc { overflow-wrap: anywhere; }
+.qb-price { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; font-weight: 600; }
+.qb-add { min-width: 64px; }
+.qb-custom { margin-top: 8px; }
+.qb-custom-form { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+.qb-quote { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--card); position: sticky; top: 8px; }
+.qb-quote h3 { margin: 0 0 8px; font-size: 14px; color: var(--forest); }
+table.qb-lines { width: 100%; border-collapse: collapse; }
+table.qb-lines th { text-align: left; font-size: 11.5px; color: var(--muted); font-weight: 600; padding: 4px 6px 4px 0; }
+table.qb-lines th.num, table.qb-lines td.num { text-align: right; }
+table.qb-lines td { padding: 6px 6px 6px 0; border-top: 1px solid var(--line); vertical-align: top; font-size: 13px; }
+table.qb-lines td.line-name { overflow-wrap: anywhere; }
+table.qb-lines input { margin: 0; padding: 6px 8px; font-size: 13px; border-radius: 8px; }
+table.qb-lines input.qty { width: 56px; }
+table.qb-lines input.amt { width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
+table.qb-lines .btn { white-space: nowrap; }
+table.qb-lines td.line-name .inline-check { font-size: 11.5px; }
+table.qb-lines td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.qb-book { display: block; font-size: 11.5px; color: var(--muted); }
+.qb-totals { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; }
+.qb-total-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.qb-total-row strong { font-variant-numeric: tabular-nums; }
+.qb-totals .inline-check { margin: 2px 0; font-size: 12.5px; }
+.qb-actions { margin-top: 10px; }
+.qb-footer { display: none; }
+@media (max-width: 1023px) {
+  .qb { grid-template-columns: 1fr; }
+  .qb-quote { position: static; }
+}
+@media (max-width: 767px) {
+  .qb-toolbar { grid-template-columns: 1fr; }
+  .qb .btn, .qb .chip, .qb select, .qb input:not([type='checkbox']), table.qb-lines input { min-height: 44px; box-sizing: border-box; }
+  .qb .chip { display: inline-flex; align-items: center; }
+  .qb-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .qb-row .qb-add { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  .qb-row .qb-price { grid-column: 1; text-align: left; }
+  table.qb-lines input.amt { width: 120px; }
+  table.qb-lines thead { display: none; }
+  table.qb-lines, table.qb-lines tbody, table.qb-lines tr, table.qb-lines td { display: block; width: 100%; box-sizing: border-box; }
+  table.qb-lines tr { border-top: 1px solid var(--line); padding: 8px 0; }
+  table.qb-lines td { border-top: none; padding: 3px 0; }
+  table.qb-lines td.num { text-align: left; }
+  table.qb-lines td.num::before { content: attr(data-label) ' '; color: var(--muted); font-size: 11.5px; }
+  table.qb-lines td.qb-ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .qb-footer {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    background: var(--forest); color: #fff; padding: 10px 14px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+  .qb-footer .qb-footer-total { font-size: 13px; }
+  .qb-footer .qb-footer-total strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+  .qb-desk-only { display: none; }
+}

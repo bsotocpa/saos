@@ -56,6 +56,55 @@ async function currentVersionId(app: FastifyInstance): Promise<string> {
   return rows[0].id;
 }
 
+export interface BundleDiscountRule {
+  discount_percent: string | null;
+  discount_cents: number | null;
+  override_cents: number | null;
+}
+
+/** The bundle's discount rule applied to a counted subtotal: override, percent, fixed, or none. */
+export function applyBundleDiscount(
+  b: BundleDiscountRule,
+  subtotalCents: number
+): { discount: ComposedBundle['discount']; totalCents: number } {
+  if (b.override_cents !== null) {
+    return {
+      discount: { kind: 'override', value: b.override_cents, amountCents: Math.max(0, subtotalCents - b.override_cents) },
+      totalCents: b.override_cents,
+    };
+  }
+  if (b.discount_percent !== null) {
+    const pct = Number(b.discount_percent);
+    const amount = Math.round((subtotalCents * pct) / 100);
+    return { discount: { kind: 'percent', value: pct, amountCents: amount }, totalCents: subtotalCents - amount };
+  }
+  if (b.discount_cents !== null) {
+    const amount = Math.min(b.discount_cents, subtotalCents);
+    return { discount: { kind: 'fixed', value: b.discount_cents, amountCents: amount }, totalCents: subtotalCents - amount };
+  }
+  return { discount: { kind: 'none', value: null, amountCents: 0 }, totalCents: subtotalCents };
+}
+
+/**
+ * The discount a package grants over lines the builder already composed and may have edited
+ * (2026-09-20): choosing a package fills the lines, every line stays editable, and the package's
+ * rule still applies to whatever the lines now come to.
+ */
+export async function bundleDiscountFor(
+  app: FastifyInstance,
+  slug: string,
+  subtotalCents: number
+): Promise<{ discount: ComposedBundle['discount']; totalCents: number }> {
+  const versionId = await currentVersionId(app);
+  const { rows } = await app.db.query<BundleDiscountRule>(
+    `SELECT discount_percent, discount_cents, override_cents FROM bundles WHERE version_id = $1 AND slug = $2 AND is_active`,
+    [versionId, slug]
+  );
+  const b = rows[0];
+  if (!b) throw new AppError(404, 'not_found', `Bundle '${slug}' not found in the price book in force.`);
+  return applyBundleDiscount(b, subtotalCents);
+}
+
 /** Compose a bundle's price from the price book in force. */
 export async function composeBundle(
   app: FastifyInstance,
@@ -111,22 +160,7 @@ export async function composeBundle(
 
   const counted = lines.filter((l) => !l.isOptional || chosen.has(l.itemCode));
   const subtotalCents = counted.reduce((sum, l) => sum + (l.lineCents ?? 0), 0);
-
-  let discount: ComposedBundle['discount'] = { kind: 'none', value: null, amountCents: 0 };
-  let totalCents = subtotalCents;
-  if (b.override_cents !== null) {
-    discount = { kind: 'override', value: b.override_cents, amountCents: Math.max(0, subtotalCents - b.override_cents) };
-    totalCents = b.override_cents;
-  } else if (b.discount_percent !== null) {
-    const pct = Number(b.discount_percent);
-    const amount = Math.round((subtotalCents * pct) / 100);
-    discount = { kind: 'percent', value: pct, amountCents: amount };
-    totalCents = subtotalCents - amount;
-  } else if (b.discount_cents !== null) {
-    const amount = Math.min(b.discount_cents, subtotalCents);
-    discount = { kind: 'fixed', value: b.discount_cents, amountCents: amount };
-    totalCents = subtotalCents - amount;
-  }
+  const { discount, totalCents } = applyBundleDiscount(b, subtotalCents);
 
   return {
     slug: b.slug,

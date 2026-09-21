@@ -49,6 +49,10 @@ export const MONEY_ACTIONS = [
   'engagement.deposit_restamped',
   'invoice.written_off',
   'tax_engagement.final_fee_outside_quote', // a final fee set outside the quoted range, with its reason (2026-09-19, item 2)
+  // A quote whose lines were priced off the book — an edited amount or a custom line — with the
+  // one reason for the whole quote and each changed line listed (2026-09-20). Staff class when a
+  // member of staff built it, neither line when the CEO did: the ordinary classes.
+  'quote.prices_changed',
 ] as const;
 
 export type MoneyActorClass = 'ceo' | 'staff' | 'system';
@@ -84,6 +88,7 @@ const LABEL: Record<string, string> = {
   'engagement.deposit_restamped': 'Deposit restamped',
   'invoice.written_off': 'Write-off',
   'tax_engagement.final_fee_outside_quote': 'Final fee outside the quoted range',
+  'quote.prices_changed': 'Quote priced off the book',
 };
 
 /**

@@ -94,7 +94,11 @@ export function buildAuthenticate(app: FastifyInstance) {
  * Keep this set small and financial. Anything added here needs an explicit grant
  * in the roles seed, or nobody can do it at all.
  */
-export const EXPLICIT_ONLY_PERMISSIONS: ReadonlySet<string> = new Set(['deposits.override']);
+export const EXPLICIT_ONLY_PERMISSIONS: ReadonlySet<string> = new Set([
+  'deposits.override',
+  // Saving a quote's lines as a package (2026-09-20): the CEO alone.
+  'pricing.packages.save',
+]);
 
 /**
  * RBAC guard. '*' (Brian, Jackson) grants everything EXCEPT the explicit-only

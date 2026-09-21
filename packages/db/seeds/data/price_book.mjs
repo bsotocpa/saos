@@ -49,6 +49,8 @@
  * migrate as flat-with-a-per-hour-unit (behaviour preserved exactly) and go to his
  * confirmation queue. If he confirms them as hourly, the mode gets built then.
  */
+import { groupFor } from './price_book_groups.mjs';
+
 const modeFor = (amountCents, minCents, maxCents, percentRate) => {
   if (percentRate !== null) return 'percent';
   return amountCents === null && minCents !== null && maxCents !== null ? 'range' : 'flat';
@@ -494,11 +496,10 @@ export async function seedPriceBook(client) {
   );
   const versionId = vrows[0].id;
 
-  // Items upsert with DO UPDATE: v1 is defined as "the spec's seed values", so
-  // re-running the seed re-aligns v1 with this file (typo fixes propagate).
-  let sort = 0;
+  // Group and sort position are presentation metadata from price_book_groups.mjs (2026-09-20):
+  // every code must have one, and the seed refuses to insert a code the mapping does not know.
   for (const it of items) {
-    sort += 10;
+    const placement = groupFor(it.code);
     await client.query(
       `INSERT INTO price_book_items (
          version_id, item_code, service_line, name_en, name_es,
@@ -506,8 +507,9 @@ export async function seedPriceBook(client) {
          price_max_cents, unit, is_pass_through, display_on_quote,
          needs_confirmation, confirmation_note, sort_order, metadata,
          pricing_mode, deposit_cents, is_active,
-         structure_needs_confirmation, structure_confirmation_note, percent_rate
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::price_pricing_mode,$19,$20,$21,$22,$23)
+         structure_needs_confirmation, structure_confirmation_note, percent_rate,
+         group_key
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::price_pricing_mode,$19,$20,$21,$22,$23,$24)
        /*
         * INSERT ONLY. The seed never rewrites a version that already exists.
         *
@@ -537,9 +539,10 @@ export async function seedPriceBook(client) {
         versionId, it.code, it.serviceLine, it.nameEn, it.nameEs,
         it.descEn, it.descEs, it.amountCents, it.minCents,
         it.maxCents, it.unit, it.passThrough, it.displayOnQuote,
-        it.needsConfirmation, it.confirmationNote, sort, JSON.stringify(it.metadata),
+        it.needsConfirmation, it.confirmationNote, placement.sort, JSON.stringify(it.metadata),
         it.pricingMode, it.depositCents, it.isActive,
         it.structureNeedsConfirmation, it.structureConfirmationNote, it.percentRate,
+        placement.group,
       ]
     );
   }

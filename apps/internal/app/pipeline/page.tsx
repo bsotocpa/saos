@@ -13,7 +13,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
-import { builderSummary, isPicked, taxYearLabel, taxYearOptions, togglePick, type TaxYearSource } from './builder-lib';
+import {
+  addCustomLine, addLine, bookPrice, builderSummary, isOffBook, isPicked, lineTotals, matchesFilter, orderGroups,
+  packageDiscountCents, parseDollars, quotedRange, showsQuantity, taxYearLabel, taxYearOptions, unitWords,
+  type CatalogGroup, type ClientType, type PickedLine, type TaxYearSource,
+} from './builder-lib';
+import { BuilderV1Composer } from './builder-v1';
 
 interface CatalogItem {
   item_code: string;
@@ -27,8 +32,17 @@ interface CatalogItem {
   needs_confirmation: boolean;
   /** Per-line deposit from the price book. The quote's deposit is the SUM of these. */
   deposit_cents: number | null;
+  /** Presentation (2026-09-20): the one-line description, the catalog group and the position in it. */
+  description_en: string | null;
+  group_key: string | null;
+  sort_order: number;
 }
 interface CatalogBundle { slug: string; name_en: string; component_count: number }
+/** What GET /bundles/:slug composes: the lines a package fills the quote with, and its discount rule. */
+interface ComposedPackage {
+  lines: Array<{ itemCode: string; quantity: number; isOptional: boolean }>;
+  discount: { kind: 'percent' | 'fixed' | 'override' | 'none'; value: number | null; amountCents: number };
+}
 interface Contact { id: string; first_name: string; last_name: string; email: string | null }
 interface ContactBusiness { id: string; name: string; is_primary: boolean; status?: string | null; entity_type?: string | null; unverified_import_source?: string | null }
 /** Lines that are business work (mirrors BUSINESS_LINES in pricing/quotes.ts; the API is the gate). */
@@ -147,8 +161,34 @@ export default function PipelinePage() {
   const [businessId, setBusinessId] = useState('');
   const [language, setLanguage] = useState<'en' | 'es'>('en');
   const [bundleSlug, setBundleSlug] = useState('');
-  const [picked, setPicked] = useState<Array<{ itemCode: string; quantity: number; isOptional: boolean }>>([]);
+  const [picked, setPicked] = useState<PickedLine[]>([]);
   const [itemFilter, setItemFilter] = useState('');
+  /*
+   * THE REDESIGNED BUILDER (Brian, 2026-09-20): grouped catalog rows beside "This quote". The
+   * groups, the custom-line service lines and the range band all come from the catalog response;
+   * the screen carries no copy of any of them.
+   */
+  const [groups, setGroups] = useState<CatalogGroup[]>([]);
+  const [serviceLines, setServiceLines] = useState<Array<{ key: string; label: string }>>([]);
+  const [bandPercent, setBandPercent] = useState(0);
+  /** Which client type's groups lead the catalog. Follows the business select until the person flips it. */
+  const [clientType, setClientType] = useState<ClientType>('business');
+  const [clientTypeChosen, setClientTypeChosen] = useState(false);
+  /** Groups the person collapsed; every group starts open, and a filter opens every group it matches. */
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  /** The amount box on each line as typed, keyed by item code; the parsed cents live on the line itself. */
+  const [amountText, setAmountText] = useState<Record<string, string>>({});
+  /** One reason for every line priced off the book; the field exists only while one is. */
+  const [priceChangeReason, setPriceChangeReason] = useState('');
+  const [customForm, setCustomForm] = useState<{ name: string; amount: string; serviceLine: string } | null>(null);
+  const [customError, setCustomError] = useState('');
+  /** The package's discount rule, mirrored from the compose response so the totals show it live. */
+  const [packageRule, setPackageRule] = useState<ComposedPackage['discount'] | null>(null);
+  const [canSavePackage, setCanSavePackage] = useState(false);
+  /** OPS_QUOTE_BUILDER: v1 is the chip builder production runs; v2 the redesign, shown only when the server says so. */
+  const [builderVersion, setBuilderVersion] = useState<'v1' | 'v2'>('v1');
+  const [packageForm, setPackageForm] = useState<{ name: string } | null>(null);
+  const [packageSaved, setPackageSaved] = useState<{ slug: string; name: string } | null>(null);
   // `depositItemCode` state used to live here — the one-deposit-item model retired in price
   // book v4. Deposits are per line now and the quote's deposit is their sum; see pickedDepositCents.
   const [asRange, setAsRange] = useState(true);
@@ -188,7 +228,10 @@ export default function PipelinePage() {
     try {
       const [p, c] = await Promise.all([
         api<{ board: BoardRow[]; metrics: Metrics }>('/pipeline'),
-        api<{ items: CatalogItem[]; bundles: CatalogBundle[]; defaultTaxYear: number | null }>('/quotes/catalog'),
+        api<{
+          items: CatalogItem[]; bundles: CatalogBundle[]; defaultTaxYear: number | null;
+          groups?: CatalogGroup[]; serviceLines?: Array<{ key: string; label: string }>; bandPercent?: number;
+        }>('/quotes/catalog'),
       ]);
       setBoard(p.board);
       setMetrics(p.metrics);
@@ -197,10 +240,16 @@ export default function PipelinePage() {
       setTaxYear(c.defaultTaxYear ?? null);
       setTaxYearSource('default');
       setBundles(c.bundles);
-      // `deposits.override` is explicit-only, so a '*' role does NOT imply it —
-      // check for the key itself, exactly as the API does.
-      const me = await api<{ permissions: string[] }>('/auth/me');
+      setGroups(c.groups ?? []);
+      setServiceLines(c.serviceLines ?? []);
+      setBandPercent(c.bandPercent ?? 0);
+      // `deposits.override` and `pricing.packages.save` are explicit-only, so a '*' role does NOT
+      // imply them — check for the key itself, exactly as the API does.
+      const me = await api<{ permissions: string[]; switches?: { quoteBuilder?: 'v1' | 'v2' } }>('/auth/me');
       setCanOverrideDeposit(me.permissions.includes('deposits.override'));
+      setCanSavePackage(me.permissions.includes('pricing.packages.save'));
+      // OPS_QUOTE_BUILDER (2026-09-20): the server's switch, default v1; only an explicit v2 shows the redesign.
+      setBuilderVersion(me.switches?.quoteBuilder === 'v2' ? 'v2' : 'v1');
     } catch (err) {
       setError((err as Error).message);
     }
@@ -240,6 +289,11 @@ export default function PipelinePage() {
       .catch(() => setBusinesses([]));
   }, [contact]);
 
+  /** The groups follow the business select — business work leads when a business is chosen — until the person flips them. */
+  useEffect(() => {
+    if (!clientTypeChosen) setClientType(businessId ? 'business' : 'individual');
+  }, [businessId, clientTypeChosen]);
+
   const loadOpenQuotes = useCallback(async (contactId: string) => {
     setDupAcknowledged(false);
     try {
@@ -268,24 +322,129 @@ export default function PipelinePage() {
       .filter((d): d is number => d !== null);
     return perLine.length === 0 ? null : perLine.reduce((a, b) => a + b, 0);
   }, [picked, catalog]);
-  const filtered = useMemo(() => {
-    const q = itemFilter.trim().toLowerCase();
-    const base = catalog.filter((i) => i.service_line !== 'deposit');
-    if (q.length === 0) return base.slice(0, 40);
-    return base.filter((i) => i.name_en.toLowerCase().includes(q) || i.item_code.toLowerCase().includes(q)).slice(0, 40);
-  }, [catalog, itemFilter]);
-
-  const runningTotal = picked.reduce((sum, p) => {
-    if (p.isOptional) return sum;
-    const item = catalog.find((i) => i.item_code === p.itemCode);
-    return sum + (item?.amount_cents ?? 0) * p.quantity;
-  }, 0);
+  /** The catalog as grouped rows: the groups fitting the client type first, the filter applied inside each. */
+  const groupedCatalog = useMemo(() => {
+    const ordered = orderGroups(groups, clientType);
+    const known = new Set(ordered.map((g) => g.key));
+    // A row whose group the API did not name still renders, at the end, so nothing in the book is unreachable.
+    const withUnknown = catalog.some((i) => !i.group_key || !known.has(i.group_key))
+      ? [...ordered, { key: '__other', label: 'Other', fits: 'both' as const }]
+      : ordered;
+    return withUnknown
+      .map((g) => ({
+        group: g,
+        rows: catalog
+          .filter((i) => i.service_line !== 'deposit')
+          .filter((i) => (g.key === '__other' ? !i.group_key || !known.has(i.group_key) : i.group_key === g.key))
+          .filter((i) => matchesFilter(i, g.label, itemFilter))
+          .sort((a, b) => a.sort_order - b.sort_order || a.item_code.localeCompare(b.item_code)),
+      }))
+      .filter((g) => g.rows.length > 0);
+  }, [catalog, groups, clientType, itemFilter]);
+  const summary = useMemo(() => builderSummary(picked, catalog), [picked, catalog]);
+  const discountCents = packageRule ? packageDiscountCents(packageRule, summary.committedCents) : 0;
+  const quotedTotalCents = Math.max(0, summary.committedCents - discountCents);
+  const range = quotedRange(quotedTotalCents, bandPercent, asRange);
   const unconfirmed = picked.filter((p) => catalog.find((i) => i.item_code === p.itemCode)?.needs_confirmation);
+  const itemOf = (code: string) => catalog.find((i) => i.item_code === code);
+  const lineName = (p: PickedLine) => p.custom?.name ?? itemOf(p.itemCode)?.name_en ?? p.itemCode;
+  /** The book's amount, its range, or a dash for a line with no book price. */
+  const bookWords = (item: CatalogItem | undefined) => {
+    const b = bookPrice(item);
+    if (b.kind === 'amount') return money(b.cents);
+    if (b.kind === 'range') return `${money(b.min)}–${money(b.max)}`;
+    return '—';
+  };
+  const dollarsOf = (cents: number | null) => (cents === null ? '' : (cents / 100).toFixed(2));
 
+  /** "Add" on a row: the line joins once at the book price, its amount box pre-filled from the book. */
   const addItem = (code: string) => {
-    setPicked((prev) =>
-      prev.some((p) => p.itemCode === code) ? prev : [...prev, { itemCode: code, quantity: 1, isOptional: false }]
-    );
+    const item = itemOf(code);
+    setPicked((prev) => addLine(prev, code));
+    setAmountText((prev) => (code in prev ? prev : { ...prev, [code]: dollarsOf(item?.amount_cents ?? null) }));
+  };
+  const removeLine = (code: string) => {
+    setPicked((prev) => prev.filter((p) => p.itemCode !== code));
+    setAmountText((prev) => { const next = { ...prev }; delete next[code]; return next; });
+  };
+  /** The amount box: the text stays as typed; the line's cents follow it (blank puts the book price back). */
+  const setAmount = (code: string, text: string) => {
+    setAmountText((prev) => ({ ...prev, [code]: text }));
+    const cents = parseDollars(text);
+    setPicked((prev) => prev.map((p) => (p.itemCode === code ? { ...p, unitCents: p.custom ? (cents ?? p.unitCents ?? 0) : cents } : p)));
+  };
+  const addCustom = () => {
+    if (!customForm) return;
+    const cents = parseDollars(customForm.amount);
+    if (customForm.name.trim().length === 0) { setCustomError('Name the line.'); return; }
+    if (cents === null) { setCustomError('Enter a dollar amount of 0 or more.'); return; }
+    if (!customForm.serviceLine) { setCustomError('Choose the service line this belongs to.'); return; }
+    const next = addCustomLine(picked, { name: customForm.name.trim(), serviceLine: customForm.serviceLine, unitCents: cents });
+    const added = next[next.length - 1]!;
+    setPicked(next);
+    setAmountText((prev) => ({ ...prev, [added.itemCode]: dollarsOf(cents) }));
+    setCustomForm(null);
+    setCustomError('');
+  };
+  /** Choosing a package fills the lines from the book; every line stays editable from there. */
+  const applyPackage = async (slug: string) => {
+    setInlineErr((e) => (e?.key === 'package' ? null : e));
+    setBundleSlug(slug);
+    if (!slug) { setPackageRule(null); return; }
+    try {
+      const composed = await api<ComposedPackage>(`/bundles/${encodeURIComponent(slug)}`);
+      const lines: PickedLine[] = composed.lines.map((l) => ({ itemCode: l.itemCode, quantity: Number(l.quantity) || 1, isOptional: l.isOptional, unitCents: null }));
+      setPicked(lines);
+      setAmountText(Object.fromEntries(lines.map((l) => [l.itemCode, dollarsOf(itemOf(l.itemCode)?.amount_cents ?? null)])));
+      setPackageRule(composed.discount);
+    } catch (err) {
+      setBundleSlug('');
+      setPackageRule(null);
+      setInlineErr({ key: 'package', message: refused(err) });
+    }
+  };
+  const savePackage = async () => {
+    if (!packageForm) return;
+    setInlineErr((e) => (e?.key === 'savePackage' ? null : e));
+    setBusy(true);
+    try {
+      const r = await api<{ slug: string; name: string }>('/quotes/packages', {
+        method: 'POST',
+        body: { name: packageForm.name, lines: picked.filter((p) => !p.custom).map((p) => ({ itemCode: p.itemCode, quantity: p.quantity, isOptional: p.isOptional })) },
+      });
+      setPackageSaved(r);
+      setPackageForm(null);
+      const c = await api<{ bundles: CatalogBundle[] }>('/quotes/catalog');
+      setBundles(c.bundles);
+    } catch (err) {
+      setInlineErr({ key: 'savePackage', message: refused(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  /** The lines as the API takes them: a book code or a custom line, the amount only when the person set one. */
+  const linesPayload = () => picked.map((p) => ({
+    ...(p.custom ? { custom: { name: p.custom.name, serviceLine: p.custom.serviceLine } } : { itemCode: p.itemCode }),
+    quantity: p.quantity,
+    isOptional: p.isOptional,
+    ...(p.unitCents !== null && p.unitCents !== undefined ? { unitCents: p.unitCents } : {}),
+  }));
+  /**
+   * A refusal lands at the control it names (2026-09-19): the server's issue path picks the key —
+   * the reason field, the line, or the button — and the message is the server's own.
+   */
+  const inlineKeyFor = (err: unknown): { key: string; message: string } => {
+    const e = err as Error & { payload?: { issues?: Array<{ path?: string; message?: string }> } };
+    const issues = e.payload?.issues ?? [];
+    const reasonIssue = issues.find((i) => i.path === 'priceChangeReason');
+    if (reasonIssue?.message) return { key: 'reason', message: reasonIssue.message };
+    const lineIssue = issues.find((i) => /^lines\.\d+/.test(i.path ?? ''));
+    if (lineIssue?.message) {
+      const n = Number(/^lines\.(\d+)/.exec(lineIssue.path ?? '')?.[1] ?? -1);
+      const code = picked[n]?.itemCode;
+      return { key: code ? `line-${code}` : 'build', message: lineIssue.message };
+    }
+    return { key: 'build', message: refused(err) };
   };
 
   /**
@@ -362,6 +521,8 @@ export default function PipelinePage() {
     setContact(null); setSearch(''); setBundleSlug(''); setPicked([]); setBusinessId('');
     setNotes(''); setSentLink(''); setItemFilter('');
     setDraftQuoteId(''); setDraftDeposit(null); setOverrideForm(null); setOverrideError(''); setInlineErr(null);
+    setAmountText({}); setPriceChangeReason(''); setCustomForm(null); setCustomError('');
+    setPackageRule(null); setPackageForm(null); setPackageSaved(null); setClientTypeChosen(false);
   };
 
   /**
@@ -477,8 +638,19 @@ export default function PipelinePage() {
           contactId: contact.id,
           ...(businessId ? { businessId } : {}),
           language,
-          ...(bundleSlug ? { bundleSlug } : { lines: picked }),
-          ...(bundleSlug ? { includeOptional: picked.filter((p) => p.isOptional).map((p) => p.itemCode) } : {}),
+          // v2: the lines as they stand on the screen, package or not — a package filled them and the
+          // API applies its discount rule to what they now come to. v1: the pre-redesign shape,
+          // a package by slug (with the ticked optional components) or the picked codes.
+          ...(builderVersion === 'v2'
+            ? {
+                lines: linesPayload(),
+                ...(bundleSlug ? { bundleSlug } : {}),
+                ...(summary.offBook.length > 0 ? { priceChangeReason: priceChangeReason.trim() } : {}),
+              }
+            : {
+                ...(bundleSlug ? { bundleSlug } : { lines: picked.map((p) => ({ itemCode: p.itemCode, quantity: p.quantity, isOptional: p.isOptional })) }),
+                ...(bundleSlug ? { includeOptional: picked.filter((p) => p.isOptional).map((p) => p.itemCode) } : {}),
+              }),
           asRange,
           expiresInDays,
           ...(notes.trim() ? { notes: notes.trim() } : {}),
@@ -510,7 +682,7 @@ export default function PipelinePage() {
       // Once the quote exists, a refusal is about THAT quote — hand it over rather than dropping
       // it. Before it exists there is nothing to hand over and the error is just an error.
       if (createdId) routeSendFailure(err, createdId, 'build');
-      else setInlineErr({ key: 'build', message: refused(err) });
+      else setInlineErr(inlineKeyFor(err));
     } finally {
       setBusy(false);
     }
@@ -709,7 +881,7 @@ export default function PipelinePage() {
 
               {contact ? (
                 <label className="field">
-                  Business{picked.some((p) => BUSINESS_LINES.has(catalog.find((i) => i.item_code === p.itemCode)?.service_line ?? '')) || bundleSlug ? <span className="muted small"> (required for business work)</span> : <span className="muted small"> (optional)</span>}
+                  Business{picked.some((p) => BUSINESS_LINES.has(p.custom?.serviceLine ?? catalog.find((i) => i.item_code === p.itemCode)?.service_line ?? '')) || bundleSlug ? <span className="muted small"> (required for business work)</span> : <span className="muted small"> (optional)</span>}
                   {businesses.length === 0 ? (
                     <span className="muted small">No business on this record. Add one on the client page before quoting business work.</span>
                   ) : (
@@ -729,6 +901,39 @@ export default function PipelinePage() {
                   ) : null}
                 </label>
               ) : null}
+              {builderVersion !== 'v2' ? (
+                /* OPS_QUOTE_BUILDER=v1 (the production default until Brian approves the redesign's
+                   screenshots): the chip builder, unchanged, from builder-v1.tsx. */
+                <BuilderV1Composer
+                  catalog={catalog}
+                  bundles={bundles}
+                  picked={picked}
+                  setPicked={setPicked}
+                  bundleSlug={bundleSlug}
+                  setBundleSlug={setBundleSlug}
+                  language={language}
+                  setLanguage={setLanguage}
+                  expiresInDays={expiresInDays}
+                  setExpiresInDays={setExpiresInDays}
+                  asRange={asRange}
+                  setAsRange={setAsRange}
+                  itemFilter={itemFilter}
+                  setItemFilter={setItemFilter}
+                  notes={notes}
+                  setNotes={setNotes}
+                  pickedDepositCents={pickedDepositCents}
+                  defaultTaxYear={defaultTaxYear}
+                  taxYear={taxYear}
+                  taxYearSource={taxYearSource}
+                  setTaxYear={setTaxYear}
+                  setTaxYearSource={setTaxYearSource}
+                  busy={busy}
+                  hasContact={Boolean(contact)}
+                  buildAndSend={(send) => void buildAndSend(send)}
+                  errAt={errAt}
+                />
+              ) : (
+              <>
               <div className="grid2">
                 <label className="field">
                   Language
@@ -737,28 +942,6 @@ export default function PipelinePage() {
                     <option value="es">Español</option>
                   </select>
                 </label>
-                <label className="field">
-                  Package (optional)
-                  <select value={bundleSlug} onChange={(e) => { setBundleSlug(e.target.value); setPicked([]); }}>
-                    <option value="">— build line by line —</option>
-                    {bundles.map((b) => (
-                      <option key={b.slug} value={b.slug}>{b.name_en} ({b.component_count} items)</option>
-                    ))}
-                  </select>
-                </label>
-                {/* Read-only on purpose: the deposit is a property of the lines, not a choice
-                    made here. This replaces a dropdown from the retired one-deposit-item model
-                    that read "— no deposit —" over a quote carrying a real deposit. If the figure is
-                    wrong, the place to change it is the price book, and the place to reduce or
-                    waive it for one client is the deposit override after saving a draft. */}
-                <div className="field">
-                  Deposit the client will be asked for
-                  <p className="muted small">
-                    {pickedDepositCents === null
-                      ? 'None — no chosen line carries a deposit in the price book in force.'
-                      : `${money(pickedDepositCents)} — summed from the lines' price-book deposits, exactly as the client will see it on the proposal.`}
-                  </p>
-                </div>
                 <label className="field">
                   Good for (days)
                   <input
@@ -771,161 +954,356 @@ export default function PipelinePage() {
                 </label>
               </div>
 
-              <label className="field inline-check">
-                <input type="checkbox" checked={asRange} onChange={(e) => setAsRange(e.target.checked)} />
-                <span>Quote as a range (one-time work). Uncheck for recurring work, which quotes exact.</span>
-              </label>
-
-              {bundleSlug ? (
-                <p className="muted small">
-                  The package composes itself from its price-book components when the quote is created.
-                </p>
-              ) : (
-                <>
-                  <label className="field">
-                    Add services
-                    <input
-                      type="search"
-                      value={itemFilter}
-                      placeholder="Filter the price book"
-                      onChange={(e) => setItemFilter(e.target.value)}
-                    />
-                  </label>
-                  <div className="chipbar">
-                    {filtered.map((i) => {
-                      const on = isPicked(picked, i.item_code);
-                      return (
-                        <button
-                          key={i.item_code}
-                          type="button"
-                          className={on ? 'chip active' : 'chip'}
-                          aria-pressed={on}
-                          onClick={() => setPicked((prev) => togglePick(prev, i.item_code))}
-                        >
-                          {on ? '✓ ' : ''}{i.name_en} · {money(i.amount_cents)}
-                          {i.needs_confirmation ? ' ⚠' : ''}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {picked.some((p) => { const l = catalog.find((i) => i.item_code === p.itemCode)?.service_line; return l === 'individual_tax' || l === 'business_tax'; }) && defaultTaxYear && taxYear ? (
-                    <label className="field">
-                      Tax year — <strong>{taxYearLabel(taxYear, taxYearSource)}</strong>
-                      <select
-                        value={taxYear}
-                        disabled={taxYearSource === 'interview'}
-                        onChange={(e) => { setTaxYear(Number(e.target.value)); setTaxYearSource(Number(e.target.value) === defaultTaxYear ? 'default' : 'chosen'); }}
+              {/* THE CATALOG BESIDE THE QUOTE (2026-09-20): grouped rows on the left, the editable
+                  line table on the right; on a phone the quote sits below the catalog and the fixed
+                  footer carries the total. */}
+              <div className="qb">
+                <div className="qb-catalog">
+                  <div className="qb-toolbar">
+                    <div className="qb-segment" role="group" aria-label="Quoting for">
+                      <button
+                        type="button"
+                        className={clientType === 'business' ? 'chip active' : 'chip'}
+                        aria-pressed={clientType === 'business'}
+                        onClick={() => { setClientType('business'); setClientTypeChosen(true); }}
                       >
-                        {taxYearOptions(defaultTaxYear).map((y) => (
-                          <option key={y} value={y}>{y === defaultTaxYear ? `${y} (default — prior calendar year)` : String(y)}</option>
+                        Business
+                      </button>
+                      <button
+                        type="button"
+                        className={clientType === 'individual' ? 'chip active' : 'chip'}
+                        aria-pressed={clientType === 'individual'}
+                        onClick={() => { setClientType('individual'); setClientTypeChosen(true); }}
+                      >
+                        Individual
+                      </button>
+                    </div>
+                    <label className="field qb-filter">
+                      Find a service
+                      <input
+                        type="search"
+                        value={itemFilter}
+                        placeholder="Filter by name, form number or group"
+                        onChange={(e) => setItemFilter(e.target.value)}
+                      />
+                    </label>
+                    <label className="field qb-package">
+                      Package
+                      <select value={bundleSlug} onChange={(e) => void applyPackage(e.target.value)}>
+                        <option value="">— none —</option>
+                        {bundles.map((b) => (
+                          <option key={b.slug} value={b.slug}>{b.name_en} ({b.component_count} items)</option>
                         ))}
                       </select>
-                      <span className="muted small">
-                        The engagement is titled with it and the client reads it on the proposal.
-                      </span>
                     </label>
+                  </div>
+                  {errAt('package')}
+                  {groupedCatalog.length === 0 ? (
+                    <p className="muted small">Nothing in the book matches “{itemFilter}”.</p>
                   ) : null}
-                  {/* 13b: the sticky summary — deposit, committed total, line count — follows every tap. */}
-                  {picked.length > 0 ? (() => {
-                    const s = builderSummary(picked, catalog);
-                    return (
+                  {groupedCatalog.map(({ group, rows }) => (
+                    <details
+                      key={group.key}
+                      className="qb-group"
+                      open={itemFilter.trim().length > 0 || !collapsed.has(group.key)}
+                      onToggle={(e) => {
+                        const isOpen = (e.currentTarget as HTMLDetailsElement).open;
+                        setCollapsed((prev) => {
+                          const next = new Set(prev);
+                          if (isOpen) next.delete(group.key); else next.add(group.key);
+                          return next;
+                        });
+                      }}
+                    >
+                      <summary>
+                        <span>{group.label}</span>
+                        <span className="muted small">{rows.length}</span>
+                      </summary>
+                      {rows.map((i) => {
+                        const on = isPicked(picked, i.item_code);
+                        return (
+                          <div className="qb-row" key={i.item_code}>
+                            <div className="qb-row-main">
+                              <span className="qb-name">{i.name_en}{i.needs_confirmation ? ' ⚠' : ''}</span>
+                              {i.description_en ? <span className="qb-desc muted small">{i.description_en}</span> : null}
+                            </div>
+                            <span className="qb-price">
+                              {bookWords(i)}{unitWords(i.unit) ? <span className="muted small"> {unitWords(i.unit)}</span> : null}
+                            </span>
+                            <button
+                              type="button"
+                              className={on ? 'btn ghost small qb-add' : 'btn small qb-add'}
+                              disabled={on}
+                              aria-label={`${on ? 'Added' : 'Add'} ${i.name_en}`}
+                              onClick={() => addItem(i.item_code)}
+                            >
+                              {on ? 'Added' : 'Add'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </details>
+                  ))}
+                  <div className="qb-custom">
+                    {customForm ? (
+                      <div className="qb-custom-form">
+                        <strong className="small">A custom line</strong>
+                        <label className="field" style={{ marginTop: 6 }}>
+                          Name
+                          <input type="text" value={customForm.name} onChange={(e) => setCustomForm({ ...customForm, name: e.target.value })} />
+                        </label>
+                        <div className="grid2">
+                          <label className="field">
+                            Amount, in dollars
+                            <input type="text" inputMode="decimal" value={customForm.amount} onChange={(e) => setCustomForm({ ...customForm, amount: e.target.value })} />
+                          </label>
+                          <label className="field">
+                            Service line
+                            <select value={customForm.serviceLine} onChange={(e) => setCustomForm({ ...customForm, serviceLine: e.target.value })}>
+                              <option value="">— choose —</option>
+                              {serviceLines.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                            </select>
+                          </label>
+                        </div>
+                        {customError ? <p className="field-error" role="alert">{customError}</p> : null}
+                        <div className="chipbar" style={{ marginBottom: 0 }}>
+                          <button type="button" className="btn small" onClick={addCustom}>Add line</button>
+                          <button type="button" className="btn ghost small" onClick={() => { setCustomForm(null); setCustomError(''); }}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="button" className="btn ghost small" onClick={() => setCustomForm({ name: '', amount: '', serviceLine: '' })}>
+                        Add a custom line
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="qb-quote" aria-label="This quote">
+                  <h3>This quote</h3>
+                  {picked.length === 0 ? (
+                    <p className="muted small">No lines yet. Add services from the catalog, or choose a package.</p>
+                  ) : (
+                    <>
+                      {/* 13b: the summary — line count, subtotal, deposit — follows every tap and keystroke. */}
                       <div className="builder-summary" aria-live="polite">
-                        <span><strong>{s.lineCount}</strong> line{s.lineCount === 1 ? '' : 's'}</span>
-                        <span>
-                          Committed{' '}
-                          <strong>
-                            {s.hasRange ? `${money(s.committedMinCents)}–${money(s.committedMaxCents)}` : money(s.committedCents)}
-                          </strong>
-                        </span>
-                        <span>Deposit <strong>{s.depositCents === null ? 'none' : money(s.depositCents)}</strong></span>
+                        <span><strong>{summary.lineCount}</strong> line{summary.lineCount === 1 ? '' : 's'}</span>
+                        <span>Subtotal <strong>{money(summary.committedCents)}</strong></span>
+                        <span>Deposit <strong>{summary.depositCents === null ? 'none' : money(summary.depositCents)}</strong></span>
                       </div>
-                    );
-                  })() : null}
-                  {picked.map((p, idx) => {
-                    const item = catalog.find((i) => i.item_code === p.itemCode);
-                    return (
-                      <div className="quote-line" key={p.itemCode}>
-                        <span className="name">{item?.name_en ?? p.itemCode}</span>
-                        <label className="ctl">
-                          Qty
-                          <input
-                            type="number"
-                            min={1}
-                            max={99}
-                            value={p.quantity}
-                            onChange={(e) =>
-                              setPicked((prev) =>
-                                prev.map((x, i) =>
-                                  i === idx ? { ...x, quantity: Math.max(1, Number(e.target.value) || 1) } : x
-                                )
-                              )
-                            }
-                          />
+                      <table className="qb-lines">
+                        <thead>
+                          <tr>
+                            <th>Line</th>
+                            <th>Qty</th>
+                            <th className="num">Unit amount</th>
+                            <th className="num">Total</th>
+                            <th aria-label="Remove" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {picked.map((p) => {
+                            const item = itemOf(p.itemCode);
+                            const off = isOffBook(p, item);
+                            const t = lineTotals(p, item);
+                            const totalWords = t.exactCents !== null
+                              ? money(t.exactCents)
+                              : t.minCents !== null && t.maxCents !== null ? `${money(t.minCents)}–${money(t.maxCents)}` : '—';
+                            const name = lineName(p);
+                            return (
+                              <tr key={p.itemCode} className={off ? 'off-book' : undefined}>
+                                <td className="line-name">
+                                  <strong>{name}</strong>
+                                  {p.custom ? <span className="badge" style={{ marginLeft: 6 }}>custom</span> : null}
+                                  {item?.needs_confirmation ? ' ⚠' : ''}
+                                  {unitWords(item?.unit) ? <span className="qb-book">{unitWords(item?.unit)}</span> : null}
+                                  <label className="inline-check small" style={{ marginTop: 4, fontWeight: 500 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={p.isOptional}
+                                      onChange={(e) => setPicked((prev) => prev.map((x) => (x.itemCode === p.itemCode ? { ...x, isOptional: e.target.checked } : x)))}
+                                    />
+                                    <span>Optional — the client&apos;s choice</span>
+                                  </label>
+                                  {errAt(`line-${p.itemCode}`)}
+                                </td>
+                                <td className="qb-ctl">
+                                  {showsQuantity(item?.unit) ? (
+                                    <input
+                                      className="qty"
+                                      type="number"
+                                      min={1}
+                                      max={99}
+                                      aria-label={`Quantity for ${name}`}
+                                      value={p.quantity}
+                                      onChange={(e) => setPicked((prev) => prev.map((x) => (x.itemCode === p.itemCode ? { ...x, quantity: Math.max(1, Number(e.target.value) || 1) } : x)))}
+                                    />
+                                  ) : (
+                                    <span className="muted small">1</span>
+                                  )}
+                                </td>
+                                <td className="num qb-ctl" data-label="Unit amount">
+                                  <input
+                                    className="amt"
+                                    type="text"
+                                    inputMode="decimal"
+                                    aria-label={`Unit amount for ${name}`}
+                                    placeholder={bookPrice(item).kind === 'range' ? 'range' : '0.00'}
+                                    value={amountText[p.itemCode] ?? ''}
+                                    onChange={(e) => setAmount(p.itemCode, e.target.value)}
+                                  />
+                                  {off && !p.custom ? <s className="qb-book" title="the book price">{bookWords(item)}</s> : null}
+                                </td>
+                                <td className="num" data-label="Total">{p.isOptional ? <span className="muted">({totalWords})</span> : totalWords}</td>
+                                <td className="qb-ctl">
+                                  <button type="button" className="btn ghost small" aria-label={`Remove ${name}`} onClick={() => removeLine(p.itemCode)}>
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      {summary.hasRange ? (
+                        <p className="muted small">
+                          A range-priced line shows its range on the proposal and is not in the subtotal; set an amount to price it exact.
+                        </p>
+                      ) : null}
+
+                      {picked.some((p) => { const l = p.custom?.serviceLine ?? itemOf(p.itemCode)?.service_line; return l === 'individual_tax' || l === 'business_tax'; }) && defaultTaxYear && taxYear ? (
+                        <label className="field" style={{ marginTop: 10 }}>
+                          Tax year — <strong>{taxYearLabel(taxYear, taxYearSource)}</strong>
+                          <select
+                            value={taxYear}
+                            disabled={taxYearSource === 'interview'}
+                            onChange={(e) => { setTaxYear(Number(e.target.value)); setTaxYearSource(Number(e.target.value) === defaultTaxYear ? 'default' : 'chosen'); }}
+                          >
+                            {taxYearOptions(defaultTaxYear).map((y) => (
+                              <option key={y} value={y}>{y === defaultTaxYear ? `${y} (default — prior calendar year)` : String(y)}</option>
+                            ))}
+                          </select>
+                          <span className="muted small">
+                            The engagement is titled with it and the client reads it on the proposal.
+                          </span>
                         </label>
-                        <label className="ctl">
-                          <input
-                            type="checkbox"
-                            checked={p.isOptional}
-                            onChange={(e) =>
-                              setPicked((prev) =>
-                                prev.map((x, i) => (i === idx ? { ...x, isOptional: e.target.checked } : x))
-                              )
-                            }
-                          />
-                          Optional
+                      ) : null}
+
+                      <div className="qb-totals" aria-live="polite">
+                        <div className="qb-total-row"><span>Subtotal</span><strong>{money(summary.committedCents)}</strong></div>
+                        {packageRule && discountCents > 0 ? (
+                          <div className="qb-total-row"><span>Package discount</span><strong>−{money(discountCents)}</strong></div>
+                        ) : null}
+                        {/* The checkbox stays (2026-09-20): the book carries no one-time / recurring attribute on
+                            an item, so whether the quote is a range is still the person's call here. */}
+                        <label className="field inline-check">
+                          <input type="checkbox" checked={asRange} onChange={(e) => setAsRange(e.target.checked)} />
+                          <span>Quote as a range (one-time work). Uncheck for recurring work, which quotes exact.</span>
                         </label>
-                        <button
-                          type="button"
-                          className="chip"
-                          onClick={() => setPicked((prev) => prev.filter((_, i) => i !== idx))}
-                        >
-                          Remove
-                        </button>
-                        <span className="amt">
-                          {p.isOptional ? '—' : money((item?.amount_cents ?? 0) * p.quantity)}
-                        </span>
+                        <div className="qb-total-row">
+                          <span>{range ? 'Quoted range' : 'Quoted'}</span>
+                          <strong>{range ? `${money(range.min)}–${money(range.max)}` : money(quotedTotalCents)}</strong>
+                        </div>
+                        {/* Read-only on purpose: the deposit is a property of the lines, summed from the
+                            book exactly as acceptance will charge it; reducing or waiving it for one client
+                            is the deposit override after saving a draft. */}
+                        <div className="qb-total-row">
+                          <span>Deposit</span>
+                          <strong>{pickedDepositCents === null ? 'none' : money(pickedDepositCents)}</strong>
+                        </div>
                       </div>
-                    );
-                  })}
-                  <p className="small">
-                    <strong>Committed total: {money(runningTotal)}</strong>
-                    {asRange ? ' (a range is applied when the quote is built)' : ''}
-                  </p>
-                  {unconfirmed.length > 0 ? (
-                    <div className="alert warn">
-                      {unconfirmed.length} line{unconfirmed.length === 1 ? '' : 's'} still awaiting your price
-                      confirmation: {unconfirmed.map((p) => p.itemCode).join(', ')}. The quote will use the
-                      seeded figure — confirm in Admin → Pricing first if that number is wrong.
+
+                      {summary.offBook.length > 0 ? (
+                        <label className="field" style={{ marginTop: 10 }}>
+                          Why {summary.offBook.length === 1 ? 'is this line' : `are these ${summary.offBook.length} lines`} priced off the book? One reason for the whole quote, recorded with your name.
+                          <textarea
+                            rows={2}
+                            value={priceChangeReason}
+                            onChange={(e) => { setPriceChangeReason(e.target.value); setInlineErr((x) => (x?.key === 'reason' ? null : x)); }}
+                          />
+                          {errAt('reason')}
+                        </label>
+                      ) : null}
+                      {unconfirmed.length > 0 ? (
+                        <div className="alert warn">
+                          {unconfirmed.length} line{unconfirmed.length === 1 ? '' : 's'} still awaiting your price
+                          confirmation: {unconfirmed.map((p) => p.itemCode).join(', ')}. The quote will use the
+                          seeded figure — confirm in Admin → Pricing first if that number is wrong.
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+
+                  <label className="field" style={{ marginTop: 10 }}>
+                    Note to the client (optional)
+                    <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+                  </label>
+
+                  <div className="chipbar qb-actions">
+                    <button
+                      type="button"
+                      className="btn accent qb-desk-only"
+                      disabled={busy || !contact || picked.length === 0}
+                      onClick={() => void buildAndSend(true)}
+                    >
+                      Create and send
+                    </button>
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      disabled={busy || !contact || picked.length === 0}
+                      onClick={() => void buildAndSend(false)}
+                    >
+                      Save as draft
+                    </button>
+                    {canSavePackage && picked.length > 0 && !packageForm ? (
+                      <button type="button" className="btn ghost" disabled={busy} onClick={() => { setPackageSaved(null); setPackageForm({ name: '' }); }}>
+                        Save these lines as a package…
+                      </button>
+                    ) : null}
+                  </div>
+                  {errAt('build')}
+                  {packageForm ? (
+                    <div className="alert info" style={{ marginTop: 6 }}>
+                      <label className="field">
+                        Package name
+                        <input type="text" value={packageForm.name} onChange={(e) => setPackageForm({ name: e.target.value })} />
+                      </label>
+                      {errAt('savePackage')}
+                      <div className="chipbar" style={{ marginBottom: 0 }}>
+                        <button type="button" className="btn small" disabled={busy} onClick={() => void savePackage()}>Save package</button>
+                        <button type="button" className="btn ghost small" disabled={busy} onClick={() => setPackageForm(null)}>Cancel</button>
+                      </div>
+                      <p className="muted small" style={{ marginBottom: 0 }}>
+                        Saved by item and quantity from the price book; the discount is set in Admin → Pricing. A custom line is not saved.
+                      </p>
                     </div>
                   ) : null}
-                </>
-              )}
-
-              <label className="field">
-                Note to the client (optional)
-                <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-              </label>
-
-              <div className="chipbar">
-                <button
-                  type="button"
-                  className="btn accent"
-                  disabled={busy || !contact || (!bundleSlug && picked.length === 0)}
-                  onClick={() => void buildAndSend(true)}
-                >
-                  Create and send
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  disabled={busy || !contact || (!bundleSlug && picked.length === 0)}
-                  onClick={() => void buildAndSend(false)}
-                >
-                  Save as draft
-                </button>
+                  {packageSaved ? (
+                    <p className="alert ok" style={{ marginTop: 6 }}>Saved as the package “{packageSaved.name}”; it is in the package list now.</p>
+                  ) : null}
+                </div>
               </div>
-              {errAt('build')}
+
+              {/* THE PHONE FOOTER: the total and Create and send, always in reach. */}
+              {picked.length > 0 ? (
+                <div className="qb-footer">
+                  <span className="qb-footer-total">
+                    {range ? 'Quoted range' : 'Quoted'}{' '}
+                    <strong>{range ? `${money(range.min)}–${money(range.max)}` : money(quotedTotalCents)}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    className="btn accent"
+                    disabled={busy || !contact}
+                    onClick={() => void buildAndSend(true)}
+                  >
+                    Create and send
+                  </button>
+                </div>
+              ) : null}
+              </>
+              )}
 
               {/* Deposit decision on a saved draft. The standard deposit is what
                   happens by default — this panel only appears once a draft
