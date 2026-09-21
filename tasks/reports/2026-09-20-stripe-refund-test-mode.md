@@ -1,6 +1,6 @@
 # stripe-refund-test-mode (2026-09-20)
 
-Generated 2026-09-21T02:28:47.127Z by scripts/report-table.mjs from the log stripe-refund-test-mode.log; 1 row(s).
+Generated 2026-09-21T03:05:07.362Z by scripts/report-table.mjs from the log stripe-refund-test-mode.log; 1 row(s).
 
 The proof did not run: it needs a Stripe test-mode key and the test endpoint's signing secret, supplied by name as STRIPE_TEST_SECRET_KEY (sk_test_…) and STRIPE_TEST_WEBHOOK_SECRET. Until it runs, OPS_REFUND_CONTROL stays off in production.
 
