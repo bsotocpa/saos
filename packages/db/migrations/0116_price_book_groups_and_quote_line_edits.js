@@ -127,8 +127,20 @@ exports.up = async (pgm) => {
     'Position inside group_key (2026-09-20). Presentation metadata, written onto every version''s row for the item_code, exactly like group_key.'`);
 
   // Every version's row for each code: a quote pinned to an old version lays out the same way.
+  //
+  // THE ROWS THE NOT VALID CHECK WOULD REJECT ARE LEFT ALONE (found by the preflight on a copy of
+  // production, 2026-09-20). Migration 0053 added price_book_items_deposit_not_over_price as NOT VALID,
+  // so the rows that already broke it (four version-4 individual base returns whose deposit sits above
+  // the flat amount) stayed, and Postgres re-checks that constraint on ANY update of such a row. Writing
+  // a group onto them fails the whole migration. They are not the version in force; they keep no group,
+  // and the builder reads the version in force. The rows themselves are the price book, Brian's to fix.
   for (const [code, group, sort] of PLACEMENTS) {
-    await q(`UPDATE price_book_items SET group_key = $1, sort_order = $2 WHERE item_code = $3`, [group, sort, code]);
+    await q(
+      `UPDATE price_book_items SET group_key = $1, sort_order = $2
+        WHERE item_code = $3
+          AND NOT (deposit_cents IS NOT NULL AND unit = 'flat' AND amount_cents IS NOT NULL AND deposit_cents > amount_cents)`,
+      [group, sort, code]
+    );
   }
 
   await q(`ALTER TABLE quote_line_items
