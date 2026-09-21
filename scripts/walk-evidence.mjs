@@ -12,7 +12,7 @@
  * last run | how. "how" is tap, api or fixture; only a passing tap clears a step. A step no spec
  * annotated prints one row with empty cells: not cleared. For scripts/report-table.mjs --from-log:
  *
- *   node scripts/walk-evidence.mjs A > walk-a.log
+ *   node scripts/walk-evidence.mjs A [--run <last-run.json copy>] > walk-a.log
  */
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -22,7 +22,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 const which = process.argv[2] ?? 'A';
 const manifest = JSON.parse(readFileSync(resolve(root, 'apps', 'e2e', 'walk-steps.json'), 'utf8'));
-const run = JSON.parse(readFileSync(resolve(root, 'apps', 'e2e', '.artifacts', 'last-run.json'), 'utf8'));
+// --run <file>: a kept copy of a run record, for a run another run has since overwritten (2026-09-20).
+const runIx = process.argv.indexOf('--run');
+const runFile = runIx > 0 ? resolve(process.argv[runIx + 1]) : resolve(root, 'apps', 'e2e', '.artifacts', 'last-run.json');
+const run = JSON.parse(readFileSync(runFile, 'utf8'));
 const path = manifest.paths[which];
 if (!path) { console.error(`no path ${which}`); process.exit(2); }
 

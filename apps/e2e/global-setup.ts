@@ -6,7 +6,7 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readlinkSync, rmdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -134,8 +134,27 @@ export default async function globalSetup(): Promise<void> {
   const e2eHome = resolve(process.platform === 'win32' ? (process.env.LOCALAPPDATA ?? tmpdir()) : tmpdir(), 'saos-e2e');
   const distDir = resolve(e2eHome, 'next');
   mkdirSync(distDir, { recursive: true });
+  /*
+   * THE JUNCTION FOLLOWS THE CHECKOUT (2026-09-20). It was created once, by the first harness run on
+   * this machine, and named that checkout's node_modules for good. When the checkout moved out of
+   * Dropbox, a build from the new path kept resolving `react` through the old junction: two physical
+   * copies of the same React, one under Next and one under the compiled pages, and every prerender
+   * died in useContext on null before a single spec ran. The junction must name THIS checkout's
+   * node_modules; when it names anything else it is removed (the junction only, never its target)
+   * and made again.
+   */
   const modulesLink = resolve(e2eHome, 'node_modules');
-  if (!existsSync(modulesLink)) symlinkSync(resolve(root, 'node_modules'), modulesLink, 'junction');
+  const modulesTarget = resolve(root, 'node_modules');
+  const samePath = (a: string, b: string) =>
+    a.replace(/^\\\\\?\\/, '').replace(/[\\/]+$/, '').toLowerCase() === b.replace(/^\\\\\?\\/, '').replace(/[\\/]+$/, '').toLowerCase();
+  let linkTarget: string | null = null;
+  try { linkTarget = readlinkSync(modulesLink); } catch { linkTarget = null; }
+  if (linkTarget !== null && !samePath(resolve(linkTarget), modulesTarget)) {
+    process.stderr.write(`[harness] node_modules junction named another checkout; re-pointing it at ${modulesTarget}\n`);
+    rmdirSync(modulesLink);
+    linkTarget = null;
+  }
+  if (linkTarget === null && !existsSync(modulesLink)) symlinkSync(modulesTarget, modulesLink, 'junction');
   // Next joins distDir onto the project directory, so it is handed the relative path.
   const distRel = relative(opsDir, distDir);
   const snapshot: Record<string, string> = {};

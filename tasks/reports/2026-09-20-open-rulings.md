@@ -1,9 +1,11 @@
 # open-rulings (2026-09-20)
 
-Generated 2026-09-20T07:33:09.210Z by scripts/report-table.mjs from the log open-rulings.log; 98 row(s).
+Generated 2026-09-21T02:04:54.276Z by scripts/report-table.mjs from the log open-rulings.log; 113 row(s).
+
+Every ruling in tasks/todo.md at the end of the 2026-09-20 batch 4, with its state.
 
 ```sql
-node scripts/open-rulings.mjs  (one row per checkbox line of tasks/todo.md OPEN RULINGS)
+node scripts/open-rulings.mjs  (every ruling line in tasks/todo.md, classified open or closed)
 ```
 
 | id | date | text | state | outcome |
@@ -99,10 +101,25 @@ node scripts/open-rulings.mjs  (one row per checkbox line of tasks/todo.md OPEN 
 | R-89 | 2026-09-20 | RULED 2026-09-20 (batch 3), R29: the refund control, built now: on a paid invoice in Ops, billing role and the CEO; full or partial amount a | closed | SHIPPED: POST /invoices/:id/refund under billing.manage (amount within the refundable balance, reason validated) creates the refund through |
 | R-90 | 2026-09-20 | RULED 2026-09-20 (batch 3, BUILD): 1 item 0 and R28 first. 2 R19 preparation: the fresh clone and the file list, the old checkout not delete | closed | DONE: every item shipped; six new sabotage rows logged; harness 44 passed. |
 | R-91 | 2026-09-20 | RULED 2026-09-20 (batch 3, REPORT; tables are files written by scripts): 5 the Path A table with the packet rows. 6 rehearsal counts against | closed | DONE in the 2026-09-20 batch 3 report; the switch to the clone outside Dropbox waits for Brian's word. |
-| R-92 |  | Then the Monday walk as written. | OPEN |  |
-| R-93 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
-| R-94 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |
-| R-95 | 2026-09-12 | RULED 2026-09-12 | OPEN |  |
-| R-96 | 2026-09-12 | RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks th | OPEN |  |
-| R-97 | 2026-09-12 | Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12). | closed | closed |
-| R-98 | 2026-09-12 | FIRST REAL-DATA RUN (Brian, 2026-09-12) | OPEN |  |
+| R-92 | 2026-09-20 | RULED 2026-09-20 (batch 4), R30: secret rotation deferred by Brian until 2026-10-12 (the Dropbox folder is unshared, two-factor sign-in is o | closed | DONE 2026-09-20: docs/runbooks/2026-09-20-secret-rotation.md (the ten in Brian's order; per secret the console step, the line typed by name, |
+| R-93 | 2026-09-20 | RULED 2026-09-20 (batch 4), R31 (R23 amended): a card at filed-awaiting-ack whose year falls in the paper lane is not refused; its jurisdict | closed | DONE 2026-09-20: declareImportedJurisdictions derives the method from the year (filingLane), writes no mailing; spec + sabotage in test/trel |
+| R-94 | 2026-09-20 | RULED 2026-09-20 (batch 4), R32: the Ops Refund control is switched off in production until the Stripe adapter's real refund call is verifie | closed | SHIPPED 2026-09-20: OPS_REFUND_CONTROL (default off; off on the box); Ops reads it from the session; off renders "Refunds are made in Stripe |
+| R-95 | 2026-09-20 | RULED 2026-09-20 (batch 4), R33: sales-tax and payroll facts: migrations 0105 to 0111 were reported to hold sales-tax frequency and payroll | closed | DONE 2026-09-20 (import fix): the columns live on sales_tax/payroll ENGAGEMENTS and the import created none; apps/api/src/modules/engagement |
+| R-96 | 2026-09-20 | RULED 2026-09-20 (batch 4), R34: review.csv has 150 names and the match table shows 89 in review; explain the difference row class by row cl | closed | DONE 2026-09-20: scripts/review-file-reconciliation.mjs computes the classes from the out/ files (counts only) and asserts they sum; table a |
+| R-97 | 2026-09-20 | RULED 2026-09-20 (batch 4), R35: the walk is paused at A3, not done; deploys are allowed in the ruled order; the R19 switch proceeds now | closed | closed |
+| R-98 | 2026-09-20 | RULED 2026-09-20 (batch 4), R36: diagnose the stalled proposal link before fixing it, with read-only production access and evidence (Brian's | closed | DONE 2026-09-20, reported to Brian before the fixes: the portal shell redirected on a stale signed-in marker (a session from 2026-08-14 that |
+| R-99 | 2026-09-20 | RULED 2026-09-20 (batch 4), R37: fix whatever R36 finds: the proposal link opens its quote for the recipient with no session needed, portal | closed | SHIPPED 2026-09-20: public portal paths never redirect on a stale marker; the sign-in link is spent by a button press; the client page warns |
+| R-100 | 2026-09-20 | RULED 2026-09-20 (batch 4), R38 | closed | SHIPPED 2026-09-20 (sub-items below). |
+| R-101 | 2026-09-20 | RULED 2026-09-20 (batch 4), R39 | closed | SHIPPED 2026-09-20 (sub-items below); Copy client link is passive (migration 0117). |
+| R-102 | 2026-09-20 | RULED 2026-09-20 (batch 4), R40 (report-only this batch): the business page: propose the route, what it shows (entity details, owners, engag | closed | DONE 2026-09-20: docs/proposals/2026-09-20-business-page.md; build next batch. |
+| R-103 | 2026-09-20 | RULED 2026-09-20 (batch 4), R41: quote builder redesign, built locally and not deployed until Brian approves screenshots: the catalog as gro | closed | BUILT 2026-09-20, NOT SHOWN IN PRODUCTION: behind OPS_QUOTE_BUILDER (v1 on the box, v2 in the harness); migration 0116 (group_key and sort_o |
+| R-104 | 2026-09-20 | RULED 2026-09-20 (batch 4), R42 (recorded for Design Phase 1, no change now): the Ops top navigation carries more than twenty items and over | closed | closed |
+| R-105 | 2026-09-20 | RULED 2026-09-20 (batch 4, BUILD ORDER): 1 the R19 switch (work from C:\Users\brian\saos; the full receipt suite green from the new path bef | closed | DONE 2026-09-20: 1 the switch (receipt from the new path; migration-data archived; the Vaultwarden export deleted, encrypted flag false, 6 o |
+| R-106 | 2026-09-20 | RULED 2026-09-20 (batch 4, REPORT; tables are files written by scripts; open with OPEN RULINGS): the receipt run from the new checkout path | closed | DONE in the 2026-09-20 batch 4 report. |
+| R-107 |  | Then the Monday walk as written. | OPEN |  |
+| R-108 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
+| R-109 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |
+| R-110 | 2026-09-12 | RULED 2026-09-12 | OPEN |  |
+| R-111 | 2026-09-12 | RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks th | OPEN |  |
+| R-112 | 2026-09-12 | Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12). | closed | closed |
+| R-113 | 2026-09-12 | FIRST REAL-DATA RUN (Brian, 2026-09-12) | OPEN |  |

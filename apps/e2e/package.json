@@ -5,7 +5,7 @@
   "description": "Rendered-output harness: the real API, the real Ops app, a real browser, one page per run (decision 3, 2026-09-10).",
   "type": "module",
   "scripts": {
-    "test": "node prune-artifacts.mjs && playwright test",
+    "test": "node prune-artifacts.mjs && playwright test && node ../../scripts/walk-evidence-reports.mjs",
     "test:e2e": "node prune-artifacts.mjs && playwright test"
   },
   "devDependencies": {

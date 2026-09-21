@@ -75,7 +75,7 @@ for (const s of items) {
   const restored = readFileSync(f, 'utf8') === original;
   log([s.item, s.file, s.change, `${s.test.kind}: ${s.test.spec}`, s.test.kind === 'harness' ? 'yes' : 'no',
     hit ? `RED as expected (${red.fail} failed: ${red.failed.slice(0, 3).join('; ')})` : `NOT RED (${red.fail} failed: ${red.failed.slice(0, 3).join('; ')})`,
-    restored && green.fail === '0' ? `green (${green.pass} passed)` : `NOT GREEN (${green.fail} failed${restored ? '' : '; file not byte-identical'})`]);
+    restored && green.fail === '0' ? `green (${green.pass} passed)` : `NOT GREEN (${green.fail} failed: ${green.failed.slice(0, 3).join('; ')}${restored ? '' : '; file not byte-identical'})`]);
   if (!hit || green.fail !== '0' || !restored) failedRun = true;
 }
 process.exit(failedRun ? 1 : 0);
