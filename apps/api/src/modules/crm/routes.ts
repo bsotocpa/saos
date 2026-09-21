@@ -68,13 +68,43 @@ const BusinessBody = z.object({
   setPrimary: z.boolean().optional(),
 });
 
-const BusinessUpdateBody = BusinessBody.omit({ memberRole: true }).partial().extend({
+/*
+ * A PATCH WRITES ONLY WHAT IT WAS SENT (2026-09-20). `.partial()` keeps a `.default()`, so the
+ * state and the fiscal year end used to arrive on every edit as 'IL' and 12 whether or not the
+ * person typed them — a business in another state was quietly moved to Illinois by any edit of
+ * any other field. Found by the audit row that names the fields an edit wrote.
+ */
+const BusinessUpdateBody = BusinessBody.omit({ memberRole: true, setPrimary: true }).partial().extend({
+  state: z.string().length(2).optional(),
+  fiscalYearEndMonth: z.number().int().min(1).max(12).optional(),
   /** active or dissolved (2026-09-12): a fact the firm knows, beside the Secretary of State's observation. */
   status: z.enum(['active', 'dissolved']).optional(),
   /** Parity with contacts (2026-09-12): a test business says what the test was. */
   isTest: z.boolean().optional(),
   testNote: z.string().trim().min(10).max(500).optional(),
 });
+
+/*
+ * ONE SPELLING OF AN EIN (2026-09-20, edit after create). The schema accepts the nine digits with or
+ * without the hyphen; the row holds XX-XXXXXXX, so the same number typed two ways is one number to
+ * the duplicate check below and to every reader. The value never reaches a log or an audit row: a
+ * refusal names the business that already carries it, never the number.
+ */
+export const normalizeEin = (ein: string): string => {
+  const digits = ein.replace(/\D/g, '');
+  return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+};
+
+/** Another open business already holding this EIN, by name — the same entity entered twice is a merge, not a second row. */
+async function assertEinUnused(app: FastifyInstance, ein: string, exceptBusinessId: string | null): Promise<void> {
+  const { rows } = await app.db.query<{ name: string }>(
+    `SELECT name FROM businesses
+      WHERE NOT is_archived AND regexp_replace(COALESCE(ein, ''), '[^0-9]', '', 'g') = $1 AND ($2::uuid IS NULL OR id <> $2::uuid)
+      ORDER BY created_at LIMIT 1`,
+    [ein.replace(/\D/g, ''), exceptBusinessId]
+  );
+  if (rows[0]) throw new AppError(409, 'ein_in_use', `That EIN is already on ${rows[0].name}. Merge or archive that business first.`);
+}
 
 /** Archive, never delete (2026-09-12): a reason always; a test flag with its note when the record was never real. */
 const ArchiveBody = z.object({
@@ -419,7 +449,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
 
     // Archived businesses stay on the record's history, not on the page (2026-09-12).
     const businesses = await app.db.query(
-      `SELECT b.id, b.name, b.ein, b.entity_type, b.industry, b.naics_code, b.state,
+      `SELECT b.id, b.name, b.ein, b.entity_type, b.industry, b.naics_code, b.state, b.formation_date,
               b.fiscal_year_end_month, b.il_sos_status, b.status::text AS status, b.is_test, b.test_note, b.unverified_import_source::text AS unverified_import_source,
               m.member_role, m.is_primary
        FROM businesses b JOIN business_members m ON m.business_id = b.id
@@ -505,6 +535,8 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       [contactId]
     );
     if (b.formationDate && calendarDay(b.formationDate, 'formationDate') > calendarDay(todayChicago(), 'today')) throw new AppError(400, 'formation_date_in_future', 'A formation date is a thing that already happened.');
+    const ein = b.ein ? normalizeEin(b.ein) : null;
+    if (ein) await assertEinUnused(app, ein, null);
     const { rows } = await app.db.query<{ id: string }>(
       `INSERT INTO businesses (name, ein, entity_type, industry, naics_code, irs_activity_code,
                                years_in_business, revenue_range, employees_range, zip, state, fiscal_year_end_month,
@@ -513,7 +545,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
                $13, CASE WHEN $13::date IS NULL THEN NULL ELSE 'staff_verified' END, CASE WHEN $13::date IS NULL THEN NULL ELSE now() END)
        RETURNING id`,
       [
-        b.name, b.ein ?? null, b.entityType ?? null, b.industry ?? null, b.naicsCode ?? null,
+        b.name, ein, b.entityType ?? null, b.industry ?? null, b.naicsCode ?? null,
         b.irsActivityCode ?? null, b.yearsInBusiness ?? null, b.revenueRange ?? null, b.employeesRange ?? null,
         b.zip ?? null, b.state, b.fiscalYearEndMonth, b.formationDate ?? null,
       ]
@@ -561,7 +593,11 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     const id = z.uuid().parse(request.params.id);
     const b = ArchiveBody.parse(request.body);
     const actor = request.staff!;
-    return archiveBusiness(app, id, { reason: b.reason, isTest: b.isTest, testNote: b.testNote }, { id: actor.id, email: actor.email, fullName: actor.fullName }, meta(request));
+    const members = await app.db.query<{ contact_id: string }>(`SELECT contact_id FROM business_members WHERE business_id = $1`, [id]);
+    const out = await archiveBusiness(app, id, { reason: b.reason, isTest: b.isTest, testNote: b.testNote }, { id: actor.id, email: actor.email, fullName: actor.fullName }, meta(request));
+    // An archived primary leaves the record with no primary; the Missing line follows (2026-09-20).
+    for (const m of members.rows) await refreshEnrichmentGaps(app, m.contact_id);
+    return out;
   });
 
   /** Merge businesses (2026-09-12): the same shape as contacts; money-adjacent, so billing.manage or the CEO. */
@@ -603,18 +639,35 @@ export function registerCrmRoutes(app: FastifyInstance): void {
         });
       }
     });
+    // The Missing line is computed from the primary business (2026-09-20): it follows the choice.
+    await refreshEnrichmentGaps(app, contactId);
     return { status: 'ok' };
   });
 
-  app.patch<{ Params: { id: string } }>('/businesses/:id', write, async (request) => {
+  /*
+   * EDIT AFTER CREATE (Brian, 2026-09-20). The same door as Add — contacts.write or businesses.write,
+   * so the entity VA corrects the record she files from — and the same rules: the EIN in one
+   * spelling, refused when another open business carries it; a formation date that already
+   * happened, recorded as staff-verified. An EIN change gets its own audit row naming the field;
+   * the number itself is in neither the row nor any log.
+   */
+  app.patch<{ Params: { id: string } }>('/businesses/:id', businessWrite, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const b = BusinessUpdateBody.parse(request.body);
     const actor = request.staff!;
 
+    const current = await app.db.query<{ ein: string | null; is_archived: boolean }>(`SELECT ein, is_archived FROM businesses WHERE id = $1`, [id]);
+    if (!current.rows[0]) throw new AppError(404, 'not_found', 'Business not found.');
+    if (current.rows[0].is_archived) throw new AppError(409, 'archived', 'This business is archived; its history stays as it was.');
+    if (b.formationDate && calendarDay(b.formationDate, 'formationDate') > calendarDay(todayChicago(), 'today')) throw new AppError(400, 'formation_date_in_future', 'A formation date is a thing that already happened.');
+    const ein = b.ein === undefined ? undefined : normalizeEin(b.ein);
+    if (ein !== undefined) await assertEinUnused(app, ein, id);
+    const einChanged = ein !== undefined && ein !== current.rows[0].ein;
+
     const sets: string[] = [];
     const params: unknown[] = [id];
     const map: Record<string, unknown> = {
-      name: b.name, ein: b.ein, industry: b.industry, naics_code: b.naicsCode,
+      name: b.name, ein, industry: b.industry, naics_code: b.naicsCode,
       irs_activity_code: b.irsActivityCode, years_in_business: b.yearsInBusiness,
       revenue_range: b.revenueRange, employees_range: b.employeesRange, zip: b.zip, state: b.state,
       fiscal_year_end_month: b.fiscalYearEndMonth,
@@ -633,6 +686,11 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       params.push(b.entityType);
       sets.push(`entity_type = $${params.length}::business_entity_type`);
     }
+    if (b.formationDate !== undefined) {
+      // The same provenance the create route stamps: a person stated the state's date.
+      params.push(b.formationDate);
+      sets.push(`formation_date = $${params.length}`, `formation_date_source = 'staff_verified'`, `formation_date_recorded_at = now()`);
+    }
     if (sets.length === 0) throw new AppError(400, 'empty_update', 'No fields to update.');
     const res = await app.db.query(`UPDATE businesses SET ${sets.join(', ')} WHERE id = $1`, params);
     if (res.rowCount === 0) throw new AppError(404, 'not_found', 'Business not found.');
@@ -642,12 +700,22 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       [id]
     );
     for (const m of members.rows) await refreshEnrichmentGaps(app, m.contact_id);
+    const fields = sets.map((s) => s.split(' =')[0]!);
     await writeAudit(app.db, {
       actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
-      action: 'business.updated', objectType: 'business', objectId: id, ...meta(request),
-      details: { fields: sets.map((s) => s.split(' =')[0]) },
+      action: 'business.updated', objectType: 'business', objectId: id, contactId: members.rows[0]?.contact_id ?? null, ...meta(request),
+      details: { fields },
     });
-    return { status: 'ok' };
+    if (einChanged) {
+      // Its own row, by name: an identifier changed hands. Whether one was on file before is the
+      // whole of what the row says about the value.
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+        action: 'business.ein_changed', objectType: 'business', objectId: id, contactId: members.rows[0]?.contact_id ?? null, ...meta(request),
+        details: { field: 'ein', previously_on_file: current.rows[0].ein !== null },
+      });
+    }
+    return { status: 'ok', fields };
   });
 
   // ── Entity groups (v4.2 module 2) ───────────────────────────────────────

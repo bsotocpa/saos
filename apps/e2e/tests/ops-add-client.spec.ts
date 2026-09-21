@@ -21,11 +21,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
 interface Persona { email: string; password: string; totpSecret: string }
 const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+  contactId: string;
   staff: Persona;
   wall: { bookkeeper: Persona };
 };
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
 const CONTROL = '/clients button "Add a client", form#add-client-form, duplicate warning with link, button "Add client"';
+/** EDIT AFTER CREATE (2026-09-20): the optional fields skipped at Add are filled in on the record. */
+const EDIT_CONTROL = '/clients/:id Contact card, button "Edit", inputs Email and Phone, button "Save"';
 const ROLES = 'ceo, comms_billing (contacts.write)';
 
 async function signIn(page: Page, who: Persona): Promise<void> {
@@ -75,14 +78,25 @@ test.describe('Add a client from the directory', () => {
       await expect(form).toBeVisible();
       await form.getByLabel(/First name/).fill('Synthetic');
       await form.getByLabel(/Last name/).fill(lastName);
-      await form.getByLabel(/Email/).fill(email);
-      await form.getByLabel(/Phone/).fill(phone);
+      // CREATED WITH THE OPTIONAL FIELDS SKIPPED (2026-09-20): no email, no phone — filled in by editing the record below.
       await form.getByLabel(/Language/).selectOption('es');
       await page.getByRole('button', { name: 'Add client' }).click();
       await page.waitForURL(/\/clients\/[0-9a-f-]{36}$/);
       const createdId = page.url().split('/').pop()!;
       await expect(page.getByRole('heading', { name: fullName })).toBeVisible();
       expect(await countByName(page, lastName), 'one record under that name').toBe(1);
+
+      // ── EDIT AFTER CREATE: the email and the phone, through the contact card's Edit door.
+      const contactCard = page.locator('section.card', { has: page.getByRole('heading', { name: /^Contact/ }) });
+      await expect(contactCard.getByTestId('missing-line'), 'the record says what is missing').toContainText('email');
+      await contactCard.getByTestId('edit-contact').click();
+      await contactCard.getByLabel(/^Email/).fill(email);
+      await contactCard.getByLabel(/^Phone/).fill(phone);
+      await contactCard.getByRole('button', { name: 'Save' }).click();
+      await expect(page.getByText('Saved.')).toBeVisible();
+      await expect(contactCard, 'the email is on the card').toContainText(email);
+      await expect(contactCard.getByTestId('missing-line'), 'and it is no longer missing').toHaveCount(0);
+      testInfo.annotations.push({ type: 'edit-door', description: `contact|${EDIT_CONTROL}|${ROLES}|tap` });
 
       // ── The same person again: the warning, with a link to the record she already has.
       await page.goto('/clients');
@@ -128,5 +142,13 @@ test.describe('Add a client from the directory', () => {
     expect(statuses.post, 'the route refuses a role holding no contacts.write').toBe(403);
     expect(statuses.check, 'the duplicate check is the same door').toBe(403);
     testInfo.annotations.push({ type: 'walk-step', description: `B1|role proof: bookkeeper has no button, POST /contacts 403|${ROLES}|tap` });
+
+    // The edit door is the same grant: no Edit on the contact card she can read, and the PATCH refuses her.
+    await page.goto(`/clients/${fixtures.contactId}`);
+    await expect(page.getByRole('heading', { name: /^Contact/ })).toBeVisible();
+    await expect(page.getByTestId('edit-contact'), 'no Edit on her contact card').toHaveCount(0);
+    const patch = await page.evaluate(async (id) => (await fetch(`/api/contacts/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phone: '(312) 555-0999' }) })).status, fixtures.contactId);
+    expect(patch, 'PATCH /contacts/:id refuses a role holding no contacts.write').toBe(403);
+    testInfo.annotations.push({ type: 'edit-door', description: `contact|role proof: bookkeeper sees no Edit on the contact card, PATCH /contacts/:id refused 403|${ROLES}|tap` });
   });
 });

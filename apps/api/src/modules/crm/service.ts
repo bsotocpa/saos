@@ -34,10 +34,16 @@ export async function computeEnrichmentGaps(db: Db, contactId: string): Promise<
   if (!c.email) gaps.add('email');
   if (!c.phone) gaps.add('phone');
 
+  /*
+   * THE PRIMARY BUSINESS, AND ONLY IT (Brian, 2026-09-20, edit after create). A contact who owns
+   * several businesses used to get one merged list of gaps that named none of them, so "Missing:
+   * business:industry" could not say which company to look up. The line on the record is computed
+   * from the primary business and names it; an archived business never contributes a gap.
+   */
   const businesses = await db.query<{ ein: string | null; entity_type: string | null; industry: string | null }>(
     `SELECT b.ein, b.entity_type, b.industry
      FROM businesses b JOIN business_members m ON m.business_id = b.id
-     WHERE m.contact_id = $1`,
+     WHERE m.contact_id = $1 AND m.is_primary AND NOT b.is_archived`,
     [contactId]
   );
   for (const b of businesses.rows) {
@@ -58,7 +64,7 @@ export async function computeEnrichmentGaps(db: Db, contactId: string): Promise<
 async function businessesMissingEntityType(db: Db, contactId: string): Promise<string[]> {
   const { rows } = await db.query<{ name: string }>(
     `SELECT b.name FROM businesses b JOIN business_members m ON m.business_id = b.id
-      WHERE m.contact_id = $1 AND b.entity_type IS NULL ORDER BY b.name`,
+      WHERE m.contact_id = $1 AND NOT b.is_archived AND b.entity_type IS NULL ORDER BY b.name`,
     [contactId]
   );
   return rows.map((r) => r.name);

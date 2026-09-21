@@ -9,6 +9,7 @@
 //   · a declined or expired quote returns to the leads pipeline WITH A REASON
 
 import { createHash, randomBytes } from 'node:crypto';
+import { decryptSecret, encryptSecret } from '../../crypto.ts';
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { enqueueEffect } from '../../outbox.ts';
@@ -25,7 +26,8 @@ import { periodKeyFor , defaultTaxYear } from '../engagements/period.ts';
 import {
   assertChangeOrderIfActive, finishSupersession, quoteTaxYear, withdrawForChangeOrder,
 } from '../engagements/change-order.ts';
-import { composeBundle } from './bundles.ts';
+import { bundleDiscountFor, composeBundle } from './bundles.ts';
+import type { CustomLineServiceLine } from './groups.ts';
 import {
   assertEveryLineCreatesWork,
   engagementLinesForQuote,
@@ -39,7 +41,7 @@ import {
 } from './quote-coverage.ts';
 
 /** Range width for one-time work — a SETTING, never a literal (⚠ Brian tunes). */
-async function estimateBandPercent(app: FastifyInstance): Promise<number> {
+export async function estimateBandPercent(app: FastifyInstance): Promise<number> {
   const { rows } = await app.db.query<{ value: number }>(
     `SELECT (value)::text::int AS value FROM app_settings WHERE key = 'pricing.estimate_band_percent'`
   );
@@ -47,10 +49,27 @@ async function estimateBandPercent(app: FastifyInstance): Promise<number> {
 }
 
 export interface QuoteLineInput {
-  itemCode: string;
+  /** A price-book code; absent on a custom line. */
+  itemCode?: string | undefined;
   quantity?: number | undefined;
   isOptional?: boolean | undefined;
   chosen?: boolean | undefined;
+  /** The unit amount the person set (2026-09-20). Absent: the book's price stands. */
+  unitCents?: number | undefined;
+  /** A line written by hand: no book item, its own name and service line, its amount in unitCents. */
+  custom?: { name: string; serviceLine: CustomLineServiceLine } | undefined;
+}
+
+/** A line the quote prices differently from the book: what the book said, what the quote says. */
+export interface ChangedLine {
+  item_code: string;
+  description_en: string;
+  quantity: number;
+  book_unit_cents: number | null;
+  book_min_cents: number | null;
+  book_max_cents: number | null;
+  unit_cents: number;
+  is_custom: boolean;
 }
 
 async function currentVersion(app: FastifyInstance): Promise<{ id: string }> {
@@ -94,6 +113,8 @@ export async function createQuote(
     baseCents?: number | undefined;
     expiresInDays?: number | undefined;
     notes?: string | null | undefined;
+    /** One reason for every line priced off the book (2026-09-20); required exactly when one is. */
+    priceChangeReason?: string | null | undefined;
   },
   actor: AuthedStaff
 ): Promise<{ id: string; totalCents: number; rangeMinCents: number | null; rangeMaxCents: number | null }> {
@@ -108,10 +129,17 @@ export async function createQuote(
     itemCode: string; descriptionEn: string; descriptionEs: string; quantity: number;
     unitCents: number | null; minCents: number | null; maxCents: number | null;
     isOptional: boolean; chosen: boolean; isPassThrough: boolean;
+    isCustom: boolean; serviceLine: string | null;
   }> = [];
   let discountCents = 0;
+  /*
+   * LINES PRICED OFF THE BOOK (2026-09-20). A book line whose unit amount was set to something
+   * other than the book's, or a custom line with no book behind it. Collected here, refused
+   * without the one reason, and written as one money action listing each of them.
+   */
+  const changed: ChangedLine[] = [];
 
-  if (input.bundleSlug) {
+  if (input.bundleSlug && (input.lines?.length ?? 0) === 0) {
     const composed = await composeBundle(app, input.bundleSlug, {
       includeOptional: input.includeOptional ?? [],
     });
@@ -127,11 +155,16 @@ export async function createQuote(
       isOptional: l.isOptional,
       chosen: !l.isOptional || chosenSet.has(l.itemCode),
       isPassThrough: false,
+      isCustom: false,
+      serviceLine: null,
     }));
     discountCents = composed.discount.amountCents;
   } else {
     const requested = input.lines ?? [];
     if (requested.length === 0) throw new AppError(400, 'empty_quote', 'Provide line items or a bundle.');
+    const bookRequests = requested.filter((l) => !l.custom);
+    const codes = bookRequests.map((l) => l.itemCode).filter((c): c is string => typeof c === 'string' && c.length > 0);
+    if (codes.length !== bookRequests.length) throw new AppError(400, 'line_without_item', 'Every line is a price-book item or a custom line.');
     const priced = await app.db.query<{
       item_code: string; name_en: string; name_es: string; amount_cents: number | null;
       price_min_cents: number | null; price_max_cents: number | null; is_pass_through: boolean;
@@ -140,10 +173,10 @@ export async function createQuote(
       `SELECT item_code, name_en, name_es, amount_cents, price_min_cents, price_max_cents,
               is_pass_through, display_on_quote
        FROM price_book_items WHERE version_id = $1 AND item_code = ANY($2) AND is_active`,
-      [version.id, requested.map((l) => l.itemCode)]
+      [version.id, codes]
     );
     const byCode = new Map(priced.rows.map((r) => [r.item_code, r]));
-    const missing = requested.filter((l) => !byCode.has(l.itemCode)).map((l) => l.itemCode);
+    const missing = codes.filter((c) => !byCode.has(c));
     if (missing.length > 0) {
       throw new AppError(400, 'unknown_price_items', `Not in the price book in force: ${missing.join(', ')}.`);
     }
@@ -151,9 +184,7 @@ export async function createQuote(
     // a client. A quote itemizing the session component separately is a defect,
     // so the builder refuses the code outright rather than trusting the UI to
     // hide it.
-    const components = requested
-      .filter((l) => byCode.get(l.itemCode)!.display_on_quote === false)
-      .map((l) => l.itemCode);
+    const components = codes.filter((c) => byCode.get(c)!.display_on_quote === false);
     if (components.length > 0) {
       throw new AppError(
         400,
@@ -163,21 +194,63 @@ export async function createQuote(
       );
     }
     lines = requested.map((l) => {
-      const item = byCode.get(l.itemCode)!;
       const qty = l.quantity ?? 1;
+      const isOptional = l.isOptional ?? false;
+      const chosen = l.chosen ?? !isOptional;
+      if (l.custom) {
+        // A custom line's code can never collide with the book: the prefix is reserved by CHECK.
+        const itemCode = `CUSTOM_${randomBytes(4).toString('hex').toUpperCase()}`;
+        const unitCents = l.unitCents ?? 0;
+        changed.push({
+          item_code: itemCode, description_en: l.custom.name, quantity: qty,
+          book_unit_cents: null, book_min_cents: null, book_max_cents: null, unit_cents: unitCents, is_custom: true,
+        });
+        return {
+          itemCode, descriptionEn: l.custom.name, descriptionEs: l.custom.name, quantity: qty,
+          unitCents, minCents: null, maxCents: null, isOptional, chosen, isPassThrough: false,
+          isCustom: true, serviceLine: l.custom.serviceLine,
+        };
+      }
+      const item = byCode.get(l.itemCode!)!;
+      const offBook = l.unitCents !== undefined && l.unitCents !== item.amount_cents;
+      if (offBook) {
+        changed.push({
+          item_code: item.item_code, description_en: item.name_en, quantity: qty,
+          book_unit_cents: item.amount_cents, book_min_cents: item.price_min_cents, book_max_cents: item.price_max_cents,
+          unit_cents: l.unitCents!, is_custom: false,
+        });
+      }
       return {
-        itemCode: l.itemCode,
+        itemCode: item.item_code,
         descriptionEn: item.name_en,
         descriptionEs: item.name_es,
         quantity: qty,
-        unitCents: item.amount_cents,
-        minCents: item.price_min_cents,
-        maxCents: item.price_max_cents,
-        isOptional: l.isOptional ?? false,
-        chosen: l.chosen ?? !(l.isOptional ?? false),
+        // An amount set by the person makes the line exact, even where the book gives a range.
+        unitCents: offBook ? l.unitCents! : item.amount_cents,
+        minCents: offBook ? null : item.price_min_cents,
+        maxCents: offBook ? null : item.price_max_cents,
+        isOptional,
+        chosen,
         isPassThrough: item.is_pass_through,
+        isCustom: false,
+        serviceLine: null,
       };
     });
+    if (input.bundleSlug) {
+      // The package filled these lines and they were edited from there: its discount rule
+      // applies to what the counted lines now come to, computed once the subtotal is known.
+      const counted = lines.filter((l) => l.chosen && !l.isPassThrough);
+      const sub = counted.reduce((sum, l) => sum + (l.unitCents === null ? 0 : Math.round(l.unitCents * l.quantity)), 0);
+      discountCents = (await bundleDiscountFor(app, input.bundleSlug, sub)).discount.amountCents;
+    }
+  }
+  const reason = input.priceChangeReason?.trim() ?? '';
+  if (changed.length > 0 && reason.length === 0) {
+    throw Object.assign(
+      new AppError(400, 'price_change_reason_required',
+        `${changed.length === 1 ? 'One line is' : `${changed.length} lines are`} priced off the book; say why, once, for the whole quote.`),
+      { issues: [{ path: 'priceChangeReason', message: 'Say why these lines are priced off the book — this is the record.' }] }
+    );
   }
 
   /*
@@ -190,6 +263,8 @@ export async function createQuote(
     [version.id, lines.map((l) => l.itemCode)]
   );
   const lineOf = new Map(serviceLines.rows.map((r) => [r.item_code, r.service_line]));
+  // A custom line names its own service line; it answers the business question like any other.
+  for (const l of lines) if (l.isCustom && l.serviceLine) lineOf.set(l.itemCode, l.serviceLine);
   const businessItems = lines.filter((l) => l.chosen && BUSINESS_LINES.has(lineOf.get(l.itemCode) ?? '')).map((l) => l.itemCode);
   if (businessItems.length > 0 && !input.businessId) {
     throw new AppError(400, 'business_required', `Choose the business this quote is for: ${businessItems.join(', ')} is business work.`);
@@ -274,12 +349,12 @@ export async function createQuote(
       await app.db.query(
         `INSERT INTO quote_line_items
            (quote_id, item_code, description_en, description_es, quantity, unit_cents, line_cents,
-            min_cents, max_cents, is_optional, chosen, is_pass_through, sort_order)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+            min_cents, max_cents, is_optional, chosen, is_pass_through, sort_order, is_custom, service_line)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::price_service_line)`,
         [
           quoteId, l.itemCode, l.descriptionEn, l.descriptionEs, l.quantity, l.unitCents,
           l.unitCents === null ? null : Math.round(l.unitCents * l.quantity),
-          l.minCents, l.maxCents, l.isOptional, l.chosen, l.isPassThrough, i,
+          l.minCents, l.maxCents, l.isOptional, l.chosen, l.isPassThrough, i, l.isCustom, l.serviceLine,
         ]
       );
     }
@@ -289,6 +364,23 @@ export async function createQuote(
       contactId: input.contactId,
       details: { bundle: input.bundleSlug ?? null, total_cents: totalCents, lines: lines.length, business_id: input.businessId ?? null },
     });
+    if (changed.length > 0) {
+      /*
+       * ONE MONEY ACTION for the whole quote (2026-09-20): the reason once, every changed line
+       * listed, and the amount the quote moved off the book over its counted lines. Read by the
+       * money line: class staff when a member of staff built it, neither line when the CEO did.
+       */
+      await app.db.query(`UPDATE quotes SET price_change_reason = $2 WHERE id = $1`, [quoteId, reason]);
+      const offBookCents = changed
+        .filter((c) => lines.some((l) => l.itemCode === c.item_code && l.chosen && !l.isPassThrough))
+        .reduce((sum, c) => sum + Math.round((c.unit_cents - (c.book_unit_cents ?? 0)) * c.quantity), 0);
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+        action: 'quote.prices_changed', objectType: 'quote', objectId: quoteId,
+        contactId: input.contactId,
+        details: { reason, amount_cents: offBookCents, total_cents: totalCents, lines: changed },
+      });
+    }
     if (setsPrimary && input.businessId) {
       await app.db.query(`UPDATE business_members SET is_primary = true WHERE contact_id = $1 AND business_id = $2`, [input.contactId, input.businessId]);
       await writeAudit(app.db, {
@@ -301,12 +393,76 @@ export async function createQuote(
   });
 }
 
+/*
+ * THE CLIENT LINK IS KEPT (2026-09-20, the Quotes card; migration 0117). The token's hash is the
+ * lookup key, and the token itself is also kept encrypted under APP_ENCRYPTION_KEY — the shape
+ * invoices use for their pay link — so Copy client link reads the emailed link back and changes
+ * nothing. A link is minted here (send, resend) and by rotateQuoteLink; every mint writes both.
+ */
+function mintClientLink(app: FastifyInstance): { token: string; hash: string; enc: Buffer; url: string } {
+  const token = randomBytes(32).toString('base64url');
+  return { token, hash: createHash('sha256').update(token).digest('hex'), enc: encryptSecret(token, app.config.APP_ENCRYPTION_KEY), url: `${app.config.PORTAL_BASE_URL}/quote/${token}` };
+}
+
+/** The link as the client has it, for a sent quote that can still be answered. */
+async function openQuoteLinkRow(app: FastifyInstance, quoteId: string) {
+  const q = await app.db.query<{ status: string; contact_id: string; expires_at: Date | null; public_token_hash: string | null; client_token_enc: Buffer | null }>(
+    `SELECT status, contact_id, expires_at, public_token_hash, client_token_enc FROM quotes WHERE id = $1`,
+    [quoteId]
+  );
+  const quote = q.rows[0];
+  if (!quote) throw new AppError(404, 'not_found', 'Quote not found.');
+  if (quote.status !== 'sent') throw new AppError(409, 'not_open', `This quote is ${quote.status}; only a sent quote has a client link.`);
+  if (quote.expires_at && quote.expires_at.getTime() < Date.now()) throw new AppError(409, 'expired', 'This quote has passed its expiry; send a new one.');
+  return quote;
+}
+
+/**
+ * A fresh link written over the old one: the earlier link stops working, and the caller says so.
+ * Resend uses it (the email carries the new link); Copy uses it only when no stored token exists.
+ */
+export async function rotateQuoteLink(
+  app: FastifyInstance,
+  quoteId: string,
+  actor: AuthedStaff,
+  why: 'copied' | 'resent'
+): Promise<{ token: string; url: string; previousHash: string | null; previousEnc: Buffer | null; contactId: string }> {
+  const quote = await openQuoteLinkRow(app, quoteId);
+  const link = mintClientLink(app);
+  await app.db.query(`UPDATE quotes SET public_token_hash = $2, client_token_enc = $3 WHERE id = $1`, [quoteId, link.hash, link.enc]);
+  await writeAudit(app.db, {
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+    action: 'quote.link_rotated', objectType: 'quote', objectId: quoteId, contactId: quote.contact_id,
+    details: { why, previous_link_retired: quote.public_token_hash !== null },
+  });
+  return { token: link.token, url: link.url, previousHash: quote.public_token_hash, previousEnc: quote.client_token_enc, contactId: quote.contact_id };
+}
+
+/**
+ * COPY CLIENT LINK is passive (Brian, 2026-09-20): the stored token is read back and nothing
+ * changes. Only a quote sent before the token was kept (0117) has nothing to read; that one rotates
+ * once, audited, and `rotated` tells the control to say the emailed link no longer works.
+ */
+export async function clientLinkFor(app: FastifyInstance, quoteId: string, actor: AuthedStaff): Promise<{ url: string; rotated: boolean }> {
+  const quote = await openQuoteLinkRow(app, quoteId);
+  if (quote.client_token_enc) {
+    const token = decryptSecret(quote.client_token_enc, app.config.APP_ENCRYPTION_KEY);
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+      action: 'quote.link_copied', objectType: 'quote', objectId: quoteId, contactId: quote.contact_id,
+    });
+    return { url: `${app.config.PORTAL_BASE_URL}/quote/${token}`, rotated: false };
+  }
+  const r = await rotateQuoteLink(app, quoteId, actor, 'copied');
+  return { url: r.url, rotated: true };
+}
+
 /** Send the quote: mints the client link, pins the version, moves the pipeline. */
 export async function sendQuote(
   app: FastifyInstance,
   quoteId: string,
   actor: AuthedStaff,
-  opts: { duplicateIntent?: DuplicateIntent | undefined; changeOrderOf?: string | undefined } = {}
+  opts: { duplicateIntent?: DuplicateIntent | undefined; changeOrderOf?: string | undefined; resend?: boolean | undefined } = {}
 ): Promise<{ token: string; url: string }> {
   const q = await app.db.query<{
     status: string; contact_id: string; language: 'en' | 'es'; total_cents: number;
@@ -318,6 +474,50 @@ export async function sendQuote(
   );
   const quote = q.rows[0];
   if (!quote) throw new AppError(404, 'not_found', 'Quote not found.');
+
+  /*
+   * RESEND (2026-09-20, the Quotes card). The same send site as the first send — the same template,
+   * the same registry entry — for a proposal the client did not find. The offer is unchanged, so the
+   * gates that decide whether it may be offered are not asked again; the link is rotated, the email
+   * goes out, and a transport failure puts the earlier link back so the record stays true.
+   */
+  if (opts.resend) {
+    const rotated = await rotateQuoteLink(app, quoteId, actor, 'resent');
+    const contact = await app.db.query<{ first_name: string; email: string | null }>(`SELECT first_name, email FROM contacts WHERE id = $1`, [quote.contact_id]);
+    const c = contact.rows[0];
+    if (!c?.email) {
+      await app.db.query(`UPDATE quotes SET public_token_hash = $2, client_token_enc = $3 WHERE id = $1`, [quoteId, rotated.previousHash, rotated.previousEnc]);
+      throw new AppError(409, 'no_email', 'This client has no email address on file; add one, then resend.');
+    }
+    const amount =
+      quote.range_min_cents !== null && quote.range_max_cents !== null
+        ? `$${(quote.range_min_cents / 100).toFixed(2)}–$${(quote.range_max_cents / 100).toFixed(2)}`
+        : `$${(quote.total_cents / 100).toFixed(2)}`;
+    try {
+      await sendTemplatedEmail(app, {
+        to: c.email,
+        templateKey: 'quote_ready',
+        language: quote.language,
+        contactId: quote.contact_id,
+        vars: { first_name: c.first_name, amount, quote_link: rotated.url },
+      });
+    } catch (err) {
+      await app.db.query(`UPDATE quotes SET public_token_hash = $2, client_token_enc = $3 WHERE id = $1`, [quoteId, rotated.previousHash, rotated.previousEnc]);
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+        action: 'quote.resend_failed', objectType: 'quote', objectId: quoteId, contactId: quote.contact_id,
+        details: { reason: (err as Error).message, previous_link_restored: true },
+      });
+      throw err;
+    }
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+      action: 'quote.resent', objectType: 'quote', objectId: quoteId, contactId: quote.contact_id,
+      details: { emailed: true },
+    });
+    return { token: rotated.token, url: rotated.url };
+  }
+
   if (quote.status !== 'draft') throw new AppError(409, 'already_sent', `Quote is '${quote.status}'.`);
 
   /*
@@ -346,24 +546,25 @@ export async function sendQuote(
     opts.duplicateIntent ?? (changeOrder ? 'replaces_existing' : undefined)
   );
 
-  const token = randomBytes(32).toString('base64url');
-  const hash = createHash('sha256').update(token).digest('hex');
+  const link = mintClientLink(app);
+  const token = link.token;
   await app.db.query(
     `UPDATE quotes
-     SET status = 'sent', sent_at = now(), public_token_hash = $2,
+     SET status = 'sent', sent_at = now(), public_token_hash = $2, client_token_enc = $6,
          duplicate_intent = $3::quote_duplicate_intent,
          duplicate_intent_schedules = $4::text[],
          change_order_of_engagement_id = $5
      WHERE id = $1`,
     [
       quoteId,
-      hash,
+      link.hash,
       coverage.intent,
       coverage.overlapping.length > 0 ? coverage.overlapping : null,
       changeOrder?.engagementId ?? null,
+      link.enc,
     ]
   );
-  const url = `${app.config.PORTAL_BASE_URL}/quote/${token}`;
+  const url = link.url;
 
   const contact = await app.db.query<{ first_name: string; email: string | null }>(
     `SELECT first_name, email FROM contacts WHERE id = $1`,
@@ -389,7 +590,7 @@ export async function sendQuote(
       // client never got a link, and sendQuote refuses to re-send a non-draft
       // quote. Roll back so staff can fix the cause and send for real.
       await app.db.query(
-        `UPDATE quotes SET status = 'draft', sent_at = NULL, public_token_hash = NULL WHERE id = $1`,
+        `UPDATE quotes SET status = 'draft', sent_at = NULL, public_token_hash = NULL, client_token_enc = NULL WHERE id = $1`,
         [quoteId]
       );
       await writeAudit(app.db, {

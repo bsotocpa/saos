@@ -44,7 +44,25 @@
       "steps": [
         { "id": "D1", "text": "Void a sent invoice from the client page: a reason, and the row reads cancelled with that reason and the actor", "device": "phone + laptop" },
         { "id": "D2", "text": "Flag a contact as a test record: the note, and the record leaves every report and list", "device": "phone + laptop" },
-        { "id": "D3", "text": "Refund a paid invoice from Ops", "device": "phone + laptop" }
+        { "id": "D3", "text": "Refund a paid invoice from Ops", "device": "phone + laptop" },
+        { "id": "D3b", "text": "With the Refund control off: the paid row reads that refunds are made in Stripe and recorded here, no Refund button, and the route refuses", "device": "phone + laptop" }
+      ]
+    },
+    "E": {
+      "title": "The emailed link opens what it names; the migrated client's two addresses",
+      "steps": [
+        { "id": "E1", "text": "A proposal link renders its quote for the recipient with a lapsed session and the browser's stale signed-in marker; no redirect to the sign-in request page", "device": "phone + laptop" },
+        { "id": "E2", "text": "A sign-in link is spent by the button on its page, never by the load", "device": "phone + laptop" },
+        { "id": "E3", "text": "The client page warns when the portal sign-in address is not the contact email and offers one control to make them the same; refused in the server's words when another account holds it; the bookkeeper has no control", "device": "phone + laptop" }
+      ]
+    },
+    "Q": {
+      "title": "The Quotes card on the client page",
+      "steps": [
+        { "id": "Q1", "text": "Open a quote from the card: the Ops quote page reads the client, the business, the lines and the state", "device": "phone + laptop" },
+        { "id": "Q2", "text": "Copy the client link: a fresh portal link, the confirmation line, and the link opens the proposal", "device": "phone + laptop" },
+        { "id": "Q3", "text": "Resend the proposal email: the same send path, a new link in the mailer, the confirmation line", "device": "phone + laptop" },
+        { "id": "Q4", "text": "Withdraw a draft with a reason: the row reads Withdrawn", "device": "phone + laptop" }
       ]
     }
   }

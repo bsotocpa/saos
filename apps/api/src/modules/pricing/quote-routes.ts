@@ -10,17 +10,34 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { z } from 'zod';
 import { reasonText } from '../../reasons.ts';
-import { holds, requirePermission } from '../../plugins/auth.ts';
+import { holds, requireAnyPermission, requirePermission } from '../../plugins/auth.ts';
 import {
-  acceptQuote, createQuote, declineQuote, overrideQuoteDeposit, quoteByToken, sendQuote,
+  acceptQuote, createQuote, declineQuote, overrideQuoteDeposit, clientLinkFor, quoteByToken, sendQuote,
 } from './quotes.ts';
 import { pipelineBoard, pipelineMetrics, setLeadStage } from './pipeline.ts';
+import { CATALOG_GROUPS, CUSTOM_LINE_SERVICE_LINES, SERVICE_LINE_LABEL } from './groups.ts';
+import { savePackage } from './packages.ts';
 
+/*
+ * A LINE ON THE QUOTE (2026-09-20): a book item by code, or a custom line written by hand. The
+ * unit amount is optional on a book line — absent, the book's price stands; present and different,
+ * the line is priced off the book and the quote needs its one reason. A custom line has no book
+ * price, so its amount is required and it always counts as priced off the book.
+ */
 const LineInput = z.object({
-  itemCode: z.string().min(1),
+  itemCode: z.string().min(1).optional(),
   quantity: z.number().positive().optional(),
   isOptional: z.boolean().optional(),
   chosen: z.boolean().optional(),
+  unitCents: z.number().int().min(0).optional(),
+  custom: z.object({
+    name: z.string().trim().min(1, 'Name the line.').max(120),
+    serviceLine: z.enum(CUSTOM_LINE_SERVICE_LINES),
+  }).optional(),
+}).superRefine((l, ctx) => {
+  if (!l.itemCode && !l.custom) ctx.addIssue({ code: 'custom', path: ['itemCode'], message: 'A line is a price-book item or a custom line.' });
+  if (l.itemCode && l.custom) ctx.addIssue({ code: 'custom', path: ['itemCode'], message: 'A line is a price-book item or a custom line, not both.' });
+  if (l.custom && l.unitCents === undefined) ctx.addIssue({ code: 'custom', path: ['unitCents'], message: 'A custom line needs an amount.' });
 });
 
 const CreateQuoteBody = z
@@ -35,6 +52,9 @@ const CreateQuoteBody = z
     asRange: z.boolean().optional(),
     expiresInDays: z.number().int().min(1).max(365).optional(),
     notes: z.string().nullable().optional(),
+    // One standalone reason for every line priced off the book (2026-09-20). Validated as a staff
+    // reason: it is the record the money line reads.
+    priceChangeReason: reasonText(10, 1000).optional(),
     // Set by the guided interview so the quote records what the client told us and
     // the band narrows to the base return only.
     interviewAnswers: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -74,7 +94,13 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
   });
 
   const read = { preHandler: [app.authenticate, requirePermission('engagements.read')] };
-  const manage = { preHandler: [app.authenticate, requirePermission('engagements.tax.manage')] };
+  /*
+   * QUOTES HAVE THEIR OWN DOOR (Brian, 2026-09-20, the Quotes card): quotes.manage, seeded to the
+   * preparer beside engagements.tax.manage, which still opens every quote route so nothing that
+   * quoted yesterday is refused today. The card shows its controls to a session holding
+   * quotes.manage (or the wildcard) and nothing to anyone else.
+   */
+  const manage = { preHandler: [app.authenticate, requireAnyPermission('quotes.manage', 'engagements.tax.manage')] };
 
   /**
    * What the builder can put on a quote: the items and bundles in the price
@@ -99,12 +125,14 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
       // and kept a dropdown from the retired one-deposit-item model, which read "— no deposit —"
       // over a quote that carried a real deposit. Nine weeks nobody built a quote; the first person who
       // did was told there was no deposit while the client would have been asked for one.
+      // group_key, sort_order and description_en (2026-09-20): the builder lays the book out as
+      // grouped rows, each with its one-line description. The groups' own order is CATALOG_GROUPS.
       `SELECT item_code, service_line::text AS service_line, name_en, name_es, amount_cents,
               price_min_cents, price_max_cents, unit, is_pass_through, needs_confirmation,
-              deposit_cents
+              deposit_cents, description_en, group_key, sort_order, pricing_mode::text AS pricing_mode
        FROM price_book_items
        WHERE version_id = $1 AND is_active AND display_on_quote
-       ORDER BY service_line, sort_order`,
+       ORDER BY group_key, sort_order, item_code`,
       [v.id]
     );
     const bundles = await app.db.query(
@@ -118,13 +146,42 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
     // The rule lives in one place (defaultTaxYear); the builder only reads it.
     const { defaultTaxYear } = await import('../engagements/period.ts');
     const { todayChicago } = await import('../tax/deadlines.ts');
-    return { version: v, items: items.rows, bundles: bundles.rows, defaultTaxYear: defaultTaxYear(todayChicago()) };
+    // The band (a setting) travels with the catalog so the builder's live "quoted range" is the
+    // same arithmetic createQuote will do; the groups and the custom-line service lines are the
+    // API's, so the screen never carries its own copy of either list.
+    const { estimateBandPercent } = await import('./quotes.ts');
+    return {
+      version: v, items: items.rows, bundles: bundles.rows, defaultTaxYear: defaultTaxYear(todayChicago()),
+      groups: CATALOG_GROUPS,
+      serviceLines: CUSTOM_LINE_SERVICE_LINES.map((key) => ({ key, label: SERVICE_LINE_LABEL[key] })),
+      bandPercent: await estimateBandPercent(app),
+    };
   });
 
   /** Build a draft quote from price-book items or a bundle. Nothing sends yet. */
   app.post('/quotes', manage, async (request, reply) => {
     const b = CreateQuoteBody.parse(request.body);
     const result = await createQuote(app, b, request.staff!);
+    reply.code(201);
+    return result;
+  });
+
+  /**
+   * SAVE THESE LINES AS A PACKAGE (2026-09-20). The CEO alone: `pricing.packages.save` is
+   * explicit-only, so a wildcard role does not hold it. A package composes from the price book
+   * only, so a custom line is refused here; the discount stays unset (admin-set at publish), and
+   * the new package is offered in the builder's package list from the next catalog load.
+   */
+  app.post('/quotes/packages', { preHandler: [app.authenticate, requirePermission('pricing.packages.save')] }, async (request, reply) => {
+    const b = z.object({
+      name: z.string().trim().min(3, 'Name the package in at least a few words.').max(120),
+      lines: z.array(z.object({
+        itemCode: z.string().min(1),
+        quantity: z.number().positive().optional(),
+        isOptional: z.boolean().optional(),
+      })).min(1, 'A package needs at least one line.'),
+    }).parse(request.body);
+    const result = await savePackage(app, b, request.staff!);
     reply.code(201);
     return result;
   });
@@ -167,9 +224,21 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
         // The engagement this quote replaces (2026-09-09): required when the client already
         // has active work on the line for the period.
         changeOrderOf: z.uuid().optional(),
+        // The Quotes card's Resend (2026-09-20): the same send site, for a sent quote the client did not find.
+        resend: z.boolean().optional(),
       })
       .parse(request.body ?? {});
-    return sendQuote(app, id, request.staff!, { duplicateIntent: body.duplicateIntent, changeOrderOf: body.changeOrderOf });
+    return sendQuote(app, id, request.staff!, { duplicateIntent: body.duplicateIntent, changeOrderOf: body.changeOrderOf, resend: body.resend });
+  });
+
+  /**
+   * COPY CLIENT LINK (2026-09-20, the Quotes card). The stored token is read back (0117) and nothing
+   * changes; no email leaves. A quote sent before the token was kept rotates once, and `rotated`
+   * tells the control to say the emailed link no longer works.
+   */
+  app.post<{ Params: { id: string } }>('/quotes/:id/client-link', manage, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    return clientLinkFor(app, id, request.staff!);
   });
 
   /**
@@ -188,8 +257,10 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
       deposit_item_code: string | null; deposit_override_cents: number | null;
       deposit_override_reason: string | null; deposit_override_at: Date | null;
     }>(
-      `SELECT q.*, c.first_name, c.last_name, c.email
-       FROM quotes q JOIN contacts c ON c.id = q.contact_id WHERE q.id = $1`,
+      // The business by name in the same read (2026-09-20): the Ops quote page prints it, and a second
+      // fetch for it landed after the page had been read on the phone.
+      `SELECT q.*, c.first_name, c.last_name, c.email, b.name AS business_name
+       FROM quotes q JOIN contacts c ON c.id = q.contact_id LEFT JOIN businesses b ON b.id = q.business_id WHERE q.id = $1`,
       [id]
     );
     const quote = rows[0];
@@ -198,9 +269,16 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
     // content. They leave this route only for a holder of interviews.read.
     if (!holds(request.staff!, 'interviews.read')) delete (quote as Record<string, unknown>).interview_answers;
     const lines = await app.db.query(
-      `SELECT item_code, description_en, description_es, quantity, unit_cents, line_cents,
-              min_cents, max_cents, is_optional, chosen, is_pass_through
-       FROM quote_line_items WHERE quote_id = $1 ORDER BY sort_order`,
+      // The book price beside each line (2026-09-20), read by joining the quote's pinned version:
+      // a line priced off the book shows the book's figure struck through; a custom line has none.
+      `SELECT qli.item_code, qli.description_en, qli.description_es, qli.quantity, qli.unit_cents, qli.line_cents,
+              qli.min_cents, qli.max_cents, qli.is_optional, qli.chosen, qli.is_pass_through,
+              qli.is_custom, COALESCE(qli.service_line, pbi.service_line)::text AS service_line,
+              pbi.amount_cents AS book_unit_cents, pbi.price_min_cents AS book_min_cents, pbi.price_max_cents AS book_max_cents
+       FROM quote_line_items qli
+       JOIN quotes q ON q.id = qli.quote_id
+       LEFT JOIN price_book_items pbi ON pbi.item_code = qli.item_code AND pbi.version_id = q.price_book_version_id
+       WHERE qli.quote_id = $1 ORDER BY qli.sort_order`,
       [id]
     );
     const { resolveDeposit } = await import('./quotes.ts');
@@ -230,11 +308,21 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
        * Audit item 6 (2026-09-09): who started it and when, and whether a draft has gone stale
        * (older than 30 days). Stale is a FLAG for a person — nothing deletes a draft on its own.
        */
+      /*
+       * THE CARD'S ROW (2026-09-20): who and which business the quote is for, the lines in short form
+       * (the price-book codes, chosen lines only), the status, when it was sent and when it expires.
+       */
       `SELECT q.id, q.status::text AS status, q.total_cents, q.range_min_cents, q.range_max_cents,
               q.bundle_slug, q.sent_at, q.accepted_at, q.declined_at, q.decline_reason, q.expires_at, q.created_at,
               st.full_name AS created_by,
-              (q.status = 'draft' AND q.created_at < now() - interval '30 days') AS is_stale
+              (q.status = 'draft' AND q.created_at < now() - interval '30 days') AS is_stale,
+              c.first_name || ' ' || c.last_name AS for_name,
+              b.name AS business_name,
+              COALESCE((SELECT array_agg(l.item_code ORDER BY l.sort_order) FROM quote_line_items l WHERE l.quote_id = q.id AND l.chosen), '{}')::text[] AS line_codes,
+              COALESCE((SELECT array_agg(l.description_en ORDER BY l.sort_order) FROM quote_line_items l WHERE l.quote_id = q.id AND l.chosen), '{}')::text[] AS line_names
        FROM quotes q LEFT JOIN staff st ON st.id = q.created_by_staff_id
+       JOIN contacts c ON c.id = q.contact_id
+       LEFT JOIN businesses b ON b.id = q.business_id
        WHERE q.contact_id = $1 ORDER BY q.created_at DESC`,
       [id]
     );

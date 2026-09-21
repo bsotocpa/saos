@@ -17,6 +17,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../../lib/api';
 import { useAsk } from '../../../components/ask';
 import { AddBusinessModal } from '../../../components/add-business';
+import { EditBusinessModal } from '../../../components/edit-business';
 import { ReturnControls } from '../../../components/return-controls';
 import { consent7216Label, engagementStatusLabel, invoiceStatusLabel, letterStatusLabel, quoteStatusLabel } from '../../../lib/labels';
 import { dollarsToCents, jurisdictionLabel, jurisdictionStatusText, MAILING_METHOD_LABEL, type JurisdictionView } from '../../../lib/return-controls';
@@ -42,6 +43,8 @@ interface Contact {
 interface Business {
   id: string; name: string; ein: string | null; entity_type: string | null; status?: string | null;
   industry: string | null; state: string | null; il_sos_status: string | null;
+  /** The state's formation date as a calendar day, when a person has recorded it. */
+  formation_date?: string | null;
   member_role: string | null; is_primary: boolean;
   is_test?: boolean; test_note?: string | null;
   unverified_import_source?: string | null;
@@ -69,6 +72,10 @@ interface Quote {
   is_stale?: boolean;
   id: string; status: string; total_cents: number; range_min_cents: number | null;
   range_max_cents: number | null; created_at: string;
+  /** The Quotes card's row (2026-09-20): who and which business it is for, the lines by code, when sent, when it expires. */
+  for_name?: string | null; business_name?: string | null;
+  line_codes?: string[]; line_names?: string[];
+  sent_at?: string | null; expires_at?: string | null;
 }
 interface Engagement {
   period_key?: string | null;
@@ -202,6 +209,9 @@ const PORTAL_LABEL: Record<string, string> = {
   revoked: 'Revoked',
 };
 const portalBadge = (s: string) => (s === 'active' ? 'ok' : s === 'revoked' ? 'warn' : s === 'invited' ? '' : 'warn');
+/** The portal sign-in address and the contact email disagree (case-insensitive; both are citext on the server). */
+const portalEmailsDiffer = (c: { email: string | null; portal_login_email: string | null; portal_state: string }): boolean =>
+  c.portal_state !== 'not_invited' && !!c.portal_login_email && !!c.email && c.portal_login_email.toLowerCase() !== c.email.toLowerCase();
 
 /** A sign-in link outlives its usefulness in minutes, so say when it already has. */
 function linkExpired(sentAt: string, ttlMinutes: number): boolean {
@@ -282,6 +292,22 @@ export default function ClientPacketPage() {
   const [canFlagTest, setCanFlagTest] = useState(false);
   // R29: the refund door is billing.manage (Rene's role) or the CEO's '*', decided from /auth/me.
   const [canRefund, setCanRefund] = useState(false);
+  /*
+   * THE QUOTES CARD'S CONTROLS (2026-09-20): Open, Copy client link, Resend and Withdraw render for
+   * quotes.manage (or the wildcard) and for nobody else — not disabled, absent.
+   */
+  const [canManageQuotes, setCanManageQuotes] = useState(false);
+  /** The business being edited in the Businesses card's Edit door (2026-09-20). */
+  const [editingBusiness, setEditingBusiness] = useState<Business | null>(null);
+  /** One line under one quote row: the copied link, or that the proposal went out again. */
+  const [quoteNote, setQuoteNote] = useState<{ id: string; text: string; url?: string } | null>(null);
+  /*
+   * WHETHER THE DOOR IS OPEN AT ALL (2026-09-20): the server's switch, read from the same session
+   * call. Off in production until the adapter's real refund call is proven; while off, the row shows
+   * one sentence where the button would be, and the route refuses with the same words. Null until
+   * the session answers, so the row renders neither a control nor a sentence it cannot yet vouch for.
+   */
+  const [refundControl, setRefundControl] = useState<'on' | 'off' | null>(null);
   const [flaggedTest, setFlaggedTest] = useState('');
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -389,15 +415,18 @@ export default function ClientPacketPage() {
   }, [router, load]);
   useEffect(() => {
     let alive = true;
-    api<{ permissions: string[] }>('/auth/me')
+    api<{ permissions: string[]; switches?: { opsRefundControl?: 'on' | 'off' } }>('/auth/me')
       .then((m) => {
         if (!alive) return;
         setCanAddBusiness(['*', 'contacts.write', 'businesses.write'].some((p) => m.permissions.includes(p)));
         // The test flag rides on POST /contacts/:id/archive, whose preHandler is contacts.write alone.
         setCanFlagTest(['*', 'contacts.write'].some((p) => m.permissions.includes(p)));
         setCanRefund(['*', 'billing.manage'].some((p) => m.permissions.includes(p)));
+        setCanManageQuotes(['*', 'quotes.manage'].some((p) => m.permissions.includes(p)));
+        // Anything but the server saying "on" is off: a missing field is a closed door, never an open one.
+        setRefundControl(m.switches?.opsRefundControl === 'on' ? 'on' : 'off');
       })
-      .catch(() => { if (alive) { setCanAddBusiness(false); setCanFlagTest(false); setCanRefund(false); } });
+      .catch(() => { if (alive) { setCanAddBusiness(false); setCanFlagTest(false); setCanRefund(false); setCanManageQuotes(false); setRefundControl(null); } });
     return () => { alive = false; };
   }, []);
 
@@ -405,6 +434,7 @@ export default function ClientPacketPage() {
   if (!packet) return <p className="muted">Loading…</p>;
 
   const c = packet.contact;
+  const portalEmailDiffers = portalEmailsDiffer(c);
   const consentOk = isOnFile(c.consent_7216_status);
   const letterOk = isOnFile(c.engagement_letter_status);
 
@@ -549,9 +579,12 @@ export default function ClientPacketPage() {
               gates are not editable here: those change because something HAPPENED, and a
               text box beside them would invite someone to assert a fact instead.
             */}
-            <button className="btn ghost" type="button" onClick={() => setEditing((v) => !v)}>
-              {editing ? 'Cancel' : 'Edit'}
-            </button>
+            {/* The same door as PATCH /contacts/:id (contacts.write): absent, not disabled, for anyone else (2026-09-20). */}
+            {canFlagTest ? (
+              <button className="btn ghost" type="button" data-testid="edit-contact" onClick={() => setEditing((v) => !v)}>
+                {editing ? 'Cancel' : 'Edit'}
+              </button>
+            ) : null}
           </h2>
           {editing ? (
             <div>
@@ -644,7 +677,20 @@ export default function ClientPacketPage() {
             </p>
           ) : null}
           {packet.enrichmentGaps.length > 0 ? (
-            <p className="muted small">Missing: {packet.enrichmentGaps.join(', ')}</p>
+            /*
+              THE MISSING LINE NAMES ITS BUSINESS (Brian, 2026-09-20). The server computes the
+              business gaps from the primary business alone; the line says so by name, so "industry"
+              is never a hunt through several companies.
+            */
+            <p className="muted small" data-testid="missing-line">
+              Missing:{' '}
+              {[
+                ...packet.enrichmentGaps.filter((g) => !g.startsWith('business:')),
+                ...(packet.enrichmentGaps.some((g) => g.startsWith('business:'))
+                  ? [`${packet.businesses.find((b) => b.is_primary)?.name ?? 'primary business'}: ${packet.enrichmentGaps.filter((g) => g.startsWith('business:')).map((g) => g.slice('business:'.length).replaceAll('_', ' ').replace(/^ein$/, 'EIN')).join(', ')}`]
+                  : []),
+              ].join(' · ')}
+            </p>
           ) : null}
 
           {/*
@@ -663,6 +709,20 @@ export default function ClientPacketPage() {
             {c.portal_login_email && c.portal_state !== 'not_invited' ? (
               <span className="muted"> · signs in as / inicia sesión como <strong>{c.portal_login_email}</strong></span>
             ) : null}
+            {portalEmailDiffers ? (
+              /*
+               * THE TWO ADDRESSES DIFFER (2026-09-20). Every link the system emails goes to the contact
+               * email; the portal account answers only to its own. A client who asks for a sign-in link
+               * with the address on this record gets nothing, and the portal cannot say why. One control
+               * makes the sign-in address the contact email; the server refuses it when another account
+               * already signs in with that address, and its words render here.
+               */
+              <span className="muted" data-testid="portal-email-mismatch" role="status">
+                {' · '}
+                <strong>The sign-in address is not the contact email.</strong>
+                {' A sign-in link requested with the contact email will not reach this account.'}
+              </span>
+            ) : null}
             {c.portal_state === 'active' ? (
               c.portal_last_login_at ? (
                 <span className="muted"> · last signed in {dayOf(c.portal_last_login_at)}</span>
@@ -679,6 +739,31 @@ export default function ClientPacketPage() {
               </span>
             ) : null}
           </p>
+          {portalEmailDiffers && canFlagTest ? (
+            <p className="small" style={{ marginTop: 6 }}>
+              <button
+                className="btn ghost"
+                type="button"
+                disabled={busy}
+                data-testid="align-portal-email"
+                onClick={async () => {
+                  const ok = await ask({
+                    title: 'Use the contact email for sign-in?',
+                    body: <p>The portal account will sign in with the contact email from now on. Links already sent keep working.</p>,
+                    choices: [{ key: 'go', label: 'Use the contact email', tone: 'primary' }],
+                    run: async () => { await api(`/contacts/${params.id}/align-portal-email`, { method: 'POST' }); },
+                  });
+                  if (!ok) return;
+                  setBusy(true);
+                  setActionMsg('The sign-in address is now the contact email.');
+                  await load();
+                  setBusy(false);
+                }}
+              >
+                Use the contact email for sign-in
+              </button>
+            </p>
+          ) : null}
           {c.portal_state === 'revoked' ? (
             /* Deliberately no one-click restore. Access was taken away on purpose, and
                the reason lives outside this screen — re-granting it should be a decision
@@ -727,6 +812,14 @@ export default function ClientPacketPage() {
               onAdded={async () => { setAddingBusiness(false); setActionMsg('Business added.'); await load(); }}
             />
           ) : null}
+          {/* EDIT AFTER CREATE (Brian, 2026-09-20): the same door as Add, on each business's row. */}
+          {editingBusiness ? (
+            <EditBusinessModal
+              business={editingBusiness}
+              onClose={() => setEditingBusiness(null)}
+              onSaved={async () => { setEditingBusiness(null); setActionMsg('Business saved.'); await load(); }}
+            />
+          ) : null}
           {/*
             2026-09-12 (Brian): exactly one primary business per contact, at the database. When the
             primary is archived nothing is promoted in its place; the page says so and a person chooses.
@@ -753,9 +846,18 @@ export default function ClientPacketPage() {
                   {b.ein ? ` · EIN on file` : ' · no EIN'}
                   {b.state ? ` · ${b.state}` : ''}
                   {b.industry ? ` · ${b.industry}` : ''}
+                  {b.formation_date ? ` · formed ${formatDate(b.formation_date)}` : ''}
                 </span>
                 <br />
                 <span className="small">
+                  {canAddBusiness ? (
+                    <>
+                      <button type="button" className="btn ghost small" disabled={busy} data-testid={`edit-business-${b.id}`} onClick={() => setEditingBusiness(b)}>
+                        Edit
+                      </button>
+                      {' · '}
+                    </>
+                  ) : null}
                   {!b.is_primary ? (
                     <button
                       type="button"
@@ -845,48 +947,125 @@ export default function ClientPacketPage() {
 
         <section className="card">
           <h2>Quotes</h2>
+          {/*
+            THE QUOTES CARD (Brian, 2026-09-20). Each row: who and which business the quote is for,
+            the lines in short form (price-book codes), its state, when it was sent and when it expires.
+            Its controls, for quotes.manage: Open (the Ops quote page), Copy client link (the stored link,
+            as emailed; a pre-0117 quote rotates once and says so), Resend proposal email (the same
+            send site as the first send), Withdraw (a draft, with a reason; a sent quote is the
+            client's to answer). A refusal renders under the row it was about, in the server's words.
+          */}
           {quotes.length === 0 ? (
             <p className="muted small">No quotes sent.</p>
           ) : (
             quotes.slice(0, 6).map((q) => (
-              <p key={q.id} className="small" style={{ margin: '3px 0' }}>
-                <span className={`badge ${q.status === 'accepted' ? 'ok' : q.status === 'sent' ? '' : 'warn'}`}>
-                  {quoteStatusLabel(q.status)}
-                </span>{' '}
-                {q.range_min_cents !== null && q.range_max_cents !== null
-                  ? `${formatMoney(q.range_min_cents)}–${formatMoney(q.range_max_cents)}`
-                  : formatMoney(q.total_cents)}
-                <span className="muted"> · {dayOf(q.created_at)}</span>
-                {/* Audit item 6 (2026-09-09): a draft says who started it and when; stale after 30 days; withdrawn with a reason, never deleted. */}
-                {q.status === 'draft' ? (
-                  <>
-                    <span className="muted"> · started by {q.created_by ?? 'unknown'}</span>
-                    {q.is_stale ? <> <span className="badge warn" title="A draft older than 30 days. Nothing deletes it — withdraw it, or send it.">stale</span></> : null}
-                    {' '}
-                    <button
-                      type="button"
-                      className="btn ghost small"
-                      disabled={busy}
-                      onClick={async () => {
-                        const a = await ask({
-                          title: 'Withdraw this draft quote?',
-                          body: <p className="small">The draft stays on the record as withdrawn, with your reason. Nothing is sent to the client.</p>,
-                          reason: { label: 'Why', required: true },
-                          choices: [{ key: 'withdraw', label: 'Withdraw draft', tone: 'danger' }],
-                          run: async (r) => { await api(`/quotes/${q.id}/withdraw-draft`, { method: 'POST', body: { reason: r.reason } }); },
-                        });
-                        if (!a) return;
-                        setBusy(true);
-                        setActionMsg('Draft withdrawn.');
-                        await load();
-                        setBusy(false);
-                      }}
-                    >
-                      Withdraw draft…
-                    </button>
-                  </>
+              <div className="quote-line" key={q.id} data-testid={`quote-row-${q.id}`}>
+                <span className="name">
+                  <span className={`badge ${q.status === 'accepted' ? 'ok' : q.status === 'sent' ? '' : 'warn'}`}>
+                    {quoteStatusLabel(q.status)}
+                  </span>{' '}
+                  {q.range_min_cents !== null && q.range_max_cents !== null
+                    ? `${formatMoney(q.range_min_cents)}–${formatMoney(q.range_max_cents)}`
+                    : formatMoney(q.total_cents)}
+                  <span className="muted"> · for {q.for_name ?? `${packet.contact.first_name} ${packet.contact.last_name}`}{q.business_name ? ` · ${q.business_name}` : ''}</span>
+                </span>
+                <span className="muted small" style={{ flex: '1 1 100%' }}>
+                  {(q.line_codes ?? []).length > 0 ? (q.line_codes ?? []).join(' + ') : 'no lines'}
+                  {' · created '}{dayOf(q.created_at)}
+                  {q.sent_at ? ` · sent ${dayOf(q.sent_at)}` : ''}
+                  {q.expires_at ? ` · expires ${dayOf(q.expires_at)}` : ''}
+                  {/* Audit item 6 (2026-09-09): a draft says who started it and when; stale after 30 days; withdrawn with a reason, never deleted. */}
+                  {q.status === 'draft' ? ` · started by ${q.created_by ?? 'unknown'}` : ''}
+                  {q.status === 'draft' && q.is_stale ? <> <span className="badge warn" title="A draft older than 30 days. Nothing deletes it — withdraw it, or send it.">stale</span></> : null}
+                </span>
+                {canManageQuotes ? (
+                  <span style={{ flex: '1 1 100%' }}>
+                    <a className="btn ghost small" href={`/quotes/${q.id}`}>Open</a>
+                    {q.status === 'sent' ? (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          className="btn ghost small"
+                          disabled={busy}
+                          onClick={async () => {
+                            setInlineErr(null);
+                            setQuoteNote(null);
+                            setBusy(true);
+                            try {
+                              const r = await api<{ url: string; rotated: boolean }>(`/quotes/${q.id}/client-link`, { method: 'POST', body: {} });
+                              // The clipboard can refuse (no permission, no focus); the link is printed either way.
+                              const copied = await navigator.clipboard?.writeText(r.url).then(() => true, () => false);
+                              // The stored link, as emailed. Only a quote sent before links were kept gets a new one, and the line says so.
+                              const what = r.rotated ? 'a new link was issued and the emailed one no longer works.' : 'the same link the client was emailed.';
+                              setQuoteNote({ id: q.id, text: `${copied ? 'Link copied' : 'Copy it from here'} — ${what}`, url: r.url });
+                            } catch (e) {
+                              setInlineErr({ key: `quote-${q.id}`, message: e instanceof Error ? e.message : 'The link was refused.' });
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                        >
+                          Copy client link
+                        </button>
+                        {' '}
+                        <button
+                          type="button"
+                          className="btn ghost small"
+                          disabled={busy}
+                          onClick={async () => {
+                            const a = await ask({
+                              title: 'Resend the proposal email?',
+                              body: <p className="small">The client is emailed the proposal again with a fresh link; the earlier link stops working.</p>,
+                              choices: [{ key: 'resend', label: 'Resend proposal', tone: 'primary' }],
+                              run: async () => { await api(`/quotes/${q.id}/send`, { method: 'POST', body: { resend: true } }); },
+                            });
+                            if (!a) return;
+                            setQuoteNote({ id: q.id, text: 'Proposal email resent — the earlier link no longer works.' });
+                            setBusy(true);
+                            await load();
+                            setBusy(false);
+                          }}
+                        >
+                          Resend proposal email
+                        </button>
+                      </>
+                    ) : null}
+                    {q.status === 'draft' ? (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          className="btn ghost small"
+                          disabled={busy}
+                          onClick={async () => {
+                            const a = await ask({
+                              title: 'Withdraw this draft quote?',
+                              body: <p className="small">The draft stays on the record as withdrawn, with your reason. Nothing is sent to the client.</p>,
+                              reason: { label: 'Why', required: true },
+                              choices: [{ key: 'withdraw', label: 'Withdraw draft', tone: 'danger' }],
+                              run: async (r) => { await api(`/quotes/${q.id}/withdraw-draft`, { method: 'POST', body: { reason: r.reason } }); },
+                            });
+                            if (!a) return;
+                            setBusy(true);
+                            setActionMsg('Draft withdrawn.');
+                            await load();
+                            setBusy(false);
+                          }}
+                        >
+                          Withdraw…
+                        </button>
+                      </>
+                    ) : null}
+                  </span>
                 ) : null}
-              </p>
+                {quoteNote?.id === q.id ? (
+                  <span className="small" role="status" data-testid={`quote-note-${q.id}`} style={{ flex: '1 1 100%', overflowWrap: 'anywhere' }}>
+                    {quoteNote.text}{quoteNote.url ? <> <code>{quoteNote.url}</code></> : null}
+                  </span>
+                ) : null}
+                {errAt(`quote-${q.id}`)}
+              </div>
             ))
           )}
         </section>
@@ -1369,7 +1548,15 @@ export default function ClientPacketPage() {
                   the record. The server owns every bound — this control sends what was typed and shows
                   the refusal where it was typed.
                 */}
-                {canRefund && (inv.status === 'paid' || inv.status === 'partially_refunded') && (inv.refundable_cents ?? 0) > 0 ? (
+                {canRefund && (inv.status === 'paid' || inv.status === 'partially_refunded') && (inv.refundable_cents ?? 0) > 0 && refundControl === 'off' ? (
+                  /*
+                    THE SWITCH IS OFF (2026-09-20): the control is not rendered, and in its place the row
+                    says the one thing a person needs to know. The words are the server's own (the route
+                    refuses with the same sentence), so the page and the API cannot disagree.
+                  */
+                  <span className="muted small" data-testid={`refund-off-${inv.id}`}>Refunds are made in Stripe and recorded here.</span>
+                ) : null}
+                {canRefund && (inv.status === 'paid' || inv.status === 'partially_refunded') && (inv.refundable_cents ?? 0) > 0 && refundControl === 'on' ? (
                   <button
                     className="btn ghost"
                     type="button"

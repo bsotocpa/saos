@@ -16,7 +16,9 @@ export const roles = [
     // Brian asked for deposit waivers to be his alone, and Jackson also holds
     // '*'. Without the explicit-only carve-out there would be no way to say
     // "Brian only" at all.
-    permissions: ['*', 'deposits.override'], // '*' includes referrals.approve (Jackson too)
+    // 'pricing.packages.save' (2026-09-20): saving a quote's lines as a package is the CEO's
+    // alone, the same explicit-only mechanism as the deposit override.
+    permissions: ['*', 'deposits.override', 'pricing.packages.save'], // '*' includes referrals.approve (Jackson too)
   },
   {
     key: 'ed_coo',
@@ -47,6 +49,9 @@ export const roles = [
       'contacts.read',
       'engagements.read',
       'engagements.tax.manage',
+      // Quotes are their own door (2026-09-20): the Quotes card's Open, Copy client link, Resend and
+      // Withdraw render for this grant; every quote route accepts it beside engagements.tax.manage.
+      'quotes.manage',
       'irs_notices.manage',
       // The ATX acknowledgment report is hers end to end (2026-09-19): upload, review row by row,
       // release. Named separately from engagements.tax.manage so the screen can be granted to a

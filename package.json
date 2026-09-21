@@ -15,7 +15,7 @@
     "migrate": "npm run migrate --workspace=@saos/db",
     "migrate:down": "npm run migrate:down --workspace=@saos/db",
     "seed": "npm run seed --workspace=@saos/db",
-    "test": "npm run check:sync-root && npm run check:prices && npm run check:sops && npm run check:env-merge && npm run check:role-tasks && npm run check:css-classes && npm run check:form-conditionals && npm run check:sop-steps && npm run check:no-sos-scraping && npm run check:client-sends && npm run check:flash-once && npm run check:date-rendering && npm run check:no-native-dialogs && npm run check:report-files && npm run check:inline-errors && npm run check:task-inserts && npm run test --workspaces --if-present && node scripts/green-run.mjs record",
+    "test": "npm run check:sync-root && npm run check:prices && npm run check:sops && npm run check:env-merge && npm run check:role-tasks && npm run check:css-classes && npm run check:form-conditionals && npm run check:sop-steps && npm run check:no-sos-scraping && npm run check:client-sends && npm run check:flash-once && npm run check:date-rendering && npm run check:no-native-dialogs && npm run check:report-files && npm run check:inline-errors && npm run check:task-inserts && npm run check:edit-doors && npm run test --workspaces --if-present && node scripts/green-run.mjs record",
     "prepare": "node -e \"if(require('fs').existsSync('scripts/green-run.mjs'))require('child_process').execFileSync(process.execPath,['scripts/green-run.mjs','install-hooks'],{stdio:'inherit'})\"",
     "test:db": "npm run test:db --workspace=@saos/db",
     "check:sync-root": "node scripts/check-sync-root.mjs",
@@ -37,7 +37,8 @@
     "check:no-native-dialogs": "node scripts/check-no-native-dialogs.mjs",
     "check:report-files": "node scripts/check-report-files.mjs",
     "check:inline-errors": "node scripts/check-inline-errors.mjs",
-    "check:task-inserts": "node scripts/check-task-inserts.mjs"
+    "check:task-inserts": "node scripts/check-task-inserts.mjs",
+    "check:edit-doors": "node scripts/check-edit-doors.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0"
