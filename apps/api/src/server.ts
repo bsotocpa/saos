@@ -69,6 +69,7 @@ export function buildServer(
   app.decorate('db', createPool(config.DATABASE_URL));
   app.decorate('mailer', overrides.mailer ?? createMailer(config));
   app.decorate('stripe', overrides.stripe ?? makeStripeAdapter(config));
+  app.decorate('switches', { opsRefundControl: config.OPS_REFUND_CONTROL, quoteBuilder: config.OPS_QUOTE_BUILDER });
   app.decorate('authenticate', buildAuthenticate(app));
   app.decorate('authenticateClient', buildAuthenticateClient(app));
 

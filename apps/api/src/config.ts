@@ -72,6 +72,25 @@ const schema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   /** The Stripe webhook endpoint (we_…) the installer registered — named in every signature failure (item 10, 2026-09-09). */
   STRIPE_WEBHOOK_ENDPOINT_ID: z.string().optional(),
+  /**
+   * THE OPS REFUND CONTROL SWITCH (2026-09-20). The "Refund…" control on a paid invoice in Ops creates
+   * a refund AT Stripe through the adapter's refunds.create — a call this repository has never made
+   * against Stripe's real API. Until that call is proven in Stripe test mode, the control is OFF in
+   * production: the button is not rendered, the row reads that refunds are made in Stripe and
+   * recorded here, and POST /invoices/:id/refund refuses with the same words. The webhook path is
+   * untouched either way — a refund made in the Stripe dashboard still reaches the invoice row.
+   *
+   * Not an automation: automations are client-facing sends. This is a staff control, so it is an
+   * env variable with a default of OFF, and the harness boot turns it on for its own taps.
+   */
+  OPS_REFUND_CONTROL: z.enum(['on', 'off']).default('off'),
+  /*
+   * THE QUOTE BUILDER IN OPS (Brian, 2026-09-20): v1 is the chip builder production runs today; v2
+   * is the redesign (grouped rows beside "This quote"), built locally and not shown to production
+   * until Brian approves its screenshots. Same shape as OPS_REFUND_CONTROL: a staff control, an
+   * env variable, default the old one, and the harness boot sets v2 for its own taps.
+   */
+  OPS_QUOTE_BUILDER: z.enum(['v1', 'v2']).default('v1'),
   // IL SOS good-standing checker: 'stub' (dev/test) or 'live' (self-hosted
   // scraper against ilsos.gov — no third-party service).
   // Meeting intelligence (M17). Transcription stays on owned infrastructure;

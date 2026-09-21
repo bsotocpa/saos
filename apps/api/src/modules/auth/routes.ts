@@ -75,6 +75,12 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       fullName: staff.fullName,
       role: staff.roleKey,
       permissions: staff.permissions,
+      /*
+       * The staff-control switches the page decides from (2026-09-20). The Ops client page already
+       * decides who sees the Refund control from this session; whether the control is ON at all is
+       * the server's setting, read here so the page never guesses it from a failed request.
+       */
+      switches: { opsRefundControl: app.switches.opsRefundControl, quoteBuilder: app.switches.quoteBuilder },
     };
   });
 

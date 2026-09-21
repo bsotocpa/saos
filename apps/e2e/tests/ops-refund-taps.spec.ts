@@ -26,6 +26,13 @@
  *
  * ROLE PROOF: the bookkeeper holds no billing.manage. The Invoices card does not load for her at
  * all, so there is no Refund to tap, and POST /invoices/:id/refund answers 403.
+ *
+ * THE SWITCH (2026-09-20, step D3b). The control is OFF in production until the adapter's real
+ * refund call is proven against Stripe's test-mode API. The harness boots with it ON (the taps
+ * above) and this spec flips it OFF through the harness's own /harness/refund-control for one test:
+ * the paid row then reads exactly one sentence where the button was, the button is nowhere on the
+ * page, and the route refuses with the same sentence from the page's own session. The flip goes
+ * back in a finally, so every spec after this one finds the door open again.
  */
 import { expect, test, type Page } from '@playwright/test';
 import * as OTPAuth from 'otpauth';
@@ -228,9 +235,17 @@ test.describe('Ops → the refund door', () => {
       expect(afterEvent.amount_refunded_cents, 'the amount did not double').toBe(partCents);
       expect(afterEvent.refunded_by, 'and the refund still belongs to the person who pressed it').toBe(me.fullName);
       expect(afterEvent.notices.filter((n) => n.kind === 'refund_receipt').length, 'still exactly one receipt').toBe(1);
-      // The send log a person opens under the invoice: one refund receipt, whatever state it is in.
-      const log = await asStaff<{ rows: Array<{ what: string }> }>(token, `/invoices/${issued.id}/sends`);
-      expect(log.rows.filter((r) => r.what.includes('invoice.refund_receipt')).length, 'one receipt on the send log').toBe(1);
+      /*
+       * The send log a person opens under the invoice: one refund receipt, whatever state it is in.
+       * The log is outbox rows PLUS delivery audit rows (invoice.refund_receipt_sent), and the harness
+       * sweeps the outbox every two seconds — so the receipt is one outbox row, and its delivery row is
+       * there or not depending on whether the sweep has ticked (2026-09-20: the desk viewport read two
+       * matches for one receipt because the sweep had delivered it; the phone read one because it had
+       * not). Counted by source, the assertion is about the receipt, not the clock.
+       */
+      const log = await asStaff<{ rows: Array<{ source: string; what: string }> }>(token, `/invoices/${issued.id}/sends`);
+      expect(log.rows.filter((r) => r.source === 'outbox' && r.what.startsWith('invoice.refund_receipt')).length, 'one receipt on the send log').toBe(1);
+      expect(log.rows.filter((r) => r.source === 'audit' && r.what === 'invoice.refund_receipt_sent').length, 'delivered at most once').toBeLessThanOrEqual(1);
 
       await page.screenshot({ path: shot, fullPage: true });
       passed = true;
@@ -239,6 +254,72 @@ test.describe('Ops → the refund door', () => {
       testInfo.annotations.push({ type: passed ? 'artifact' : 'failure-screenshot', description: keepScreenshot(`refund-invoice-${viewport}`, passed, shot) });
       testInfo.annotations.push({ type: 'walk-step', description: `D3|${REFUND_CONTROL}|${REFUND_ROLES}|tap` });
       testInfo.annotations.push({ type: 'walk-step', description: `D3|the charge.refunded event posted to /webhooks/stripe for the refund the door made (Stripe's call, not a tap)|Stripe|api` });
+    }
+  });
+
+  test('D3b: with the Refund control off, the paid row reads one sentence, offers no Refund button, and the route refuses', async ({ page }, testInfo) => {
+    const viewport = testInfo.project.name;
+    const shot = testInfo.outputPath(`refund-off-${viewport}.png`);
+    const SENTENCE = 'Refunds are made in Stripe and recorded here.';
+    let passed = false;
+    const token = await staffToken();
+    // A PAID invoice, so the sentence is about the switch and not about the state.
+    const paid = await paidInvoice(token, viewport, 'off');
+    expect((await invoiceRow(token, paid.id)).status, 'the subject is refundable').toBe('paid');
+    // The harness's own flip: one API process, both states.
+    const flip = async (state: 'on' | 'off'): Promise<string> => {
+      const r = await fetch(`${API}/harness/refund-control`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state }) });
+      const body = (await r.json().catch(() => ({}))) as { opsRefundControl?: string };
+      if (r.status !== 200) throw new Error(`the harness flip answered ${r.status}: ${JSON.stringify(body)}`);
+      return body.opsRefundControl ?? '';
+    };
+    expect(await flip('off'), 'the switch is off for this test').toBe('off');
+    try {
+      const me = await asStaff<{ switches?: { opsRefundControl?: string } }>(token, '/auth/me');
+      expect(me.switches?.opsRefundControl, 'the session reports the state the page decides from').toBe('off');
+
+      await signIn(page, fixtures.staff);
+      await page.goto(`/clients/${fixtures.contactId}`);
+      await expect(page.getByRole('heading', { name: /Invoices \(/ })).toBeVisible();
+      const invoicesCard = page.locator('section.card', { has: page.getByRole('heading', { name: /Invoices \(/ }) });
+      const row = invoicesCard.locator('ul.list > li', { hasText: paid.invoiceNumber });
+      await expect(row, 'the paid invoice is on the client page').toBeVisible();
+      await expect(row.locator('.badge').first(), 'and it reads Paid').toHaveText('Paid');
+
+      // The one sentence, where the button would be — and nothing else that says refund on the row.
+      await expect(row.getByTestId(`refund-off-${paid.id}`), 'the row says where refunds are made').toHaveText(SENTENCE);
+      await expect(row.getByText(SENTENCE), 'exactly one sentence').toHaveCount(1);
+      await expect(row.getByRole('button', { name: 'Refund…' }), 'no Refund button on the row').toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Refund…' }), 'and none anywhere on the page').toHaveCount(0);
+      await expect(page.getByTestId(`refund-invoice-${paid.id}`)).toHaveCount(0);
+
+      // The route, from the page's own session: the same sentence, and nothing moves.
+      const refused = await page.evaluate(async (invoiceId) => {
+        const r = await fetch(`/api/invoices/${invoiceId}/refund`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ amountCents: 100, reason: 'A switch proof: this refund must be refused while the control is off.' }),
+        });
+        return { status: r.status, body: (await r.json().catch(() => ({}))) as { error?: string; message?: string } };
+      }, paid.id);
+      expect(refused.status, 'the door is closed').toBe(409);
+      expect(refused.body.error).toBe('refund_control_off');
+      expect(refused.body.message, 'with the sentence the row shows').toBe(SENTENCE);
+      const after = await invoiceRow(token, paid.id);
+      expect(after.status, 'nothing moved').toBe('paid');
+      expect(after.amount_refunded_cents, 'and no money went back').toBe(0);
+
+      await page.screenshot({ path: shot, fullPage: true });
+      passed = true;
+    } finally {
+      // Back on, whatever happened above: every spec after this one finds the door open.
+      const back = await flip('on');
+      if (!existsSync(shot)) await page.screenshot({ path: shot, fullPage: true }).catch(() => undefined);
+      testInfo.annotations.push({ type: passed ? 'artifact' : 'failure-screenshot', description: keepScreenshot(`refund-off-${viewport}`, passed, shot) });
+      testInfo.annotations.push({
+        type: 'walk-step',
+        description: `D3b|/clients/:id Invoices card, paid row: the sentence "${SENTENCE}" (data-testid refund-off-<id>) where the button was, no "Refund…" button on the page; POST /invoices/:id/refund 409 with the same sentence; switch flipped back to ${back}|${REFUND_ROLES}|tap`,
+      });
     }
   });
 

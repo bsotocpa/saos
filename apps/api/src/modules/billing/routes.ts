@@ -10,6 +10,9 @@ import { todayChicago } from '../tax/deadlines.ts';
 import { createInvoice, formatUsd, markInvoicePaid, runInvoiceOverdueJob } from './service.ts';
 import { runDunningJob } from './dunning.ts';
 
+/** The one sentence the Ops row shows, and the route says, while the Refund control is off. */
+export const REFUND_CONTROL_OFF = 'Refunds are made in Stripe and recorded here.';
+
 const CreateInvoiceBody = z.object({
   contactId: z.uuid(),
   engagementId: z.uuid().optional(),
@@ -195,6 +198,16 @@ export function registerBillingRoutes(app: FastifyInstance): void {
    */
   app.post<{ Params: { id: string } }>('/invoices/:id/refund', billing, async (request) => {
     const id = z.uuid().parse(request.params.id);
+    /*
+     * THE SWITCH (2026-09-20). Off until the adapter's real refund call is proven against Stripe's
+     * test-mode API (test/stripe-refund-live.spec.ts is that proof). The refusal is the same
+     * sentence the row shows, and it comes BEFORE the body is read: nothing about the request is
+     * examined on a door that is closed. A refund made in the Stripe dashboard still arrives on
+     * the webhook path below and is recorded on the invoice — that path has no switch.
+     */
+    if (app.switches.opsRefundControl !== 'on') {
+      throw new AppError(409, 'refund_control_off', REFUND_CONTROL_OFF);
+    }
     const body = z
       .object({
         amountCents: z
