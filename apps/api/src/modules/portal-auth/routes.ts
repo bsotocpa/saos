@@ -5,6 +5,7 @@ import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
 import { PORTAL_SESSION_COOKIE, clearCookieOptions, portalCookieOptions } from '../../cookies.ts';
 import {
+  alignPortalEmail,
   ensurePortalUser,
   handleMailBounce,
   issueMagicLink,
@@ -143,6 +144,19 @@ export function registerPortalAuthRoutes(app: FastifyInstance): void {
         });
       }
       return reply.code(user.created ? 201 : 200).send({ id: user.id, created: user.created });
+    }
+  );
+
+  /**
+   * Staff: make the portal sign-in address the contact email (2026-09-20). Offered on the client
+   * page when the two differ; contacts.write, like every other edit of who a client is.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/contacts/:id/align-portal-email',
+    { preHandler: [app.authenticate, requirePermission('contacts.write')] },
+    async (request) => {
+      const contactId = z.uuid().parse(request.params.id);
+      return alignPortalEmail(app, contactId, request.staff!, { ip: request.ip, userAgent: request.headers['user-agent'] ?? null });
     }
   );
 

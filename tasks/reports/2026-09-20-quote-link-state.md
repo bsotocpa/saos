@@ -1,0 +1,13 @@
+# quote-link-state (2026-09-20)
+
+Generated 2026-09-20T21:43:12.990Z by scripts/report-table.mjs from production; 1 row(s).
+
+The proposal link that stalled: the newest sent quote whose contact has a portal user on a different address. Booleans and timestamps only; the quotes table has no viewed/consumed column.
+
+```sql
+WITH t AS (SELECT q.id AS quote_id, q.contact_id, u.id AS portal_user_id, q.sent_at FROM quotes q JOIN contacts c ON c.id=q.contact_id JOIN portal_users u ON u.contact_id=q.contact_id WHERE q.sent_at IS NOT NULL AND u.email IS DISTINCT FROM c.email ORDER BY q.sent_at DESC LIMIT 1) SELECT q.status::text, q.sent_at, q.accepted_at, round(extract(epoch FROM (q.accepted_at - q.sent_at))/60) AS minutes_sent_to_accept, q.expires_at, q.expires_at < now() AS expired_now, q.public_token_hash IS NOT NULL AS token_hash_present, q.declined_at IS NOT NULL AS declined, (q.sent_at = (SELECT max(sent_at) FROM quotes)) AS newest_sent_overall, u.is_active AS portal_user_active, u.email IS DISTINCT FROM c.email AS portal_email_differs, lower(u.email::text) = lower(coalesce(c.email::text,'')) AS same_ignoring_case, u.last_login_at, (SELECT count(*) FROM portal_sessions s WHERE s.portal_user_id=u.id) AS sessions_total, (SELECT count(*) FROM portal_sessions s WHERE s.portal_user_id=u.id AND s.revoked_at IS NULL AND s.expires_at > now()) AS sessions_live_now, (SELECT count(*) FROM portal_sessions s WHERE s.portal_user_id=u.id AND s.created_at < t.sent_at AND s.revoked_at IS NULL AND s.expires_at > t.sent_at) AS sessions_live_at_send, (SELECT max(s.created_at) FROM portal_sessions s WHERE s.portal_user_id=u.id) AS latest_session_created, (SELECT max(s.expires_at) FROM portal_sessions s WHERE s.portal_user_id=u.id) AS latest_session_expires, (SELECT count(*) FROM portal_sessions s WHERE s.portal_user_id=u.id AND s.revoked_at IS NOT NULL) AS sessions_revoked FROM t JOIN quotes q ON q.id=t.quote_id JOIN contacts c ON c.id=t.contact_id JOIN portal_users u ON u.id=t.portal_user_id
+```
+
+| status | sent_at | accepted_at | minutes_sent_to_accept | expires_at | expired_now | token_hash_present | declined | newest_sent_overall | portal_user_active | portal_email_differs | same_ignoring_case | last_login_at | sessions_total | sessions_live_now | sessions_live_at_send | latest_session_created | latest_session_expires | sessions_revoked |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| accepted | 2026-09-20 20:52:18.71945+00 | 2026-09-20 21:10:26.856658+00 | 18 | 2026-10-20 23:59:59+00 | f | t | f | t | t | t | f | 2026-09-20 21:09:17.802539+00 | 2 | 1 | 0 | 2026-09-20 21:09:17.805988+00 | 2026-10-20 21:09:17.805988+00 | 0 |

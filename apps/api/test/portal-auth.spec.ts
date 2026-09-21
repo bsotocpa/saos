@@ -428,6 +428,17 @@ test('#21: a KNOWN client who cannot sign in becomes a task — the answer to th
   assert.match(task.rows[0]!.title, /could not/i);
   assert.match(task.rows[0]!.description, /no portal account yet/i);
 
+  // AND AN OPS ALERT (2026-09-20): the task is a queue; the alert is a person at the door now.
+  const alert = await app.db.query<{ title: string; severity: string; related_object_type: string | null }>(
+    `SELECT n.title, n.severity::text, n.related_object_type FROM notifications n
+      WHERE n.type = 'portal_access_blocked' AND n.contact_id = $1`,
+    [known.id]
+  );
+  assert.equal(alert.rows.length, 1, 'one alert, to the role that owns portal access');
+  assert.equal(alert.rows[0]!.severity, 'warning');
+  assert.equal(alert.rows[0]!.related_object_type, 'task', 'it points at the task');
+  assert.doesNotMatch(alert.rows[0]!.title, /@|Mismatch/, 'no address and no name on the alert line');
+
   // A client retrying is one problem, not five.
   for (let i = 0; i < 3; i += 1) {
     await app.inject({
@@ -440,6 +451,83 @@ test('#21: a KNOWN client who cannot sign in becomes a task — the answer to th
     [known.id]
   );
   assert.equal(still.rows[0]!.n, 1, 'deduped while open');
+});
+
+test('#21: a retry raises no second alert', async () => {
+  const known = await app.db.query<{ id: string }>(`SELECT id FROM contacts WHERE email = $1`, ['mismatch-base@example.test']);
+  const n = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM notifications WHERE type = 'portal_access_blocked' AND contact_id = $1`,
+    [known.rows[0]!.id]
+  );
+  assert.equal(n.rows[0]!.n, 1, 'four requests, one alert');
+});
+
+/*
+ * THE MIGRATED CLIENT'S TWO ADDRESSES (2026-09-20). The portal account answers to one address,
+ * the contact record carries another. One staff control makes them the same; the audit line names
+ * the field and never an address; a second account already on that address refuses it.
+ */
+async function migrated(tag: string): Promise<{ contactId: string; portalUserId: string }> {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: `Aligned-${tag}`, email: `aligned-${tag}@example.test` });
+  await grantAccess(c.id);
+  const u = await app.db.query<{ id: string }>(`UPDATE portal_users SET email = $2 WHERE contact_id = $1 RETURNING id`, [c.id, `aligned-${tag}-portal@example.test`]);
+  await app.db.query(`UPDATE contacts SET email = $2 WHERE id = $1`, [c.id, `aligned-${tag}-contact@example.test`]);
+  return { contactId: c.id, portalUserId: u.rows[0]!.id };
+}
+
+test('align: the portal sign-in address becomes the contact email, audited by field name only', async () => {
+  const m = await migrated('one');
+  const res = await app.inject({ method: 'POST', url: `/contacts/${m.contactId}/align-portal-email`, headers: { authorization: `Bearer ${reneToken}` } });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.deepEqual(res.json(), { aligned: true });
+  const u = await app.db.query<{ same: boolean }>(
+    `SELECT u.email = c.email AS same FROM portal_users u JOIN contacts c ON c.id = u.contact_id WHERE u.id = $1`,
+    [m.portalUserId]
+  );
+  assert.equal(u.rows[0]!.same, true, 'the account signs in with the contact email now');
+  const audit = await app.db.query<{ details: Record<string, unknown>; object_id: string }>(
+    `SELECT details, object_id FROM audit_log WHERE action = 'portal_user.email_aligned' AND contact_id = $1`,
+    [m.contactId]
+  );
+  assert.equal(audit.rows.length, 1);
+  assert.equal(audit.rows[0]!.object_id, m.portalUserId);
+  assert.deepEqual(audit.rows[0]!.details, { field: 'email', source: 'contact.email' }, 'the field, never an address');
+
+  // A sign-in request typed with the contact email now matches the account and sends the link.
+  const sentBefore = sentMail.length;
+  const ask = await app.inject({ method: 'POST', url: '/portal/auth/magic/request', payload: { email: 'aligned-one-contact@example.test' } });
+  assert.equal(ask.statusCode, 200);
+  assert.equal(sentMail.length, sentBefore + 1, 'the link goes out');
+
+  const again = await app.inject({ method: 'POST', url: `/contacts/${m.contactId}/align-portal-email`, headers: { authorization: `Bearer ${reneToken}` } });
+  assert.equal(again.statusCode, 409, 'nothing left to align');
+  assert.equal(again.json().error, 'already_aligned');
+});
+
+test('align: refused when another portal account already signs in with the contact email', async () => {
+  const a = await migrated('two-a');
+  const b = await migrated('two-b');
+  // A's contact record is corrected to the address B's account signs in with.
+  await app.db.query(`UPDATE contacts SET email = $2 WHERE id = $1`, [a.contactId, 'aligned-two-b-portal@example.test']);
+  const res = await app.inject({ method: 'POST', url: `/contacts/${a.contactId}/align-portal-email`, headers: { authorization: `Bearer ${reneToken}` } });
+  assert.equal(res.statusCode, 409, res.body);
+  assert.equal(res.json().error, 'portal_email_taken');
+  assert.equal(res.json().message, 'Another portal account already signs in with the contact email. Change one of the two addresses first.');
+  const untouched = await app.db.query<{ email: string }>(`SELECT email FROM portal_users WHERE id = $1`, [a.portalUserId]);
+  assert.equal(untouched.rows[0]!.email, 'aligned-two-a-portal@example.test', 'the refused account is unchanged');
+  void b;
+});
+
+test('align: a role without contacts.write is refused', async () => {
+  const m = await migrated('three');
+  const OTPAuth = await import('otpauth');
+  const secret = new OTPAuth.Secret({ size: 20 }).base32;
+  const keeper = await makeStaff(app.db, config, { email: 'keeper-align@example.test', name: 'Synthetic Keeper', role: 'bookkeeper', password: 'keeper-password-123456', totpSecret: secret });
+  const code = new OTPAuth.TOTP({ algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(secret) }).generate();
+  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: keeper.email, password: keeper.password, totp: code } });
+  assert.equal(login.statusCode, 200, login.body);
+  const res = await app.inject({ method: 'POST', url: `/contacts/${m.contactId}/align-portal-email`, headers: { authorization: `Bearer ${login.json().token as string}` } });
+  assert.equal(res.statusCode, 403);
 });
 
 test('#21: an address we do not recognise creates NO task — the queue cannot be flooded', async () => {

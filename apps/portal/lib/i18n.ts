@@ -22,6 +22,9 @@ const dict = {
   login_email: ['Email', 'Correo electrónico'],
   login_send: ['Send my sign-in link', 'Enviar mi enlace'],
   login_sent: ['If that address has portal access, a sign-in link is on its way. Check your inbox.', 'Si esa dirección tiene acceso, su enlace va en camino. Revise su correo.'],
+  login_same_address: ['Use the email address you first signed up with.', 'Use el correo electrónico con el que se registró por primera vez.'],
+  verify_intro: ['Press the button to finish signing in.', 'Pulse el botón para terminar de entrar.'],
+  verify_press: ['Sign in', 'Entrar'],
   verify_working: ['Signing you in…', 'Iniciando sesión…'],
   verify_failed: ['This link is invalid, used, or expired. Request a fresh one below.', 'Este enlace es inválido, usado o vencido. Pida uno nuevo abajo.'],
 

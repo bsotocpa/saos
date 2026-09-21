@@ -48,6 +48,11 @@ export interface PathBPerson {
   state: string;
   /** Portal sign-in tokens, single use: [0] for the walk, [1] the spare. */
   portalMagicTokens: string[];
+  /** The same links whole, as emailed: the walk navigates to one and presses Sign in. */
+  portalMagicLinks: string[];
+  /** A migrated client: the portal account's address and the contact record's differ. */
+  portalEmail: string;
+  contactEmail: string;
 }
 
 export interface PathBFixture {
@@ -74,6 +79,10 @@ export interface PathBDeps {
   staffToken: string;
   /** The silent mailer's link store. Tokens this fixture mints are removed again, so nothing downstream reads them. */
   magicTokens: string[];
+  /** The same links whole, kept in step with magicTokens. */
+  magicLinks: string[];
+  /** The harness's own door: portal address, then contact address, both synthetic. */
+  makeMigrated: (contactId: string, portalEmail: string, contactEmail: string) => Promise<void>;
   drainOutbox: () => Promise<void>;
   /** Ana-Maria, the tax_preparer — the paid preparer of record on Path B. */
   preparer: { id: string; name: string };
@@ -87,7 +96,7 @@ const PEOPLE = [
 const STATE = 'IL';
 
 export async function buildPathB(app: FastifyInstance, deps: PathBDeps): Promise<PathBFixture | null> {
-  const { staffToken, magicTokens, drainOutbox } = deps;
+  const { staffToken, magicTokens, magicLinks, makeMigrated, drainOutbox } = deps;
 
   /*
    * The line the walk quotes: an individual base return, priced, shown on quotes, carrying a
@@ -118,12 +127,12 @@ export async function buildPathB(app: FastifyInstance, deps: PathBDeps): Promise
   if (!addOn) throw new Error('Path B needs an individual-tax add-on without a deposit in the price book in force');
 
   /** The links a request left with the mailer, taken back out so E2E_READY's own slice is untouched. */
-  const tokensFrom = async (request: () => Promise<number>): Promise<string[]> => {
+  const tokensFrom = async (request: () => Promise<number>): Promise<{ tokens: string[]; links: string[] }> => {
     const before = magicTokens.length;
     const status = await request();
     if (status >= 300) throw new Error(`Path B: a sign-in link was refused with ${status}`);
     await drainOutbox();
-    return magicTokens.splice(before);
+    return { tokens: magicTokens.splice(before), links: magicLinks.splice(before) };
   };
 
   const people: Partial<Record<'phone' | 'desk', PathBPerson>> = {};
@@ -146,23 +155,32 @@ export async function buildPathB(app: FastifyInstance, deps: PathBDeps): Promise
       });
       return r.statusCode;
     });
+    // A MIGRATED CLIENT (2026-09-20): the portal account on one synthetic address, the contact
+    // record on another. The spare is asked for with the portal address, the one a request matches.
+    const portalEmail = who.email.replace('@', '-portal@');
+    const contactEmail = who.email.replace('@', '-contact@');
+    await makeMigrated(contact.id, portalEmail, contactEmail);
     const spare = await tokensFrom(async () => {
-      const r = await app.inject({ method: 'POST', url: '/portal/auth/magic/request', payload: { email: who.email } });
+      const r = await app.inject({ method: 'POST', url: '/portal/auth/magic/request', payload: { email: portalEmail } });
       return r.statusCode;
     });
-    const portalMagicTokens = [...granted, ...spare];
+    const portalMagicTokens = [...granted.tokens, ...spare.tokens];
+    const portalMagicLinks = [...granted.links, ...spare.links];
     if (portalMagicTokens.length < 2) {
       throw new Error(`Path B: only ${portalMagicTokens.length} sign-in link(s) reached the mailer for ${who.lastName}`);
     }
 
     people[who.key] = {
       contactId: contact.id,
-      ownerEmail: who.email,
+      ownerEmail: contactEmail,
       firstName: who.firstName,
       lastName: who.lastName,
       ssnLast4: who.ssnLast4,
       state: STATE,
       portalMagicTokens,
+      portalMagicLinks,
+      portalEmail,
+      contactEmail,
     };
   }
 

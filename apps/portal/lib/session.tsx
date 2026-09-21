@@ -4,7 +4,7 @@
 // toggle persists to the contact record (MP: applied to all outbound comms).
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { api, isAuthed } from './api';
+import { api, clearAuthed, isAuthed, isPublicPath } from './api';
 import { translate, type DictKey, type Lang } from './i18n';
 
 export interface Me {
@@ -67,7 +67,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setNextEstimate(res.nextEstimate);
       setLangState(res.contact.language);
     } catch {
-      /* 401 handled by api() */
+      // A 401 off a public page redirected in api(). On a public page the stale marker is
+      // already cleared there; the page the person was emailed keeps rendering.
+      if (isPublicPath()) clearAuthed();
     } finally {
       setReady(true);
     }

@@ -17,6 +17,18 @@
 
 const AUTHED_KEY = 'saos_portal_authed';
 
+/*
+ * PUBLIC ROUTES NEVER REDIRECT (2026-09-20). These pages are reached from an emailed link and
+ * must render for the recipient whether or not a portal session exists: the token in the URL is
+ * the credential. A stale "signed in" marker on one of them — a session that lapsed since the
+ * last visit — used to send the reader to the sign-in request page before the page they were
+ * emailed had drawn. On a public path a 401 clears the marker and nothing else.
+ */
+export const PUBLIC_PATHS = ['/quote', '/pay', '/unsubscribe', '/transition', '/intake', '/auth/verify'] as const;
+export function isPublicPath(pathname: string = typeof window === 'undefined' ? '' : window.location.pathname): boolean {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`) || pathname.startsWith(`${p}?`));
+}
+
 function store(): Storage | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -90,7 +102,8 @@ export async function api<T>(
   const res = await fetch(`/api${path}`, { method: opts.method ?? 'GET', headers, ...(body !== undefined ? { body } : {}) });
   if (res.status === 401 && !path.startsWith('/portal/auth/')) {
     clearAuthed();
-    window.location.href = '/login';
+    // A public page keeps rendering for the recipient; every other page goes to sign in.
+    if (!isPublicPath()) window.location.href = '/login';
     throw new ApiError(401, 'unauthorized', 'Session expired');
   }
   const json = (await res.json().catch(() => ({}))) as { error?: string; message?: string };

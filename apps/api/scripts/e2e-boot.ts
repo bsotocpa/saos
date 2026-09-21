@@ -13,6 +13,7 @@ import { buildServer } from '../src/server.ts';
 import { createTestConfig, makeContact, makeStaff } from '../test/helpers.ts';
 import { waiveStripeCheck } from '../src/modules/billing/drift.ts';
 import type { Mailer } from '../src/mailer.ts';
+import { hashToken } from '../src/crypto.ts';
 import { createQuote, sendQuote, acceptQuote } from '../src/modules/pricing/quotes.ts';
 import { createInvoice, markInvoicePaid } from '../src/modules/billing/service.ts';
 import { voidInvoice } from '../src/modules/billing/void.ts';
@@ -32,6 +33,22 @@ import { buildPathB } from './e2e-fixtures/path-b.ts';
 const PORT = Number(process.env.E2E_API_PORT ?? 3101);
 const TOTP_SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
 
+/*
+ * THE REFUND CONTROL IS ON IN THE HARNESS (2026-09-20). Production ships the switch OFF until the
+ * adapter's real refund call is proven; the harness taps BOTH states, so its fixture state is ON and
+ * the off-state spec flips it through /harness/refund-control below, and back. Set before the config
+ * is parsed, so a bare `node --experimental-strip-types scripts/e2e-boot.ts` boots the same way.
+ */
+process.env.OPS_REFUND_CONTROL = 'on';
+// The redesigned quote builder (2026-09-20): production defaults to v1 until Brian approves the
+// screenshots; the harness taps v2, and the switch spec flips to v1 through /harness/quote-builder.
+process.env.OPS_QUOTE_BUILDER = 'v2';
+/*
+ * THE EMAILED HREF IS THE ONE THE SPEC FOLLOWS (2026-09-20). Every portal link the mailer sees is
+ * kept whole, and it must point at the harness portal, so the base URL is the harness port before
+ * the config is read: a spec navigates to what the client was emailed, never to a URL it assembled.
+ */
+process.env.PORTAL_BASE_URL = `http://localhost:${process.env.E2E_PORTAL_PORT ?? 3106}`;
 const config = await createTestConfig('e2e');
 if (!/localhost|127\.0\.0\.1/.test(config.DATABASE_URL)) throw new Error('refusing: the harness database is not local');
 /*
@@ -47,14 +64,17 @@ const magicTokens: string[] = [];
  * sign-in link: the harness reads what the client was emailed, not a token out of the database.
  */
 const quoteTokens: string[] = [];
+/** The same links, whole, as they stand in the message: what a spec puts in the address bar. */
+const magicLinks: string[] = [];
+const quoteLinks: string[] = [];
 const silentMailer: Mailer = {
   transport: 'console',
   async send(msg) {
     const body = `${msg.subject ?? ''} ${msg.text ?? ''} ${msg.html ?? ''}`;
-    const found = /[?&]token=([A-Za-z0-9_-]+)/.exec(body);
-    if (found) magicTokens.push(found[1]!);
-    const quote = /\/quote\/([A-Za-z0-9_-]{20,})/.exec(body);
-    if (quote) quoteTokens.push(quote[1]!);
+    const found = /(https?:\/\/\S+\/auth\/verify\?token=([A-Za-z0-9_-]+))/.exec(body);
+    if (found) { magicTokens.push(found[2]!); magicLinks.push(found[1]!); }
+    const quote = /(https?:\/\/\S+\/quote\/([A-Za-z0-9_-]{20,}))/.exec(body);
+    if (quote) { quoteTokens.push(quote[2]!); quoteLinks.push(quote[1]!); }
     return { id: 'e2e' };
   },
 };
@@ -65,7 +85,64 @@ const app = buildServer(config, { mailer: silentMailer });
  * Registered before ready(), served on the harness API port, and it exists only in this script —
  * nothing in apps/api/src knows about it, and the boot has already refused a non-local database.
  */
-app.get('/harness/mail-links', async () => ({ quoteTokens, magicTokens }));
+app.get('/harness/mail-links', async () => ({ quoteTokens, magicTokens, quoteLinks, magicLinks }));
+/*
+ * THE MIGRATED CLIENT (Brian, 2026-09-20). A client who came over from the old system signs in
+ * with the address their portal account was made on; the contact record carries the corrected one.
+ * Nothing in the app sets a portal address apart from the contact's, so the harness does it here,
+ * by SQL, the way the migration left them: portal email first, then the contact email, both
+ * synthetic. A door for the specs that need one of their own, and the same function for the
+ * fixtures below. Harness only: this script, a local database, no route under apps/api/src.
+ */
+async function makeMigrated(contactId: string, portalEmail: string, contactEmail: string): Promise<void> {
+  const { rowCount } = await app.db.query(`UPDATE portal_users SET email = $2 WHERE contact_id = $1`, [contactId, portalEmail]);
+  if (!rowCount) throw new Error('makeMigrated: the contact has no portal user yet (grant access first)');
+  await app.db.query(`UPDATE contacts SET email = $2 WHERE id = $1`, [contactId, contactEmail]);
+}
+app.post<{ Body: { contactId: string; portalEmail: string; contactEmail: string } }>('/harness/migrated-client', async (request) => {
+  const b = request.body;
+  await makeMigrated(b.contactId, b.portalEmail, b.contactEmail);
+  return { migrated: true };
+});
+/** Whether a sign-in link has been spent: the spec asserts a bare load spends nothing. */
+app.get<{ Params: { token: string } }>('/harness/magic-link/:token', async (request) => {
+  const { rows } = await app.db.query<{ used: boolean }>(`SELECT used_at IS NOT NULL AS used FROM magic_link_tokens WHERE token_hash = $1`, [hashToken(request.params.token)]);
+  return { found: rows.length > 0, used: rows[0]?.used ?? null };
+});
+/**
+ * Every portal session of a contact ends now; the browser's own marker is left alone. Revoked as
+ * well as lapsed: the app's sliding renewal (client-auth.ts) writes expires_at back a moment after
+ * a request that found the session live, and that write raced this door on the phone project. A
+ * revocation is never rewritten, so the end is final the moment this answers.
+ */
+app.post<{ Body: { contactId: string } }>('/harness/portal-sessions/expire', async (request) => {
+  const { rowCount } = await app.db.query(
+    `UPDATE portal_sessions SET expires_at = now() - interval '1 second', revoked_at = now()
+      WHERE portal_user_id IN (SELECT id FROM portal_users WHERE contact_id = $1) AND revoked_at IS NULL AND expires_at > now()`,
+    [request.body.contactId]
+  );
+  return { expired: rowCount ?? 0 };
+});
+/*
+ * THE SWITCH, FLIPPED IN MEMORY (2026-09-20). One API process serves every spec; the off-state taps
+ * need the Refund control OFF for their own test and ON again for everything after. The body is the
+ * state, the answer is the state now held. Harness only: this route exists in this script and nowhere
+ * under apps/api/src, so production cannot register it.
+ */
+app.post<{ Body: { state?: unknown } }>('/harness/refund-control', async (request) => {
+  const state = (request.body as { state?: unknown } | null)?.state;
+  if (state !== 'on' && state !== 'off') throw new Error('state must be on or off');
+  app.switches.opsRefundControl = state;
+  return { opsRefundControl: app.switches.opsRefundControl };
+});
+// The quote builder's version, flipped the same way: the switch spec taps v1 (the chip builder
+// production runs) and v2 (the redesign) from one API process.
+app.post<{ Body: { version?: unknown } }>('/harness/quote-builder', async (request) => {
+  const version = (request.body as { version?: unknown } | null)?.version;
+  if (version !== 'v1' && version !== 'v2') throw new Error('version must be v1 or v2');
+  app.switches.quoteBuilder = version;
+  return { quoteBuilder: app.switches.quoteBuilder };
+});
 await app.ready();
 
 // The staff member who walks the page.
@@ -294,14 +371,23 @@ async function buildScorp(who: { email: string; lastName: string }, entity: { na
   });
   if (granted.statusCode >= 300) throw new Error(`portal access for the S corp owner was refused: ${granted.statusCode} ${granted.body}`);
   await drainOutbox(app);
+  /*
+   * A MIGRATED CLIENT (2026-09-20): the portal account answers to one synthetic address, the
+   * contact record to another. The two spare links are asked for with the PORTAL address, the one
+   * a request matches; the contact address would match no account and raise the Ops alert instead.
+   */
+  const portalEmail = who.email.replace('@', '-portal@');
+  const contactEmail = who.email.replace('@', '-contact@');
+  await makeMigrated(scorpOwner.id, portalEmail, contactEmail);
   for (let i = 0; i < 2; i++) {
-    const asked = await app.inject({ method: 'POST', url: '/portal/auth/magic/request', payload: { email: scorpOwner.email } });
+    const asked = await app.inject({ method: 'POST', url: '/portal/auth/magic/request', payload: { email: portalEmail } });
     if (asked.statusCode !== 200) throw new Error(`the S corp owner's sign-in link was refused: ${asked.statusCode} ${asked.body}`);
     await drainOutbox(app);
   }
   const scorpMagicTokens = magicTokens.splice(firstToken);
+  const scorpMagicLinks = magicLinks.splice(firstToken);
   if (scorpMagicTokens.length < 3) throw new Error(`only ${scorpMagicTokens.length} sign-in link(s) reached the mailer for ${who.email} — the walk needs three`);
-  return { scorpOwner, scorpBusinessId, scorpMagicTokens };
+  return { scorpOwner, scorpBusinessId, scorpMagicTokens, scorpMagicLinks, portalEmail, contactEmail };
 }
 const S = await buildScorp({ email: 'scorpowner@example.test', lastName: 'Scorpowner' }, { name: 'Harness S Corp, LLC', ein: '55-5555555' });
 const D = await buildScorp({ email: 'scorpowner-desk@example.test', lastName: 'Scorpdesk' }, { name: 'Harness Desk Corp, LLC', ein: '55-5555556' });
@@ -332,7 +418,7 @@ for (let i = 0; i < 2; i++) {
 if (magicTokens.length < 2) throw new Error(`only ${magicTokens.length} sign-in link(s) reached the mailer — page two cannot log in twice`);
 
 // Path B (the 1040 on extension) is built by its own module; null until that track lands.
-const pathB = await buildPathB(app, { staffToken, magicTokens, drainOutbox: () => drainOutbox(app), preparer: { id: anamaria.id, name: anamaria.fullName } });
+const pathB = await buildPathB(app, { staffToken, magicTokens, magicLinks, makeMigrated, drainOutbox: () => drainOutbox(app), preparer: { id: anamaria.id, name: anamaria.fullName } });
 await app.listen({ port: PORT, host: '127.0.0.1' });
 // The harness API runs no scheduler (that is index.ts's job). The outbox fast lane is what a person
 // waits on after a release, so the harness drains it every two seconds, the way the box does every minute.
@@ -351,9 +437,15 @@ const scorpFixture = (x: Awaited<ReturnType<typeof buildScorp>>, entityName: str
   markers: { business, document: 'HARNESS-SCORP-BANK-STATEMENT.pdf', returnFile: 'HARNESS-SCORP-1120S-RETURN.pdf' },
   entityName, einLast4, taxYear: scorpTaxYear,
   preparer: { id: anamaria.id, name: anamaria.fullName },
-  ownerEmail: x.scorpOwner.email,
+  /** The CONTACT address (2026-09-20): the one the Ops search finds; the portal account answers to portalEmail. */
+  ownerEmail: x.contactEmail,
   /** Single use, one per spec: [0] the dry run's portal turn (A3), [1] My Returns (A5), [2] the checkout walk. */
   portalMagicTokens: x.scorpMagicTokens,
+  /** The same three links whole, as emailed: the walk navigates to [0] and presses Sign in. */
+  portalMagicLinks: x.scorpMagicLinks,
+  /** The migrated client's two addresses: the portal account's and the contact record's. */
+  portalEmail: x.portalEmail,
+  contactEmail: x.contactEmail,
   invoiceItemCode: small.item_code,
   webhookSecret: config.WEBHOOK_SECRET,
   apiPort: PORT,

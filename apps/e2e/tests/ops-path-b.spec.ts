@@ -50,9 +50,10 @@ const root = resolve(here, '..', '..', '..');
 interface Persona { email: string; password: string; totpSecret: string }
 interface PathBPerson {
   contactId: string; ownerEmail: string; firstName: string; lastName: string;
-  ssnLast4: string; state: string; portalMagicTokens: string[];
+  ssnLast4: string; state: string; portalMagicTokens: string[]; portalMagicLinks: string[];
 }
 const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+  port?: number;
   staff: Persona;
   portalPort?: number;
   pathB: {
@@ -125,14 +126,19 @@ async function signInStaff(page: Page, who: Persona): Promise<void> {
 }
 
 /** The client's own way in: the link they were emailed, redeemed. Single use, so once per run. */
-async function signInPortal(page: Page, token: string): Promise<void> {
-  await page.goto(`${PORTAL}/login`);
-  const status = await page.evaluate(async (t) => {
-    const r = await fetch('/api/portal/auth/magic/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: t }) });
-    localStorage.setItem('saos_portal_authed', '1');
-    return r.status;
-  }, token);
-  expect(status, 'redeeming the sign-in link the client was emailed').toBe(200);
+/**
+ * The sign-in link the client was emailed, FOLLOWED (2026-09-20): the href as it stood in the
+ * message goes in the address bar, and the one button on that page spends it — never the load.
+ */
+async function signInPortal(page: Page, href: string): Promise<void> {
+  await page.goto(href);
+  await page.getByTestId('verify-press').click();
+  await page.waitForURL((u) => new URL(u).pathname === '/');
+}
+/** The proposal links the harness mailer has seen so far, whole, as emailed. */
+async function quoteLinksSoFar(): Promise<string[]> {
+  const r = await fetch(`http://127.0.0.1:${fixtures.port ?? 3101}/harness/mail-links`);
+  return ((await r.json()) as { quoteLinks: string[] }).quoteLinks;
 }
 
 /** A read of the API from the signed-in session, for state the screen does not print. */
@@ -222,6 +228,19 @@ test.describe('Path B', () => {
       await expect(page.getByRole('link', { name: rx(fullName) }).first(), 'the person the fixture inserted is findable').toBeVisible();
       steps.push(`B1|this walk's person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts; the "Add a client" tap is cleared in ops-add-client.spec.ts|${ROLES.quote}|fixture`);
 
+      // ── B1b. EDIT AFTER CREATE (2026-09-20): the fixture entered the person with no phone; it is
+      //    filled in through the contact card's Edit door, the way the front desk would after the call.
+      await page.goto(clientPage);
+      const contactCard = page.locator('section.card', { has: page.getByRole('heading', { name: /^Contact/ }) });
+      await expect(contactCard, 'the fixture left no phone').toContainText('no phone');
+      await contactCard.getByTestId('edit-contact').click();
+      const phoneTyped = viewport === 'phone' ? '(312) 555-0611' : '(312) 555-0612';
+      await contactCard.getByLabel(/^Phone/).fill(phoneTyped);
+      await contactCard.getByRole('button', { name: 'Save' }).click();
+      await expect(page.getByText('Saved.')).toBeVisible();
+      await expect(contactCard, 'the phone is on the card').toContainText(phoneTyped);
+      testInfo.annotations.push({ type: 'edit-door', description: `contact|/clients/:id Contact card, button "Edit", input Phone, button "Save"|ceo, comms_billing (contacts.write)|tap` });
+
       // ── B2. THE QUOTE, built from the price book and sent ───────────────────────────────
       await page.goto('/pipeline');
       await page.getByRole('button', { name: 'New quote' }).click();
@@ -229,38 +248,45 @@ test.describe('Path B', () => {
       const chip = page.getByRole('button', { name: fullName, exact: true });
       await expect(chip).toBeVisible();
       await chip.click();
+      // The catalog is grouped rows (2026-09-20): the filter finds the line, the row's Add puts it on the quote.
       for (const line of [pathB!.item.name, pathB!.addOn.name]) {
-        await page.getByPlaceholder('Filter the price book').fill(line);
-        const lineChip = page.getByRole('button', { name: rx(line) }).first();
-        await expect(lineChip, `${line} is in the price book in force`).toBeVisible();
-        await lineChip.click();
+        await page.getByPlaceholder('Filter by name, form number or group').fill(line);
+        const bookRow = page.locator('.qb-row', { hasText: rx(line) }).first();
+        await expect(bookRow, `${line} is in the price book in force`).toBeVisible();
+        await bookRow.getByRole('button', { name: /^Add / }).click();
+        await expect(page.locator('table.qb-lines'), 'the line is on "This quote"').toContainText(line);
       }
-      await expect(page.getByText(/summed from the lines. price-book deposits/), 'the base line carries a deposit, so acceptance has one to invoice').toBeVisible();
+      const depositRow = page.locator('.qb-total-row', { hasText: 'Deposit' });
+      await expect(depositRow, 'the base line carries a deposit, so acceptance has one to invoice').toBeVisible();
+      await expect(depositRow, 'summed from the price-book deposits of the lines').not.toContainText('none');
       await expect(page.getByText(/Tax year —/), 'the year the return is for, from the server').toBeVisible();
       /*
        * THE FEE THE WORK IS WORTH, read off the builder rather than typed: the committed total of
        * the two lines is what the preparer will record as the final fee at B13. The price never
        * leaves the price book — this is the figure the screen computed from it.
        */
-      const committedLine = await page.getByText(/Committed total:/).innerText();
+      // The Subtotal row is the committed total of the lines (the builder's summary.committedCents).
+      const committedLine = await page.locator('.qb-total-row', { hasText: 'Subtotal' }).innerText();
       const committedCents = Math.round(Number(/\$([\d,]+\.\d{2})/.exec(committedLine)![1]!.replace(/,/g, '')) * 100);
       expect(committedCents, `the builder's committed total: ${committedLine}`).toBeGreaterThan(0);
+      const linksBefore = (await quoteLinksSoFar()).length;
       await page.getByRole('button', { name: 'Create and send' }).click();
       const sent = page.locator('[role=dialog]');
       await expect(page.getByRole('heading', { name: `Quote sent to ${fullName}` })).toBeVisible();
-      const quoteUrl = (await sent.locator('code').first().innerText()).trim();
-      const quoteToken = quoteUrl.split('/').pop()!;
-      expect(quoteToken.length, 'the proposal link the client was emailed').toBeGreaterThan(20);
+      // The link the CLIENT was emailed, out of the harness mailer — not the one the dialog prints.
+      const freshLinks = (await quoteLinksSoFar()).slice(linksBefore);
+      expect(freshLinks.length, 'the proposal email reached the harness mailer with its link').toBeGreaterThan(0);
+      const quoteHref = freshLinks[freshLinks.length - 1]!;
       await sent.getByRole('button', { name: 'Dismiss' }).click();
-      steps.push(`B2|/pipeline button "New quote" → "Client or lead" search + the client's chip → "Filter the price book" + the price-book chips for the base return and its schedule → button "Create and send"|${ROLES.quote}|tap`);
+      steps.push(`B2|/pipeline button "New quote" → "Client or lead" search + the client's chip → "Filter by name, form number or group" + the price-book rows' "Add" for the base return and its schedule → button "Create and send"|${ROLES.quote}|tap`);
 
       // ── B3. ACCEPTED, AND THE DEPOSIT PAID ─────────────────────────────────────────────
-      await page.goto(`${PORTAL}/quote/${quoteToken}`);
+      await page.goto(quoteHref);
       await expect(page.getByRole('heading', { name: COPY.quoteTitle })).toBeVisible();
       await expect(page.getByText(/Deposit/).first(), 'the client reads the deposit before accepting').toBeVisible();
       await page.getByRole('button', { name: COPY.accept }).click();
       await expect(page.getByRole('heading', { name: COPY.accepted })).toBeVisible();
-      await signInPortal(page, who.portalMagicTokens[0]!);
+      await signInPortal(page, who.portalMagicLinks[0]!);
       const depositInvoiceId = await payTap();
       await payEvent(depositInvoiceId, 'deposit');
       steps.push(`B3|portal /quote/:token button "${COPY.accept}" → portal /invoices button "${COPY.pay}" → the Checkout URL the stub adapter returns (intercepted; never loaded)|${ROLES.client}|tap`);
@@ -606,7 +632,7 @@ test.describe('Path B', () => {
       steps.push(`B11|/clients/:id Returns card, the completed return's row: jurisdiction-line-${who.state} reads "Mailed <date> · USPS certified (tracked) · <tracking>" and jurisdiction-line-federal reads "Accepted <date>"|${ROLES.returnControls}|tap`);
 
       // ── B14. THE FINAL INVOICE PAID ───────────────────────────────────────────────────
-      await signInPortal(page, who.portalMagicTokens[1]!);
+      await signInPortal(page, who.portalMagicLinks[1]!);
       const paidId = await payTap();
       expect(paidId, 'the invoice the client paid is the final-fee invoice').toBe(String(finalInvoice!.id));
       await payEvent(paidId, 'final');

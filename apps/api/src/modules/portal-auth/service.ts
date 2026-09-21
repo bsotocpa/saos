@@ -10,6 +10,7 @@ import { sendTemplatedEmail } from '../templates/service.ts';
 import { AppError } from '../../types.ts';
 import { notifyOnce, ownerForRole, alertRecipientForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
+import { withTransaction } from '../../db.ts';
 
 interface RequestMeta {
   ip?: string | null;
@@ -305,13 +306,88 @@ export async function recordUnknownSignInAttempt(
     sourceId: contact.id,
   });
 
+  /*
+   * AND AN OPS ALERT (2026-09-20). The task alone sat in a queue; a client at the door is a
+   * person waiting now. One alert per task, to the same recipient, so a client retrying is
+   * still one problem. No name and no address on the alert line: the task it points at
+   * carries the client.
+   */
+  if (rene) {
+    await notifyOnce(app.db, {
+      staffId: rene,
+      type: 'portal_access_blocked',
+      severity: 'warning',
+      title: contact.has_user
+        ? 'A client asked for a sign-in link on an address that is not their portal address'
+        : 'A client asked for a sign-in link and has no portal account yet',
+      contactId: contact.id,
+      relatedObjectType: 'task',
+      relatedObjectId: created.id,
+    });
+  }
+
   await writeAudit(app.db, {
     actorType: 'system',
     action: 'portal.signin_blocked',
     objectType: 'contact',
     objectId: contact.id,
     contactId: contact.id,
-    details: { has_portal_user: contact.has_user, task_created: created.created },
+    details: { has_portal_user: contact.has_user, task_created: created.created, alerted: rene !== null },
   });
   return { known: true };
+}
+
+/**
+ * MAKE THE SIGN-IN ADDRESS THE CONTACT ADDRESS (2026-09-20).
+ *
+ * A migrated client signs in with the address their portal account was made on; the contact
+ * record can carry another one, corrected since. Every link the system emails goes to the
+ * contact address, and a sign-in request typed with it matches no account. This is the one
+ * control that ends that: the portal user's email becomes the contact's, in one statement,
+ * refused when another portal user already signs in with it (the login address is unique).
+ * The audit line names the field, never an address.
+ */
+export async function alignPortalEmail(
+  app: FastifyInstance,
+  contactId: string,
+  actor: { id: string; fullName: string },
+  meta: RequestMeta = {}
+): Promise<{ aligned: boolean }> {
+  return withTransaction(app.db, async () => {
+    const { rows } = await app.db.query<{ portal_user_id: string | null; contact_email: string | null; portal_email: string | null }>(
+      `SELECT u.id AS portal_user_id, c.email AS contact_email, u.email AS portal_email
+         FROM contacts c LEFT JOIN portal_users u ON u.contact_id = c.id
+        WHERE c.id = $1
+        FOR UPDATE OF c`,
+      [contactId]
+    );
+    const row = rows[0];
+    if (!row) throw new AppError(404, 'contact_not_found', 'Contact not found.');
+    if (!row.portal_user_id) throw new AppError(404, 'portal_user_not_found', 'This client has no portal account to change.');
+    if (!row.contact_email) throw new AppError(400, 'contact_has_no_email', 'The contact has no email address to sign in with.');
+    if (row.portal_email !== null && row.portal_email.toLowerCase() === row.contact_email.toLowerCase()) {
+      throw new AppError(409, 'already_aligned', 'The sign-in address already matches the contact email.');
+    }
+    const taken = await app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM portal_users WHERE email = $1 AND id <> $2`,
+      [row.contact_email, row.portal_user_id]
+    );
+    if (taken.rows[0]!.n > 0) {
+      throw new AppError(409, 'portal_email_taken', 'Another portal account already signs in with the contact email. Change one of the two addresses first.');
+    }
+    await app.db.query(`UPDATE portal_users SET email = $2 WHERE id = $1`, [row.portal_user_id, row.contact_email]);
+    await writeAudit(app.db, {
+      actorType: 'staff',
+      actorId: actor.id,
+      actorLabel: actor.fullName,
+      action: 'portal_user.email_aligned',
+      objectType: 'portal_user',
+      objectId: row.portal_user_id,
+      contactId,
+      ip: meta.ip ?? null,
+      userAgent: meta.userAgent ?? null,
+      details: { field: 'email', source: 'contact.email' },
+    });
+    return { aligned: true };
+  });
 }

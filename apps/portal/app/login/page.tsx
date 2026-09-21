@@ -18,7 +18,9 @@ export default function LoginPage() {
         <p className="alert info">{t('login_sent')}</p>
       ) : (
         <>
-          <p className="muted">{t('login_intro')}</p>
+          <p className="muted">
+            {t('login_intro')} {t('login_same_address')}
+          </p>
           <form
             onSubmit={async (e) => {
               e.preventDefault();

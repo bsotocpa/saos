@@ -20,15 +20,16 @@ const NAV: Array<{ href: string; key: 'nav_home' | 'nav_documents' | 'nav_return
 ];
 
 export function Shell({ children }: { children: ReactNode }) {
-  const { t, lang, setLang } = useSession();
+  const { t, lang, setLang, ready } = useSession();
   const pathname = usePathname();
   const router = useRouter();
   // Auth state resolves in an effect: the server always renders the
-  // unauthenticated shell, so hydration never mismatches.
+  // unauthenticated shell, so hydration never mismatches. It is read again once the
+  // session has answered, so a marker cleared on a public page takes the nav with it.
   const [authed, setAuthed] = useState(false);
   useEffect(() => {
     setAuthed(isAuthed());
-  }, [pathname]);
+  }, [pathname, ready]);
 
   return (
     <>

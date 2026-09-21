@@ -57,7 +57,7 @@ interface Scorp {
   contactId: string; businessId: string; itemCode: string;
   markers: { business: string; document: string; returnFile: string };
   entityName: string; einLast4: string; taxYear: number; preparer: { id: string; name: string };
-  ownerEmail: string; portalMagicTokens: string[];
+  ownerEmail: string; portalMagicTokens: string[]; portalMagicLinks: string[];
   webhookSecret: string; apiPort: number;
 }
 const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
@@ -84,15 +84,15 @@ async function signIn(page: Page, who: Persona): Promise<void> {
   }, { email: who.email, password: who.password, totp: code });
   expect(status, `${who.email} signs in`).toBe(200);
 }
-/** The client's own way in: the single-use link the portal emailed them, redeemed on the portal origin. */
-async function signInPortal(page: Page, token: string): Promise<void> {
-  await page.goto(`${PORTAL}/login`);
-  const status = await page.evaluate(async (t) => {
-    const r = await fetch('/api/portal/auth/magic/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: t }) });
-    localStorage.setItem('saos_portal_authed', '1');
-    return r.status;
-  }, token);
-  expect(status, 'the owner redeems the sign-in link they were emailed').toBe(200);
+/**
+ * The client's own way in: the single-use link the portal emailed them, FOLLOWED (2026-09-20) —
+ * the address bar gets the href as it stood in the message, and the link is spent by the one
+ * button on that page, never by the load.
+ */
+async function signInPortal(page: Page, href: string): Promise<void> {
+  await page.goto(href);
+  await page.getByTestId('verify-press').click();
+  await page.waitForURL((u) => new URL(u).pathname === '/');
 }
 /** A read of the API from the signed-in session, for assertions on state the screen does not print. */
 async function read(page: Page, path: string): Promise<Record<string, unknown>> {
@@ -104,9 +104,9 @@ async function read(page: Page, path: string): Promise<Record<string, unknown>> 
  * mailer keeps every link it has seen and serves them on the harness port; the spec takes the ones
  * that arrived after it pressed Send, which is the client's copy and nothing else.
  */
-async function quoteTokensSoFar(): Promise<string[]> {
+async function quoteLinksSoFar(): Promise<string[]> {
   const r = await fetch(`${API}/harness/mail-links`);
-  return ((await r.json()) as { quoteTokens: string[] }).quoteTokens;
+  return ((await r.json()) as { quoteLinks: string[] }).quoteLinks;
 }
 function keepScreenshot(name: string, passed: boolean, file: string): string {
   const dir = passed ? resolve(here, '..', '.artifacts', today) : resolve(root, 'tasks', 'walks', today);
@@ -143,7 +143,24 @@ test.describe('The 1120S dry run', () => {
       // ── 2. THE QUOTE, on /pipeline: the business-tax line against the S corp's entity, the
       //    deposit waived with a reason typed in its own panel, then sent to the client.
       await signIn(page, fixtures.staff);
-      const tokensBefore = (await quoteTokensSoFar()).length;
+
+      // ── 1b. EDIT AFTER CREATE (2026-09-20): the fixture entered the S corporation with its EIN and
+      //    nothing else; the formation date and the industry are filled in through the row's Edit door.
+      await page.goto(clientPage);
+      const bizRow = page.locator('section.card', { has: page.getByRole('heading', { name: 'Businesses' }) }).locator('div.lead-card', { hasText: scorp.entityName }).first();
+      await expect(bizRow, 'the S corporation is on the card').toContainText('EIN on file');
+      await bizRow.getByRole('button', { name: 'Edit' }).click();
+      const editBiz = page.locator('#edit-business-form');
+      await expect(editBiz).toBeVisible();
+      await editBiz.getByLabel(/Formation date/).fill('2018-03-09');
+      await editBiz.getByLabel(/Industry/).fill('professional_services');
+      await page.getByRole('button', { name: 'Save business' }).click();
+      await expect(page.getByText('Business saved.')).toBeVisible();
+      await expect(bizRow, 'the formation date is on the card').toContainText('formed Mar 9, 2018');
+      await expect(bizRow, 'and the industry').toContainText('professional_services');
+      testInfo.annotations.push({ type: 'edit-door', description: `business|/clients/:id Businesses card, button "Edit" on the row, form#edit-business-form, button "Save business"|ceo (contacts.write); va_entity (businesses.write)|tap` });
+
+      const tokensBefore = (await quoteLinksSoFar()).length;
       await page.goto('/pipeline');
       await page.getByRole('button', { name: 'New quote' }).click();
       const builder = page.locator('section.card', { has: page.getByRole('heading', { name: 'Build a quote' }) });
@@ -153,10 +170,12 @@ test.describe('The 1120S dry run', () => {
       await expect(candidate, 'the owner is found by the address the proposal will go to').toBeVisible();
       await candidate.click();
       await builder.getByLabel(/^Business/).selectOption(scorp.businessId);
-      await builder.getByPlaceholder('Filter the price book').fill(scorp.itemCode);
-      const bookLine = builder.locator('button.chip', { hasText: '1120-S' }).first();
-      await expect(bookLine, 'the 1120S line is in the price book in force').toBeVisible();
-      await bookLine.click();
+      // The catalog is grouped rows (2026-09-20): the filter finds the form number, the row's Add puts it on the quote.
+      await builder.getByPlaceholder('Filter by name, form number or group').fill(scorp.itemCode);
+      const bookRow = builder.locator('.qb-row', { hasText: '1120-S' }).first();
+      await expect(bookRow, 'the 1120S line is in the price book in force').toBeVisible();
+      await bookRow.getByRole('button', { name: /^Add / }).click();
+      await expect(builder.locator('table.qb-lines'), 'the line is on "This quote"').toContainText('1120-S');
       await expect(builder.getByText(/Tax year —/), 'the builder names the year the return is for').toBeVisible();
       await expect(builder.locator('.builder-summary'), "the summary carries the line's price-book deposit").toContainText('Deposit');
       await builder.getByRole('button', { name: 'Save as draft' }).click();
@@ -178,12 +197,13 @@ test.describe('The 1120S dry run', () => {
       await expect(sentModal).toBeVisible();
       await expect(sentModal, 'the confirmation names what the client will be asked for').toContainText('Deposit waived');
       await sentModal.getByRole('button', { name: 'Dismiss' }).click();
-      steps.push(`A2|/pipeline button "New quote" → client search, "Business" select, price-book chip ${scorp.itemCode}, "Save as draft", "Waive deposit…" (reason), "Waive deposit", "Send to client"|ceo (quotes.manage + deposits.override)|tap`);
+      steps.push(`A2|/pipeline button "New quote" → client search, "Business" select, price-book row ${scorp.itemCode} "Add", "Save as draft", "Waive deposit…" (reason), "Waive deposit", "Send to client"|ceo (quotes.manage + deposits.override)|tap`);
 
       // ── 3a. THE CLIENT ACCEPTS, on the link the proposal emailed them.
-      const fresh = (await quoteTokensSoFar()).slice(tokensBefore);
+      const fresh = (await quoteLinksSoFar()).slice(tokensBefore);
       expect(fresh.length, 'the proposal email reached the harness mailer with its link').toBeGreaterThan(0);
-      await page.goto(`${PORTAL}/quote/${fresh[fresh.length - 1]}`);
+      // The href as emailed, and the recipient is a migrated client with a portal account: no session, no redirect.
+      await page.goto(fresh[fresh.length - 1]!);
       await expect(page.getByRole('heading', { name: 'Your proposal' })).toBeVisible();
       const proposal = await page.evaluate(() => document.body.innerText);
       expect(proposal, 'the proposal names the return').toContain('1120-S');
@@ -239,7 +259,7 @@ test.describe('The 1120S dry run', () => {
       expect(beforeSignature.engagement_letter_signed_at, 'the new return carries no engagement letter yet').toBeNull();
 
       // ── 3b. THE CLIENT'S OWN SESSION: sign the agreement, answer the questionnaire, upload a document.
-      await signInPortal(page, scorp.portalMagicTokens[0]!);
+      await signInPortal(page, scorp.portalMagicLinks[0]!);
       await page.goto(`${PORTAL}/sign`);
       const packetCard = page.locator('section.card', { has: page.getByRole('heading', { name: 'Your engagement agreement' }) });
       await expect(packetCard).toBeVisible();
