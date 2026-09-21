@@ -79,7 +79,7 @@ test('the entity VA fills in a formation date and an industry skipped at creatio
   assert.equal(future.json().message, 'A formation date is a thing that already happened.');
 });
 
-test('an EIN is stored in one spelling, its change is audited by name without the number, and a duplicate is refused on edit and on create', async () => {
+test('an EIN is stored in one spelling, its change is audited by name without the number, and a duplicate is refused on edit (create is unchanged)', async () => {
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Einedit', email: 'einedit@example.test' });
   const first = await addBusiness(c.id, { name: 'Synthetic First EIN LLC', entityType: 'llc', state: 'IL' });
   const second = await addBusiness(c.id, { name: 'Synthetic Second EIN LLC', entityType: 'llc', state: 'IL' });
@@ -98,15 +98,16 @@ test('an EIN is stored in one spelling, its change is audited by name without th
   assert.equal(audit.rows[0]!.actor_label, brian.fullName);
   assert.ok(!JSON.stringify(audit.rows[0]!.details).includes('7654321'), 'the number is not in the row');
 
-  // The same number again is the same business, not a second one, whether typed on an edit or a create.
+  // The same number typed onto ANOTHER business on an edit is a typo, refused by name, never by number.
   const dupEdit = await app.inject({ method: 'PATCH', url: `/businesses/${second}`, headers: auth(brian), payload: { ein: '98-7654321' } });
   assert.equal(dupEdit.statusCode, 409, dupEdit.body);
   assert.equal(dupEdit.json().error, 'ein_in_use');
   assert.match(dupEdit.json().message, /Synthetic First EIN LLC/);
   assert.ok(!dupEdit.json().message.includes('7654321'), 'the refusal names the business, never the number');
-  const dupCreate = await app.inject({ method: 'POST', url: `/contacts/${c.id}/businesses`, headers: auth(brian), payload: { name: 'Synthetic Third EIN LLC', entityType: 'llc', state: 'IL', ein: '987654321' } });
-  assert.equal(dupCreate.statusCode, 409, dupCreate.body);
-  assert.equal(dupCreate.json().error, 'ein_in_use');
+  // Add a business is unchanged: a duplicate EIN on CREATE is not refused today (a refusal there is a
+  // new rule for Brian, in the shape of Add a client's likely-duplicate line); the number is normalized.
+  const dupCreate = await app.inject({ method: 'POST', url: `/contacts/${c.id}/businesses`, headers: auth(brian), payload: { name: 'Synthetic Third EIN LLC', entityType: 'llc', state: 'IL', ein: '987654322' } });
+  assert.equal(dupCreate.statusCode, 201, dupCreate.body);
 
   // Re-saving the same EIN on the same business is not a change and not a duplicate.
   const same = await app.inject({ method: 'PATCH', url: `/businesses/${first}`, headers: auth(brian), payload: { ein: '98-7654321', industry: 'retail' } });

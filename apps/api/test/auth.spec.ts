@@ -121,7 +121,9 @@ test('wrong password fails, wrong TOTP fails, correct pair logs in (all audited)
   // purpose: the wildcard deliberately does NOT confer it, so that Brian can hold
   // it while Jackson — who also has '*' — does not. See EXPLICIT_ONLY_PERMISSIONS
   // in plugins/auth.ts and deposit-override.spec.ts.
-  assert.deepEqual(me.json().permissions, ['*', 'deposits.override']);
+  // pricing.packages.save joined the explicit-only list on 2026-09-20 (R41): saving a package is
+  // Brian's alone, and the wildcard must not hand it to every '*' holder.
+  assert.deepEqual(me.json().permissions, ['*', 'deposits.override', 'pricing.packages.save']);
 });
 
 test('failed-login lockout engages at the limit and blocks even correct credentials', async () => {

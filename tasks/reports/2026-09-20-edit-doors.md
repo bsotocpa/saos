@@ -1,19 +1,19 @@
 # edit-doors (2026-09-20)
 
-Generated 2026-09-21T01:56:03.001Z by scripts/report-table.mjs from the log edit-doors.log; 37 row(s).
+Generated 2026-09-21T02:21:11.633Z by scripts/report-table.mjs from the log edit-doors.log; 37 row(s).
 
 Every entity with a create control has an edit control tapped at both viewports, or an explicit "immutable because" entry (R38); the guard scripts/check-edit-doors.mjs fails the root chain when a create route has no update route with a UI caller and the entity is not marked immutable.
 
 ```sql
-node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/modules joined with scripts/edit-doors.json; tapped columns from apps/e2e/.artifacts/last-run.json, the full harness run of 2026-09-20: 0 passed, 0 failed)
+node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/modules joined with scripts/edit-doors.json; tapped columns from apps/e2e/.artifacts/last-run.json, the full harness run of 2026-09-20: 65 passed, 0 failed)
 ```
 
 | entity | create route | update route | UI caller (file) | tapped phone | tapped desk | immutable because |
 |---|---|---|---|---|---|---|
-| contact | POST /contacts (apps/api/src/modules/crm/routes.ts:342) | PATCH /contacts/:id (apps/api/src/modules/crm/routes.ts:492) | apps/internal/app/clients/[id]/page.tsx | no | no |  |
-| business | POST /contacts/:id/businesses (apps/api/src/modules/crm/routes.ts:527) | PATCH /businesses/:id (apps/api/src/modules/crm/routes.ts:654) | apps/internal/components/edit-business.tsx | no | no |  |
-| staff member | POST /staff (apps/api/src/modules/staff/routes.ts:84) | PATCH /staff/:id (apps/api/src/modules/staff/routes.ts:114) | apps/internal/app/admin/staff/page.tsx | no | no |  |
-| task | POST /tasks (apps/api/src/modules/tasks/routes.ts:265) | PATCH /tasks/:id (apps/api/src/modules/tasks/routes.ts:291) | apps/internal/app/tasks/task-form.tsx | no | no |  |
+| contact | POST /contacts (apps/api/src/modules/crm/routes.ts:342) | PATCH /contacts/:id (apps/api/src/modules/crm/routes.ts:492) | apps/internal/app/clients/[id]/page.tsx | yes (apps/e2e/tests/ops-path-b.spec.ts:173) | yes (apps/e2e/tests/ops-path-b.spec.ts:173) |  |
+| business | POST /contacts/:id/businesses (apps/api/src/modules/crm/routes.ts:527) | PATCH /businesses/:id (apps/api/src/modules/crm/routes.ts:654) | apps/internal/components/edit-business.tsx | yes (apps/e2e/tests/ops-scorp-dry-run.spec.ts:132) | yes (apps/e2e/tests/ops-scorp-dry-run.spec.ts:132) |  |
+| staff member | POST /staff (apps/api/src/modules/staff/routes.ts:84) | PATCH /staff/:id (apps/api/src/modules/staff/routes.ts:114) | apps/internal/app/admin/staff/page.tsx | yes (apps/e2e/tests/ops-edit-doors.spec.ts:96) | yes (apps/e2e/tests/ops-edit-doors.spec.ts:96) |  |
+| task | POST /tasks (apps/api/src/modules/tasks/routes.ts:265) | PATCH /tasks/:id (apps/api/src/modules/tasks/routes.ts:291) | apps/internal/app/tasks/task-form.tsx | yes (apps/e2e/tests/ops-edit-doors.spec.ts:53) | yes (apps/e2e/tests/ops-edit-doors.spec.ts:53) |  |
 | quote | POST /quotes (apps/api/src/modules/pricing/quote-routes.ts:162) | — | create only: apps/internal/app/pipeline/page.tsx | — | — | immutable because edited by superseding: a draft is withdrawn with a reason and rebuilt; a sent quote pins its price-book version and is the client's to answer; a change to accepted work is a change-order quote |
 | engagement packet | POST /contacts/:id/packet (apps/api/src/modules/engagements/packet-routes.ts:52) | — | create only: apps/internal/app/clients/[id]/page.tsx | — | — | immutable because a document assembled from the record and signed as assembled; a change is a new packet, never an edit of one sent for signature |
 | invoice | POST /invoices (apps/api/src/modules/billing/routes.ts:39) | — | — | — | — | immutable because an issued document: voided or refunded through their own audited doors, never edited |

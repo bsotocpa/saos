@@ -535,8 +535,11 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       [contactId]
     );
     if (b.formationDate && calendarDay(b.formationDate, 'formationDate') > calendarDay(todayChicago(), 'today')) throw new AppError(400, 'formation_date_in_future', 'A formation date is a thing that already happened.');
+    // Add a business keeps its 2026-09-12 shape: the EIN is normalized to one spelling and NOT refused
+    // when another business holds it. A refusal here would be a new rule (Add a client shows the likely
+    // duplicate and offers Create anyway, R14); it is Brian's to rule. The EDIT door does refuse, because
+    // typing another business's EIN onto this one is a typo, not a second business.
     const ein = b.ein ? normalizeEin(b.ein) : null;
-    if (ein) await assertEinUnused(app, ein, null);
     const { rows } = await app.db.query<{ id: string }>(
       `INSERT INTO businesses (name, ein, entity_type, industry, naics_code, irs_activity_code,
                                years_in_business, revenue_range, employees_range, zip, state, fiscal_year_end_month,
