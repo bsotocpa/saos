@@ -244,13 +244,18 @@ export async function assertImportPreconditions(
  * separates the two, and the import pairs every one of these returns with a preparer task to
  * confirm the list against ATX. Until that task closes, the rows say "this came from an address".
  *
- * ── THE ONE REFUSAL ──
+ * ── THE METHOD IS THE YEAR'S LANE (R23 as amended by R31) ──
  *
- * CLAUDE.md, non-negotiable: "Never route an old year to e-file." R23 says the method is e-file,
- * which is right for a return whose ack is pending — that only happens electronically — but the
- * combination would break the hard rule if the card were for a year in the paper lane. Rather than
- * choose between a ruling and a hard rule, this refuses the row and says so, so the importer makes
- * it a preparer task instead. No old year gets an e-file jurisdiction written by an import.
+ * CLAUDE.md, non-negotiable: "Never route an old year to e-file." The first version of this refused
+ * any card whose tax year fell in the paper lane, because R23 named e-file as the method and a
+ * ruling does not outrank a hard rule. R31 resolves it the way the rest of SAOS already does: the
+ * method is DERIVED FROM THE YEAR (tax/resolution.ts filingLane — current + 2 prior e-file, older
+ * paper; the same derivation Mark filed and migration 0113 use). A paper-lane card is declared
+ * paper, flagged and paired with the same confirm task, and NO MAILING IS INVENTED: mailed_on and
+ * mailing_method stay null, because the card said "filed", not when or how it went in the mail.
+ * The preparer records the mailing when they confirm the list; until then the row reads as a paper
+ * jurisdiction nobody has mailed, which is the honest state. No old year gets an e-file row, and
+ * no old year is turned away for being old.
  */
 export interface ImportedJurisdictionsInput {
   taxEngagementId: string;
@@ -261,7 +266,7 @@ export async function declareImportedJurisdictions(
   app: FastifyInstance,
   actor: { staffId: string | null; label: string },
   input: ImportedJurisdictionsInput
-): Promise<{ jurisdictions: string[] }> {
+): Promise<{ jurisdictions: string[]; filingMethod: 'efile' | 'paper' }> {
   const { rows } = await app.db.query<{ tax_year: number; stage: TaxStage; contact_id: string }>(
     `SELECT te.tax_year, te.stage, e.contact_id
        FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
@@ -270,24 +275,22 @@ export async function declareImportedJurisdictions(
   );
   const row = rows[0];
   if (!row) throw new AppError(404, 'not_found', 'Tax engagement not found.');
-  if (filingLane(row.tax_year) !== 'efile') {
-    throw new AppError(
-      409,
-      'old_year_is_paper_lane',
-      `Refusing: tax year ${row.tax_year} is in the paper lane, and R23 declares an imported ` +
-        `"filed, awaiting ack" return as e-file. CLAUDE.md: never route an old year to e-file. ` +
-        `Import this card as a preparer task instead of guessing its lane.`
-    );
-  }
+  // THE LANE, FROM THE YEAR. One derivation for the whole app; never a method chosen here.
+  const filingMethod: 'efile' | 'paper' = filingLane(row.tax_year) === 'efile' ? 'efile' : 'paper';
 
   const status = await acceptanceStatus(app, input.taxEngagementId);
   const list = status.declaredJurisdictions.length > 0 ? status.declaredJurisdictions : status.defaultJurisdictions;
   for (const jurisdiction of list) {
+    /*
+     * The method and the flag, and NOTHING about a mailing: mailed_on, mailing_method and
+     * tracking_number are not in this statement on purpose. 0113's CHECK would take a date with a
+     * method, and writing either would say a paper return went in the mail on a day nobody named.
+     */
     await app.db.query(
       `INSERT INTO tax_engagement_jurisdictions (tax_engagement_id, jurisdiction, filing_method, declared_by_import_default)
-       VALUES ($1, $2, 'efile', true)
+       VALUES ($1, $2, $3, true)
        ON CONFLICT (tax_engagement_id, jurisdiction) DO NOTHING`,
-      [input.taxEngagementId, jurisdiction]
+      [input.taxEngagementId, jurisdiction, filingMethod]
     );
   }
   await writeAudit(app.db, {
@@ -300,15 +303,20 @@ export async function declareImportedJurisdictions(
     contactId: row.contact_id,
     details: {
       jurisdictions: list,
-      filing_method: 'efile',
+      filing_method: filingMethod,
+      method_derived_from: `tax year ${row.tax_year} (${filingMethod === 'efile' ? 'current + 2 prior' : 'older than current + 2 prior'})`,
       declared_by: 'import default',
+      mailing_recorded: false,
       note:
         'The Trello card did not say where this return was filed. The list is the address default ' +
         'SAOS itself uses when a preparer files without saying otherwise, flagged as a default and ' +
-        'paired with a preparer task to confirm it against ATX.',
+        'paired with a preparer task to confirm it against ATX.' +
+        (filingMethod === 'paper'
+          ? ' The year is in the paper lane, so the method is paper; no mailing date or method was written, because the card named neither.'
+          : ''),
       trello_card_id: input.trelloCardId,
       as_of: input.asOf,
     },
   });
-  return { jurisdictions: list };
+  return { jurisdictions: list, filingMethod };
 }

@@ -928,6 +928,10 @@ declaration. The rows are flagged as such until you confirm them.
    filed will wait for an acknowledgment forever.
 3. Confirming the list clears the flag. The acknowledgment upload then completes the return
    normally — nothing about completion changed.
+4. If the tax year is in the paper lane, the rows say **paper** and carry **no mailing**: the card
+   never said when or how the return went out, so the import wrote neither. Record the mailing on
+   each jurisdiction from the file (date, method, tracking number if certified). A paper
+   jurisdiction completes on its recorded mailing, not on an acknowledgment.
 `),
   sop('rene-trello-notify-client', 'Tell a client their imported return was accepted', 'comms_billing', 'Client communications', `
 ## Why you have this task
