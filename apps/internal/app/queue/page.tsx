@@ -33,6 +33,8 @@ interface QueueRow {
   federalAcceptedOn: string | null;
   stateAcceptedOn: string | null;
   stateAcceptedCode: string | null;
+  /** R53: "awaiting signature (Adobe Sign, sent Sep 26, 2026)" while the 8879 is out and not back; null otherwise. */
+  awaitingSignatureText?: string | null;
 }
 
 const DOC_LABEL: Record<QueueRow['docState'], string> = {
@@ -136,6 +138,8 @@ export default function QueuePage() {
                   <br />
                   <span className="muted small">
                     {r.stage.replaceAll('_', ' ')} · {DOC_LABEL[r.docState]}
+                    {/* R53: the 8879 went to the client and the signed scan is not back — the queue says so, with how and when. */}
+                    {r.awaitingSignatureText ? <> · <span data-testid="awaiting-signature">{r.awaitingSignatureText}</span></> : null}
                     {r.stage === 'filed' || r.stage === 'rejected' ? ` · preparer of record: ${r.preparerOfRecord ?? 'not recorded'}` : ''}
                     {r.openDocRequests > 0 ? ` (${r.openDocRequests} open request${r.openDocRequests === 1 ? '' : 's'})` : ''}
                   </span>

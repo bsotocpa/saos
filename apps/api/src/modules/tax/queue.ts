@@ -13,6 +13,7 @@
 import type { FastifyInstance } from 'fastify';
 import { daysBetween } from './deadlines.ts';
 import { getSetting } from './extension.ts';
+import { F8879_SENT_METHOD_LABEL, type F8879SentMethod } from './f8879-sent.ts';
 
 export interface QueueRow {
   id: string;
@@ -36,6 +37,28 @@ export interface QueueRow {
   federalAcceptedOn: string | null;
   stateAcceptedOn: string | null;
   stateAcceptedCode: string | null;
+  /**
+   * AWAITING SIGNATURE (Brian, 2026-09-26, R53): the 8879 went to the client and the signed scan is
+   * not back. `f8879Sent` is the record (method null when the Trello import declared it from a card
+   * that said nothing about how); `awaitingSignature` is the state the queue prints, and
+   * `awaitingSignatureText` the words: "awaiting signature (Adobe Sign, sent Sep 26, 2026)".
+   */
+  f8879Sent: { method: F8879SentMethod | null; sentOn: string; declaredByImport: boolean } | null;
+  awaitingSignature: boolean;
+  awaitingSignatureText: string | null;
+}
+
+/** "Sep 26, 2026" from a calendar day — the queue's own words, no zone applied to a DATE. */
+function dayWords(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y!, m! - 1, d!)));
+}
+
+/** The queue's sentence for a return whose 8879 is out and not back; null otherwise. */
+export function awaitingSignatureText(sent: { method: F8879SentMethod | null; sentOn: string } | null, onFile: boolean): string | null {
+  if (!sent || onFile) return null;
+  const how = sent.method ? F8879_SENT_METHOD_LABEL[sent.method] : 'method not recorded';
+  return `awaiting signature (${how}, sent ${dayWords(sent.sentOn)})`;
 }
 
 /**
@@ -57,6 +80,7 @@ export async function preparerQueue(
     effective_deadline: string | null; perfection_deadline: string | null;
     open_doc_requests: number; blocked_by: number;
     preparer_of_record: string | null; federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null;
+    f8879_sent_method: F8879SentMethod | null; f8879_sent_on: string | null; f8879_sent_declared_by_import: boolean; f8879_document_id: string | null;
   }>(
     `SELECT te.id, e.contact_id, c.first_name, c.last_name, te.tax_year, te.return_type,
             te.stage::text, te.extension_filed, te.docs_requested_at, te.docs_received_at,
@@ -64,6 +88,7 @@ export async function preparerQueue(
             te.perfection_deadline::text AS perfection_deadline,
             ptin.display_name AS preparer_of_record,
             te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
+            te.f8879_sent_method, te.f8879_sent_on::text AS f8879_sent_on, te.f8879_sent_declared_by_import, te.f8879_document_id,
             (SELECT count(*)::int FROM document_requests dr
              WHERE dr.tax_engagement_id = te.id AND dr.completed_at IS NULL) AS open_doc_requests,
             (SELECT count(*)::int FROM tasks t
@@ -84,6 +109,7 @@ export async function preparerQueue(
   const queue: QueueRow[] = rows.map((r) => {
     const docState: QueueRow['docState'] =
       r.docs_received_at !== null ? 'docs_in' : r.docs_requested_at !== null ? 'requested' : 'awaiting_docs';
+    const sent = r.f8879_sent_on ? { method: r.f8879_sent_method, sentOn: r.f8879_sent_on, declaredByImport: r.f8879_sent_declared_by_import } : null;
     return {
       id: r.id,
       contactId: r.contact_id,
@@ -105,6 +131,9 @@ export async function preparerQueue(
       federalAcceptedOn: r.federal_accepted_on,
       stateAcceptedOn: r.state_accepted_on,
       stateAcceptedCode: r.state_accepted_code,
+      f8879Sent: sent,
+      awaitingSignature: sent !== null && r.f8879_document_id === null,
+      awaitingSignatureText: awaitingSignatureText(sent, r.f8879_document_id !== null),
     };
   });
 
