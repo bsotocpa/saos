@@ -12,14 +12,44 @@ import { todayChicago } from '../tax/deadlines.ts';
 import { retirementReadiness } from '../admin/dubsado-retirement.ts';
 import { pipelineMetrics } from '../pricing/pipeline.ts';
 
+/**
+ * The returns behind one "Open returns by stage" row (R52, 2026-09-26): client, business, form,
+ * preparer and the days the return has sat in that stage. Days count from the latest history row
+ * for the current stage (the pipeline writes one on every move), or from the return's creation when
+ * it has never moved. Test clients are left out, as they are from the count the row shows.
+ */
+export async function openReturnsInStage(app: FastifyInstance, stage: string) {
+  const { rows } = await app.db.query(
+    `SELECT te.id, te.tax_year, te.return_type::text AS return_type, te.stage::text AS stage,
+            e.contact_id, c.first_name, c.last_name, b.name AS business_name,
+            te.preparer_id, p.full_name AS preparer_name,
+            GREATEST(0, $2::date - (COALESCE(
+              (SELECT max(h.entered_at) FROM engagement_stage_history h WHERE h.tax_engagement_id = te.id AND h.stage = te.stage),
+              te.created_at) AT TIME ZONE 'America/Chicago')::date)::int AS days_in_stage
+     FROM tax_engagements te
+     JOIN engagements e ON e.id = te.engagement_id
+     JOIN contacts c ON c.id = e.contact_id
+     LEFT JOIN businesses b ON b.id = e.business_id
+     LEFT JOIN staff p ON p.id = te.preparer_id
+     WHERE te.stage = $1::tax_stage AND te.stage NOT IN ('completed', 'withdrawn') AND NOT c.is_test
+     ORDER BY days_in_stage DESC, c.last_name, c.first_name`,
+    [stage, todayChicago()]
+  );
+  return rows;
+}
+
 export async function executiveDashboard(app: FastifyInstance) {
   const [byStage, revenue, ar, health, capacity, deadlines, retirement, pipeline, m26, completedUnpaid] = await Promise.all([
-    // Open returns by stage + value (estimate top until a final fee exists).
+    // Open returns by stage + value (estimate top until a final fee exists). A test client's return
+    // is not counted (D2: a flagged record leaves every report), so the count matches the list each
+    // row opens (openReturnsInStage, R52).
     app.db.query(
       `SELECT te.stage::text, count(*)::int AS count,
               COALESCE(sum(COALESCE(te.final_fee_cents, te.estimated_fee_max_cents, 0)), 0)::bigint AS value_cents
        FROM tax_engagements te
-       WHERE te.stage NOT IN ('completed', 'withdrawn')
+       JOIN engagements e ON e.id = te.engagement_id
+       JOIN contacts c ON c.id = e.contact_id
+       WHERE te.stage NOT IN ('completed', 'withdrawn') AND NOT c.is_test
        GROUP BY te.stage ORDER BY min(
          array_position(ARRAY['intake_started','scheduled','documents_requested','pending_client_response',
                               'in_preparation','internal_review','client_review','ready_to_file','filed','on_hold'],

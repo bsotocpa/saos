@@ -25,7 +25,8 @@ import net from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
-import { createTask } from '../tasks/service.ts';
+import { AppError } from '../../types.ts';
+import { OPEN_STATUSES, createTask, setTaskStatus } from '../tasks/service.ts';
 import { getSetting } from '../tax/extension.ts';
 
 export interface ContainerReport {
@@ -94,7 +95,7 @@ function reasonFor(name: string): string | null {
 export async function recordContainerHealth(
   app: FastifyInstance,
   containers: ContainerReport[]
-): Promise<{ checked: number; alerted: string[]; graceMinutes: number }> {
+): Promise<{ checked: number; alerted: string[]; closed: string[]; graceMinutes: number }> {
   const graceMinutes = Number(await getSetting(app, 'ops.container_unhealthy_alert_minutes', 10));
 
   const unhealthy = containers.filter((c) => {
@@ -154,6 +155,39 @@ export async function recordContainerHealth(
     }
   }
 
+  /*
+   * A CONTAINER THE HOST NO LONGER LISTS CLOSES ITS OWN TASK (R52, 2026-09-26).
+   *
+   * The report is the host's whole `docker ps -a` for the stack, so a name that is not in it is a
+   * container that was removed. The 2026-09-20 import rehearsal ran in a throwaway container that
+   * went unhealthy, got its "Fix ... unhealthy" task, and was then torn down; the task sat open for
+   * six days because nothing here ever closed one. Now it goes through the close door with a
+   * standalone reason, the way a person would. An EMPTY report closes nothing: it says the host saw
+   * no containers, which is a broken cron, not a clean host. A task a person has blocked on another
+   * stays open (the close door refuses it), because that person is holding it on purpose.
+   */
+  const closed: string[] = [];
+  if (containers.length > 0) {
+    const listed = new Set(containers.map((c) => c.name));
+    const open = await app.db.query<{ id: string; source_id: string }>(
+      `SELECT id, source_id FROM tasks
+        WHERE source_type = 'container_unhealthy' AND source_id IS NOT NULL AND status = ANY($1::task_status[])
+        ORDER BY created_at`,
+      [OPEN_STATUSES]
+    );
+    for (const t of open.rows) {
+      if (listed.has(t.source_id)) continue;
+      try {
+        await setTaskStatus(app, t.id, 'completed', { id: null, fullName: 'container-health' },
+          { reason: 'The host no longer lists this container; there is nothing left to fix.' });
+        closed.push(t.source_id);
+      } catch (err) {
+        if (err instanceof AppError && err.code === 'task_blocked') continue;
+        throw err;
+      }
+    }
+  }
+
   await writeAudit(app.db, {
     actorType: 'system', actorLabel: 'container-health',
     action: 'ops.container_health_reported',
@@ -161,10 +195,11 @@ export async function recordContainerHealth(
       checked: containers.length,
       grace_minutes: graceMinutes,
       unhealthy: unhealthy.map((c) => ({ name: c.name, health: c.health, state: c.state, streak: c.failingStreak })),
+      closed_for_removed_containers: closed,
     },
   });
 
-  return { checked: containers.length, alerted, graceMinutes };
+  return { checked: containers.length, alerted, closed, graceMinutes };
 }
 
 /** Can the API actually reach clamd? Docker health cannot answer this. */

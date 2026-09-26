@@ -45,6 +45,35 @@ const NewVersionBody = z.object({
     .min(1),
 });
 
+type VersionChange = z.infer<typeof NewVersionBody>['changes'][number];
+
+/**
+ * The item codes whose deposit would exceed their flat price once `changes` are laid over the rows
+ * of `sourceVersionId` — the rows the new version would hold (R55). Same predicate as the CHECK
+ * price_book_items_deposit_not_over_price: only a flat-unit line with both a price and a deposit is
+ * compared. A change to a code the source lacks is left to the publish route's own unknown_price_items.
+ */
+export async function depositOverPrice(
+  db: { query: <R extends Record<string, unknown>>(text: string, params?: unknown[]) => Promise<{ rows: R[] }> },
+  sourceVersionId: string,
+  changes: readonly VersionChange[]
+): Promise<string[]> {
+  const { rows } = await db.query<{ item_code: string; unit: string; amount_cents: number | null; deposit_cents: number | null }>(
+    `SELECT item_code, unit::text AS unit, amount_cents, deposit_cents FROM price_book_items WHERE version_id = $1 ORDER BY item_code`,
+    [sourceVersionId]
+  );
+  const byCode = new Map(changes.map((c) => [c.itemCode, c] as const));
+  const over: string[] = [];
+  for (const r of rows) {
+    const c = byCode.get(r.item_code);
+    const amount = c?.amountCents !== undefined ? c.amountCents : r.amount_cents;
+    const deposit = c?.depositCents !== undefined ? c.depositCents : r.deposit_cents;
+    if (deposit === null || r.unit !== 'flat' || amount === null || deposit <= amount) continue;
+    over.push(r.item_code);
+  }
+  return over;
+}
+
 const TemplateBody = z
   .object({
     subjectEn: z.string().nullable().optional(),
@@ -160,6 +189,19 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       if (!cur) throw new AppError(500, 'price_book_missing', 'No price book to version from.');
       if (calendarDay(b.effectiveFrom, 'effectiveFrom') <= calendarDay(cur.effective_from, 'effective_from')) {
         throw new AppError(400, 'effective_date_conflict', `New version must start after ${cur.effective_from}.`);
+      }
+
+      // A version is published whole and never edited afterwards (R55), so every row it will hold is
+      // checked here, before anything is written: the source version's rows with this publish's
+      // changes laid over them. The predicate is the one the constraint
+      // price_book_items_deposit_not_over_price holds (flat unit rows only; a per-hour line may ask
+      // more up front than one hour costs). The constraint was added NOT VALID over four version-4
+      // rows and stays as the backstop; this refusal names the lines so the publisher can fix them in
+      // the same sitting instead of reading a constraint name.
+      const overPrice = await depositOverPrice(client, cur.id, b.changes);
+      if (overPrice.length > 0) {
+        throw new AppError(409, 'deposit_over_price',
+          `A deposit cannot exceed the price it is taken against. Fix ${overPrice.length === 1 ? 'this line' : 'these lines'} before publishing: ${overPrice.join(', ')}.`);
       }
 
       const created = await client.query<{ id: string }>(

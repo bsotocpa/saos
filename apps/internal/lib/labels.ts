@@ -85,3 +85,25 @@ export function consent7216Label(status: string): string {
 export function letterStatusLabel(status: string): string {
   return (LETTER_STATUS_LABEL as Record<string, string>)[status] ?? status.replaceAll('_', ' ');
 }
+
+/**
+ * "Business — owner" (R51, 2026-09-26): what every Ops client search prints for a row the search
+ * reached through a business legal name; the person's name when it matched the person. The API says
+ * which (`business_matched`), so Deliver Return, New quote and the clients list read the same.
+ */
+export function clientSearchLabel(r: { first_name: string; last_name: string; business_name?: string | null; business_matched?: boolean | null }): string {
+  const person = `${r.first_name} ${r.last_name}`;
+  return r.business_matched && r.business_name ? `${r.business_name} — ${person}` : person;
+}
+
+/**
+ * The engagement's status in plain words (R52, 2026-09-26): the state, and for one that is paused or
+ * over, the day that happened. The caller formats the days (dayOf for the pause instant, formatDate
+ * for the calendar day it ended), so this file stays a map of words with no date dependency.
+ */
+export function engagementStatusSentence(status: string, days: { pausedDay?: string | null; endedDay?: string | null } = {}): string {
+  const word = engagementStatusLabel(status);
+  if (status === 'on_hold' && days.pausedDay) return `${word} since ${days.pausedDay}`;
+  if ((status === 'completed' || status === 'withdrawn') && days.endedDay) return `${word} on ${days.endedDay}`;
+  return word;
+}

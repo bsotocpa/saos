@@ -8,11 +8,19 @@
  * name, entity type, state, EIN, formation date, and primary at creation. The same modal shell
  * as everything else; a refusal renders beside the field that caused it, verbatim, and the
  * fields keep their text (defect 2, the same day).
+ *
+ * A DUPLICATE EIN WARNS AND DOES NOT REFUSE (Brian, 2026-09-26, R54). As the number is typed the
+ * form asks the route whether another business holds it; when one does, the warning names that
+ * business and its owner with a link, and "Create anyway" takes a standalone reason the route
+ * audits beside the other business's id. "Add business" with no reason is refused by the route
+ * in its own words, beside the EIN.
  */
 
-import { useState, type FormEvent } from 'react';
+import Link from 'next/link';
+import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { ModalShell } from './modal-shell';
+import { type EinHolder, einDigits } from './ein-duplicate';
 
 const ENTITY_TYPES: Array<{ key: string; label: string }> = [
   { key: 'llc', label: 'LLC' },
@@ -43,13 +51,28 @@ export function AddBusinessModal(props: AddBusinessProps): React.JSX.Element {
   const [formationDate, setFormationDate] = useState('');
   const [setPrimary, setSetPrimary] = useState(!props.hasPrimary);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<{ field: 'name' | 'ein' | 'state' | 'formationDate' | 'form'; message: string } | null>(null);
+  const [error, setError] = useState<{ field: 'name' | 'ein' | 'state' | 'formationDate' | 'duplicateReason' | 'form'; message: string } | null>(null);
+  // R54: the business already holding the typed EIN, and the reason to create this one anyway.
+  const [duplicate, setDuplicate] = useState<EinHolder | null>(null);
+  const [duplicateReason, setDuplicateReason] = useState('');
 
   const errAt = (field: NonNullable<typeof error>['field']) =>
     error?.field === field ? <p className="field-error" role="alert" data-field={field}>{error.message}</p> : null;
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  // The question is asked once the nine digits are there, a moment after the last keystroke.
+  useEffect(() => {
+    const digits = einDigits(ein);
+    if (digits.length !== 9) { setDuplicate(null); return; }
+    const handle = setTimeout(() => {
+      api<{ duplicate: EinHolder | null }>(`/businesses/ein-check?ein=${digits}`)
+        .then((r) => setDuplicate(r.duplicate))
+        .catch(() => setDuplicate(null)); // the save asks again; a failed background check hides nothing the route will not say
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [ein]);
+
+  const submit = async (e: FormEvent | undefined, anyway = false) => {
+    e?.preventDefault();
     if (busy) return;
     setError(null);
     if (name.trim().length === 0) { setError({ field: 'name', message: 'The legal name is required.' }); return; }
@@ -59,6 +82,7 @@ export function AddBusinessModal(props: AddBusinessProps): React.JSX.Element {
         name: name.trim(), entityType, state: state.trim().toUpperCase(), setPrimary,
         ...(ein.trim() ? { ein: ein.trim() } : {}),
         ...(formationDate ? { formationDate } : {}),
+        ...(anyway ? { duplicateReason } : {}),
       };
       const r = await api<{ id: string }>(`/contacts/${props.contactId}/businesses`, { method: 'POST', body });
       await props.onAdded(r.id);
@@ -67,8 +91,16 @@ export function AddBusinessModal(props: AddBusinessProps): React.JSX.Element {
       const message = err instanceof Error && err.message ? err.message : 'The business was refused.';
       const payload = (err as { payload?: { issues?: Array<{ path?: string; message?: string }>; error?: string } }).payload;
       const issue = payload?.issues?.[0];
-      const field = issue?.path === 'ein' ? 'ein' : issue?.path === 'state' ? 'state' : issue?.path === 'formationDate' || payload?.error === 'formation_date_in_future' ? 'formationDate' : issue?.path === 'name' ? 'name' : 'form';
+      const field = issue?.path === 'ein' || payload?.error === 'ein_in_use' ? 'ein'
+        : issue?.path === 'duplicateReason' ? 'duplicateReason'
+          : issue?.path === 'state' ? 'state'
+            : issue?.path === 'formationDate' || payload?.error === 'formation_date_in_future' ? 'formationDate'
+              : issue?.path === 'name' ? 'name' : 'form';
       setError({ field, message: issue?.message ? `${issue.message}` : message });
+      if (payload?.error === 'ein_in_use' && !duplicate) {
+        // The route found a holder the background check had not shown yet: show the warning and its link.
+        api<{ duplicate: EinHolder | null }>(`/businesses/ein-check?ein=${einDigits(ein)}`).then((r) => setDuplicate(r.duplicate)).catch(() => undefined);
+      }
     } finally {
       setBusy(false);
     }
@@ -109,6 +141,22 @@ export function AddBusinessModal(props: AddBusinessProps): React.JSX.Element {
           <input value={ein} onChange={(e) => setEin(e.target.value)} inputMode="numeric" placeholder="12-3456789" aria-invalid={error?.field === 'ein' || undefined} />
           {errAt('ein')}
         </label>
+        {duplicate ? (
+          <div className="alert warn" data-testid="ein-duplicate-warning">
+            <strong>Another business already carries this EIN.</strong>
+            <p className="small" style={{ margin: '4px 0' }}>
+              <Link href={duplicate.ownerContactId ? `/clients/${duplicate.ownerContactId}` : '/clients'} data-testid="ein-duplicate-link">
+                {duplicate.name}{duplicate.ownerName ? ` — ${duplicate.ownerName}` : ''}
+              </Link>
+            </p>
+            <label className="field">
+              Why this is a different business <span className="muted small">(required to create anyway)</span>
+              <textarea value={duplicateReason} onChange={(e) => setDuplicateReason(e.target.value)} rows={2} aria-invalid={error?.field === 'duplicateReason' || undefined} />
+              {errAt('duplicateReason')}
+            </label>
+            <button type="button" className="btn ghost small" disabled={busy} onClick={() => void submit(undefined, true)}>Create anyway</button>
+          </div>
+        ) : null}
         <label className="field">
           Formation date <span className="muted small">(optional; the state&apos;s date, as you know it)</span>
           <input type="date" value={formationDate} onChange={(e) => setFormationDate(e.target.value)} aria-invalid={error?.field === 'formationDate' || undefined} />

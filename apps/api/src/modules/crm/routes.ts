@@ -15,6 +15,7 @@ import { archiveBusiness, mergeBusinesses } from './businesses.ts';
 import { archiveContact } from './lifecycle.ts';
 import { AppError } from '../../types.ts';
 import { refreshEnrichmentGaps } from './service.ts';
+import { withTransaction } from '../../db.ts';
 import { runHealthRefresh } from './health.ts';
 
 import { createInvoice } from '../billing/service.ts';
@@ -44,11 +45,18 @@ const ContactCreateBody = z.object({
   notes: z.string().optional(),
 });
 
-const ContactUpdateBody = ContactCreateBody.partial();
+/*
+ * R45 (2026-09-26): when the email changes while a portal user exists, the route OFFERS to move the
+ * sign-in with it (portalSignInMove: 'offered'); with movePortalSignIn: true it records the pending move
+ * and emails the confirmation link to the new address. Never a column: it is an instruction, not a field.
+ */
+const ContactUpdateBody = ContactCreateBody.partial().extend({ movePortalSignIn: z.boolean().optional() });
 
 const BusinessBody = z.object({
   name: z.string().min(1),
   ein: z.string().regex(/^\d{2}-?\d{7}$/, 'EIN must be 9 digits (XX-XXXXXXX)').optional(),
+  /** R54: why this is a different business from the one already holding the EIN. Required only when one does. */
+  duplicateReason: z.string().trim().min(10, 'Say in a sentence why this is a different business.').max(500).optional(),
   entityType: z
     .enum(['sole_prop', 'llc', 'pllc', 's_corp', 'c_corp', 'partnership', 'nonprofit', 'coop', 'not_sure', 'other'])
     .optional(),
@@ -95,15 +103,33 @@ export const normalizeEin = (ein: string): string => {
   return `${digits.slice(0, 2)}-${digits.slice(2)}`;
 };
 
-/** Another open business already holding this EIN, by name — the same entity entered twice is a merge, not a second row. */
-async function assertEinUnused(app: FastifyInstance, ein: string, exceptBusinessId: string | null): Promise<void> {
-  const { rows } = await app.db.query<{ name: string }>(
-    `SELECT name FROM businesses
-      WHERE NOT is_archived AND regexp_replace(COALESCE(ein, ''), '[^0-9]', '', 'g') = $1 AND ($2::uuid IS NULL OR id <> $2::uuid)
-      ORDER BY created_at LIMIT 1`,
+/** What the duplicate-EIN warning links to: the business already holding the number and the person it belongs to. */
+export interface EinHolder { businessId: string; name: string; ownerContactId: string | null; ownerName: string | null }
+
+/**
+ * A DUPLICATE EIN WARNS AND DOES NOT REFUSE (Brian, 2026-09-26, R54). Add a business and Edit business
+ * both ask this question as the number is typed and again on save. When another open business holds
+ * the number, the form shows that business and its owner with a link, and the save goes through only
+ * with a standalone reason (`duplicateReason`), which is audited as business.ein_duplicate_accepted
+ * beside the other business's id. A save with no reason is refused, naming the business, never the
+ * number. The owner is the primary member, else the member whose role is owner, else the first.
+ */
+export async function findEinHolder(app: FastifyInstance, ein: string, exceptBusinessId: string | null): Promise<EinHolder | null> {
+  const { rows } = await app.db.query<{ id: string; name: string; owner_contact_id: string | null; owner_name: string | null }>(
+    `SELECT b.id, b.name, o.contact_id AS owner_contact_id, o.owner_name
+       FROM businesses b
+       LEFT JOIN LATERAL (
+         SELECT bm.contact_id, c.first_name || ' ' || c.last_name AS owner_name
+           FROM business_members bm JOIN contacts c ON c.id = bm.contact_id
+          WHERE bm.business_id = b.id
+          ORDER BY bm.is_primary DESC, (bm.member_role = 'owner') DESC, c.last_name, c.first_name
+          LIMIT 1) o ON true
+      WHERE NOT b.is_archived AND regexp_replace(COALESCE(b.ein, ''), '[^0-9]', '', 'g') = $1 AND ($2::uuid IS NULL OR b.id <> $2::uuid)
+      ORDER BY b.created_at LIMIT 1`,
     [ein.replace(/\D/g, ''), exceptBusinessId]
   );
-  if (rows[0]) throw new AppError(409, 'ein_in_use', `That EIN is already on ${rows[0].name}. Merge or archive that business first.`);
+  const r = rows[0];
+  return r ? { businessId: r.id, name: r.name, ownerContactId: r.owner_contact_id, ownerName: r.owner_name } : null;
 }
 
 /** Archive, never delete (2026-09-12): a reason always; a test flag with its note when the record was never real. */
@@ -241,7 +267,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
         OR c.email::text ILIKE $1 OR c.phone ILIKE $1
         OR EXISTS (
           SELECT 1 FROM business_members bm JOIN businesses b ON b.id = bm.business_id
-          WHERE bm.contact_id = c.id AND b.name ILIKE $1
+          WHERE bm.contact_id = c.id AND NOT b.is_archived AND b.name ILIKE $1
         ))`
     );
     if (q.sotoStatus) {
@@ -277,11 +303,16 @@ export function registerCrmRoutes(app: FastifyInstance): void {
               -- rule and still wrong to read. With no search (or no match), the
               -- primary is the right thing to show.
               (SELECT b.name FROM business_members bm JOIN businesses b ON b.id = bm.business_id
-               WHERE bm.contact_id = c.id
+               WHERE bm.contact_id = c.id AND NOT b.is_archived
                ORDER BY
                  CASE WHEN $1::text IS NOT NULL AND b.name ILIKE $1 THEN 0 ELSE 1 END,
                  bm.is_primary DESC, b.name
                LIMIT 1) AS business_name,
+              -- R51 (2026-09-26): true when the search hit a business legal name, so every Ops
+              -- search (Deliver Return, New quote, the clients list) can print "Business — owner".
+              ($1::text IS NOT NULL AND EXISTS (
+                 SELECT 1 FROM business_members bm JOIN businesses b ON b.id = bm.business_id
+                 WHERE bm.contact_id = c.id AND NOT b.is_archived AND b.name ILIKE $1)) AS business_matched,
               (SELECT count(*)::int FROM engagements e
                WHERE e.contact_id = c.id AND e.status IN ('active', 'on_hold')) AS active_engagements
        FROM contacts c
@@ -433,7 +464,17 @@ export function registerCrmRoutes(app: FastifyInstance): void {
               (SELECT max(t.created_at) FROM magic_link_tokens t
                  JOIN portal_users pu ON pu.id = t.portal_user_id
                 WHERE pu.contact_id = c.id)
-                AS portal_link_sent_at
+                AS portal_link_sent_at,
+              /*
+               * R45 (2026-09-26): a sign-in move waiting on the client's confirmation. The client page
+               * reads "sign-in move pending confirmation" from this and offers Resend until the link is
+               * pressed at the new address (portal_email_changes; token hashes only, never here).
+               */
+              (SELECT json_build_object('new_email', pec.new_email, 'requested_at', pec.created_at, 'expires_at', pec.expires_at)
+                 FROM portal_email_changes pec JOIN portal_users pu ON pu.id = pec.portal_user_id
+                WHERE pu.contact_id = c.id AND pec.confirmed_at IS NULL AND pec.superseded_at IS NULL AND pec.expires_at > now()
+                ORDER BY pec.created_at DESC LIMIT 1)
+                AS portal_email_move_pending
        FROM contacts c WHERE c.id = $1 AND NOT c.is_archived`,
       [id]
     );
@@ -511,16 +552,46 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       }
     }
     if (sets.length === 0) throw new AppError(400, 'empty_update', 'No fields to update.');
-    const res = await app.db.query(`UPDATE contacts SET ${sets.join(', ')} WHERE id = $1 AND NOT is_archived`, params);
-    if (res.rowCount === 0) throw new AppError(404, 'not_found', 'Contact not found.');
+    /*
+     * ONE TRANSACTION (R45): the email write and the sign-in move it asked for land together or not
+     * at all. A refused move (another account already signs in with the new address) leaves the
+     * contact email as it was, so the modal's refusal describes a record that did not change.
+     */
+    return withTransaction(app.db, async () => {
+      const res = await app.db.query(`UPDATE contacts SET ${sets.join(', ')} WHERE id = $1 AND NOT is_archived`, params);
+      if (res.rowCount === 0) throw new AppError(404, 'not_found', 'Contact not found.');
 
-    const gaps = await refreshEnrichmentGaps(app, id);
-    await writeAudit(app.db, {
-      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
-      action: 'contact.updated', objectType: 'contact', objectId: id, contactId: id, ...meta(request),
-      details: { fields: sets.map((s) => s.split(' =')[0]) },
+      const gaps = await refreshEnrichmentGaps(app, id);
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+        action: 'contact.updated', objectType: 'contact', objectId: id, contactId: id, ...meta(request),
+        details: { fields: sets.map((s) => s.split(' =')[0]) },
+      });
+      /*
+       * R45 (Brian, 2026-09-26): all client mail goes to the contact email; the sign-in answers to the
+       * portal user's own. When the email just written differs from the address that signs in, the
+       * answer OFFERS the move — or, when the person already said yes (the Ops modal asks up front),
+       * records it and emails the confirmation link to the new address. The move itself waits for the
+       * press on that link. Nothing here changes portal_users.
+       */
+      let portalSignInMove: 'not_applicable' | 'offered' | 'pending_confirmation' | 'declined' = 'not_applicable';
+      if (b.email !== undefined) {
+        const pu = await app.db.query<{ email: string }>(
+          `SELECT email FROM portal_users WHERE contact_id = $1 AND is_active`, [id]
+        );
+        const signsInAs = pu.rows[0]?.email ?? null;
+        if (signsInAs !== null && signsInAs.toLowerCase() !== b.email.toLowerCase()) {
+          if (b.movePortalSignIn === true) {
+            const { requestPortalEmailMove } = await import('../portal-auth/service.ts');
+            await requestPortalEmailMove(app, id, actor, meta(request));
+            portalSignInMove = 'pending_confirmation';
+          } else {
+            portalSignInMove = b.movePortalSignIn === false ? 'declined' : 'offered';
+          }
+        }
+      }
+      return { status: 'ok', enrichmentGaps: gaps, portalSignInMove };
     });
-    return { status: 'ok', enrichmentGaps: gaps };
   });
 
   // ── Businesses ──────────────────────────────────────────────────────────
@@ -535,11 +606,13 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       [contactId]
     );
     if (b.formationDate && calendarDay(b.formationDate, 'formationDate') > calendarDay(todayChicago(), 'today')) throw new AppError(400, 'formation_date_in_future', 'A formation date is a thing that already happened.');
-    // Add a business keeps its 2026-09-12 shape: the EIN is normalized to one spelling and NOT refused
-    // when another business holds it. A refusal here would be a new rule (Add a client shows the likely
-    // duplicate and offers Create anyway, R14); it is Brian's to rule. The EDIT door does refuse, because
-    // typing another business's EIN onto this one is a typo, not a second business.
+    // R54: the EIN is normalized to one spelling; another open business holding it is a warning the
+    // form has already shown, and the save goes through only with the person's reason (audited below).
     const ein = b.ein ? normalizeEin(b.ein) : null;
+    const holder = ein ? await findEinHolder(app, ein, null) : null;
+    if (holder && !b.duplicateReason) {
+      throw new AppError(409, 'ein_in_use', `That EIN is already on ${holder.name}. If this is a different business, say why and create anyway.`);
+    }
     const { rows } = await app.db.query<{ id: string }>(
       `INSERT INTO businesses (name, ein, entity_type, industry, naics_code, irs_activity_code,
                                years_in_business, revenue_range, employees_range, zip, state, fiscal_year_end_month,
@@ -571,7 +644,27 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'business.created', objectType: 'business', objectId: businessId, contactId, ...meta(request),
     });
+    if (holder) {
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+        action: 'business.ein_duplicate_accepted', objectType: 'business', objectId: businessId, contactId, ...meta(request),
+        details: { field: 'ein', other_business_id: holder.businessId, reason: b.duplicateReason },
+      });
+    }
     return reply.code(201).send({ id: businessId });
+  });
+
+  /**
+   * The duplicate-EIN question the Add and Edit forms ask as the number is typed (R54). Under the
+   * same door as the save it precedes. The answer carries the other business and its owner for the
+   * warning's link, and never the number; nothing here is logged.
+   */
+  app.get('/businesses/ein-check', businessWrite, async (request) => {
+    const q = z.object({
+      ein: z.string().regex(/^\d{2}-?\d{7}$/, 'EIN must be 9 digits (XX-XXXXXXX)'),
+      exceptBusinessId: z.uuid().optional(),
+    }).parse(request.query);
+    return { duplicate: await findEinHolder(app, normalizeEin(q.ein), q.exceptBusinessId ?? null) };
   });
 
   // Business lookup for the v4.5 dual Contact/Business pickers.
@@ -664,7 +757,12 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     if (current.rows[0].is_archived) throw new AppError(409, 'archived', 'This business is archived; its history stays as it was.');
     if (b.formationDate && calendarDay(b.formationDate, 'formationDate') > calendarDay(todayChicago(), 'today')) throw new AppError(400, 'formation_date_in_future', 'A formation date is a thing that already happened.');
     const ein = b.ein === undefined ? undefined : normalizeEin(b.ein);
-    if (ein !== undefined) await assertEinUnused(app, ein, id);
+    // R54: Edit follows the Add rule — another open business holding the number is a warning, and
+    // the save goes through only with the person's reason.
+    const holder = ein !== undefined ? await findEinHolder(app, ein, id) : null;
+    if (holder && !b.duplicateReason) {
+      throw new AppError(409, 'ein_in_use', `That EIN is already on ${holder.name}. If this is a different business, say why and save anyway.`);
+    }
     const einChanged = ein !== undefined && ein !== current.rows[0].ein;
 
     const sets: string[] = [];
@@ -716,6 +814,13 @@ export function registerCrmRoutes(app: FastifyInstance): void {
         actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
         action: 'business.ein_changed', objectType: 'business', objectId: id, contactId: members.rows[0]?.contact_id ?? null, ...meta(request),
         details: { field: 'ein', previously_on_file: current.rows[0].ein !== null },
+      });
+    }
+    if (holder) {
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+        action: 'business.ein_duplicate_accepted', objectType: 'business', objectId: id, contactId: members.rows[0]?.contact_id ?? null, ...meta(request),
+        details: { field: 'ein', other_business_id: holder.businessId, reason: b.duplicateReason },
       });
     }
     return { status: 'ok', fields };
