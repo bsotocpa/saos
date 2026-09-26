@@ -233,6 +233,76 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     return { status: 'ok' };
   });
 
+  /*
+   * A PAGE FAILED IN THE CLIENT'S BROWSER (R49, Brian, 2026-09-26).
+   *
+   * The portal's error boundary (apps/portal/app/error.tsx) posts here when a page throws while
+   * rendering. The client saw one sentence and a Reload control and nothing else; the firm gets
+   * a task (one open per route, deduped on the route) and an Ops alert pointing at it, the way a
+   * blocked sign-in does. The report carries the ROUTE and the browser's error MESSAGE, nothing
+   * more: the query string is dropped (a token or an address may ride there), and anything in the
+   * message shaped like an address or a run of four or more digits is masked before it is written.
+   * Rate-limited per session in memory, five reports per ten minutes, because a page that fails
+   * on every render would otherwise report on every reload.
+   */
+  const ClientErrorBody = z.object({
+    route: z.string().min(1).max(200),
+    message: z.string().min(1).max(500),
+    digest: z.string().max(100).optional(),
+  });
+  const clientErrorReports = new Map<string, number[]>();
+  const CLIENT_ERROR_WINDOW_MS = 10 * 60_000;
+  const CLIENT_ERROR_MAX_PER_WINDOW = 5;
+  const scrub = (s: string) => s.replace(/\s+/g, ' ').trim().replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, '<address>').replace(/\d{4,}/g, '<digits>');
+  app.post('/portal/client-errors', scoped, async (request, reply) => {
+    const client = request.client!;
+    const body = ClientErrorBody.parse(request.body ?? {});
+    const now = Date.now();
+    const recent = (clientErrorReports.get(client.portalUserId) ?? []).filter((at) => now - at < CLIENT_ERROR_WINDOW_MS);
+    if (recent.length >= CLIENT_ERROR_MAX_PER_WINDOW) {
+      throw new AppError(429, 'too_many_reports', 'Enough reports from this session for now; the first ones were recorded.');
+    }
+    recent.push(now);
+    clientErrorReports.set(client.portalUserId, recent);
+
+    const route = body.route.replace(/[?#].*$/, '').slice(0, 200) || '/';
+    const message = scrub(body.message);
+    const digest = body.digest ? scrub(body.digest) : null;
+    const recipient = await alertRecipientForRole(app.db, 'ceo', 'portal_page_error');
+    const created = await createTask(app, {
+      title: `The portal page ${route} failed in a client's browser`,
+      description:
+        `Route: ${route}\nError: ${message}${digest ? `\nReference: ${digest}` : ''}\n\n` +
+        `The client saw one plain sentence and a Reload control, nothing about the error. ` +
+        `Reproduce on a copy of production before changing anything; the procedure is on the SOP.`,
+      ...(recipient ? { assignedStaffId: recipient } : {}),
+      contactId: client.contactId,
+      priority: 2,
+      source: 'automation',
+      sourceType: 'portal_page_error',
+      // One open task per route: a page that fails for every client is one defect, not one per client.
+      sourceId: route,
+    });
+    if (recipient) {
+      await notifyOnce(app.db, {
+        staffId: recipient,
+        type: 'portal_page_error',
+        severity: 'warning',
+        title: `A portal page failed in a client's browser: ${route}`,
+        contactId: client.contactId,
+        relatedObjectType: 'task',
+        relatedObjectId: created.id,
+      });
+    }
+    await writeAudit(app.db, {
+      actorType: 'client', actorId: client.portalUserId, actorLabel: client.displayName,
+      action: 'portal.client_error', objectType: 'task', objectId: created.id, contactId: client.contactId,
+      ip: request.ip,
+      details: { route, message, task_created: created.created, alerted: recipient !== null },
+    });
+    return reply.code(202).send({ status: 'recorded', taskId: created.id, created: created.created });
+  });
+
   app.get('/portal/documents', scoped, async (request) => {
     const client = request.client!;
     const { rows } = await app.db.query(
@@ -314,16 +384,57 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     return { notices };
   });
 
+  /*
+   * WHAT HAPPENS NEXT (Brian, 2026-09-26, R48). Each delivered return carries the state of the return
+   * it belongs to, folded into one key the page turns into a sentence in the client's language. Read
+   * from the return record and the R53 "8879 sent" fields; null when the document hangs on no return.
+   *
+   *   f8879_pending      delivered, the 8879 not yet sent    → "We will send Form 8879 next."
+   *   f8879_adobe_sign   sent through Adobe Sign             → "Look for an email from Adobe Sign."
+   *   f8879_in_office    to be signed at the visit
+   *   f8879_mailed       a paper copy in the mail
+   *   f8879_sent         sent, the method not on the record (an import-declared row)
+   *   f8879_on_file      the signed 8879 is on file           → "We are filing your return."
+   *   filed              filed, acknowledgments pending
+   *   accepted           completed (every jurisdiction acknowledged)
+   */
   app.get('/portal/returns', scoped, async (request) => {
     const client = request.client!;
-    const { rows } = await app.db.query(
-      `SELECT id, filename, tax_year, uploaded_at
-       FROM documents
-       WHERE contact_id = $1 AND category = 'return_deliverable' AND archived_at IS NULL
-       ORDER BY tax_year DESC NULLS LAST, uploaded_at DESC`,
+    const { rows } = await app.db.query<{
+      id: string; filename: string; tax_year: number | null; uploaded_at: Date;
+      stage: string | null; f8879_sent_method: string | null; f8879_sent_on: string | null; f8879_on_file: boolean | null;
+    }>(
+      `SELECT d.id, d.filename, d.tax_year, d.uploaded_at,
+              te.stage::text AS stage,
+              te.f8879_sent_method::text AS f8879_sent_method,
+              te.f8879_sent_on::text AS f8879_sent_on,
+              (te.f8879_document_id IS NOT NULL) AS f8879_on_file
+         FROM documents d
+         LEFT JOIN tax_engagements te ON te.id = d.tax_engagement_id
+        WHERE d.contact_id = $1 AND d.category = 'return_deliverable' AND d.archived_at IS NULL
+        ORDER BY d.tax_year DESC NULLS LAST, d.uploaded_at DESC`,
       [client.contactId]
     );
-    return { returns: rows };
+    const nextStepFor = (r: typeof rows[number]): string | null => {
+      if (!r.stage || r.stage === 'withdrawn') return null;
+      if (r.stage === 'completed') return 'accepted';
+      if (r.stage === 'filed') return 'filed';
+      if (r.f8879_on_file) return 'f8879_on_file';
+      if (r.f8879_sent_on) {
+        if (r.f8879_sent_method === 'adobe_sign') return 'f8879_adobe_sign';
+        if (r.f8879_sent_method === 'in_office') return 'f8879_in_office';
+        if (r.f8879_sent_method === 'mailed') return 'f8879_mailed';
+        return 'f8879_sent';
+      }
+      if (r.stage === 'rejected') return null;
+      return 'f8879_pending';
+    };
+    return {
+      returns: rows.map((r) => ({
+        id: r.id, filename: r.filename, tax_year: r.tax_year, uploaded_at: r.uploaded_at,
+        next_step: nextStepFor(r),
+      })),
+    };
   });
 
   // Plain-English engagement status for the dashboard.
@@ -356,7 +467,10 @@ export function registerPortalRoutes(app: FastifyInstance): void {
               te.stage::text       AS stage,
               te.extension_filed,
               COALESCE(te.extended_deadline, te.original_deadline)::text AS deadline,
-              CASE WHEN te.id IS NOT NULL THEN 'pipeline' ELSE 'ongoing' END AS kind
+              CASE WHEN te.id IS NOT NULL THEN 'pipeline' ELSE 'ongoing' END AS kind,
+              te.f8879_sent_method::text AS f8879_sent_method,
+              te.f8879_sent_on::text     AS f8879_sent_on,
+              (te.f8879_document_id IS NOT NULL) AS f8879_on_file
          FROM engagements e
          LEFT JOIN tax_engagements te ON te.engagement_id = e.id
         WHERE e.contact_id = $1

@@ -27,6 +27,13 @@ const dict = {
   verify_press: ['Sign in', 'Entrar'],
   verify_working: ['Signing you in…', 'Iniciando sesión…'],
   verify_failed: ['This link is invalid, used, or expired. Request a fresh one below.', 'Este enlace es inválido, usado o vencido. Pida uno nuevo abajo.'],
+  // The sign-in email move, confirmed at the new address by a press (R45, 2026-09-26). Functional copy only.
+  confirm_email_title: ['Confirm your new sign-in email', 'Confirme su nuevo correo de acceso'],
+  confirm_email_intro: ['Your email on file changed. Press the button to sign in with this address from now on.', 'Su correo registrado cambió. Pulse el botón para entrar con esta dirección de ahora en adelante.'],
+  confirm_email_press: ['Use this email to sign in', 'Usar este correo para entrar'],
+  confirm_email_working: ['Updating your sign-in…', 'Actualizando su acceso…'],
+  confirm_email_done: ['Done. From now on, sign in with this email address.', 'Listo. De ahora en adelante, entre con este correo electrónico.'],
+  confirm_email_failed: ['This link is invalid, used, or expired. Write to us and we will send a new one.', 'Este enlace es inválido, usado o vencido. Escríbanos y le enviamos uno nuevo.'],
 
   // Dashboard
   home_title: ['Welcome back', 'Bienvenido(a) de nuevo'],
@@ -103,9 +110,11 @@ const dict = {
   quest_pref_email: ['Email', 'Correo electrónico'],
   quest_pref_phone: ['Phone', 'Teléfono'],
   quest_pref_portal: ['Portal', 'Portal'],
+  // R45 (2026-09-26): this prints the CONTACT email of record, which every message we send goes to.
+  // It is not necessarily the sign-in address, so the label must not call it that.
   quest_email_fixed: [
-    'Your sign-in email — write to us to change it:',
-    'Su correo de acceso — escríbanos para cambiarlo:',
+    'Your email on file — write to us to change it:',
+    'Su correo registrado — escríbanos para cambiarlo:',
   ],
   /*
    * #45 — a completed questionnaire is not a one-way door.
@@ -229,26 +238,61 @@ const dict = {
   docs_title: ['Document Center', 'Centro de documentos'],
   docs_policy: ['For your security, documents move through this portal only — never by text or email attachment.', 'Por su seguridad, los documentos van solo por este portal — nunca por texto ni adjuntos de correo.'],
   docs_upload: ['Upload', 'Subir'],
-  docs_choose: ['Choose a file (photos work great)', 'Elija un archivo (las fotos funcionan perfecto)'],
+  docs_choose: ['Choose files (photos work great)', 'Elija archivos (las fotos funcionan perfecto)'],
   docs_category: ['Category', 'Categoría'],
+  // R47 (2026-09-26): the category starts unselected; a file chosen before one is picked is refused here, not sent.
+  docs_category_placeholder: ['Choose a category', 'Elija una categoría'],
+  docs_category_required: ['Choose a category first, then pick your files.', 'Elija una categoría primero y luego sus archivos.'],
+  docs_empty: ['Nothing uploaded yet. Files you send us appear here.', 'Aún no hay archivos. Los que nos envíe aparecerán aquí.'],
+  docs_file_uploaded: ['uploaded', 'subido'],
   cat_tax_documents: ['Tax documents', 'Documentos de impuestos'],
   cat_business_records: ['Business records', 'Registros del negocio'],
   cat_id_verification: ['ID verification', 'Verificación de identidad'],
   cat_irs_notices: ['IRS notice', 'Aviso del IRS'],
   cat_other: ['Other', 'Otro'],
   cat_entity_filings: ['Entity filings', 'Documentos de la entidad'],
+  /*
+   * THE STAFF-FILED CATEGORIES (R49, 2026-09-26). The five above are what a CLIENT may pick; the
+   * list below is what the firm files on a client's behalf, and every one of them reaches the
+   * Documents page through GET /portal/documents. The page used to look each row's category up
+   * here with no entry for these, and translate() threw on the first staff-filed row — the
+   * client-side exception on Brian's own account (a signed engagement letter and a delivered
+   * return). Every value of the database enum document_category now has a label, and the page
+   * goes through docCategoryLabel() (lib/documents.ts), which never throws on a value it has not
+   * met.
+   */
+  cat_signed_authorizations: ['Signed authorizations', 'Autorizaciones firmadas'],
+  cat_return_deliverable: ['Completed return', 'Declaración terminada'],
+  cat_recording: ['Session recording', 'Grabación de sesión'],
+  cat_financial_statements: ['Financial statements', 'Estados financieros'],
+  cat_mailing_receipts: ['Mailing receipts', 'Comprobantes de envío'],
   docs_uploaded: ['Uploaded — thank you!', '¡Subido — gracias!'],
   docs_for_request: ['This fulfills:', 'Esto corresponde a:'],
   doc_status_uploaded: ['Received', 'Recibido'],
   doc_status_under_review: ['Under review', 'En revisión'],
   doc_status_accepted: ['Accepted', 'Aceptado'],
   doc_status_needs_replacement: ['Needs replacement', 'Necesita reemplazo'],
+  doc_status_archived: ['Archived', 'Archivado'],
   download: ['Download', 'Descargar'],
 
   // Returns
   returns_title: ['My Returns', 'Mis declaraciones'],
   returns_intro: ['Your filed returns, available any time.', 'Sus declaraciones presentadas, disponibles en todo momento.'],
   returns_empty: ['Your returns will appear here once they’re ready.', 'Sus declaraciones aparecerán aquí cuando estén listas.'],
+  /*
+   * WHAT HAPPENS NEXT (R48, Brian, 2026-09-26): one sentence per state of the return the delivered
+   * copy belongs to, read from the return record and the R53 "8879 sent" fields. Plain words, no
+   * legal language; the keys mirror GET /portal/returns next_step.
+   */
+  returns_next_title: ['What happens next', 'Qué sigue'],
+  returns_next_f8879_pending: ['Your return is ready to review. We will send Form 8879 for your signature next.', 'Su declaración está lista para revisar. A continuación le enviaremos el Formulario 8879 para su firma.'],
+  returns_next_f8879_adobe_sign: ['Look for an email from Adobe Sign with your Form 8879. Your return is filed once you sign.', 'Busque un correo de Adobe Sign con su Formulario 8879. Su declaración se presenta en cuanto firme.'],
+  returns_next_f8879_in_office: ['Sign Form 8879 at your visit; your return is filed once you sign.', 'Firme el Formulario 8879 en su visita; su declaración se presenta en cuanto firme.'],
+  returns_next_f8879_mailed: ['Form 8879 is in the mail to you; sign and return it and we file.', 'El Formulario 8879 va en camino por correo; fírmelo, devuélvalo y presentamos su declaración.'],
+  returns_next_f8879_sent: ['Form 8879 is on its way to you for signature; your return is filed once you sign.', 'El Formulario 8879 va en camino para su firma; su declaración se presenta en cuanto firme.'],
+  returns_next_f8879_on_file: ['We have your signed Form 8879 and are filing your return.', 'Tenemos su Formulario 8879 firmado y estamos presentando su declaración.'],
+  returns_next_filed: ['Filed. We will let you know when it is accepted.', 'Presentada. Le avisaremos cuando sea aceptada.'],
+  returns_next_accepted: ['Accepted.', 'Aceptada.'],
 
   // Sign
   sign_title: ['Sign Documents', 'Firmar documentos'],
@@ -260,6 +304,8 @@ const dict = {
   env_status_draft: ['Being prepared', 'En preparación'],
   env_status_sent: ['Ready to sign — check your email', 'Lista para firmar — revise su correo'],
   env_status_completed: ['Signed', 'Firmado'],
+  // R46 (2026-09-26): a signed envelope reads the day it was signed, never "Being prepared".
+  env_status_signed_on: ['Signed on {date}', 'Firmado el {date}'],
 
   // Invoices
   inv_title: ['Invoices & Payments', 'Facturas y pagos'],
@@ -721,6 +767,11 @@ const dict = {
 
   loading: ['Loading…', 'Cargando…'],
   error_generic: ['Something went wrong. Please try again.', 'Algo salió mal. Intente de nuevo.'],
+
+  // The page-level error boundary (R49): one plain sentence and a reload control. Nothing about
+  // what failed is shown to the client; the failure itself is posted to the firm.
+  error_page_sentence: ['This page could not be shown. Reloading usually fixes it, and we have been told.', 'Esta página no se pudo mostrar. Recargar suele resolverlo, y ya se nos avisó.'],
+  error_page_reload: ['Reload', 'Recargar'],
 } satisfies Record<string, [string, string]>;
 
 export type DictKey = keyof typeof dict;
@@ -728,4 +779,113 @@ export type DictKey = keyof typeof dict;
 export function translate(lang: Lang, key: DictKey): string {
   const entry = dict[key];
   return lang === 'es' ? entry[1] : entry[0];
+}
+
+/**
+ * Whether a string built at runtime (`cat_${row.category}`) names an entry. translate() takes a
+ * DictKey the compiler has checked; a key assembled from a database value is not one until this
+ * says so (R49: the Documents page asserted the type and the page died on the first row).
+ */
+export function hasDictKey(key: string): key is DictKey {
+  return Object.prototype.hasOwnProperty.call(dict, key);
+}
+
+/*
+ * THE DOCUMENT ROW'S LABELS (R49, Brian, 2026-09-26).
+ *
+ * GET /portal/documents returns every non-withdrawn, non-archived row of the client's, whoever
+ * filed it: the client's own uploads AND what the firm files for them (a signed engagement
+ * letter, a delivered return, a mailing receipt). The Documents page used to label a row with
+ * `t(\`cat_${row.category}\`)`, asserting to the compiler that the assembled string was a
+ * dictionary key. For the staff-filed categories it was not, and translate() threw on the first
+ * such row: the client-side exception on Brian's own account, whose two documents were exactly
+ * a signed authorization and a delivered return.
+ *
+ * These helpers are the only way a row's category or status reaches the screen. A known value
+ * gets its translated label; a value the dictionary has not met (a category added by a later
+ * migration before the portal learns its name) gets the value itself with its underscores turned
+ * into spaces, and the page renders. They never throw. They live here, beside the dictionary,
+ * so the node test can import one file (the portal's lib files carry no extension in their
+ * imports, which Next resolves and node does not).
+ */
+
+/** 'signed_authorizations' -> 'Signed authorizations': readable, and honest about being untranslated. */
+export function humanise(value: string): string {
+  const words = value.replace(/_/g, ' ').trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : '';
+}
+
+export function docCategoryLabel(lang: Lang, category: string | null | undefined): string {
+  const value = typeof category === 'string' ? category : '';
+  const key = `cat_${value}`;
+  return hasDictKey(key) ? translate(lang, key) : humanise(value);
+}
+
+export function docStatusLabel(lang: Lang, status: string | null | undefined): string {
+  const value = typeof status === 'string' ? status : '';
+  const key = `doc_status_${value}`;
+  return hasDictKey(key) ? translate(lang, key) : humanise(value);
+}
+
+/** The row's status tone: the two statuses a client acts on or is reassured by, nothing else. */
+export function docStatusTone(status: string | null | undefined): 'danger' | 'ok' | '' {
+  return status === 'needs_replacement' ? 'danger' : status === 'accepted' ? 'ok' : '';
+}
+
+/*
+ * ONE ROW PER DOCUMENT (Brian, 2026-09-26, R46).
+ *
+ * GET /portal/signature-envelopes returns every envelope of the client's, and two envelopes of one
+ * type used to print as two identical rows ("Engagement letter", "Engagement letter") with nothing to
+ * tell them apart. The API now names what each envelope belongs to (the business, or the return's
+ * type and year); these fold envelopes of one type on one engagement into one row — the most
+ * advanced status wins, because a signed copy beside a draft copy IS signed — and label the row with
+ * its document and what it belongs to. Here beside the dictionary for the same reason as the
+ * document labels above: one file for the node test to import.
+ */
+export interface Envelope {
+  id: string;
+  type: string;
+  status: string;
+  sent_at?: string | null;
+  completed_at?: string | null;
+  engagement_id?: string | null;
+  service_line?: string | null;
+  tax_year?: number | null;
+  return_type?: string | null;
+  business_name?: string | null;
+}
+
+/** Higher is further along: a signed copy outranks a sent one, which outranks a draft. */
+const ENVELOPE_RANK: Record<string, number> = { draft: 0, kba_required: 1, kba_pending: 1, sent: 2, viewed: 3, completed: 4 };
+const envelopeRank = (s: string): number => ENVELOPE_RANK[s] ?? 0;
+
+/** One row per (type, engagement): the furthest-along envelope stands for the document. */
+export function envelopeRows(envelopes: Envelope[]): Envelope[] {
+  const byDocument = new Map<string, Envelope>();
+  for (const e of envelopes) {
+    const key = `${e.type}:${e.engagement_id ?? ''}`;
+    const have = byDocument.get(key);
+    if (!have || envelopeRank(e.status) > envelopeRank(have.status)) byDocument.set(key, e);
+  }
+  return [...byDocument.values()];
+}
+
+/** What the envelope belongs to, in the client's words: the business, or the return by type and year. */
+export function envelopeContext(e: Envelope): string | null {
+  if (e.business_name) return e.business_name;
+  if (e.return_type && e.tax_year) return `${e.return_type.toUpperCase()} ${e.tax_year}`;
+  if (e.tax_year) return String(e.tax_year);
+  return null;
+}
+
+/**
+ * "Engagement letter — Harness S Corp, LLC". A type the dictionary has not met (w9, grant_agreement,
+ * other) reads as its words: hasDictKey first, never an asserted key — the R49 lesson.
+ */
+export function envelopeLabel(t: (key: DictKey) => string, e: Envelope): string {
+  const key = `env_${e.type}`;
+  const name = hasDictKey(key) ? t(key) : e.type.replace(/_/g, ' ');
+  const context = envelopeContext(e);
+  return context ? `${name} — ${context}` : name;
 }

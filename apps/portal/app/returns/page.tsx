@@ -6,8 +6,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/session';
+import { hasDictKey, type DictKey } from '../../lib/i18n';
 
-interface Ret { id: string; filename: string; tax_year: number | null; uploaded_at: string }
+/*
+ * `next_step` is the return's state folded into one key by GET /portal/returns (R48): what the
+ * client should expect next, from delivery through the 8879 (the R53 "8879 sent" fields) to the
+ * acknowledgments. Null when the copy hangs on no return, or on a state with no sentence yet.
+ */
+interface Ret { id: string; filename: string; tax_year: number | null; uploaded_at: string; next_step: string | null }
 
 export default function ReturnsPage() {
   const { t } = useSession();
@@ -55,11 +61,18 @@ export default function ReturnsPage() {
         {loaded && returns.length === 0 ? <p className="muted">{t('returns_empty')}</p> : null}
         <ul className="list">
           {returns.map((r) => (
-            <li key={r.id}>
+            <li key={r.id} data-testid="return-row">
               <span className="grow">
                 <strong>{r.tax_year ?? '—'}</strong>
                 <br />
                 <span className="muted small">{r.filename}</span>
+                {/* WHAT HAPPENS NEXT (R48): the key is rendered only when the dictionary carries it, so a
+                    state the API learns before the portal does prints nothing rather than a raw key. */}
+                {r.next_step && hasDictKey(`returns_next_${r.next_step}`) ? (
+                  <span className="small" style={{ display: 'block', marginTop: 6 }} data-testid="returns-next" data-step={r.next_step}>
+                    <strong>{t('returns_next_title')}:</strong> {t(`returns_next_${r.next_step}` as DictKey)}
+                  </span>
+                ) : null}
               </span>
               <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                 <button type="button" className="btn" onClick={() => void download(r)}>

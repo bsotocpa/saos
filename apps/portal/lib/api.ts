@@ -24,7 +24,7 @@ const AUTHED_KEY = 'saos_portal_authed';
  * last visit — used to send the reader to the sign-in request page before the page they were
  * emailed had drawn. On a public path a 401 clears the marker and nothing else.
  */
-export const PUBLIC_PATHS = ['/quote', '/pay', '/unsubscribe', '/transition', '/intake', '/auth/verify'] as const;
+export const PUBLIC_PATHS = ['/quote', '/pay', '/unsubscribe', '/transition', '/intake', '/auth/verify', '/auth/confirm-email'] as const;
 export function isPublicPath(pathname: string = typeof window === 'undefined' ? '' : window.location.pathname): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`) || pathname.startsWith(`${p}?`));
 }

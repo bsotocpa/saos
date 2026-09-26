@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import { api, ApiError, formatMoney, isAuthed } from '../lib/api';
 import { useSession } from '../lib/session';
 import { SmsOptIn } from './sms-optin';
-import type { DictKey } from '../lib/i18n';
+import { envelopeLabel, envelopeRows, type DictKey, type Envelope } from '../lib/i18n';
 
 interface Onboarding {
   variant: string;
@@ -47,7 +47,6 @@ interface Engagement {
 }
 interface Booking { id: string; event_slug: string; title: string | null; starts_at: string | null; location: string | null }
 interface DocRequest { id: string; title_en: string; title_es: string | null; items: Array<{ id: string; status: string }> }
-interface Envelope { id: string; type: string; status: string }
 interface Invoice { id: string; invoice_number: string; status: string; total_cents: number }
 
 /*
@@ -211,8 +210,10 @@ export default function Dashboard() {
         .then((r) => setBookings(r.bookings))
         .catch(() => setBookings([])),
       api<{ requests: DocRequest[] }>('/portal/document-requests').then((r) => setRequests(r.requests)),
+      // R46: one row per document (two envelopes of one type on one engagement fold into one), and a
+      // signed one is not "waiting". The API already leaves out withdrawn engagements' envelopes.
       api<{ envelopes: Envelope[] }>('/portal/signature-envelopes').then((r) =>
-        setEnvelopes(r.envelopes.filter((e) => e.status !== 'completed'))
+        setEnvelopes(envelopeRows(r.envelopes).filter((e) => e.status !== 'completed'))
       ),
       api<{ invoices: Invoice[] }>('/portal/invoices').then((r) =>
         setInvoices(r.invoices.filter((i) => i.status === 'sent' || i.status === 'overdue'))
@@ -476,8 +477,8 @@ export default function Dashboard() {
             <h2>{t('unsigned_title')}</h2>
             <ul className="list">
               {envelopes.map((e) => (
-                <li key={e.id}>
-                  <span className="grow">{t(`env_${e.type}` as DictKey)}</span>
+                <li key={e.id} data-testid="unsigned-row">
+                  <span className="grow">{envelopeLabel(t, e)}</span>
                   <Link className="btn accent" href="/sign">
                     {t('nav_sign')}
                   </Link>

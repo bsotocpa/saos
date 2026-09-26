@@ -13,15 +13,8 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useRouter } from 'next/navigation';
 import { useSession } from '../../lib/session';
-import type { DictKey } from '../../lib/i18n';
-
-interface Envelope {
-  id: string;
-  type: string;
-  status: string;
-  sent_at: string | null;
-  completed_at: string | null;
-}
+import { envelopeLabel, envelopeRows, type DictKey, type Envelope } from '../../lib/i18n';
+import { dayOf } from '../../lib/dates';
 
 interface PendingSchedule {
   schedule_code: string;
@@ -78,7 +71,8 @@ export default function SignPage() {
       api<{ pending: PendingSchedule[] }>('/portal/schedules'),
       api<{ offers: ConsentOffer[] }>('/portal/consents'),
     ]);
-    setEnvelopes(env.envelopes);
+    // R46: one row per document; the API leaves out withdrawn engagements' envelopes.
+    setEnvelopes(envelopeRows(env.envelopes));
     setSchedules(sch.pending);
     setOffers(con.offers);
     // 404 here just means there is no packet waiting — not an error worth showing.
@@ -256,10 +250,13 @@ export default function SignPage() {
         {loaded && envelopes.length === 0 ? <p className="muted">{t('sign_empty')}</p> : null}
         <ul className="list">
           {envelopes.map((e) => (
-            <li key={e.id}>
-              <span className="grow">{t(`env_${e.type}` as DictKey)}</span>
+            <li key={e.id} data-testid="envelope-row" data-status={e.status}>
+              <span className="grow">{envelopeLabel(t, e)}</span>
+              {/* A signed document reads the day it was signed (R46); nothing signed ever reads "Being prepared". */}
               <span className={`badge ${e.status === 'completed' ? 'ok' : e.status === 'draft' ? '' : 'warn'}`}>
-                {t(statusKey(e.status))}
+                {e.status === 'completed' && e.completed_at
+                  ? t('env_status_signed_on').replace('{date}', dayOf(e.completed_at, lang))
+                  : t(statusKey(e.status))}
               </span>
             </li>
           ))}

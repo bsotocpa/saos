@@ -7,11 +7,20 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import { useAsk } from '../../components/ask';
-import type { DictKey } from '../../lib/i18n';
+import { docCategoryLabel, docStatusLabel, docStatusTone, type DictKey } from '../../lib/i18n';
 
+/*
+ * A row is whatever the firm or the client filed: the five client categories AND the staff-filed
+ * ones (signed_authorizations, return_deliverable, mailing_receipts, ...). Its labels come from
+ * docCategoryLabel()/docStatusLabel() in lib/i18n.ts, never from `t()` on an assembled key: that assertion is what threw on Brian's
+ * account (R49, 2026-09-26). `filename` is typed as the API declares it; the render below still
+ * reads it defensively, because a page that dies leaves the client with nothing.
+ */
 interface Doc { id: string; category: string; status: string; filename: string; tax_year: number | null; uploaded_at: string }
 interface RequestItem { id: string; labelEn: string; labelEs: string | null; status: string }
 interface DocRequest { id: string; title_en: string; title_es: string | null; items: RequestItem[] }
+/** One line per file the client just chose: its name and what happened to it (R47). */
+interface UploadResult { name: string; ok: boolean; message: string }
 
 const CATEGORIES = ['tax_documents', 'business_records', 'id_verification', 'irs_notices', 'other'] as const;
 
@@ -19,12 +28,15 @@ export default function DocumentsPage() {
   const { t, lang } = useSession();
   const ask = useAsk();
   const [docs, setDocs] = useState<Doc[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [requests, setRequests] = useState<DocRequest[]>([]);
-  const [category, setCategory] = useState<string>('tax_documents');
+  // R47: the category starts UNSELECTED. A file chosen before one is picked is refused here, inline.
+  const [category, setCategory] = useState<string>('');
   const [itemId, setItemId] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [results, setResults] = useState<UploadResult[]>([]);
   // Keyed by document id so a failed download says so on ITS row, not at the page top.
   const [downloadError, setDownloadError] = useState<{ id: string; message: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -36,6 +48,7 @@ export default function DocumentsPage() {
     ]);
     setDocs(d.documents);
     setRequests(r.requests);
+    setLoaded(true);
   };
   useEffect(() => {
     void load();
@@ -45,24 +58,47 @@ export default function DocumentsPage() {
     r.items.filter((i) => i.status === 'pending').map((i) => ({ ...i, requestTitle: lang === 'es' ? (r.title_es ?? r.title_en) : r.title_en }))
   );
 
-  const upload = async (file: File) => {
-    setBusy(true);
+  /*
+   * SEVERAL FILES AT ONCE (Brian, 2026-09-26, R47). The input is `multiple`; each file goes up on its
+   * own and gets its own result line, so one refused file (too large, wrong type) does not hide the
+   * others' success. A request item is fulfilled by the first file only — one answer per item.
+   */
+  const uploadAll = async (files: File[]) => {
     setUploaded(false);
     setUploadError('');
+    setResults([]);
+    if (!category) {
+      // Refused here, before anything is sent: the control asked for a category first.
+      setUploadError(t('docs_category_required'));
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+    setBusy(true);
+    const lines: UploadResult[] = [];
+    let fulfilItem = itemId;
     try {
-      const fd = new FormData();
-      fd.append('category', category);
-      if (itemId) fd.append('documentRequestItemId', itemId);
-      fd.append('file', file, file.name);
-      await api('/portal/documents', { method: 'POST', formData: fd });
-      setUploaded(true);
-      setItemId('');
+      for (const file of files) {
+        try {
+          const fd = new FormData();
+          fd.append('category', category);
+          if (fulfilItem) fd.append('documentRequestItemId', fulfilItem);
+          fd.append('file', file, file.name);
+          await api('/portal/documents', { method: 'POST', formData: fd });
+          lines.push({ name: file.name, ok: true, message: t('docs_file_uploaded') });
+          fulfilItem = '';
+        } catch (err) {
+          // The server's refusal, verbatim, on THIS file's line. The category and request
+          // selections stay as they were so the client can fix and retry.
+          lines.push({ name: file.name, ok: false, message: err instanceof ApiError ? err.message : t('error_generic') });
+        }
+        setResults([...lines]);
+      }
+      if (lines.some((l) => l.ok)) {
+        setUploaded(true);
+        setItemId('');
+      }
       if (fileRef.current) fileRef.current.value = '';
       await load();
-    } catch (err) {
-      // The server's refusal, verbatim, under the file control. The category and
-      // request selections stay as they were so the client can fix and retry.
-      setUploadError(err instanceof ApiError ? err.message : t('error_generic'));
     } finally {
       setBusy(false);
     }
@@ -101,7 +137,8 @@ export default function DocumentsPage() {
         {uploaded ? <p className="alert info">{t('docs_uploaded')}</p> : null}
         <label className="field">
           {t('docs_category')}
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} data-testid="docs-category">
+            <option value="">{t('docs_category_placeholder')}</option>
             {CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {t(`cat_${c}` as DictKey)}
@@ -124,36 +161,54 @@ export default function DocumentsPage() {
         ) : null}
         <label className="field">
           {t('docs_choose')}
+          {/*
+            NO `capture` ATTRIBUTE (Brian, 2026-09-26, R47). `capture="environment"` told iOS Safari to
+            open the rear camera directly, so "Choose File" offered no Photo Library and no Files. A
+            plain file input with accept="image/*,application/pdf" is what makes iOS show its own sheet:
+            Photo Library, Take Photo, Choose Files. `multiple` lets the client send several at once.
+          */}
           <input
             ref={fileRef}
             type="file"
-            accept="application/pdf,image/*"
-            capture="environment"
+            accept="image/*,application/pdf"
+            multiple
             disabled={busy}
             aria-invalid={uploadError ? true : undefined}
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void upload(file);
+              const files = Array.from(e.target.files ?? []);
+              if (files.length > 0) void uploadAll(files);
             }}
           />
         </label>
         {uploadError ? <p className="field-error" role="alert">{uploadError}</p> : null}
+        {results.length > 0 ? (
+          <ul className="list" data-testid="upload-results">
+            {results.map((r) => (
+              <li key={r.name} data-testid="upload-result" data-ok={r.ok ? 'true' : 'false'}>
+                <span className="grow small">{r.name}</span>
+                <span className={`small ${r.ok ? 'muted' : 'field-error'}`}>{r.message}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       <section className="card">
+        {/* R47: the card below the upload never sits empty without a word. */}
+        {loaded && docs.length === 0 ? <p className="muted" data-testid="docs-empty">{t('docs_empty')}</p> : null}
         <ul className="list">
           {docs.map((d) => (
-            <li key={d.id}>
+            <li key={d.id} data-testid="document-row" data-category={d.category}>
               <span className="grow">
-                <strong className="small">{d.filename}</strong>
+                <strong className="small">{d.filename ?? ''}</strong>
                 <br />
                 <span className="muted small">
-                  {t(`cat_${d.category}` as DictKey)}
+                  {docCategoryLabel(lang, d.category)}
                   {d.tax_year ? ` · ${d.tax_year}` : ''}
                 </span>
               </span>
-              <span className={`badge ${d.status === 'needs_replacement' ? 'danger' : d.status === 'accepted' ? 'ok' : ''}`}>
-                {t(`doc_status_${d.status}` as DictKey)}
+              <span className={`badge ${docStatusTone(d.status)}`}>
+                {docStatusLabel(lang, d.status)}
               </span>
               <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                 <a

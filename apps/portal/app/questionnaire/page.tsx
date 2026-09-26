@@ -318,9 +318,11 @@ export default function QuestionnairePage() {
                 <option value="portal">{t('quest_pref_portal')}</option>
               </select>
             </label>
-            {/* Shown, never editable: it is the login identity, and changing it is a
+            {/* Shown, never editable: this is the CONTACT email of record (heldIdentity reads
+                contacts.email), the address every message we send goes to. It is not necessarily the
+                sign-in address (R45), so the label says "on file", not "sign-in"; changing it is a
                 conversation with a person rather than a field on a form. */}
-            <p className="muted small">
+            <p className="muted small" data-testid="email-on-file">
               {t('quest_email_fixed')} {held?.email ?? ''}
             </p>
           </>
