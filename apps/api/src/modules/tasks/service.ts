@@ -293,11 +293,19 @@ export function advanceDate(date: string, freq: RecurFreq, interval: number): st
   }
 }
 
+/**
+ * THE CLOSE DOOR. Every status change — the Ops control, the bulk edit, a one-off script acting for
+ * the system — comes through here, so the blocker rule, the ladder, the recurrence and the audit row
+ * are one code path. `opts.reason` (R43, 2026-09-26) is a standalone sentence recorded verbatim on
+ * the audit row and, when a person is acting, as a comment on the task; it is never appended to the
+ * task's own text. An actor with no id is the system (a script run by a person, named in the label).
+ */
 export async function setTaskStatus(
   app: FastifyInstance,
   taskId: string,
   status: TaskStatus,
-  actor: { id: string; email: string; fullName: string }
+  actor: { id: string | null; email?: string; fullName: string },
+  opts: { reason?: string | undefined } = {}
 ): Promise<void> {
   const { rows } = await app.db.query<{
     id: string; status: TaskStatus; title: string; description: string | null;
@@ -373,11 +381,15 @@ export async function setTaskStatus(
     await cascadeUnblock(app, taskId);
   }
 
+  const reason = opts.reason?.trim() || undefined;
+  if (reason && actor.id) {
+    await app.db.query(`INSERT INTO task_comments (task_id, staff_id, body) VALUES ($1, $2, $3)`, [taskId, actor.id, reason]);
+  }
   await writeAudit(app.db, {
-    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+    actorType: actor.id ? 'staff' : 'system', actorId: actor.id, actorLabel: actor.fullName,
     action: 'task.status_changed', objectType: 'task', objectId: taskId,
     contactId: task.contact_id,
-    details: { status, from: task.status },
+    details: { status, from: task.status, ...(reason ? { reason } : {}) },
   });
 }
 
@@ -385,6 +397,8 @@ export async function setTaskStatus(
 
 export interface TaskFilters {
   q?: string | undefined;
+  /** Leave out tasks on a test client or a test business (R52: "Needs you today" never shows one). */
+  excludeTestClients?: boolean | undefined;
   status?: TaskStatus[] | undefined;
   priority?: number[] | undefined;
   assignedStaffId?: string | undefined;
@@ -470,6 +484,7 @@ export async function searchTasks(app: FastifyInstance, f: TaskFilters) {
   if (f.excludeSourceTypes?.length) {
     add(`(t.source_type IS NULL OR t.source_type <> ALL($$::text[]))`, f.excludeSourceTypes);
   }
+  if (f.excludeTestClients) where.push(NOT_TEST_CLIENT);
   if (f.clientVisible !== undefined) add(`t.client_visible = $$`, f.clientVisible);
   if (f.dueFrom) add(`t.due_date >= $$`, f.dueFrom);
   if (f.dueTo) add(`t.due_date <= $$`, f.dueTo);
@@ -556,6 +571,16 @@ export async function clientTasks(app: FastifyInstance, contactId: string) {
   return searchTasks(app, { contactId, includeDone: true, sortField: 'updated_at', limit: 500 });
 }
 
+/**
+ * The task is not about a test client or a test business (R52, 2026-09-26). Applied to the owner
+ * rollup only — "Needs you today" is the leadership tile, and a rehearsal client's chase belongs to
+ * nobody's day. My Tasks, the task list and task search keep showing a test client's tasks, so the
+ * flagged record can still be worked and cleaned up; only the tile filters. Written against `t` so it
+ * reads the same in TASK_SELECT queries and in the bare counts.
+ */
+export const NOT_TEST_CLIENT = `NOT EXISTS (SELECT 1 FROM contacts tc WHERE tc.id = t.contact_id AND tc.is_test)
+     AND NOT EXISTS (SELECT 1 FROM businesses tb WHERE tb.id = t.business_id AND tb.is_test)`;
+
 export async function ownerRollup(app: FastifyInstance, staffId: string) {
   // The rollup is the leadership view, so it excludes the migration backlog for the same
   // reason My Tasks does: 611 "missing phone number" rows would bury the handful of items
@@ -565,20 +590,22 @@ export async function ownerRollup(app: FastifyInstance, staffId: string) {
     sortField: 'priority',
     limit: 100,
     excludeSourceTypes: [...BACKLOG_SOURCE_TYPES],
+    excludeTestClients: true,
   });
   const backlog = await backlogCountFor(app, staffId);
   const approvals = await app.db.query(
     `${TASK_SELECT}
      WHERE t.source_type IN ('referral_approval', 'extension_batch_review') AND t.status = ANY($1::task_status[])
+       AND ${NOT_TEST_CLIENT}
      ORDER BY t.created_at`,
     [OPEN_STATUSES]
   );
   const counts = await app.db.query<{ stalled: number; day60: number; vouchers_due: number; waiting: number }>(
     `SELECT
-       (SELECT count(*)::int FROM tasks WHERE source_type = 'stalled_flag'   AND status = ANY($1::task_status[])) AS stalled,
-       (SELECT count(*)::int FROM tasks WHERE source_type = 'deposit_day60'  AND status = ANY($1::task_status[])) AS day60,
-       (SELECT count(*)::int FROM tasks WHERE source_type = 'voucher_period' AND status = ANY($1::task_status[])) AS vouchers_due,
-       (SELECT count(*)::int FROM tasks WHERE status = 'waiting_for_input') AS waiting`,
+       (SELECT count(*)::int FROM tasks t WHERE source_type = 'stalled_flag'   AND status = ANY($1::task_status[]) AND ${NOT_TEST_CLIENT}) AS stalled,
+       (SELECT count(*)::int FROM tasks t WHERE source_type = 'deposit_day60'  AND status = ANY($1::task_status[]) AND ${NOT_TEST_CLIENT}) AS day60,
+       (SELECT count(*)::int FROM tasks t WHERE source_type = 'voucher_period' AND status = ANY($1::task_status[]) AND ${NOT_TEST_CLIENT}) AS vouchers_due,
+       (SELECT count(*)::int FROM tasks t WHERE status = 'waiting_for_input' AND ${NOT_TEST_CLIENT}) AS waiting`,
     [OPEN_STATUSES]
   );
   return { mine, approvals: approvals.rows, backlog, ...counts.rows[0]! };

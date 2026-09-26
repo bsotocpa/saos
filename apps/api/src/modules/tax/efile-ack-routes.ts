@@ -10,7 +10,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../../types.ts';
 import { requirePermission } from '../../plugins/auth.ts';
-import { holdRow, ingestReport, listReports, releaseReport, reportView } from './efile-ack.ts';
+import { holdRow, ingestReport, listReports, purgeReportIdentifiers, recordProposedExtension, releaseReport, reportView, withdrawReport } from './efile-ack.ts';
 
 const ACCEPTED_TYPES = new Set(['text/csv', 'text/plain', 'application/vnd.ms-excel', 'application/csv', 'text/tab-separated-values']);
 
@@ -53,5 +53,29 @@ export function registerEfileAckRoutes(app: FastifyInstance): void {
   app.post<{ Params: { id: string } }>('/efile-acks/:id/release', manage, async (request) => {
     const id = z.uuid().parse(request.params.id);
     return { status: 'released', ...(await releaseReport(app, actorOf(request), id)) };
+  });
+
+  /*
+   * R43 (2026-09-26). Three more doors on the same permission:
+   *   record-extension  a proposed extension row becomes the R12 record on its return (form + date filed);
+   *   withdraw          the report is void, with a reason; its file may be uploaded again;
+   *   purge-identifiers every full identifier the report persisted rewritten to its last four, audited.
+   */
+  app.post<{ Params: { id: string } }>('/efile-acks/rows/:id/record-extension', manage, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const asOf = typeof (request.query as Record<string, string | undefined>).asOf === 'string' ? (request.query as Record<string, string>).asOf : undefined;
+    return { status: 'recorded', ...(await recordProposedExtension(app, actorOf(request), id, asOf)) };
+  });
+
+  const WithdrawBody = z.object({ reason: z.string().trim().min(1, 'Say why the report is withdrawn.').max(2000) });
+  app.post<{ Params: { id: string } }>('/efile-acks/:id/withdraw', manage, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = WithdrawBody.parse(request.body ?? {});
+    return { status: 'withdrawn', ...(await withdrawReport(app, actorOf(request), id, b.reason)) };
+  });
+
+  app.post<{ Params: { id: string } }>('/efile-acks/:id/purge-identifiers', manage, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    return { status: 'purged', ...(await purgeReportIdentifiers(app, actorOf(request), id)) };
   });
 }

@@ -37,7 +37,7 @@ const CreateBody = z.object({
   recurInterval: z.number().int().min(1).max(365).optional(),
 });
 
-const StatusBody = z.object({ status: StatusEnum });
+const StatusBody = z.object({ status: StatusEnum, reason: z.string().trim().max(2000).optional() });
 
 // The filter rail: every param optional, all combinable (v4.5).
 const csv = <T extends string>(allowed: readonly T[]) =>
@@ -460,7 +460,7 @@ export function registerTaskRoutes(app: FastifyInstance): void {
         return reply.code(403).send({ error: 'forbidden', message: 'tasks.execute covers only tasks assigned to you.' });
       }
     }
-    await setTaskStatus(app, id, b.status, staff);
+    await setTaskStatus(app, id, b.status, staff, { reason: b.reason });
     return { status: 'ok' };
   });
 

@@ -22,6 +22,7 @@ import { holdLine, drainOutbox, enqueueEffect } from '../src/outbox.ts';
 import { sendLogForInvoice } from '../src/modules/billing/notices.ts';
 import { createInvoice } from '../src/modules/billing/service.ts';
 import { ingestReport, releaseReport } from '../src/modules/tax/efile-ack.ts';
+import { atxReport, atxRow } from './atx.ts';
 import { todayChicago, addDays } from '../src/modules/tax/deadlines.ts';
 
 let app: FastifyInstance;
@@ -52,17 +53,22 @@ before(async () => {
 });
 after(async () => { await app.close(); });
 
+/** One synthetic EIN per fixture (R54, 2026-09-26: a duplicate EIN on Add needs a reason); the last four ride on the ack report. */
+let einSeq = 0;
+const nextEin = (): { ein: string; last4: string } => { const last4 = String(5100 + ++einSeq); return { ein: `55-555${last4}`, last4 }; };
+
 /** A business return at a stage, on its own client, assigned to a preparer. */
-async function businessReturn(last: string, preparerId: string, stage = 'intake_started'): Promise<{ contactId: string; businessId: string; teId: string; engagementId: string }> {
+async function businessReturn(last: string, preparerId: string, stage = 'intake_started'): Promise<{ contactId: string; businessId: string; teId: string; engagementId: string; last4: string }> {
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: last, email: `${last.toLowerCase()}-walk@example.test` });
-  const biz = await app.inject({ method: 'POST', url: `/contacts/${c.id}/businesses`, headers: auth(brian), payload: { name: `Synthetic ${last}, LLC`, ein: '55-5555555', entityType: 's_corp', state: 'IL' } });
+  const { ein, last4 } = nextEin();
+  const biz = await app.inject({ method: 'POST', url: `/contacts/${c.id}/businesses`, headers: auth(brian), payload: { name: `Synthetic ${last}, LLC`, ein, entityType: 's_corp', state: 'IL' } });
   assert.equal(biz.statusCode, 201, biz.body);
   const businessId = biz.json().id as string;
   const te = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(ana), payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: c.id, businessId, taxYear: 2025, returnType: '1120s', clientType: 'business', preparerId } });
   assert.equal(te.statusCode, 201, te.body);
   const teId = te.json().id as string;
   if (stage !== 'intake_started') await app.db.query(`UPDATE tax_engagements SET stage = $2::tax_stage, engagement_letter_signed_at = now(), estimate_locked_at = now() WHERE id = $1`, [teId, stage]);
-  return { contactId: c.id, businessId, teId, engagementId: te.json().engagementId as string };
+  return { contactId: c.id, businessId, teId, engagementId: te.json().engagementId as string, last4 };
 }
 
 test('the 8879 signed date is a past fact: tomorrow is refused, the real earlier date authorizes', async () => {
@@ -146,11 +152,11 @@ test('the actor on an acceptance email is the person who released the report', a
   const r = await businessReturn('Released', ana.id, 'filed');
   await signed8879OnFile(app, r.teId, ana.id, addDays(todayChicago(), -3));
   await app.db.query(`UPDATE tax_engagements SET preparer_ptin_holder_id = COALESCE(preparer_ptin_holder_id, $2) WHERE id = $1`, [r.teId, ana.id]);
-  const report = [
-    'Entity Name,EIN,Tax Year,Return Type,Agency,Status,Submission ID,Ack Date',
-    `"Synthetic Released, LLC",5555,2025,1120S,Federal,Accepted,R-FED-1,09/18/2026`,
-    `"Synthetic Released, LLC",5555,2025,1120S,IL,Accepted,R-IL-1,09/18/2026`,
-  ].join('\n');
+  // The real ATX shape (R43): no tax-year column; the identifier's last four, the form family and the jurisdiction match.
+  const report = atxReport([
+    atxRow({ name: 'Synthetic Released, LLC', last4: r.last4, jurisdiction: 'Federal', type: '1120S', status: 'Accepted', when: '9/18/2026 5:00:00 PM' }),
+    atxRow({ name: 'Synthetic Released, LLC', last4: r.last4, jurisdiction: 'IL', type: 'IL 1120-ST', status: 'Accepted', when: '9/18/2026 5:00:00 PM' }),
+  ]);
   const ingested = await ingestReport(app, { id: brian.id, label: brian.fullName }, { filename: 'released.csv', text: report, today: todayChicago() });
   assert.equal(ingested.queued, 2, `both rows matched: ${JSON.stringify(ingested)}`);
   await releaseReport(app, { id: brian.id, label: brian.fullName }, ingested.reportId);

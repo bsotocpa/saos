@@ -25,17 +25,20 @@ import {
 } from './deadlines.ts';
 
 /**
- * THE FORM THE EXTENSION WENT IN ON (Brian, 2026-09-20). Two real forms: 4868 for an individual
- * return, 7004 for an entity return. The person filing says which — this is only the default the
- * control opens on, derived from the return type. The extended DEADLINE is never typed: it stays
- * derived from the return type and the fiscal year end by the deadline engine.
+ * THE FORM THE EXTENSION WENT IN ON (Brian, 2026-09-20). Three real forms: 4868 for an individual
+ * return, 7004 for an entity return, 8868 for an exempt organization's (R43, 2026-09-26: the ATX
+ * export carries 8868 rows and the ack parser proposes them). The person filing says which — this
+ * is only the default the control opens on, derived from the return type. The extended DEADLINE is
+ * never typed: it stays derived from the return type and the fiscal year end by the deadline engine.
  */
-export const EXTENSION_FORMS = ['4868', '7004'] as const;
+export const EXTENSION_FORMS = ['4868', '7004', '8868'] as const;
 export type ExtensionForm = (typeof EXTENSION_FORMS)[number];
 
-/** The individual returns extend on 4868; every other return type extends on 7004. */
+/** The individual returns extend on 4868, the exempt organizations on 8868; every other return type extends on 7004. */
 export function defaultExtensionForm(returnType: string): ExtensionForm {
-  return returnType === '1040' || returnType === '1040_expat' ? '4868' : '7004';
+  if (returnType === '1040' || returnType === '1040_expat') return '4868';
+  if (returnType === '990' || returnType === '990ez') return '8868';
+  return '7004';
 }
 
 /** Stages "not yet at Internal Review" (MP: decision-list population). */
