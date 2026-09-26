@@ -45,6 +45,12 @@ export const UNGATED_CLIENT_SENDS: Record<string, UngatedClientSend> = {
     reason:
       'The client just clicked "send me a sign-in link" and is looking at the screen. A toggle here is a kill switch on the front door: flip it and every client is locked out of the portal with no error anyone would connect to a setting. The controls that belong on this are rate limiting (3 per window, already enforced) and link expiry, not arming.',
   },
+  'modules/portal-auth/service.ts:requestPortalEmailMove': {
+    template: 'portal_email_change_confirm',
+    recipientClass: 'client',
+    reason:
+      'R45: a staff member changed the contact email seconds ago and accepted the offer to move the portal sign-in with it (or pressed Resend). The one message is the confirmation link to the NEW address, and the move happens only when its button is pressed there. Transactional like the magic link: a toggle over it would leave a pending move that can never complete, with nothing on any screen to connect that to a setting. Superseding (one live link at a time) and expiry are its controls.',
+  },
   // Item 9 (2026-09-09): sendVoidNotice, sendRefundReceipt and the payment receipt in
   // markInvoicePaid left this registry — they fire from a system event, and are now gated
   // automations (void_notice, refund_receipt, payment_receipt), armed in Admin.
@@ -68,12 +74,9 @@ export const UNGATED_CLIENT_SENDS: Record<string, UngatedClientSend> = {
     reason:
       'The finished monthly close, sent when a staff member completes it. This is the deliverable the client pays for; a toggle that silently withholds it is a way to lose a client without anyone noticing.',
   },
-  'modules/documents/service.ts:afterReturnDelivered': {
-    template: 'return_delivered',
-    recipientClass: 'client',
-    reason:
-      'The return is finished and a staff member delivered it. Same reasoning as the close: the message IS the delivery, and suppressing it means the work is done and the client does not know.',
-  },
+  // R48 (2026-09-26): afterReturnDelivered LEFT this registry. The return-delivered notice is the
+  // gated automation `return_delivered` (seeded off); the delivery itself (the PDF on the portal, the
+  // stage move) is never gated, and the Ops confirmation says whether the client was emailed.
   'modules/referrals/service.ts:sendReferral': {
     template: 'referral_intro_hilo_to_soto / referral_intro_soto_to_hilo',
     recipientClass: 'client',

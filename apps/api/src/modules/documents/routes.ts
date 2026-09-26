@@ -270,8 +270,10 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         });
         signedEngagementLetter = true;
       }
-      // Return delivery: notify the client + advance the stage (MP ATX handoff).
+      // Return delivery: advance the stage, and email the client only through the armed notice (R48).
+      // `notice` says what actually happened, so the Ops confirmation prints the truth.
       let stageMoved = false;
+      let notice: { emailed: boolean; reason: 'sent' | 'automation_off' | 'no_email' } | null = null;
       if (fields.category === 'return_deliverable' && fields.taxEngagementId) {
         const delivered = await afterReturnDelivered(
           app,
@@ -279,8 +281,9 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
           fields.taxEngagementId
         );
         stageMoved = delivered.stageMoved;
+        notice = delivered.notice;
       }
-      return reply.code(201).send({ ...result, stageMoved, signed8879, signedEngagementLetter });
+      return reply.code(201).send({ ...result, stageMoved, notice, signed8879, signedEngagementLetter });
     }
   );
 

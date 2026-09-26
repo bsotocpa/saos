@@ -84,6 +84,8 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
                 e.period_key,
                 e.lead_staff_id, e.started_on, e.price_book_version_id,
                 e.ended_on, e.close_reason,
+                -- R52 (2026-09-26): the client page says "On hold since <day>" from this.
+                e.work_paused_at,
                 e.independence_override_at IS NOT NULL AS independence_overridden,
                 e.created_at,
                 -- 2026-09-19 (item 4): what the client still owes on this engagement. A completed

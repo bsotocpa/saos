@@ -6,10 +6,12 @@ import { writeAudit } from '../../audit.ts';
 import { PORTAL_SESSION_COOKIE, clearCookieOptions, portalCookieOptions } from '../../cookies.ts';
 import {
   alignPortalEmail,
+  confirmPortalEmailMove,
   ensurePortalUser,
   handleMailBounce,
   issueMagicLink,
   recordUnknownSignInAttempt,
+  requestPortalEmailMove,
   verifyMagicLink,
 } from './service.ts';
 
@@ -159,6 +161,32 @@ export function registerPortalAuthRoutes(app: FastifyInstance): void {
       return alignPortalEmail(app, contactId, request.staff!, { ip: request.ip, userAgent: request.headers['user-agent'] ?? null });
     }
   );
+
+  /**
+   * Staff: move the portal sign-in to the contact email, confirmed by the client (R45, 2026-09-26).
+   * Offered on the client page when the contact email changes (PATCH /contacts/:id with
+   * movePortalSignIn: true lands here too); pressed again, it is the Resend control. Records the
+   * pending change and emails ONE confirmation link to the new address; the sign-in itself moves when
+   * the link's button is pressed. contacts.write, like every other edit of who a client is.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/contacts/:id/portal-email-move',
+    { preHandler: [app.authenticate, requirePermission('contacts.write')] },
+    async (request) => {
+      const contactId = z.uuid().parse(request.params.id);
+      return requestPortalEmailMove(app, contactId, request.staff!, { ip: request.ip, userAgent: request.headers['user-agent'] ?? null });
+    }
+  );
+
+  /**
+   * Public: the button on /auth/confirm-email. A POST, never a GET (the R37 rule): opening the link
+   * changes nothing; pressing the button consumes it and moves the sign-in. No session is needed —
+   * holding the link in the new inbox is what proves the move was wanted there.
+   */
+  app.post('/portal/auth/email-change/confirm', async (request) => {
+    const body = VerifyBody.parse(request.body);
+    return confirmPortalEmailMove(app, body.token, { ip: request.ip, userAgent: request.headers['user-agent'] ?? null });
+  });
 
   // Delivery-status webhook (mail relay → us). Bounce = Rene fallback task.
   // Authenticated by shared secret header; the SES/SNS adapter (M23) will

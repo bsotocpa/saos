@@ -193,6 +193,84 @@ test('service lines map to their schedules', async () => {
   assert.deepEqual((await resolveSchedules(app, attest)).codes, ['F']);
 });
 
+/*
+ * R46 (Brian, 2026-09-26): "Schedules come only from the lines of the accepted quote being engaged.
+ * Withdrawn engagements contribute nothing." The production packet of 2026-09-20 carried A and B for
+ * a client whose only live engagement was an accepted 1120-S quote: the two withdrawn 1040s supplied
+ * their return type to the A/B split, which read every return on the contact in any status. The
+ * accepted quote's lines are the engagement's scope snapshot (engagement_scope_items), read through
+ * schedule_for_price_line; nothing on a withdrawn engagement is read at all.
+ */
+test('R46: schedules come from the accepted quote\'s lines; a withdrawn 1040 contributes nothing', async () => {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Quotedlines', email: 'quotedlines@example.test' });
+  const version = await app.db.query<{ id: string }>(
+    `SELECT id FROM price_book_versions WHERE effective_from <= CURRENT_DATE AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
+      ORDER BY effective_from DESC LIMIT 1`
+  );
+  const versionId = version.rows[0]!.id;
+  const itemOf = async (line: string): Promise<string> => {
+    const r = await app.db.query<{ item_code: string }>(
+      `SELECT item_code FROM price_book_items WHERE version_id = $1 AND service_line = $2::price_service_line AND is_active ORDER BY item_code LIMIT 1`,
+      [versionId, line]
+    );
+    assert.ok(r.rows[0], `the price book in force carries a ${line} item`);
+    return r.rows[0]!.item_code;
+  };
+  /** An engagement made by an accepted quote: its scope snapshot names the line. */
+  const quoted = async (status: string, priceLine: string, returnType: string, stage = 'intake_started'): Promise<string> => {
+    // A withdrawn engagement carries its end date and its reason (0064's checks), the way the close door writes them.
+    const e = await app.db.query<{ id: string }>(
+      `INSERT INTO engagements (contact_id, service_line, status, ended_on, close_reason)
+       VALUES ($1, 'tax', $2::engagement_status,
+               CASE WHEN $2 = 'withdrawn' THEN CURRENT_DATE END,
+               CASE WHEN $2 = 'withdrawn' THEN 'Synthetic: the client did not proceed with this year' END) RETURNING id`,
+      [c.id, status]
+    );
+    const code = await itemOf(priceLine);
+    await app.db.query(
+      `INSERT INTO engagement_scope_items (engagement_id, price_book_version_id, item_code, description_en, description_es)
+       VALUES ($1, $2, $3, $3, $3)`,
+      [e.rows[0]!.id, versionId, code]
+    );
+    await app.db.query(
+      `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, stage, original_deadline)
+       VALUES ($1, 2025, $2::return_type, $3::tax_stage, '2026-03-15')`,
+      [e.rows[0]!.id, returnType, stage]
+    );
+    return e.rows[0]!.id;
+  };
+
+  // Two withdrawn 1040s (the production shape) and the accepted 1120-S quote, active.
+  await quoted('withdrawn', 'individual_tax', '1040', 'withdrawn');
+  await quoted('withdrawn', 'individual_tax', '1040', 'withdrawn');
+  await quoted('active', 'business_tax', '1120s');
+  const resolved = await resolveSchedules(app, c.id);
+  assert.deepEqual(resolved.codes, ['B'], 'B only: the withdrawn 1040s contribute nothing, and the 1120-S line is Schedule B');
+  assert.deepEqual(resolved.reasons.B, ['business_tax'], 'the reason is the quote line, not a return type read off the contact');
+  assert.equal(resolved.reasons.A, undefined);
+
+  // The owner's own 1040 quoted and accepted alongside: now A joins B, from ITS line.
+  await quoted('active', 'individual_tax', '1040');
+  const both = await resolveSchedules(app, c.id);
+  assert.deepEqual(both.codes, ['A', 'B']);
+  assert.deepEqual(both.reasons.A, ['individual_tax']);
+});
+
+test('R46: the Master signature completes the pending engagement-letter envelopes in the same transaction', async () => {
+  const id = await clientWith('bookkeeping', 'Envelopedone');
+  const env = await app.db.query<{ id: string }>(
+    `INSERT INTO signature_envelopes (contact_id, type, status) VALUES ($1, 'engagement_letter', 'draft') RETURNING id`,
+    [id]
+  );
+  const packet = await createPacket(app, id, actor);
+  await recordMasterSignature(app, packet.packetId);
+  const after = await app.db.query<{ status: string; completed_at: Date | null }>(
+    `SELECT status::text AS status, completed_at FROM signature_envelopes WHERE id = $1`, [env.rows[0]!.id]
+  );
+  assert.equal(after.rows[0]!.status, 'completed', 'the signed letter no longer waits for a signature');
+  assert.ok(after.rows[0]!.completed_at, 'and carries the day it was signed');
+});
+
 // ── Master §1, all four claims ────────────────────────────────────────────────
 
 test('ONE signature accepts the Master and every attached schedule', async () => {

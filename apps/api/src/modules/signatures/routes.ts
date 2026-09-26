@@ -71,14 +71,31 @@ export function registerSignatureRoutes(app: FastifyInstance): void {
   });
   // The vendor completion webhook (POST /webhooks/docuseal) is gone with the vendor (2026-09-12).
 
-  // Portal: the client's "Sign Documents" list — scoped to the session contact.
+  /*
+   * Portal: the client's "Sign Documents" list — scoped to the session contact.
+   *
+   * R46 (Brian, 2026-09-26): documents of withdrawn engagements never show. The list used to return
+   * every envelope of the contact with no look at the engagement it hangs on, so the engagement
+   * letters queued for two withdrawn 1040s sat under "Waiting for your signature" beside the signed
+   * packet. An envelope on a withdrawn engagement (or a withdrawn return) is left out; one on no
+   * engagement (a §7216 consent from intake) stays. Each row now names what it belongs to — the
+   * business, or the return's type and year — so two envelopes of one type can be told apart, and
+   * two of one type on one engagement can be folded into one row by the page.
+   */
   app.get('/portal/signature-envelopes', { preHandler: [app.authenticateClient] }, async (request) => {
     const client = request.client!;
     const { rows } = await app.db.query(
-      `SELECT id, type, status, sent_at, completed_at, signed_document_id
-       FROM signature_envelopes
-       WHERE contact_id = $1 AND status NOT IN ('voided', 'declined')
-       ORDER BY created_at DESC`,
+      `SELECT se.id, se.type, se.status, se.sent_at, se.completed_at, se.signed_document_id,
+              se.engagement_id, e.service_line::text AS service_line,
+              te.tax_year, te.return_type::text AS return_type, b.name AS business_name
+         FROM signature_envelopes se
+         LEFT JOIN engagements e ON e.id = se.engagement_id
+         LEFT JOIN tax_engagements te ON te.id = COALESCE(se.tax_engagement_id, (SELECT t2.id FROM tax_engagements t2 WHERE t2.engagement_id = e.id LIMIT 1))
+         LEFT JOIN businesses b ON b.id = e.business_id
+        WHERE se.contact_id = $1 AND se.status NOT IN ('voided', 'declined')
+          AND (e.id IS NULL OR e.status <> 'withdrawn')
+          AND (te.id IS NULL OR te.stage <> 'withdrawn')
+        ORDER BY se.created_at DESC`,
       [client.contactId]
     );
     return { envelopes: rows };

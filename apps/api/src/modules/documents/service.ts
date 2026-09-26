@@ -516,16 +516,30 @@ export async function downloadDocument(
   return { stream, filename: doc.filename, mimeType: doc.mime_type };
 }
 
+/** What happened to the client after a delivery: emailed, or not and why (R48). */
+export interface ReturnDeliveryNotice {
+  emailed: boolean;
+  reason: 'sent' | 'automation_off' | 'no_email';
+}
+
 /**
  * Return delivery (MP Return Delivery): the preparer uploads the final ATX
- * PDF → it lands in My Returns, the client is notified in their language,
- * and the stage moves to Client Review when the pipeline allows it.
+ * PDF → it lands in My Returns, the stage moves to Client Review when the
+ * pipeline allows it, and the client is emailed in their language IF the
+ * `return_delivered` notice is armed.
+ *
+ * R48 (Brian, 2026-09-26): Deliver Return used to say "client notified" while no return-delivered
+ * notice was armed anywhere; the send was in the ungated registry and the confirmation was composed
+ * from the stage move alone. The notice is now the gated automation `return_delivered` (seeded off,
+ * armed in Admin → Automations), the delivery itself is never gated, and the answer states what
+ * actually happened so the Ops confirmation can print it: emailed, or not emailed and why. Every
+ * suppression is audited where the send would have been.
  */
 export async function afterReturnDelivered(
   app: FastifyInstance,
   actor: { staffId: string; label: string },
   taxEngagementId: string
-): Promise<{ stageMoved: boolean }> {
+): Promise<{ stageMoved: boolean; notice: ReturnDeliveryNotice }> {
   const { rows } = await app.db.query<{
     stage: string; tax_year: number; contact_id: string;
     first_name: string; email: string | null; language: 'en' | 'es';
@@ -547,7 +561,21 @@ export async function afterReturnDelivered(
     });
     stageMoved = true;
   }
-  if (te.email) {
+  let notice: ReturnDeliveryNotice;
+  if (!te.email) {
+    notice = { emailed: false, reason: 'no_email' };
+  } else if (!(await isAutomationEnabled(app, 'return_delivered'))) {
+    notice = { emailed: false, reason: 'automation_off' };
+    await writeAudit(app.db, {
+      actorType: 'system',
+      action: 'document.return_delivered_notice_suppressed',
+      objectType: 'tax_engagement',
+      objectId: taxEngagementId,
+      contactId: te.contact_id,
+      details: { automation: 'return_delivered', reason: 'automation_off', tax_year: te.tax_year, delivered_by: actor.staffId },
+    });
+  } else {
+    // The contact email (R45): every client mail reads contacts.email.
     await sendTemplatedEmail(app, {
       to: te.email,
       templateKey: 'return_delivered',
@@ -559,8 +587,9 @@ export async function afterReturnDelivered(
         portal_link: app.config.PORTAL_BASE_URL,
       },
     });
+    notice = { emailed: true, reason: 'sent' };
   }
-  return { stageMoved };
+  return { stageMoved, notice };
 }
 
 /**

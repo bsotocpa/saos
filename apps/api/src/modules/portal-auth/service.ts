@@ -391,3 +391,164 @@ export async function alignPortalEmail(
     return { aligned: true };
   });
 }
+
+/*
+ * THE SIGN-IN FOLLOWS THE CONTACT EMAIL, ONCE THE NEW ADDRESS SAYS SO (Brian, 2026-09-26, R45).
+ *
+ * All client mail goes to the contact email; the sign-in is the one thing that answers to its own
+ * address (the magic link must reach the account that exists). When the contact email changes while
+ * a portal user exists, Ops offers to move the sign-in with it. Accepting the offer does NOT move it:
+ * it records a pending change and sends ONE confirmation link to the NEW address, through the same
+ * path as the magic link (transactional — a person asked for it seconds ago; not an automation). The
+ * move happens when the person holding that inbox presses the button on the link's page.
+ *
+ * `alignPortalEmail` above stays as the operator's immediate reconcile for an address that already
+ * differs; this is the client-confirmed path for a change being made now.
+ */
+const EMAIL_MOVE_LINK_HOURS = 48;
+
+export interface PortalEmailMovePending {
+  newEmail: string;
+  requestedAt: Date;
+  expiresAt: Date;
+}
+
+/** The live (unconfirmed, unsuperseded, unexpired) move for a contact's portal user, if any. */
+export async function pendingPortalEmailMove(app: FastifyInstance, contactId: string): Promise<PortalEmailMovePending | null> {
+  const { rows } = await app.db.query<{ new_email: string; created_at: Date; expires_at: Date }>(
+    `SELECT pec.new_email, pec.created_at, pec.expires_at
+       FROM portal_email_changes pec JOIN portal_users pu ON pu.id = pec.portal_user_id
+      WHERE pu.contact_id = $1 AND pec.confirmed_at IS NULL AND pec.superseded_at IS NULL AND pec.expires_at > now()
+      ORDER BY pec.created_at DESC LIMIT 1`,
+    [contactId]
+  );
+  const r = rows[0];
+  return r ? { newEmail: r.new_email, requestedAt: r.created_at, expiresAt: r.expires_at } : null;
+}
+
+/**
+ * Record the pending move and send the confirmation link to the new address. The target is always
+ * the CONTACT email as it stands now, read inside the transaction, so the offer and the record cannot
+ * name different addresses. A second call (Resend, or the contact email changing again) supersedes
+ * every earlier pending row: one live link at a time.
+ */
+export async function requestPortalEmailMove(
+  app: FastifyInstance,
+  contactId: string,
+  actor: { id: string; fullName: string },
+  meta: RequestMeta = {}
+): Promise<{ pending: true; expiresAt: Date; resent: boolean }> {
+  return withTransaction(app.db, async () => {
+    const { rows } = await app.db.query<{
+      portal_user_id: string | null; is_active: boolean | null; contact_email: string | null; portal_email: string | null;
+      first_name: string; language: 'en' | 'es';
+    }>(
+      `SELECT u.id AS portal_user_id, u.is_active, c.email AS contact_email, u.email AS portal_email, c.first_name, c.language
+         FROM contacts c LEFT JOIN portal_users u ON u.contact_id = c.id
+        WHERE c.id = $1
+        FOR UPDATE OF c`,
+      [contactId]
+    );
+    const row = rows[0];
+    if (!row) throw new AppError(404, 'contact_not_found', 'Contact not found.');
+    if (!row.portal_user_id) throw new AppError(404, 'portal_user_not_found', 'This client has no portal account to move.');
+    if (!row.is_active) throw new AppError(409, 'portal_user_inactive', 'This portal account is revoked; reactivate it before moving its sign-in.');
+    if (!row.contact_email) throw new AppError(400, 'contact_has_no_email', 'The contact has no email address to move the sign-in to.');
+    if (row.portal_email !== null && row.portal_email.toLowerCase() === row.contact_email.toLowerCase()) {
+      throw new AppError(409, 'already_aligned', 'The sign-in address already matches the contact email.');
+    }
+    const taken = await app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM portal_users WHERE email = $1 AND id <> $2`,
+      [row.contact_email, row.portal_user_id]
+    );
+    if (taken.rows[0]!.n > 0) {
+      throw new AppError(409, 'portal_email_taken', 'Another portal account already signs in with the contact email. Change one of the two addresses first.');
+    }
+
+    const superseded = await app.db.query(
+      `UPDATE portal_email_changes SET superseded_at = now()
+        WHERE portal_user_id = $1 AND confirmed_at IS NULL AND superseded_at IS NULL`,
+      [row.portal_user_id]
+    );
+    const { token, hash } = generateToken();
+    const inserted = await app.db.query<{ expires_at: Date }>(
+      `INSERT INTO portal_email_changes (portal_user_id, new_email, token_hash, expires_at, requested_by)
+       VALUES ($1, $2, $3, now() + make_interval(hours => $4), $5) RETURNING expires_at`,
+      [row.portal_user_id, row.contact_email, hash, EMAIL_MOVE_LINK_HOURS, actor.id]
+    );
+
+    // To the NEW address only: the person who controls it is the one who confirms the move.
+    await sendTemplatedEmail(app, {
+      to: row.contact_email,
+      templateKey: 'portal_email_change_confirm',
+      language: row.language,
+      contactId,
+      vars: {
+        first_name: row.first_name,
+        link: `${app.config.PORTAL_BASE_URL}/auth/confirm-email?token=${token}`,
+        ttl_hours: String(EMAIL_MOVE_LINK_HOURS),
+      },
+    });
+
+    await writeAudit(app.db, {
+      actorType: 'staff',
+      actorId: actor.id,
+      actorLabel: actor.fullName,
+      action: 'portal_user.email_move_requested',
+      objectType: 'portal_user',
+      objectId: row.portal_user_id,
+      contactId,
+      ip: meta.ip ?? null,
+      userAgent: meta.userAgent ?? null,
+      // Fields, never addresses.
+      details: { field: 'email', target: 'contact.email', confirmation: 'link_to_new_address', superseded_pending: superseded.rowCount ?? 0 },
+    });
+    return { pending: true, expiresAt: inserted.rows[0]!.expires_at, resent: (superseded.rowCount ?? 0) > 0 };
+  });
+}
+
+/**
+ * The button press on /auth/confirm-email: consumes the link (single use, unexpired, not superseded)
+ * and moves portal_users.email in the same transaction. The address is re-checked against every other
+ * portal user at this moment, because another account may have taken it since the request.
+ */
+export async function confirmPortalEmailMove(
+  app: FastifyInstance,
+  token: string,
+  meta: RequestMeta = {}
+): Promise<{ moved: true }> {
+  return withTransaction(app.db, async () => {
+    const { rows } = await app.db.query<{ id: string; portal_user_id: string; new_email: string; contact_id: string }>(
+      `UPDATE portal_email_changes pec
+          SET confirmed_at = now()
+         FROM portal_users pu
+        WHERE pu.id = pec.portal_user_id
+          AND pec.token_hash = $1 AND pec.confirmed_at IS NULL AND pec.superseded_at IS NULL AND pec.expires_at > now()
+        RETURNING pec.id, pec.portal_user_id, pec.new_email, pu.contact_id`,
+      [hashToken(token)]
+    );
+    const change = rows[0];
+    if (!change) throw new AppError(401, 'invalid_confirmation_link', 'This link is invalid, used, or expired.');
+    const taken = await app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM portal_users WHERE email = $1 AND id <> $2`,
+      [change.new_email, change.portal_user_id]
+    );
+    if (taken.rows[0]!.n > 0) {
+      throw new AppError(409, 'portal_email_taken', 'Another portal account already signs in with that email address. Write to us and we will sort it out.');
+    }
+    await app.db.query(`UPDATE portal_users SET email = $2 WHERE id = $1`, [change.portal_user_id, change.new_email]);
+    await writeAudit(app.db, {
+      actorType: 'client',
+      actorId: change.portal_user_id,
+      actorLabel: 'email move confirmed',
+      action: 'portal_user.email_moved',
+      objectType: 'portal_user',
+      objectId: change.portal_user_id,
+      contactId: change.contact_id,
+      ip: meta.ip ?? null,
+      userAgent: meta.userAgent ?? null,
+      details: { field: 'email', source: 'contact.email', confirmed_by: 'link_to_new_address', change_id: change.id },
+    });
+    return { moved: true };
+  });
+}

@@ -61,9 +61,23 @@ export interface ResolvedSchedules {
 }
 
 /**
- * Which schedules a client's services require. Reads the service_lines mapping
- * from `service_schedules` (admin-editable data) and adds the A/B tax split from
- * the return types actually on file.
+ * Which schedules a client's services require (Brian, 2026-09-26, R46).
+ *
+ * SCHEDULES COME ONLY FROM THE LINES OF THE ACCEPTED QUOTE BEING ENGAGED. Each live engagement
+ * (draft/active/on_hold) carries the quote lines it was made from (`engagement_scope_items`, the
+ * snapshot taken at acceptance); each line's price-book service line maps to its schedule through
+ * `schedule_for_price_line` (individual_tax → A, business_tax → B, recurring_accounting /
+ * setup_conversion / filings_1099_w2 → C, coo / specialized_cpa → D, entity_services → E,
+ * attest → F; deposit and software_passthrough → nothing). WITHDRAWN ENGAGEMENTS CONTRIBUTE
+ * NOTHING: neither their lines nor their returns are read.
+ *
+ * Until today the tax A/B split was decided by EVERY return on the contact in ANY status
+ * (packet.ts:120-122 as it was), so two withdrawn 1040s put Schedule A into a packet whose only live
+ * engagement was an accepted 1120-S quote. That is the defect this replaces.
+ *
+ * An engagement opened by hand (no quote, so no scope items) still needs paper: it falls back to the
+ * `service_schedules` mapping by service line, and for a tax line to ITS OWN return's type (business
+ * → B, individual → A, no return yet → A), never to another engagement's.
  */
 export async function resolveSchedules(
   app: FastifyInstance,
@@ -73,11 +87,15 @@ export async function resolveSchedules(
   /*
    * `on_hold` belongs here (#44). A paused engagement still HAS an agreement, and dropping
    * its schedule out of the packet would mean pausing one service silently rewrites the
-   * legal document covering all of them.
+   * legal document covering all of them. Withdrawn and completed do not: a withdrawn
+   * engagement contributes nothing (R46).
    */
-  const engagements = await app.db.query<{ service_line: ServiceLine }>(
-    `SELECT DISTINCT service_line::text AS service_line FROM engagements
-     WHERE contact_id = $1 AND status IN ('draft', 'active', 'on_hold')`,
+  const LIVE = `('draft', 'active', 'on_hold')`;
+  const engagements = await app.db.query<{ id: string; service_line: ServiceLine; quoted: boolean }>(
+    `SELECT e.id, e.service_line::text AS service_line,
+            EXISTS (SELECT 1 FROM engagement_scope_items s WHERE s.engagement_id = e.id) AS quoted
+       FROM engagements e
+      WHERE e.contact_id = $1 AND e.status IN ${LIVE}`,
     [contactId]
   );
   const lines = new Set<ServiceLine>([
@@ -101,44 +119,66 @@ export async function resolveSchedules(
     `SELECT schedule_code, title, service_lines::text[] AS service_lines
      FROM service_schedules ORDER BY sort_order`
   );
+  const titles: Record<string, string> = {};
+  for (const m of mapping.rows) titles[m.schedule_code] = m.title;
 
   const codes = new Set<string>();
-  const titles: Record<string, string> = {};
   const reasons: Record<string, string[]> = {};
-  for (const m of mapping.rows) {
-    titles[m.schedule_code] = m.title;
-    const hit = m.service_lines.filter((l) => lines.has(l));
-    if (hit.length > 0) {
-      codes.add(m.schedule_code);
-      reasons[m.schedule_code] = hit;
-    }
-  }
+  const reason = (code: string, why: string) => {
+    codes.add(code);
+    if (!(reasons[code] ?? []).includes(why)) reasons[code] = [...(reasons[code] ?? []), why];
+  };
 
-  // The A/B split: 'tax' maps to A by default; a business return type adds B.
-  if (lines.has('tax')) {
+  /*
+   * 1. THE ACCEPTED QUOTE'S LINES, per live engagement. The price-book version is the one the
+   * snapshot names (a quote means what the book said when it was written); a custom line has no
+   * book item and names its service line on the quote row itself.
+   */
+  const quoted = await app.db.query<{ schedule_code: string; price_line: string }>(
+    `SELECT DISTINCT m.schedule_code, COALESCE(pbi.service_line, qli.service_line)::text AS price_line
+       FROM engagements e
+       JOIN engagement_scope_items s ON s.engagement_id = e.id
+       LEFT JOIN price_book_items pbi ON pbi.version_id = s.price_book_version_id AND pbi.item_code = s.item_code
+       LEFT JOIN quote_line_items qli ON qli.id = s.source_quote_line_id AND qli.is_custom
+       JOIN schedule_for_price_line m ON m.service_line = COALESCE(pbi.service_line, qli.service_line)
+      WHERE e.contact_id = $1 AND e.status IN ${LIVE}
+      ORDER BY m.schedule_code`,
+    [contactId]
+  );
+  for (const q of quoted.rows) reason(q.schedule_code, q.price_line);
+
+  /*
+   * 2. ENGAGEMENTS WITH NO QUOTE BEHIND THEM (opened by hand, or the configurator's "what would this
+   * paper look like" extra lines): the service-line mapping, and for tax, the engagement's own return.
+   */
+  const unquotedLines = new Set<ServiceLine>([
+    ...engagements.rows.filter((r) => !r.quoted).map((r) => r.service_line),
+    ...(opts.extraServiceLines ?? []),
+  ]);
+  for (const m of mapping.rows) {
+    for (const l of m.service_lines) if (unquotedLines.has(l)) reason(m.schedule_code, l);
+  }
+  if (unquotedLines.has('tax')) {
+    // Only the returns of the live, unquoted tax engagements — never a withdrawn one's (R46).
     const returns = await app.db.query<{ return_type: string }>(
       `SELECT DISTINCT te.return_type::text AS return_type
-       FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
-       WHERE e.contact_id = $1`,
+         FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
+        WHERE e.contact_id = $1 AND e.status IN ${LIVE} AND te.stage <> 'withdrawn'
+          AND NOT EXISTS (SELECT 1 FROM engagement_scope_items s WHERE s.engagement_id = e.id)`,
       [contactId]
     );
     const types = returns.rows.map((r) => r.return_type);
-    const business = types.filter((t) => BUSINESS_RETURN_TYPES.has(t));
-    const individual = types.filter((t) => !BUSINESS_RETURN_TYPES.has(t));
-    if (business.length > 0) {
-      codes.add('B');
-      reasons.B = [...(reasons.B ?? []), ...business];
-    }
-    // No returns on file yet (quote accepted, engagement created, return not
-    // created) defaults to A — the individual case is by far the common one, and
-    // adding B later is a portal acceptance rather than a re-signature.
-    if (individual.length > 0 || types.length === 0) {
-      codes.add('A');
-      reasons.A = [...(reasons.A ?? []), ...(individual.length > 0 ? individual : ['tax (return type not yet set)'])];
-    } else {
-      // Business-only: A is not needed.
-      codes.delete('A');
-      delete reasons.A;
+    const business = types.filter((rt) => BUSINESS_RETURN_TYPES.has(rt));
+    const individual = types.filter((rt) => !BUSINESS_RETURN_TYPES.has(rt));
+    for (const b of business) reason('B', b);
+    // No return on file yet (a tax engagement opened by hand, return not created) defaults to A —
+    // the individual case is by far the common one, and adding B later is a portal acceptance.
+    if (individual.length > 0) for (const i of individual) reason('A', i);
+    else if (types.length === 0) reason('A', 'tax (return type not yet set)');
+    // A business-only hand-opened return: the service-line mapping's A is not needed.
+    if (business.length > 0 && individual.length === 0) {
+      reasons.A = (reasons.A ?? []).filter((r) => r !== 'tax');
+      if (reasons.A.length === 0) { codes.delete('A'); delete reasons.A; }
     }
   }
 
@@ -674,6 +714,20 @@ export async function recordMasterSignature(
       [p.contact_id]
     );
     /*
+     * AND THE ENVELOPES (R46, 2026-09-26). The Master signature IS the engagement letter, but the
+     * signature_envelopes rows queued for it (by intake, by staff, by the historical Docuseal path)
+     * stayed at draft, so the portal kept the signed thing under "Waiting for your signature" as
+     * "Being prepared". Every pending engagement-letter envelope of this contact completes here, in
+     * the same transaction as the signature, so the record and the screen cannot disagree.
+     */
+    const envelopes = await app.db.query(
+      `UPDATE signature_envelopes
+          SET status = 'completed', completed_at = COALESCE(completed_at, now())
+        WHERE contact_id = $1 AND type = 'engagement_letter'
+          AND status IN ('draft', 'kba_required', 'kba_pending', 'sent', 'viewed')`,
+      [p.contact_id]
+    );
+    /*
      * AND ON THE RETURNS (Brian, 2026-09-20). Pipeline gate 1 reads the RETURN's
      * engagement_letter_signed_at, not the contact's flag — so until now a client who had signed
      * the packet in the portal still had every return blocked at Scheduled, and the only thing
@@ -687,7 +741,7 @@ export async function recordMasterSignature(
       actorType: 'client', actorId: p.contact_id, actorLabel: 'master signature',
       action: 'packet.signed', objectType: 'engagement_packet', objectId: packetId,
       contactId: p.contact_id,
-      details: { schedules: p.schedule_codes, master_version: p.master_version, tax_returns_stamped: stamped, ...meta },
+      details: { schedules: p.schedule_codes, master_version: p.master_version, tax_returns_stamped: stamped, envelopes_completed: envelopes.rowCount ?? 0, ...meta },
     });
     // #42: signing the Master is one half of "active" — the lifecycle asks the record
     // for the other half (an open engagement) rather than assuming it.
