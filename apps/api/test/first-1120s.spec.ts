@@ -27,6 +27,7 @@ import type { AuthedStaff } from '../src/types.ts';
 import { createQuote, sendQuote, acceptQuote, overrideQuoteDeposit } from '../src/modules/pricing/quotes.ts';
 import { previewPacket } from '../src/modules/engagements/packet.ts';
 import { ingestReport, parseAtxReport, foldEntityName } from '../src/modules/tax/efile-ack.ts';
+import { atxReport, atxRow } from './atx.ts';
 import { returnTypeForItems } from '../src/modules/tax/return-type.ts';
 import { drainOutbox } from '../src/outbox.ts';
 
@@ -144,16 +145,16 @@ test('d, e, a, c, b, f: the S corp, quoted, accepted, prepared, authorized by th
   assert.deepEqual(declared.declared_jurisdictions, ['federal', 'IL'], 'the return says where it went');
   assert.deepEqual(declared.jurisdictions_awaiting, ['federal', 'IL'], 'and waits on both');
 
-  // b, f) the ATX business acknowledgment report: entity columns, the entity's name, the EIN last-4, federal and Illinois.
-  const report = [
-    'Entity Name,EIN,Tax Year,Return Type,Agency,Status,Submission ID,Ack Date,Reject Code,Reject Reason',
-    `"Synthetic Accounting, LLC",4321,${te.rows[0]!.tax_year},1120S,Federal,Accepted,S-FED-1,09/15/2026,,`,
-    `"Synthetic Accounting, LLC",4321,${te.rows[0]!.tax_year},1120S,IL,Accepted,S-IL-1,09/15/2026,,`,
-    `"Owner, Synthetic",4321,${te.rows[0]!.tax_year},1120S,Federal,Accepted,S-FED-2,09/15/2026,,`,
-  ].join('\n');
+  // b, f) the ATX E-Files export (R43): the entity's name, the EIN's last four, federal 1120S and IL 1120-ST, no tax-year column.
+  const report = atxReport([
+    atxRow({ name: 'SYNTHETIC ACCOUNTING LLC', id: '987654321', jurisdiction: 'Federal', type: '1120S', status: 'Accepted', when: '9/15/2026 5:00:00 PM', efileId: 'S-FED-1' }),
+    atxRow({ name: 'SYNTHETIC ACCOUNTING LLC', id: '987654321', jurisdiction: 'IL', type: 'IL 1120-ST', status: 'Accepted', when: '9/15/2026 9:00:00 PM', efileId: 'S-IL-1' }),
+    atxRow({ name: 'OWNER, SYNTHETIC 2025', id: '987654321', jurisdiction: 'Federal', type: '1120S', status: 'Accepted', when: '9/15/2026 9:30:00 PM', efileId: 'S-FED-2' }),
+  ]);
   const parsed = parseAtxReport(report);
   assert.equal(parsed.rows.length, 3);
-  assert.equal(parsed.rows[0]!.returnType, '1120s');
+  assert.equal(parsed.rows[0]!.formFamily, '1120s');
+  assert.equal(parsed.rows[0]!.taxpayerLast4, '4321');
   assert.equal(parsed.rows[1]!.stateCode, 'IL');
   const r = await ingestReport(app, { id: ana.id, label: ana.fullName }, { filename: 'business-ack.csv', text: report, today: '2026-09-15' });
   const rows = await app.db.query<{ client_name_raw: string; disposition: string; tax_engagement_id: string | null; jurisdiction: string; disposition_note: string }>(
@@ -165,7 +166,11 @@ test('d, e, a, c, b, f: the S corp, quoted, accepted, prepared, authorized by th
   // Item 4 (2026-09-19): federal alone left the return waiting on Illinois; Illinois completed it.
   assert.match(rows.rows[0]!.disposition_note, /waits on IL/, 'the federal row did not complete the return');
   assert.match(rows.rows[1]!.disposition_note, /the return is complete/, 'the Illinois row did');
-  assert.equal(rows.rows[2]!.tax_engagement_id, null, 'the owner\'s personal name does not match an entity return: no guess');
+  // R43: the third row carries the entity's EIN for a federal 1120S that row 1 has already acknowledged, under the
+  // owner's personal name. No return awaits it and the name is not the entity's: unmatched, and a second send is never queued.
+  assert.equal(rows.rows[2]!.tax_engagement_id, null, "the owner's personal name on an already-acknowledged identifier matches nothing: no guess");
+  assert.equal(rows.rows[2]!.disposition, 'unmatched');
+  assert.equal(r.queued, 2, 'two sends, not three');
   const done = await app.db.query<{ stage: string; federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null }>(
     `SELECT stage::text AS stage, federal_accepted_on::text AS federal_accepted_on, state_accepted_on::text AS state_accepted_on, state_accepted_code FROM tax_engagements WHERE id = $1`, [teId]);
   assert.equal(done.rows[0]!.stage, 'completed');
@@ -191,13 +196,13 @@ test('b) an EIN that does not agree with the record refuses the match, and a per
   assert.equal(created.statusCode, 201, created.body);
   const teId = (created.json() as { id: string }).id;
   await app.db.query(`UPDATE tax_engagements SET stage = 'filed', engagement_letter_signed_at = now(), estimate_locked_at = now() WHERE id = $1`, [teId]);
-  const report = [
-    'Entity Name,EIN,Tax Year,Return Type,Agency,Status,Submission ID,Ack Date',
-    '"Mismatch Holdings, LLC",9999,2030,1120S,Federal,Accepted,S-X,09/15/2026',
-  ].join('\n');
+  const report = atxReport([
+    atxRow({ name: 'MISMATCH HOLDINGS LLC', id: '900009999', jurisdiction: 'Federal', type: '1120S', status: 'Accepted', when: '9/15/2026 5:00:00 PM' }),
+  ]);
   const r = await ingestReport(app, { id: ana.id, label: ana.fullName }, { filename: 'ack.csv', text: report, today: '2026-09-15' });
   const rows = await app.db.query<{ disposition: string; tax_engagement_id: string | null; disposition_note: string }>(
     `SELECT disposition::text AS disposition, tax_engagement_id, disposition_note FROM efile_acknowledgments WHERE report_id = $1`, [r.reportId]);
   assert.equal(rows.rows[0]!.tax_engagement_id, null, 'the EIN on the report disagrees: no guess');
-  assert.match(rows.rows[0]!.disposition_note ?? '', /taxpayer id/);
+  assert.equal(rows.rows[0]!.disposition, 'unmatched');
+  assert.match(rows.rows[0]!.disposition_note ?? '', /with this identifier/);
 });

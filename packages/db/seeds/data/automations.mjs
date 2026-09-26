@@ -8,6 +8,12 @@
 
 export const automations = [
   {
+    key: 'return_delivered',
+    name: 'Return-delivered notice ("Your return is ready to review")',
+    description:
+      'When a preparer delivers the final return PDF to the portal (Deliver a return), this emails the client that it is waiting under My Returns, EN/ES, template return_delivered. OFF: the return still lands on the portal and the stage still moves; no email leaves, the Ops confirmation says the client was not emailed because this notice is switched off, and each suppression is audited (document.return_delivered_notice_suppressed).',
+  },
+  {
     key: 'schedule_added_notice',
     name: 'Added-schedule notice ("One more thing to agree to")',
     description:

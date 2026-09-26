@@ -182,13 +182,21 @@ test('the client directory finds people by BUSINESS name, and carries what a row
   const found = await app.inject({ method: 'GET', url: '/contacts?search=zebra', headers: auth(brian) });
   assert.equal(found.statusCode, 200, found.body);
   const rows = found.json().contacts as Array<{
-    id: string; business_name: string | null; is_test: boolean; active_engagements: number;
+    id: string; business_name: string | null; business_matched: boolean; is_test: boolean; active_engagements: number;
   }>;
   const row = rows.find((r) => r.id === contactId);
   assert.ok(row, 'found by business name');
   assert.equal(row.business_name, 'Zebra Fabrication Partners LLC', 'the row shows which business');
+  assert.equal(row.business_matched, true, 'R51: the search reached the row through the business, so every Ops search prints "Business — owner"');
   assert.equal(row.is_test, false, 'so the directory can badge a rehearsal record');
   assert.equal(row.active_engagements, 0);
+
+  // R51: found by the PERSON, the row says so — the business is on it, but the search did not reach it that way.
+  const byPerson = await app.inject({ method: 'GET', url: '/contacts?search=quietowner', headers: auth(brian) });
+  const personRow = (byPerson.json().contacts as typeof rows).find((r) => r.id === contactId);
+  assert.ok(personRow, 'found by the person');
+  assert.equal(personRow.business_matched, false);
+  assert.equal(personRow.business_name, 'Zebra Fabrication Partners LLC', 'the primary business still rides on the row');
 
   // A total independent of the page, so the list can say "showing 25 of 426"
   // instead of leaving you unsure whether the search matched more.

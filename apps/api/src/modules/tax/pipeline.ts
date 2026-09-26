@@ -85,7 +85,10 @@ interface GateRow {
   f8879_document_id: string | null;
   estimate_locked_at: Date | null;
   preparer_id: string | null;
+  /** The filed day, a calendar day (::text); null until the return is filed. */
   filed_date: string | null;
+  /** The day on the signed 8879, a calendar day (::text); null until the scan is on file. */
+  f8879_signed_on: string | null;
   contact_id: string;
 }
 
@@ -206,11 +209,18 @@ export async function transitionStage(
      * YEAR implies, which is the answer for every return that is not a mixed filing.
      */
     filingMethods?: Readonly<Record<string, FilingMethod>> | undefined;
+    /**
+     * FILED ON (Brian, 2026-09-26). Only read at 'filed': the calendar day the return went in, as the
+     * person marking it says. Today in Chicago when unsaid; never after today, never before the day
+     * on the signed 8879 — both refused here, in words the modal renders beside the field.
+     */
+    filedOn?: string | undefined;
   } = {}
-): Promise<{ from: TaxStage; to: TaxStage; jurisdictions?: string[] }> {
+): Promise<{ from: TaxStage; to: TaxStage; jurisdictions?: string[]; filedOn?: string }> {
   const { rows } = await app.db.query<GateRow>(
     `SELECT te.id, te.stage, te.engagement_letter_signed_at, te.f8879_signed_at, te.f8879_document_id,
-            te.estimate_locked_at, te.preparer_id, te.filed_date, e.contact_id
+            te.estimate_locked_at, te.preparer_id, te.filed_date::text AS filed_date,
+            te.f8879_signed_at::date::text AS f8879_signed_on, e.contact_id
      FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
      WHERE te.id = $1`,
     [taxEngagementId]
@@ -286,13 +296,35 @@ export async function transitionStage(
     const list = opts.jurisdictions ? assertJurisdictions(opts.jurisdictions) : null;
     if (opts.filingMethods) assertFilingMethods(opts.filingMethods, list);
   }
+  /*
+   * THE FILED DAY (Brian, 2026-09-26). A calendar day, said by the person marking the return filed,
+   * defaulting to today in Chicago — not the server's CURRENT_DATE, which is a day off every evening.
+   * Two things it cannot be, both refused before anything is written: after today (nothing has been
+   * filed tomorrow) and before the day on the signed 8879 (a return is authorized, then filed).
+   *
+   * A RE-FILE KEEPS ITS FIRST DAY. A return rejected and re-transmitted inside the perfection window
+   * is filed as of its original transmission, so the day already on the return stands; a different
+   * day sent with the re-file is refused by name rather than dropped, and the correction door is
+   * where a wrong first day is put right.
+   */
+  let filedOn: string | null = null;
+  if (toStage === 'filed') {
+    filedOn = assertFiledOn(opts.filedOn ?? todayChicago(), row.f8879_signed_on);
+    if (row.filed_date && opts.filedOn && calendarDay(opts.filedOn, 'filedOn') !== calendarDay(row.filed_date, 'filed_date')) {
+      throw new AppError(
+        409,
+        'filed_date_kept',
+        `This return was first filed on ${row.filed_date} and a re-file keeps that day. Correct the filed date on the return if it is wrong.`
+      );
+    }
+  }
   await app.db.query(
     `UPDATE tax_engagements
      SET stage = $2::tax_stage,
-         filed_date = CASE WHEN $2 = 'filed' THEN COALESCE(filed_date, CURRENT_DATE) ELSE filed_date END,
+         filed_date = CASE WHEN $2 = 'filed' THEN COALESCE(filed_date, $4::date) ELSE filed_date END,
          preparer_ptin_holder_id = CASE WHEN $2 = 'filed' THEN COALESCE(preparer_ptin_holder_id, $3::uuid) ELSE preparer_ptin_holder_id END
      WHERE id = $1`,
-    [taxEngagementId, toStage, opts.preparerPtinHolderId ?? null]
+    [taxEngagementId, toStage, opts.preparerPtinHolderId ?? null, filedOn]
   );
   /*
    * THE JURISDICTIONS ARE DECLARED WITH THE FILING (Brian, 2026-09-19 evening, ruling 2). The
@@ -322,7 +354,7 @@ export async function transitionStage(
     contactId: row.contact_id,
     ip: opts.ip,
     userAgent: opts.userAgent,
-    details: { from, to: toStage, ...(declared ? { jurisdictions: declared } : {}) },
+    details: { from, to: toStage, ...(declared ? { jurisdictions: declared } : {}), ...(filedOn ? { filed_on: row.filed_date ?? filedOn } : {}) },
   });
 
   // Automation 12: Filed → invoice generated (or an exception to Rene when
@@ -343,7 +375,233 @@ export async function transitionStage(
     }
   }
 
-  return { from, to: toStage, ...(declared ? { jurisdictions: declared } : {}) };
+  return { from, to: toStage, ...(declared ? { jurisdictions: declared } : {}), ...(filedOn ? { filedOn: row.filed_date ?? filedOn } : {}) };
+}
+
+/**
+ * THE TWO RULES ON A FILED DAY, in one place, so Mark filed and the correction door refuse the same
+ * thing in the same words. Not after today in Chicago; not before the day on the signed 8879 when
+ * one is on file (it always is at filing — gate 3 — and always is at a correction).
+ */
+export function assertFiledOn(filedOn: string, f8879SignedOn: string | null): string {
+  const day = calendarDay(filedOn, 'filedOn');
+  const today = calendarDay(todayChicago(), 'today');
+  if (day > today) {
+    throw new AppError(409, 'filed_date_in_future', `The filed date ${day} is after today; a return is marked filed after it goes in, not before.`);
+  }
+  if (f8879SignedOn && day < calendarDay(f8879SignedOn, 'f8879SignedOn')) {
+    throw new AppError(
+      409,
+      'filed_before_authorization',
+      `The filed date ${day} is before the signed 8879 dated ${f8879SignedOn}; a return is authorized first and filed after.`
+    );
+  }
+  return day;
+}
+
+/**
+ * WHO PREPARES THIS RETURN (Brian, 2026-09-20) — the one door. A return assigned to nobody sits in
+ * no queue, so the row names a preparer and preparation cannot start until it does (gate 2b).
+ * Assignable: an ACTIVE staff member holding tax_preparer, or the CEO working a return himself —
+ * the same set the PTIN-holder select offers, refused by name and role rather than by silence.
+ * The route calls this, and so does the filing correction that offers to move the preparer with
+ * the PTIN holder (2026-09-26): both write the same audit row.
+ */
+export async function assignPreparer(
+  app: FastifyInstance,
+  actor: { staffId: string; label: string; ip?: string | null | undefined; userAgent?: string | null | undefined },
+  taxEngagementId: string,
+  staffId: string
+): Promise<{ id: string; name: string }> {
+  const te = await app.db.query<{ contact_id: string }>(
+    `SELECT e.contact_id FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`,
+    [taxEngagementId]
+  );
+  if (!te.rows[0]) throw new AppError(404, 'not_found', 'Tax engagement not found.');
+  const s = await eligiblePreparer(app, staffId, 'prepared');
+  await app.db.query(`UPDATE tax_engagements SET preparer_id = $2 WHERE id = $1`, [taxEngagementId, s.id]);
+  await writeAudit(app.db, {
+    actorType: 'staff', actorId: actor.staffId, actorLabel: actor.label,
+    action: 'tax_engagement.preparer_assigned', objectType: 'tax_engagement', objectId: taxEngagementId,
+    contactId: te.rows[0].contact_id, ip: actor.ip ?? null, userAgent: actor.userAgent ?? null,
+    details: { preparer_id: s.id, preparer_role: s.role_key },
+  });
+  return { id: s.id, name: s.name };
+}
+
+/** An active staff member who may prepare or sign a return: the same rule for the assignee and the PTIN holder. */
+async function eligiblePreparer(app: FastifyInstance, staffId: string, verb: 'prepared' | 'signed'): Promise<{ id: string; name: string; role_key: string }> {
+  const { rows } = await app.db.query<{ id: string; name: string; role_key: string; is_active: boolean }>(
+    `SELECT s.id, s.display_name AS name, r.key AS role_key, s.is_active
+       FROM staff s JOIN roles r ON r.id = s.role_id WHERE s.id = $1`,
+    [staffId]
+  );
+  const s = rows[0];
+  if (!s) throw new AppError(404, 'staff_not_found', 'That staff member does not exist.');
+  if (!s.is_active) {
+    throw new AppError(409, 'preparer_inactive', `${s.name} is not an active staff member; a return is ${verb} by somebody who still works here.`);
+  }
+  if (!PREPARER_ROLE_KEYS.includes(s.role_key as (typeof PREPARER_ROLE_KEYS)[number])) {
+    throw new AppError(409, 'preparer_wrong_role', `${s.name} holds the ${s.role_key} role; a return is ${verb} by a tax preparer.`);
+  }
+  return { id: s.id, name: s.name, role_key: s.role_key };
+}
+
+/*
+ * THE FILING, CORRECTED (Brian, 2026-09-26).
+ *
+ * Three facts about a filing are written at Mark filed and each can be wrong: the day, whose PTIN
+ * is on it, and the jurisdictions declared. None is edited in place. A correction is APPENDED —
+ * which fields, what they said, what they say now, why, who — and the return's own columns are then
+ * moved to the corrected values so every reader keeps reading the return. The row is the history
+ * the return's page prints: "Corrected <field> on <day> by <who>: <reason>".
+ *
+ * WHAT IS REFUSED, all before anything is written:
+ *   · a return not at filed (a correction is to a filing; before it there is nothing to correct,
+ *     and after completion the acknowledgments have answered for what was declared);
+ *   · a day after today or before the signed 8879 — the same two rules Mark filed holds;
+ *   · a PTIN holder who is not an active tax preparer or the CEO;
+ *   · removing a jurisdiction that has already accepted or been mailed — an acceptance is a fact,
+ *     and a mailing is one too; the filing went there whatever the list says;
+ *   · nothing different from what the filing already records.
+ *
+ * A jurisdiction ADDED takes the lane the return's year implies, the same default Mark filed uses.
+ *
+ * THE PREPARER OFFER. Correcting the PTIN holder usually means the wrong person was picked, and the
+ * wrong person is usually also the assignee. The modal offers to move the assigned preparer with
+ * it; when accepted, the move goes through assignPreparer — the existing door — and writes that
+ * door's own audit row.
+ *
+ * ONE TRANSACTION. The 0089 guard refuses any change to a set PTIN holder unless the transaction
+ * has set saos.filing_correction; it is set here, to the correction row's id, right before the
+ * UPDATE, and nowhere else in the codebase.
+ */
+export interface FilingCorrectionInput {
+  filedOn?: string | undefined;
+  preparerPtinHolderId?: string | undefined;
+  jurisdictions?: readonly string[] | undefined;
+  alsoAssignPreparer?: boolean | undefined;
+  reason: string;
+}
+export type FilingCorrectionField = 'filed_date' | 'preparer_ptin_holder_id' | 'jurisdictions';
+
+export async function correctFiling(
+  app: FastifyInstance,
+  actor: { staffId: string; label: string; ip?: string | null | undefined; userAgent?: string | null | undefined },
+  taxEngagementId: string,
+  input: FilingCorrectionInput
+): Promise<{ id: string; fields: FilingCorrectionField[]; before: Record<string, unknown>; after: Record<string, unknown>; preparer: { id: string; name: string } | null }> {
+  const { rows } = await app.db.query<{
+    id: string; stage: TaxStage; contact_id: string; filed_date: string | null; preparer_ptin_holder_id: string | null;
+    preparer_id: string | null; f8879_signed_on: string | null;
+  }>(
+    `SELECT te.id, te.stage, e.contact_id, te.filed_date::text AS filed_date, te.preparer_ptin_holder_id, te.preparer_id,
+            te.f8879_signed_at::date::text AS f8879_signed_on
+       FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`,
+    [taxEngagementId]
+  );
+  const te = rows[0];
+  if (!te) throw new AppError(404, 'not_found', 'Tax engagement not found.');
+  if (te.stage !== 'filed') {
+    throw new AppError(409, 'not_filed', `A filing correction applies to a return at filed — this one is '${te.stage}'.`);
+  }
+
+  const fields: FilingCorrectionField[] = [];
+  const before: Record<string, unknown> = {};
+  const after: Record<string, unknown> = {};
+
+  let filedOn: string | null = null;
+  if (input.filedOn !== undefined && calendarDay(input.filedOn, 'filedOn') !== te.filed_date) {
+    filedOn = assertFiledOn(input.filedOn, te.f8879_signed_on);
+    fields.push('filed_date');
+    before['filed_date'] = te.filed_date;
+    after['filed_date'] = filedOn;
+  }
+
+  let holder: { id: string; name: string } | null = null;
+  if (input.preparerPtinHolderId !== undefined && input.preparerPtinHolderId !== te.preparer_ptin_holder_id) {
+    holder = await eligiblePreparer(app, input.preparerPtinHolderId, 'signed');
+    fields.push('preparer_ptin_holder_id');
+    before['preparer_ptin_holder_id'] = te.preparer_ptin_holder_id;
+    after['preparer_ptin_holder_id'] = holder.id;
+  }
+  if (input.alsoAssignPreparer && !holder) {
+    throw new AppError(409, 'preparer_offer_without_holder', 'The assigned preparer moves with a corrected PTIN holder; correct the PTIN holder, or leave the preparer as they are.');
+  }
+
+  let added: string[] = [];
+  let removed: string[] = [];
+  let defaultMethod: FilingMethod = 'efile';
+  if (input.jurisdictions !== undefined) {
+    const list = assertJurisdictions(input.jurisdictions);
+    const status = await acceptanceStatus(app, taxEngagementId);
+    defaultMethod = status.defaultFilingMethod;
+    const current = status.declaredJurisdictions;
+    added = list.filter((j) => !current.includes(j));
+    removed = current.filter((j) => !list.includes(j));
+    for (const j of removed) {
+      const row = status.rows.find((r) => r.jurisdiction === j);
+      if (row?.acceptedOn) {
+        throw new AppError(409, 'jurisdiction_satisfied', `${jurisdictionName(j)} accepted this return on ${row.acceptedOn}, so it cannot be removed from the filing; the return went there.`);
+      }
+      if (row?.mailedOn) {
+        throw new AppError(409, 'jurisdiction_satisfied', `${jurisdictionName(j)} was mailed this return on ${row.mailedOn}, so it cannot be removed from the filing; the return went there.`);
+      }
+    }
+    if (added.length > 0 || removed.length > 0) {
+      fields.push('jurisdictions');
+      before['jurisdictions'] = current;
+      after['jurisdictions'] = list;
+    }
+  }
+
+  if (fields.length === 0) {
+    throw new AppError(409, 'nothing_to_correct', 'Nothing here is different from the filing as recorded; change a field, or cancel.');
+  }
+
+  return withTransaction(app.db, async () => {
+    const ins = await app.db.query<{ id: string }>(
+      `INSERT INTO tax_engagement_filing_corrections (tax_engagement_id, fields, before, after, reason, actor_staff_id, actor_label)
+       VALUES ($1, $2::text[], $3::jsonb, $4::jsonb, $5, $6, $7) RETURNING id`,
+      [taxEngagementId, fields, JSON.stringify(before), JSON.stringify(after), input.reason, actor.staffId, actor.label]
+    );
+    const id = ins.rows[0]!.id;
+    if (holder) await app.db.query(`SELECT set_config('saos.filing_correction', $1, true)`, [id]);
+    await app.db.query(
+      `UPDATE tax_engagements
+          SET filed_date = COALESCE($2::date, filed_date),
+              preparer_ptin_holder_id = COALESCE($3::uuid, preparer_ptin_holder_id)
+        WHERE id = $1`,
+      [taxEngagementId, filedOn, holder?.id ?? null]
+    );
+    for (const j of added) {
+      await app.db.query(
+        `INSERT INTO tax_engagement_jurisdictions (tax_engagement_id, jurisdiction, filing_method) VALUES ($1, $2, $3)
+         ON CONFLICT (tax_engagement_id, jurisdiction) DO NOTHING`,
+        [taxEngagementId, j, defaultMethod]
+      );
+    }
+    if (removed.length > 0) {
+      await app.db.query(
+        `DELETE FROM tax_engagement_jurisdictions
+          WHERE tax_engagement_id = $1 AND accepted_on IS NULL AND mailed_on IS NULL AND jurisdiction = ANY($2::text[])`,
+        [taxEngagementId, removed]
+      );
+    }
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.staffId, actorLabel: actor.label,
+      action: 'tax_engagement.filing_corrected', objectType: 'tax_engagement', objectId: taxEngagementId,
+      contactId: te.contact_id, ip: actor.ip ?? null, userAgent: actor.userAgent ?? null,
+      details: { correction_id: id, fields, before, after },
+    });
+    const preparer = holder && input.alsoAssignPreparer ? await assignPreparer(app, actor, taxEngagementId, holder.id) : null;
+    return { id, fields, before, after, preparer };
+  });
+}
+
+/** 'federal' reads as Federal in a refusal; a state as its code. */
+function jurisdictionName(j: string): string {
+  return j === 'federal' ? 'Federal' : j;
 }
 
 // ── v4.3 flow 1: e-file acceptance / rejection ──────────────────────────────

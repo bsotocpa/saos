@@ -42,6 +42,9 @@ export const AUTOMATION_KEYS = [
   'efile_acknowledgment',
   // 2026-09-12: a service added after the Master is signed puts one schedule in the portal; this tells them.
   'schedule_added_notice',
+  // R48 (2026-09-26): the email that tells a client their return is on the portal under My Returns.
+  // The delivery itself is never gated; only this notice is, and the Ops confirmation says which happened.
+  'return_delivered',
 ] as const;
 
 export type AutomationKey = (typeof AUTOMATION_KEYS)[number];

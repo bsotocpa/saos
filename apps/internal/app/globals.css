@@ -498,3 +498,33 @@ table.qb-lines td.num { font-variant-numeric: tabular-nums; white-space: nowrap;
   .qb-footer .qb-footer-total strong { font-size: 16px; font-variant-numeric: tabular-nums; }
   .qb-desk-only { display: none; }
 }
+
+/*
+ * THE RETURNS CARD AS A STEPPER (R50, 2026-09-26). Vertical on the phone: one card per step, the
+ * current step carrying its control. Horizontal on the desk: a grid of step cards the current step
+ * spans, so the sequence reads left to right and the work sits on its own row. Tokens only.
+ */
+.stepper { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; flex: 1 1 100%; }
+.stepper .step { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--card); min-width: 0; }
+.stepper .step.done { border-color: var(--ok-soft); background: var(--ok-soft); }
+.stepper .step.current { border: 2px solid var(--electric); background: var(--card); }
+.stepper .step.later { color: var(--muted); }
+.stepper .step-head { display: flex; gap: 8px; align-items: center; min-height: 22px; }
+.stepper .step-mark { flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; border: 1.5px solid var(--line); color: var(--muted); background: var(--card); }
+.stepper .step.done .step-mark { background: var(--ok); color: #fff; border-color: var(--ok); }
+.stepper .step.current .step-mark { background: var(--electric); color: var(--forest-deep); border-color: var(--electric); }
+.stepper .step-label { font-weight: 600; font-size: 13px; color: var(--forest); overflow-wrap: anywhere; }
+.stepper .step.later .step-label { color: var(--muted); font-weight: 500; }
+.stepper .step-when { font-size: 12px; color: var(--muted); margin: 4px 0 0; overflow-wrap: anywhere; }
+.stepper .step-panel { margin-top: 8px; }
+.step-details { flex: 1 1 100%; margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+@media (max-width: 767px) {
+  .stepper .step-panel .btn, .step-details .btn, .stepper .step-panel select, .stepper .step-panel input { min-height: 44px; }
+}
+@media (min-width: 768px) {
+  .stepper { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .stepper .step.current { grid-column: 1 / -1; }
+}
+@media (min-width: 1100px) {
+  .stepper { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+}

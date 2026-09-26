@@ -8,6 +8,12 @@
  * WHO ELSE (2026-09-19 evening, R4): the route accepts contacts.write OR businesses.write, and the
  * entity VA holds the second one — so Laura taps the control here too, successfully. The role proof
  * moved to the bookkeeper, who holds neither: no button on her page, and the route refuses her.
+ *
+ * H5, A DUPLICATE EIN WARNS AND DOES NOT REFUSE (2026-09-26, R54): the CEO adds a second business
+ * with the first one's EIN; the warning names the first business and its owner with a link; "Add
+ * business" with no reason is refused beside the EIN in the route's words; "Create anyway" with a
+ * reason creates it. Edit follows the same rule: the same number typed onto the second business's
+ * Edit form warns, "Save business" is refused, "Save anyway" with a reason saves.
  */
 import { expect, test, type Page } from '@playwright/test';
 import * as OTPAuth from 'otpauth';
@@ -28,6 +34,7 @@ const CONTROL = '/clients/:id Businesses card, button "Add a business", form#add
 /** EDIT AFTER CREATE (2026-09-20): the same door as Add, on each business's row. */
 const EDIT_CONTROL = '/clients/:id Businesses card, button "Edit" on the row, form#edit-business-form, button "Save business"';
 const ROLES = 'ceo, comms_billing (contacts.write); va_entity (businesses.write)';
+const DUP_CONTROL = '/clients/:id "Add a business", the EIN another business holds: warning with the link "Business — owner", "Add business" refused beside the EIN, reason + "Create anyway"; Edit: the same warning, "Save business" refused, reason + "Save anyway"';
 
 async function signIn(page: Page, who: Persona): Promise<void> {
   const code = new OTPAuth.TOTP({ algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(who.totpSecret) }).generate();
@@ -63,7 +70,7 @@ test.describe('Add a business on the client page', () => {
       await form.getByLabel(/Legal name/).fill(name);
       await form.getByLabel(/Entity type/).selectOption('s_corp');
       await form.getByLabel(/^State/).fill('IL');
-      // One EIN per viewport: the same number twice is the same business to the route (refused), and both projects share the database.
+      // One EIN per viewport: both projects share the database, and H5 below relies on this number being the first business's.
       await form.getByLabel(/EIN/).fill(viewport === 'phone' ? '12-3456789' : '12-3456790');
       // CREATED WITH THE OPTIONAL FIELDS SKIPPED (2026-09-20): no formation date, no industry — they are filled in by editing below.
       await form.getByLabel(/Make this the primary business/).check();
@@ -96,12 +103,68 @@ test.describe('Add a business on the client page', () => {
       await expect(edit).toHaveCount(0);
       await expect(row, 'the formation date is on the card').toContainText('formed Jan 15, 2020');
       await expect(row, 'and the industry').toContainText('professional_services');
+
+      // ── H5: A SECOND BUSINESS WITH THE SAME EIN warns, links, and is created only with a reason.
+      const ein = viewport === 'phone' ? '12-3456789' : '12-3456790';
+      const dupName = `HARNESS-DUP-${viewport.toUpperCase()} LLC`;
+      await page.getByRole('button', { name: 'Add a business' }).click();
+      const add2 = page.locator('#add-business-form');
+      await expect(add2).toBeVisible();
+      await add2.getByLabel(/Legal name/).fill(dupName);
+      await add2.getByLabel(/Entity type/).selectOption('llc');
+      await add2.getByLabel(/^State/).fill('IL');
+      await add2.getByLabel(/EIN/).fill(ein);
+      const warning = add2.getByTestId('ein-duplicate-warning');
+      await expect(warning, 'the warning appears as the number is typed').toBeVisible();
+      await expect(warning, 'it names the business already holding the number').toContainText(name);
+      const link = warning.getByTestId('ein-duplicate-link');
+      await expect(link, 'Business — owner, linked to the owner\'s record').toContainText(`${name} — `);
+      await expect(link).toHaveAttribute('href', `/clients/${fixtures.contactId}`);
+      // "Add business" with no reason: the route refuses in its own words, beside the EIN; the fields keep their text.
+      await page.getByRole('button', { name: 'Add business' }).click();
+      const einError = add2.locator('.field-error[data-field="ein"]');
+      await expect(einError, 'the refusal sits beside the EIN').toBeVisible();
+      await expect(einError, "with the server's words, naming the business").toContainText(`That EIN is already on ${name}.`);
+      await expect(einError, 'and never the number').not.toContainText(ein.replace('-', ''));
+      await expect(add2.getByLabel(/Legal name/), 'the legal name is still there').toHaveValue(dupName);
+      // Create anyway, with a standalone reason.
+      await warning.getByLabel(/Why this is a different business/).fill('A successor entity took the number after the first was dissolved; both stay on the record.');
+      await warning.getByRole('button', { name: 'Create anyway' }).click();
+      await expect(page.getByText('Business added.')).toBeVisible();
+      await expect(add2).toHaveCount(0);
+      const dupRow = card.locator('div.lead-card', { hasText: dupName }).first();
+      await expect(dupRow, 'the second business is on the card with its EIN').toContainText('EIN on file');
+
+      // ── Edit follows the same rule: the first business's number typed onto the second one.
+      const spareEin = viewport === 'phone' ? '12-3456791' : '12-3456792';
+      await dupRow.getByRole('button', { name: 'Edit' }).click();
+      const edit2 = page.locator('#edit-business-form');
+      await expect(edit2).toBeVisible();
+      await edit2.getByLabel(/EIN/).fill(spareEin);
+      await expect(edit2.getByTestId('ein-duplicate-warning'), 'a number nobody holds: no warning').toHaveCount(0);
+      await page.getByRole('button', { name: 'Save business' }).click();
+      await expect(page.getByText('Business saved.')).toBeVisible();
+      await dupRow.getByRole('button', { name: 'Edit' }).click();
+      const edit3 = page.locator('#edit-business-form');
+      await expect(edit3).toBeVisible();
+      await edit3.getByLabel(/EIN/).fill(ein);
+      const editWarning = edit3.getByTestId('ein-duplicate-warning');
+      await expect(editWarning, 'the warning appears on Edit too').toBeVisible();
+      await expect(editWarning.getByTestId('ein-duplicate-link')).toHaveAttribute('href', `/clients/${fixtures.contactId}`);
+      await page.getByRole('button', { name: 'Save business' }).click();
+      const editEinError = edit3.locator('.field-error[data-field="ein"]');
+      await expect(editEinError, 'refused beside the EIN').toContainText(`That EIN is already on ${name}.`);
+      await editWarning.getByLabel(/Why this is a different business/).fill('The number belongs to both entities under one taxpayer; the record is being aligned.');
+      await editWarning.getByRole('button', { name: 'Save anyway' }).click();
+      await expect(page.getByText('Business saved.')).toBeVisible();
+      await expect(edit3).toHaveCount(0);
       await page.screenshot({ path: shot, fullPage: true });
       passed = true;
     } finally {
       if (!existsSync(shot)) await page.screenshot({ path: shot, fullPage: true }).catch(() => undefined);
       testInfo.annotations.push({ type: 'screenshot', description: keepScreenshot(`add-business-${viewport}`, passed, shot) });
       testInfo.annotations.push({ type: 'walk-step', description: `A1|${CONTROL}|${ROLES}|tap` });
+      testInfo.annotations.push({ type: 'walk-step', description: `H5|${DUP_CONTROL}|${ROLES}|tap` });
       testInfo.annotations.push({ type: 'edit-door', description: `business|${EDIT_CONTROL}|${ROLES}|tap` });
     }
   });

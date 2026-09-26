@@ -139,6 +139,58 @@ test('the host reports over a secret-authenticated webhook, not a session', asyn
   assert.deepEqual(ok.json().alerted, ['saos-calcom-1']);
 });
 
+test('a container the host no longer lists closes its own task through the close door, with a reason (R52)', async () => {
+  // The 2026-09-20 rehearsal shape: a throwaway container goes unhealthy, gets its task, and is removed.
+  const opened = await recordContainerHealth(app, [
+    { name: 'saos-rehearsal-throwaway', health: 'unhealthy', state: 'running', failingStreak: 20, unhealthyMinutes: 30 },
+    { name: 'saos-api-1', health: 'healthy', state: 'running', failingStreak: 0 },
+  ]);
+  assert.deepEqual(opened.alerted, ['saos-rehearsal-throwaway']);
+  const task = await app.db.query<{ id: string; status: string }>(
+    `SELECT id, status::text FROM tasks WHERE source_type = 'container_unhealthy' AND source_id = 'saos-rehearsal-throwaway'`
+  );
+  assert.equal(task.rows.length, 1);
+  assert.equal(task.rows[0]!.status, 'not_started');
+
+  // An EMPTY report is a broken cron, not a clean host: nothing closes.
+  const empty = await recordContainerHealth(app, []);
+  assert.deepEqual(empty.closed, []);
+  const still = await app.db.query<{ status: string }>(`SELECT status::text FROM tasks WHERE id = $1`, [task.rows[0]!.id]);
+  assert.equal(still.rows[0]!.status, 'not_started');
+
+  // The next real report has no such container: the task closes itself.
+  const gone = await recordContainerHealth(app, [
+    { name: 'saos-api-1', health: 'healthy', state: 'running', failingStreak: 0 },
+  ]);
+  assert.ok(gone.closed.includes('saos-rehearsal-throwaway'), JSON.stringify(gone));
+  const after = await app.db.query<{ status: string; completed_at: string | null }>(
+    `SELECT status::text, completed_at::text FROM tasks WHERE id = $1`, [task.rows[0]!.id]
+  );
+  assert.equal(after.rows[0]!.status, 'completed');
+  assert.ok(after.rows[0]!.completed_at, 'completed_at is set by the close door');
+  const audit = await app.db.query<{ actor_type: string; actor_label: string; details: { status: string; from: string; reason?: string } }>(
+    `SELECT actor_type::text, actor_label, details FROM audit_log
+      WHERE action = 'task.status_changed' AND object_id = $1 ORDER BY occurred_at DESC LIMIT 1`,
+    [task.rows[0]!.id]
+  );
+  assert.equal(audit.rows.length, 1, 'the same audit row a person\'s close writes');
+  assert.equal(audit.rows[0]!.actor_type, 'system');
+  assert.equal(audit.rows[0]!.actor_label, 'container-health');
+  assert.equal(audit.rows[0]!.details.status, 'completed');
+  assert.equal(audit.rows[0]!.details.from, 'not_started');
+  assert.match(audit.rows[0]!.details.reason ?? '', /no longer lists this container/);
+
+  // A report that lists it again does not reopen or duplicate: it is a new outage only if unhealthy.
+  const back = await recordContainerHealth(app, [
+    { name: 'saos-rehearsal-throwaway', health: 'healthy', state: 'running', failingStreak: 0 },
+  ]);
+  assert.deepEqual(back.alerted, []);
+  const count = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM tasks WHERE source_type = 'container_unhealthy' AND source_id = 'saos-rehearsal-throwaway'`
+  );
+  assert.equal(count.rows[0]!.n, 1);
+});
+
 // ── 2. Filing no longer fails open ────────────────────────────────────────────
 
 async function quarantinedUnscanned(name: string): Promise<{ id: string; contactId: string }> {

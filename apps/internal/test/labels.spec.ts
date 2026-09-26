@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   CONSENT_7216_LABEL, ENGAGEMENT_STATUS_LABEL, INVOICE_STATUS_LABEL, LETTER_STATUS_LABEL, QUOTE_STATUS_LABEL, TAX_STAGE_LABEL,
-  engagementStatusLabel, invoiceStatusLabel, quoteStatusLabel, taxStageLabel,
+  clientSearchLabel, engagementStatusLabel, engagementStatusSentence, invoiceStatusLabel, quoteStatusLabel, taxStageLabel,
 } from '../lib/labels.ts';
 
 const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'overdue', 'void', 'refunded', 'partially_refunded', 'disputed'];
@@ -42,6 +42,25 @@ test('the client and Ops read the same word for the same invoice state', () => {
   assert.equal(invoiceStatusLabel('void'), portal('inv_void'), 'void reads "Cancelled" in both');
   assert.equal(invoiceStatusLabel('disputed'), portal('inv_disputed'), 'disputed reads "Under review" in both');
   assert.equal(invoiceStatusLabel('partially_refunded'), portal('inv_partially_refunded'));
+});
+
+test('R51: a search that reached the row through a business prints "Business — owner"; one that matched the person prints the person', () => {
+  const row = { first_name: 'Synthetic', last_name: 'Owner', business_name: 'Synthetic Widgets LLC' };
+  assert.equal(clientSearchLabel({ ...row, business_matched: true }), 'Synthetic Widgets LLC — Synthetic Owner');
+  assert.equal(clientSearchLabel({ ...row, business_matched: false }), 'Synthetic Owner');
+  assert.equal(clientSearchLabel({ ...row, business_name: null, business_matched: true }), 'Synthetic Owner', 'no business name, no dash');
+  assert.equal(clientSearchLabel({ first_name: 'Synthetic', last_name: 'Person' }), 'Synthetic Person', 'a row from a list that never searched');
+});
+
+test('R52: the engagement row states its status in plain words, with the day for a paused or ended one', () => {
+  assert.equal(engagementStatusSentence('active'), 'Active');
+  assert.equal(engagementStatusSentence('draft'), 'Draft');
+  assert.equal(engagementStatusSentence('on_hold', { pausedDay: 'Sep 20, 2026' }), 'On hold since Sep 20, 2026');
+  assert.equal(engagementStatusSentence('on_hold'), 'On hold', 'no pause instant on file: the state alone');
+  assert.equal(engagementStatusSentence('withdrawn', { endedDay: 'Sep 18, 2026' }), 'Withdrawn on Sep 18, 2026');
+  assert.equal(engagementStatusSentence('completed', { endedDay: 'Sep 1, 2026' }), 'Completed on Sep 1, 2026');
+  assert.equal(engagementStatusSentence('completed'), 'Completed');
+  assert.equal(engagementStatusSentence('active', { pausedDay: 'Sep 20, 2026', endedDay: 'Sep 1, 2026' }), 'Active', 'an active engagement carries no day');
 });
 
 test('the helpers never crash a page on an unknown value', () => {

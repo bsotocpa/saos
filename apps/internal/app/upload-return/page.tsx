@@ -7,8 +7,9 @@
 
 import { useState } from 'react';
 import { api } from '../../lib/api';
+import { clientSearchLabel } from '../../lib/labels';
 
-interface Contact { id: string; first_name: string; last_name: string; email: string | null }
+interface Contact { id: string; first_name: string; last_name: string; email: string | null; business_name?: string | null; business_matched?: boolean }
 interface TaxEngagement { id: string; tax_year: number; return_type: string; stage: string }
 
 export default function UploadReturnPage() {
@@ -67,12 +68,21 @@ export default function UploadReturnPage() {
       if (engagementId) fd.append('taxEngagementId', engagementId);
       if (taxYear) fd.append('taxYear', taxYear);
       fd.append('file', file, file.name);
-      const res = await api<{ stageMoved: boolean }>('/documents', { method: 'POST', formData: fd });
-      setDone(
-        res.stageMoved
-          ? 'Delivered — stage moved to Client Review and the client was notified.'
-          : 'Delivered — client notified. (Stage unchanged: pipeline position doesn’t allow the auto-move.)'
+      const res = await api<{ stageMoved: boolean; notice: { emailed: boolean; reason: 'sent' | 'automation_off' | 'no_email' } | null }>(
+        '/documents', { method: 'POST', formData: fd }
       );
+      /*
+       * THE CONFIRMATION STATES WHAT HAPPENED (Brian, 2026-09-26, R48). This used to say "the client was
+       * notified" from the stage move alone, while no return-delivered notice was armed anywhere. The
+       * server now says whether the client was emailed and, if not, why; the words here are its answer.
+       */
+      const emailed = res.notice?.emailed
+        ? 'The client was emailed.'
+        : res.notice?.reason === 'no_email'
+          ? 'The client was not emailed because the contact has no email address.'
+          : 'The client was not emailed because that notice is switched off.';
+      const stage = res.stageMoved ? 'The stage moved to Client Review.' : 'The stage is unchanged: its position does not allow the move.';
+      setDone(`The return is on the portal. ${emailed} ${stage}`);
     } catch (err) {
       // A failed delivery says so, beside the file control — it used to say nothing.
       setInlineErr({ key: 'upload', message: refused(err) });
@@ -85,21 +95,21 @@ export default function UploadReturnPage() {
     <>
       <h1>Deliver a return</h1>
       <section className="card" style={{ maxWidth: 560 }}>
-        {done ? <p className="alert info">{done}</p> : null}
+        {done ? <p className="alert info" data-testid="delivery-result">{done}</p> : null}
         <label className="field">
           Find the client
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void findContacts()}
-            placeholder="Name, email, or phone — press Enter"
+            placeholder="Name, business, email, or phone — press Enter"
           />
           {errAt('search')}
         </label>
         {contacts.map((c) => (
           <div key={c.id} style={{ margin: '8px 0' }}>
             <button className="btn ghost" type="button" onClick={() => void pickContact(c)}>
-              {c.first_name} {c.last_name} <span className="muted small">{c.email}</span>
+              {clientSearchLabel(c)} <span className="muted small">{c.email}</span>
             </button>
             {errAt(`pick:${c.id}`)}
           </div>

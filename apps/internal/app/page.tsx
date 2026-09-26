@@ -378,7 +378,8 @@ export default function ExecutivePage() {
             <tbody>
               {data.openReturnsByStage.map((s) => (
                 <tr key={s.stage}>
-                  <td>{STAGE_LABELS[s.stage] ?? s.stage}</td>
+                  {/* R52 (2026-09-26): the row opens the list for its stage — client, business, form, preparer, days in stage. */}
+                  <td><Link href={`/returns?stage=${s.stage}`} data-testid={`stage-row-${s.stage}`}>{STAGE_LABELS[s.stage] ?? s.stage}</Link></td>
                   <td>{s.count}</td>
                   <td>{formatMoney(Number(s.value_cents))}</td>
                 </tr>

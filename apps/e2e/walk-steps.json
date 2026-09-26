@@ -56,6 +56,13 @@
         { "id": "E3", "text": "The client page warns when the portal sign-in address is not the contact email and offers one control to make them the same; refused in the server's words when another account holds it; the bookkeeper has no control", "device": "phone + laptop" }
       ]
     },
+    "G": {
+      "title": "The portal Documents page (R49)",
+      "steps": [
+        { "id": "G1", "text": "Documents lists a signed agreement copy, a delivered return and a client upload made through the page's own control, with no console error", "device": "phone + laptop" },
+        { "id": "G2", "text": "A page that fails to render shows one plain sentence and a Reload control, the firm gets a task and an Ops alert naming the route, and Reload shows the page again", "device": "phone + laptop" }
+      ]
+    },
     "Q": {
       "title": "The Quotes card on the client page",
       "steps": [
@@ -63,6 +70,43 @@
         { "id": "Q2", "text": "Copy the client link: a fresh portal link, the confirmation line, and the link opens the proposal", "device": "phone + laptop" },
         { "id": "Q3", "text": "Resend the proposal email: the same send path, a new link in the mailer, the confirmation line", "device": "phone + laptop" },
         { "id": "Q4", "text": "Withdraw a draft with a reason: the row reads Withdrawn", "device": "phone + laptop" }
+      ]
+    },
+    "P": {
+      "title": "The contact email and the sign-in, the portal after signing, the upload control, Deliver Return, My Returns (R45 to R48)",
+      "steps": [
+        { "id": "P1", "text": "Changing the contact email offers to move the sign-in; one confirmation link to the new address; pending on the client page with Resend; the link's button moves it, a bare load does not", "device": "phone + laptop" },
+        { "id": "P2", "text": "The portal home after signing: no 'Waiting for your signature' for the signed document, no withdrawn engagement's documents, no duplicate rows; the sign page reads 'Signed on'", "device": "phone + laptop" },
+        { "id": "P3", "text": "The upload control: no capture attribute, several files at once, the category starts unselected and is required, the empty card has text", "device": "phone + laptop" },
+        { "id": "P4", "text": "Deliver Return's confirmation states what happened: not emailed because the notice is switched off; emailed when it is armed", "device": "phone + laptop" },
+        { "id": "P5", "text": "My Returns 'What happens next' reads the return's state: 8879 not yet sent, sent by Adobe Sign, on file, filed", "device": "phone + laptop" }
+      ]
+    },
+    "F": {
+      "title": "Filed on, and the filing corrected (Path F)",
+      "steps": [
+        { "id": "F1", "text": "Mark filed takes Filed on: opens on today, a day after today refused, a day before the signed 8879 refused, today files", "device": "phone + laptop" },
+        { "id": "F2", "text": "Correct the filing: remove a jurisdiction with a reason; the line leaves the row and the history line reads the correction; the bookkeeper has no control and the route refuses her", "device": "phone + laptop" },
+        { "id": "F3", "text": "Correct the filing: change the PTIN holder; the offer to move the assigned preparer opens checked and both move", "device": "phone + laptop" },
+        { "id": "F4", "text": "Correct the filing: move the filed date earlier; a day before the signed 8879 refused in the modal, the 8879's day lands", "device": "phone + laptop" }
+      ]
+    },
+    "H": {
+      "title": "The business in every Ops search, the stage row that opens, the duplicate EIN (R51, R52, R54)",
+      "steps": [
+        { "id": "H1", "text": "Deliver Return: the search matches the business legal name and the match reads \"Business — owner\"", "device": "phone + laptop" },
+        { "id": "H2", "text": "New quote: the client search matches the business legal name and the chip reads \"Business — owner\"", "device": "phone + laptop" },
+        { "id": "H3", "text": "The clients list: the search matches the business legal name and the row reads \"Business — owner\"", "device": "phone + laptop" },
+        { "id": "H4", "text": "An \"Open returns by stage\" row on the executive view opens the list for that stage: client, business, form, preparer, days in stage", "device": "phone + laptop" },
+        { "id": "H5", "text": "Add a business with an EIN another business holds: the warning links to that business and its owner, \"Create anyway\" takes a reason; Edit follows the same rule", "device": "phone + laptop" }
+      ]
+    },
+    "S": {
+      "title": "The Returns card as a stepper (R50), behind OPS_RETURN_STEPPER",
+      "steps": [
+        { "id": "S1", "text": "With the switch on, the stepper renders its sixteen steps; the current step carries its one control and one sentence, and each later step says what unlocks it", "device": "phone + laptop" },
+        { "id": "S2", "text": "The details area carries the secondary actions (change preparer, record extension, correct the filing at filed); ed_coo reads the steps with no control and no details area", "device": "phone + laptop" },
+        { "id": "S3", "text": "With the switch off the row renders as production runs it, and GET /auth/me reports the state", "device": "phone + laptop" }
       ]
     }
   }

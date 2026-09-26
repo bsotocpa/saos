@@ -140,7 +140,7 @@ export interface StageMapping {
    *                          no acceptance (a paper return can never have one recorded) and no
    *                          mailing (the card does not say it was mailed, let alone how).
    */
-  postImport?: 'declare_and_confirm' | 'notify_client' | 'completed_silently';
+  postImport?: 'declare_and_confirm' | 'notify_client' | 'completed_silently' | 'f8879_sent_declared';
 }
 
 export const STAGE_MAP: Record<string, StageMapping> = {
@@ -148,7 +148,7 @@ export const STAGE_MAP: Record<string, StageMapping> = {
   'awaiting client response': { stage: 'pending_client_response', handling: 'stage', saosStage: 'pending_client_response', mapping: 'maps exactly; waiting_on = client' },
   'awaiting documents': { stage: 'documents_requested', handling: 'stage', saosStage: 'documents_requested', mapping: 'maps exactly' },
   'awaiting documents (exempt org)': { stage: 'documents_requested', handling: 'stage', saosStage: 'documents_requested', mapping: 'maps exactly; the exempt-org part is return_type 990/990ez, not a stage' },
-  'awaiting signature': { stage: 'ready_to_file', handling: 'stage', saosStage: 'ready_to_file', mapping: 'maps; the 8879 gate sits on entering filed, so "awaiting signature" IS ready_to_file — and the imported return is refused filed until a scan is uploaded' },
+  'awaiting signature': { stage: 'client_review', handling: 'stage', saosStage: 'client_review (+ 8879 sent)', postImport: 'f8879_sent_declared', mapping: 'R53: "awaiting signature" is the return delivered to the client with the 8879 out for signature and not back — client_review with an 8879-sent record declared from the card (method null: the card did not say how; flagged f8879_sent_declared_by_import) under the R16 attestation. The 8879 gate still sits on entering filed, so the imported return is refused filed until the signed scan is uploaded' },
   'prepared, not yet sent for signature': { stage: 'internal_review', handling: 'stage', saosStage: 'internal_review', mapping: 'maps' },
   'extended, awaiting documents': { stage: 'documents_requested', handling: 'stage', saosStage: 'documents_requested', mapping: 'maps; Extended is tax_engagements.extension_filed, a parallel flag, never a stage' },
   'e-file rejected': { stage: 'rejected', handling: 'stage', saosStage: 'rejected', mapping: 'maps exactly; a reject also carries a perfection_deadline SAOS computes, which Trello has no field for' },

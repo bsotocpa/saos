@@ -274,17 +274,20 @@ export function defaultPreparerId(detail: {
  * an entity return. The same rule the API uses, so the control opens on the same answer the route
  * would have defaulted to — and the person filing can still say the other one.
  */
-export const EXTENSION_FORMS = ['4868', '7004'] as const;
+export const EXTENSION_FORMS = ['4868', '7004', '8868'] as const;
 export type ExtensionForm = (typeof EXTENSION_FORMS)[number];
 
 export function defaultExtensionForm(returnType: string | null | undefined): ExtensionForm {
   const t = (returnType ?? '').toLowerCase();
-  return t === '1040' || t === '1040_expat' ? '4868' : '7004';
+  if (t === '1040' || t === '1040_expat') return '4868';
+  if (t === '990' || t === '990ez') return '8868';
+  return '7004';
 }
 
 export const EXTENSION_FORM_LABEL: Record<ExtensionForm, string> = {
   '4868': 'Form 4868 (individual)',
   '7004': 'Form 7004 (entity)',
+  '8868': 'Form 8868 (exempt organization)',
 };
 
 /**
@@ -297,4 +300,89 @@ export function extensionBadgeText(form: string | null | undefined, extendedDead
   return extendedDeadlineText
     ? `Extended · ${which} · deadline ${extendedDeadlineText}`
     : `Extended · ${which}`;
+}
+
+/*
+ * ═══ 2026-09-26: THE FILING, CORRECTED ═════════════════════════════════════════════════════════
+ *
+ * A return at filed carries three facts about the filing — the day, whose PTIN is on it, the
+ * jurisdictions declared — and each is corrected by APPENDING a correction with a reason, never by
+ * editing in place. The control lives on the filed row only: before filing there is nothing to
+ * correct, and after completion the acknowledgments have answered for what was declared.
+ */
+export function correctionsApply(stage: string): boolean {
+  return stage === 'filed';
+}
+
+/** One correction as GET /tax-engagements/:id reports it. `created_at` is an INSTANT: the row formats it with dayOf. */
+export interface FilingCorrectionView {
+  id: string;
+  fields: string[];
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  reason: string;
+  actor_label: string;
+  created_at: string;
+}
+
+/** The field names the API records, in the words the row prints them. */
+export const CORRECTION_FIELD_LABEL: Record<string, string> = {
+  filed_date: 'the filed date',
+  preparer_ptin_holder_id: 'the PTIN holder',
+  jurisdictions: 'the declared jurisdictions',
+};
+
+/**
+ * "Corrected the filed date on Sep 26, 2026 by Brian Soto: <reason>" — the history line under the
+ * return row. The day arrives already formatted (this file has no date formatter); the actor is
+ * the name the correction recorded, never an address; an unknown field prints as itself rather
+ * than crashing the row.
+ */
+export function correctionLine(c: Pick<FilingCorrectionView, 'fields' | 'reason' | 'actor_label'>, dayText: string): string {
+  const what = c.fields.map((f) => CORRECTION_FIELD_LABEL[f] ?? f.replaceAll('_', ' ')).join(', ');
+  return `Corrected ${what} on ${dayText} by ${c.actor_label}: ${c.reason}`;
+}
+
+/** What the correction modal opens on, and what it compares against: the filing as recorded. */
+export interface FilingAsRecorded {
+  filedOn: string;
+  ptin: string;
+  jurisdictions: string[];
+}
+
+/**
+ * ONLY WHAT MOVED goes to the route: a field equal to the filing as recorded is not a correction,
+ * and sending it would make the route say so about a field the person did not touch. The
+ * jurisdictions compare as normalised lists (federal first, states sorted) so order is never a
+ * difference. An empty result is sent as-is: the route's refusal — nothing to correct — is the
+ * words the modal shows.
+ */
+export function changedFilingFields(
+  current: FilingAsRecorded,
+  draft: FilingAsRecorded
+): { filedOn?: string; preparerPtinHolderId?: string; jurisdictions?: string[] } {
+  const out: { filedOn?: string; preparerPtinHolderId?: string; jurisdictions?: string[] } = {};
+  if (draft.filedOn && draft.filedOn !== current.filedOn) out.filedOn = draft.filedOn;
+  if (draft.ptin && draft.ptin !== current.ptin) out.preparerPtinHolderId = draft.ptin;
+  const was = normaliseJurisdictions(current.jurisdictions);
+  const now = normaliseJurisdictions(draft.jurisdictions);
+  if (was.join(',') !== now.join(',')) out.jurisdictions = now;
+  return out;
+}
+
+/**
+ * THE PREPARER OFFER opens CHECKED when the PTIN holder being corrected was also the assigned
+ * preparer — the wrong person was picked once and landed in both places — and unchecked when the
+ * two were already different people, because then the assignee was a separate decision.
+ */
+export function preparerOfferDefault(ptinHolderId: string | null | undefined, assignedPreparerId: string | null | undefined): boolean {
+  return Boolean(ptinHolderId) && ptinHolderId === assignedPreparerId;
+}
+
+/** A declared jurisdiction that has answered — accepted or mailed — cannot leave the filing; the row says which. */
+export function jurisdictionSatisfiedText(row: JurisdictionView | undefined, dayText: string): string {
+  if (!row) return '';
+  if (row.acceptedOn) return `accepted ${dayText}`;
+  if (row.mailedOn) return `mailed ${dayText}`;
+  return '';
 }

@@ -29,6 +29,7 @@ import {
   preparerLine, removeState, stageActionLabel, startingFilingMethods, startingJurisdictions,
   EXTENSION_FORMS, EXTENSION_FORM_LABEL, FILING_METHODS, FILING_METHOD_LABEL,
   MAILING_METHODS, MAILING_METHOD_LABEL, SCOPE_CREEP_CATEGORIES, SCOPE_CREEP_LABEL,
+  changedFilingFields, correctionLine, correctionsApply, jurisdictionSatisfiedText, preparerOfferDefault,
   type JurisdictionView,
 } from '../lib/return-controls.ts';
 
@@ -196,14 +197,15 @@ test('the Assign preparer select opens on whoever the return should already have
   assert.match(component, /\/preparer`, \{ method: 'POST', body: \{ staffId: draft\.staffId \} \}/, 'the route the row posts to');
 });
 
-test('the extension form follows the return type: 4868 for an individual return, 7004 for an entity', () => {
+test('the extension form follows the return type: 4868 for an individual return, 7004 for an entity, 8868 for an exempt organization', () => {
   assert.equal(defaultExtensionForm('1040'), '4868');
   assert.equal(defaultExtensionForm('1040_expat'), '4868');
   assert.equal(defaultExtensionForm('1120S'), '7004', 'the case a row prints it in does not change the form');
+  assert.equal(defaultExtensionForm('990'), '8868', 'an exempt organization extends on 8868 (R43)');
+  assert.equal(defaultExtensionForm('990ez'), '8868');
   assert.equal(defaultExtensionForm('1065'), '7004');
-  assert.equal(defaultExtensionForm('990'), '7004');
   assert.equal(defaultExtensionForm(null), '7004', 'an unknown return type never crashes the card');
-  assert.deepEqual([...EXTENSION_FORMS], ['4868', '7004'], 'two real forms, and no third');
+  assert.deepEqual([...EXTENSION_FORMS], ['4868', '7004', '8868'], 'three real forms, and no fourth');
   for (const f of EXTENSION_FORMS) assert.match(EXTENSION_FORM_LABEL[f], new RegExp(f), `${f} is named in its label`);
 });
 
@@ -339,4 +341,47 @@ test('the Record mailing modal: the day, the method, optional tracking, optional
   assert.match(component, /const preFiled = controlsApply\(stage\);/);
   assert.match(component, /const applies = preFiled \|\| mailingControlsApply\(stage\);/);
   assert.match(component, /if \(!canManage \|\| !applies\) return null;/, 'nothing, not disabled buttons');
+});
+
+/*
+ * ═══ 2026-09-26: FILED ON, AND THE FILING CORRECTED ════════════════════════════════════════════
+ */
+test('the correction control belongs to the filed row alone, and the Mark filed modal takes "Filed on" opening on today', () => {
+  for (const s of ['intake_started', 'ready_to_file', 'rejected', 'completed', 'withdrawn']) assert.equal(correctionsApply(s), false, s);
+  assert.equal(correctionsApply('filed'), true);
+  assert.match(component, /filedOn: te\.filed_date \?\? todayChicago\(\)/, 'the day opens on today in Chicago, or the day a re-file keeps');
+  assert.match(component, /\n\s*Filed on\n/, 'the label the walk taps');
+  assert.match(component, /filedOn: draft\.filedOn,\n/, 'and the filing sends it');
+  assert.match(component, /data-testid="correct-filing"/);
+  assert.match(component, /label: 'Correct the filing', tone: 'primary'/);
+  assert.match(component, /data-testid="also-assign-preparer"/, 'the preparer offer');
+  assert.match(component, /\/filing-corrections`, \{/, 'the route the modal posts to');
+  assert.match(component, /required: true,\n\s*placeholder: 'Say what the filing recorded wrongly/, 'the reason is required');
+  assert.ok(!/min=|max=/.test(component.slice(component.indexOf('function FiledFields'), component.indexOf('function JurisdictionList'))), 'no client-side bound on the day: the route holds the rule');
+});
+
+test('only what moved is sent; the history line names the field, the day, the person and the reason', () => {
+  const current = { filedOn: '2026-09-26', ptin: 'a', jurisdictions: ['federal', 'IL'] };
+  assert.deepEqual(changedFilingFields(current, { ...current }), {}, 'nothing changed, nothing sent');
+  assert.deepEqual(changedFilingFields(current, { ...current, jurisdictions: ['IL', 'federal'] }), {}, 'order is not a difference');
+  assert.deepEqual(changedFilingFields(current, { filedOn: '2026-09-20', ptin: 'a', jurisdictions: ['federal'] }), { filedOn: '2026-09-20', jurisdictions: ['federal'] });
+  assert.deepEqual(changedFilingFields(current, { ...current, ptin: 'b' }), { preparerPtinHolderId: 'b' });
+  assert.deepEqual(changedFilingFields(current, { ...current, ptin: '' }), {}, 'an emptied select is not a correction');
+  assert.equal(
+    correctionLine({ fields: ['filed_date', 'jurisdictions'], reason: 'Typed a day late.', actor_label: 'Synthetic CEO' }, 'Sep 26, 2026'),
+    'Corrected the filed date, the declared jurisdictions on Sep 26, 2026 by Synthetic CEO: Typed a day late.'
+  );
+  assert.equal(correctionLine({ fields: ['preparer_ptin_holder_id'], reason: 'r', actor_label: 'x' }, 'd'), 'Corrected the PTIN holder on d by x: r');
+  assert.equal(correctionLine({ fields: ['something_else'], reason: 'r', actor_label: 'x' }, 'd'), 'Corrected something else on d by x: r', 'an unknown field never crashes the row');
+  // The offer opens checked when the holder and the assignee were the same person, unchecked otherwise.
+  assert.equal(preparerOfferDefault('a', 'a'), true);
+  assert.equal(preparerOfferDefault('a', 'b'), false);
+  assert.equal(preparerOfferDefault(null, 'b'), false);
+  assert.equal(preparerOfferDefault('a', null), false);
+  // A jurisdiction that answered says so, and the day arrives formatted.
+  const row: JurisdictionView = { jurisdiction: 'IL', filingMethod: 'efile', acceptedOn: '2026-09-20', mailedOn: null, mailingMethod: null, trackingNumber: null, receiptDocumentId: null };
+  assert.equal(jurisdictionSatisfiedText(row, 'Sep 20, 2026'), 'accepted Sep 20, 2026');
+  assert.equal(jurisdictionSatisfiedText({ ...row, filingMethod: 'paper', acceptedOn: null, mailedOn: '2026-09-21' }, 'Sep 21, 2026'), 'mailed Sep 21, 2026');
+  assert.equal(jurisdictionSatisfiedText({ ...row, acceptedOn: null }, ''), '');
+  assert.equal(jurisdictionSatisfiedText(undefined, ''), '');
 });

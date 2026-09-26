@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
 import { AddClientModal } from '../../components/add-client';
+import { clientSearchLabel } from '../../lib/labels';
 
 interface ClientRow {
   id: string;
@@ -30,6 +31,8 @@ interface ClientRow {
   client_since: string | null;
   is_test: boolean;
   business_name: string | null;
+  /** R51: the search reached this row through the business legal name; the row reads "Business — owner". */
+  business_matched?: boolean;
   active_engagements: number;
 }
 
@@ -177,7 +180,7 @@ export default function ClientsPage() {
                   <tr key={r.id}>
                     <td>
                       <Link href={`/clients/${r.id}`}>
-                        {r.first_name} {r.last_name}
+                        {clientSearchLabel(r)}
                       </Link>{' '}
                       {r.is_test ? <span className="badge warn">TEST</span> : null}
                     </td>
@@ -203,9 +206,9 @@ export default function ClientsPage() {
           <section className="phone-only">
             {rows.map((r) => (
               <Link key={r.id} href={`/clients/${r.id}`} className="card lead-card-link" style={{ display: 'block', marginBottom: 8 }}>
-                <strong>{r.first_name} {r.last_name}</strong>{' '}
+                <strong>{clientSearchLabel(r)}</strong>{' '}
                 {r.is_test ? <span className="badge warn">TEST</span> : null}
-                {r.business_name ? (
+                {r.business_name && !r.business_matched ? (
                   <><br /><span className="small">{r.business_name}</span></>
                 ) : null}
                 <br />

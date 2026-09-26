@@ -220,6 +220,36 @@ test('EXCLUDED FROM MEASUREMENT: every number moves by exactly one when the flag
 
   // And the one that would actually embarrass us.
   assert.equal(beforeSeg.intended - afterSeg.intended, 1, 'broadcast segment');
+
+  // The returns-by-stage table and the list each row opens (R52) agree, and neither holds the rehearsal.
+  assert.equal(
+    sum(beforeExec.openReturnsByStage as Array<Record<string, unknown>>, 'count') -
+      sum(afterExec.openReturnsByStage as Array<Record<string, unknown>>, 'count'),
+    1,
+    'Executive open returns by stage'
+  );
+  const { openReturnsInStage } = await import('../src/modules/dashboards/service.ts');
+  const listed = (await openReturnsInStage(app, 'in_preparation')) as Array<{ contact_id: string }>;
+  assert.ok(!listed.some((r) => r.contact_id === rehearsalId), 'the stage list leaves the rehearsal out too');
+});
+
+test('NEEDS YOU TODAY never shows a test client (R52) — while the task list and search still do', async () => {
+  const { createTask } = await import('../src/modules/tasks/service.ts');
+  await setTest(false);
+  const task = await createTask(app, {
+    title: 'Synthetic rehearsal chase', assignedStaffId: brian.id, contactId: rehearsalId, priority: 1, source: 'manual',
+  });
+  const on = async () => (await app.inject({ method: 'GET', url: '/tasks/rollup', headers: auth(brian) })).json() as { mine: Array<{ id: string }> };
+  assert.ok((await on()).mine.some((t) => t.id === task.id), 'a real client\'s task is on the tile');
+
+  await setTest(true);
+  assert.ok(!(await on()).mine.some((t) => t.id === task.id), 'flagged: the task leaves Needs you today');
+  const list = await app.inject({ method: 'GET', url: `/tasks/search?contactId=${rehearsalId}`, headers: auth(brian) });
+  assert.equal(list.statusCode, 200, list.body);
+  assert.ok((list.json().tasks as Array<{ id: string }>).some((t) => t.id === task.id), 'the task list keeps it: the record can still be worked');
+  const mine = await app.inject({ method: 'GET', url: '/tasks/search?assignee=' + brian.id, headers: auth(brian) });
+  assert.ok((mine.json().tasks as Array<{ id: string }>).some((t) => t.id === task.id), 'My Tasks keeps it too; only the tile filters');
+  await setTest(false);
 });
 
 test('a test client can NEVER be in a broadcast audience, whatever segment is built', async () => {

@@ -79,6 +79,7 @@ import { createEngagement } from '../src/modules/engagements/service.ts';
 import { applyNewReturnDefaults, transitionStage, type TaxStage } from '../src/modules/tax/pipeline.ts';
 import { isOneActivePerPeriodViolation } from '../src/modules/engagements/period.ts';
 import { assertImportPreconditions, declareImportedJurisdictions, setImportedStage } from '../src/modules/tax/import.ts';
+import { declareImported8879Sent } from '../src/modules/tax/f8879-sent.ts';
 import { applyRecurringServiceFact, isLiveServiceFact, type RecurringFactType } from '../src/modules/engagements/import-facts.ts';
 import { recordSigned8879 } from '../src/modules/tax/signed-8879.ts';
 import { createTask } from '../src/modules/tasks/service.ts';
@@ -515,12 +516,14 @@ interface FileTally { recordsCreated: number; returnsCreated: number; attested: 
   declaredByDefault: number; notifyTasks: number; completedSilently: number;
   /** R31: of the filed-awaiting-ack cards, those whose year put the declaration in the paper lane. */
   declaredPaper: number;
+  /** R53: awaiting-signature cards, landed at client_review with the 8879 declared sent (method unsaid, flagged). */
+  f8879SentDeclared: number;
   /** R21: 04b rows read but not applied because SAOS has nowhere to put them yet. */
   deferred: number;
   /** R33: sales-tax and payroll engagements this pass created, rows that named a closed service, and live rows deferred for want of a contact to bill. */
   serviceEngagements: number; closedServices: number; noContact: number }
 const emptyTally = (): FileTally => ({ recordsCreated: 0, returnsCreated: 0, attested: 0, tasks: 0, skipped: 0, refused: 0, facts: 0,
-  preparerDefaulted: 0, letterInherited: 0, declaredByDefault: 0, notifyTasks: 0, completedSilently: 0, declaredPaper: 0, deferred: 0,
+  preparerDefaulted: 0, letterInherited: 0, declaredByDefault: 0, notifyTasks: 0, completedSilently: 0, declaredPaper: 0, f8879SentDeclared: 0, deferred: 0,
   serviceEngagements: 0, closedServices: 0, noContact: 0 });
 type Tallies = Record<string, FileTally>;
 const FILES = ['01_tax_wip.csv', '02_tax_ar_worklist.csv', '03_tax_completed_roster.csv', '04_business_services.csv', '04b_service_facts.csv'] as const;
@@ -750,6 +753,15 @@ async function runImport(pass: 'first' | 'rerun'): Promise<Tallies> {
       t.notifyTasks++;
     }
     if (mapping.postImport === 'completed_silently') t.completedSilently++;
+    /*
+     * R53: "awaiting signature" lands at client_review with the 8879 recorded as SENT, from the card,
+     * with no method (the card said nothing about how) and the declared_by_import flag — never a
+     * method invented. The queue then reads it as awaiting signature, method not recorded.
+     */
+    if (mapping.postImport === 'f8879_sent_declared') {
+      await declareImported8879Sent(app, actorLabel, { taxEngagementId: teId, trelloCardId: cardId, asOf: BUNDLE_DATE });
+      t.f8879SentDeclared++;
+    }
   }
 
   // ── file 02: a worklist, never an invoice ───────────────────────────────
@@ -1009,7 +1021,7 @@ console.log(`  created: ${afterFirst.contacts - before.contacts} contact(s), ${a
 console.log(`  refused client-facing sends, audited: ${afterFirst.refusals - before.refusals}`);
 console.log(
   `  R22: ${sumOf('preparerDefaulted')} return(s) took the default preparer, ${sumOf('letterInherited')} inherited a standing letter. ` +
-    `R23: ${sumOf('declaredByDefault')} filed-awaiting-ack (R31: ${sumOf('declaredPaper')} of them in the paper lane), ${sumOf('notifyTasks')} accepted-not-notified, ${sumOf('completedSilently')} paper-filed. ` +
+    `R23: ${sumOf('declaredByDefault')} filed-awaiting-ack (R31: ${sumOf('declaredPaper')} of them in the paper lane), ${sumOf('notifyTasks')} accepted-not-notified, ${sumOf('completedSilently')} paper-filed. R53: ${sumOf('f8879SentDeclared')} awaiting-signature (client_review, 8879 declared sent, method unsaid). ` +
     `R21: ${await ledgerCount()} ledger row(s), ${sumOf('deferred')} row(s) deferred for want of a home. ` +
     `R33: ${sumOf('serviceEngagements')} sales-tax/payroll engagement(s) created, ${sumOf('closedServices')} closed service row(s) applied with nothing created, ${sumOf('noContact')} live row(s) deferred for want of a contact.`
 );

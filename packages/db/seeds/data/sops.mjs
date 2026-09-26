@@ -817,6 +817,26 @@ A client declined a proposal and gave a reason.
 3. Close the lead or re-open it. Either is fine; leaving it is not.
 `),
 
+  sop('brian-portal-page-error', 'A portal page failed in a client\'s browser', 'ceo', 'Portal', `
+## Why you have this task
+A page of the client portal threw while rendering in a client's browser. The client saw one
+plain sentence and a **Reload** control, and nothing about the error. The task names the
+**route** and the browser's **error message**; the client whose browser reported it is the
+task's contact.
+
+1. Read the route and the message on the task. One task is open per route, so the same failure
+   in ten browsers is one task, not ten.
+2. **Reproduce on a copy of production, never on production.** Copy the database, point a
+   throwaway API at the copy, call the endpoints that page loads as the client's portal user on
+   the copy, and feed the JSON to the page's rendering. The message on the task usually names
+   the row shape (a value the portal never met, a null it dereferenced).
+3. Fix the page so it renders **every shape the API can return**, and the API if it emitted an
+   impossible one. Add the shape to the page's unit test and to the harness fixture.
+4. Ship through the receipt run and the deploy. Then reload the page as a test client; the row
+   the client met is what the harness now covers.
+5. Complete the task. If the client wrote in meanwhile, the answer is that the page is fixed
+   and a reload shows it; no detail of the error goes to them.
+`),
   sop('brian-infected-upload', 'A client upload failed the virus scan', 'ceo', 'Documents', `
 ## Why you have this task
 A file a client uploaded to the portal came back **infected**. The technical side is

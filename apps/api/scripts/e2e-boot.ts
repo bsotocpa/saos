@@ -29,6 +29,8 @@ import { todayChicago } from '../src/modules/tax/deadlines.ts';
 import { defaultTaxYear } from '../src/modules/engagements/period.ts';
 import * as OTPAuth from 'otpauth';
 import { buildPathB } from './e2e-fixtures/path-b.ts';
+import { buildDocumentsFixture } from './e2e-fixtures/documents.ts';
+import { buildSigningFixture } from './e2e-fixtures/portal-signing.ts';
 
 const PORT = Number(process.env.E2E_API_PORT ?? 3101);
 const TOTP_SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
@@ -43,6 +45,9 @@ process.env.OPS_REFUND_CONTROL = 'on';
 // The redesigned quote builder (2026-09-20): production defaults to v1 until Brian approves the
 // screenshots; the harness taps v2, and the switch spec flips to v1 through /harness/quote-builder.
 process.env.OPS_QUOTE_BUILDER = 'v2';
+// The Returns card as a stepper (R50, 2026-09-26): production defaults to off until Brian approves the
+// screenshots; the harness taps the stepper, and the switch spec flips to off through /harness/return-stepper.
+process.env.OPS_RETURN_STEPPER = 'on';
 /*
  * THE EMAILED HREF IS THE ONE THE SPEC FOLLOWS (2026-09-20). Every portal link the mailer sees is
  * kept whole, and it must point at the harness portal, so the base URL is the harness port before
@@ -67,12 +72,20 @@ const quoteTokens: string[] = [];
 /** The same links, whole, as they stand in the message: what a spec puts in the address bar. */
 const magicLinks: string[] = [];
 const quoteLinks: string[] = [];
+/*
+ * AND THE SIGN-IN MOVE'S CONFIRMATION LINK (R45, 2026-09-26): emailed once to the NEW contact address
+ * when Ops accepts the offer to move a portal sign-in; the spec opens what was emailed and presses.
+ */
+const confirmTokens: string[] = [];
+const confirmLinks: string[] = [];
 const silentMailer: Mailer = {
   transport: 'console',
   async send(msg) {
     const body = `${msg.subject ?? ''} ${msg.text ?? ''} ${msg.html ?? ''}`;
     const found = /(https?:\/\/\S+\/auth\/verify\?token=([A-Za-z0-9_-]+))/.exec(body);
     if (found) { magicTokens.push(found[2]!); magicLinks.push(found[1]!); }
+    const confirm = /(https?:\/\/\S+\/auth\/confirm-email\?token=([A-Za-z0-9_-]+))/.exec(body);
+    if (confirm) { confirmTokens.push(confirm[2]!); confirmLinks.push(confirm[1]!); }
     const quote = /(https?:\/\/\S+\/quote\/([A-Za-z0-9_-]{20,}))/.exec(body);
     if (quote) { quoteTokens.push(quote[2]!); quoteLinks.push(quote[1]!); }
     return { id: 'e2e' };
@@ -85,7 +98,7 @@ const app = buildServer(config, { mailer: silentMailer });
  * Registered before ready(), served on the harness API port, and it exists only in this script —
  * nothing in apps/api/src knows about it, and the boot has already refused a non-local database.
  */
-app.get('/harness/mail-links', async () => ({ quoteTokens, magicTokens, quoteLinks, magicLinks }));
+app.get('/harness/mail-links', async () => ({ quoteTokens, magicTokens, quoteLinks, magicLinks, confirmTokens, confirmLinks }));
 /*
  * THE MIGRATED CLIENT (Brian, 2026-09-20). A client who came over from the old system signs in
  * with the address their portal account was made on; the contact record carries the corrected one.
@@ -142,6 +155,31 @@ app.post<{ Body: { version?: unknown } }>('/harness/quote-builder', async (reque
   if (version !== 'v1' && version !== 'v2') throw new Error('version must be v1 or v2');
   app.switches.quoteBuilder = version;
   return { quoteBuilder: app.switches.quoteBuilder };
+});
+// The Returns card's stepper (R50), flipped the same way: the switch spec taps off (the row production
+// runs) and on (the stepper) from one API process, and leaves it on for the specs after it.
+app.post<{ Body: { state?: unknown } }>('/harness/return-stepper', async (request) => {
+  const state = (request.body as { state?: unknown } | null)?.state;
+  if (state !== 'on' && state !== 'off') throw new Error('state must be on or off');
+  app.switches.returnStepper = state;
+  return { returnStepper: app.switches.returnStepper };
+});
+/*
+ * THE DOCUMENTS PAGE MADE TO FAIL (R49, 2026-09-26). The error-boundary spec needs a page that
+ * throws while rendering, and after R49 the page renders every shape the API can return. So the
+ * harness, and only the harness, answers GET /portal/documents with `documents: null` while this
+ * switch is on: a shape the route cannot produce (its rows are always an array), which the page's
+ * render dereferences. The spec turns it on, reads the sentence and the alert, turns it off and
+ * presses Reload. This script alone knows the switch; nothing under apps/api/src can flip it.
+ */
+let documentsCrash = false;
+app.post<{ Body: { on?: unknown } }>('/harness/documents-crash', async (request) => {
+  documentsCrash = (request.body as { on?: unknown } | null)?.on === true;
+  return { documentsCrash };
+});
+app.addHook('preSerialization', async (request, _reply, payload) => {
+  const path = request.url.replace(/[?#].*$/, '');
+  return documentsCrash && request.method === 'GET' && path === '/portal/documents' ? { documents: null } : payload;
 });
 await app.ready();
 
@@ -419,6 +457,10 @@ if (magicTokens.length < 2) throw new Error(`only ${magicTokens.length} sign-in 
 
 // Path B (the 1040 on extension) is built by its own module; null until that track lands.
 const pathB = await buildPathB(app, { staffToken, magicTokens, magicLinks, makeMigrated, drainOutbox: () => drainOutbox(app), preparer: { id: anamaria.id, name: anamaria.fullName } });
+// The Documents page with its three kinds of row (R49), one client per viewport.
+const documents = await buildDocumentsFixture(app, { staffToken, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app) });
+// The portal home after signing (R46): a signed packet beside a withdrawn 1040's letter and duplicate envelopes, one client per viewport.
+const signing = await buildSigningFixture(app, { staffToken, actor, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app) });
 await app.listen({ port: PORT, host: '127.0.0.1' });
 // The harness API runs no scheduler (that is index.ts's job). The outbox fast lane is what a person
 // waits on after a release, so the harness drains it every two seconds, the way the box does every minute.
@@ -460,6 +502,8 @@ console.log('E2E_READY ' + JSON.stringify({
   scorpDesk: scorpFixture(D, 'Harness Desk Corp, LLC', '5556', 'Harness Desk Corp'),
   amend: { invoiceId: acc1.depositInvoiceId },
   pathB,
+  documents,
+  signing,
   wall: {
     laura: { email: laura.email, password: 'laura-synthetic-2026', totpSecret: TOTP_SECRET },
     jaqueline: { email: jaqueline.email, password: 'jaqueline-synthetic-2026', totpSecret: TOTP_SECRET },

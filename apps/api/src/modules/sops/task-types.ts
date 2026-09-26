@@ -206,6 +206,10 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   // client for a replacement without accusing them of something they almost certainly
   // did not do on purpose, and when a repeat infection stops being an accident.
   document_infected: { sop: 'brian-infected-upload' },
+  // R49 (2026-09-26): a portal page threw while rendering in a client's browser. The task names
+  // the route and the browser's message; the procedure is how to reproduce it on a copy and what
+  // the client was shown meanwhile.
+  portal_page_error: { sop: 'brian-portal-page-error' },
 
   /*
    * -- THE TRELLO CUTOVER (Brian, 2026-09-20, R20 and R23) -------------------

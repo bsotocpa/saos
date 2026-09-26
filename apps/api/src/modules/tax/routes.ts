@@ -13,11 +13,12 @@ import { createEngagement } from '../engagements/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { computeComplexityScore } from './complexity.ts';
 import {
-  FILING_METHODS, MAILING_METHODS, PREPARER_ROLE_KEYS, TAX_STAGES, acceptanceStatus, applyNewReturnDefaults,
-  legalNextStages, markDocumentsRequested, recordEfileResult, recordJurisdictionMailing, soleActiveTaxPreparerId,
+  FILING_METHODS, MAILING_METHODS, PREPARER_ROLE_KEYS, TAX_STAGES, acceptanceStatus, applyNewReturnDefaults, assignPreparer,
+  correctFiling, legalNextStages, markDocumentsRequested, recordEfileResult, recordJurisdictionMailing, soleActiveTaxPreparerId,
   transitionStage, type TaxStage,
 } from './pipeline.ts';
 import { preparerQueue } from './queue.ts';
+import { F8879_SENT_METHODS, f8879SentView, record8879Sent } from './f8879-sent.ts';
 import { todayChicago } from './deadlines.ts';
 import { returnTypeForItems } from './return-type.ts';
 import { currentPriceBookVersion } from '../pricing/service.ts';
@@ -66,6 +67,26 @@ const TransitionBody = z.object({
    * assertFilingMethods in pipeline.ts — so a direct caller hears the same words.
    */
   filingMethods: z.record(z.string().min(1).max(20), z.enum(FILING_METHODS)).optional(),
+  /**
+   * FILED ON (Brian, 2026-09-26). Read only at 'filed': the calendar day the return went in. Today in
+   * Chicago when unsaid. The two rules — not after today, not before the signed 8879 — are held in
+   * one place, assertFiledOn in pipeline.ts, so the correction door refuses in the same words.
+   */
+  filedOn: z.iso.date().optional(),
+});
+
+/**
+ * THE FILING, CORRECTED (Brian, 2026-09-26). Each field optional; a field left out is not touched,
+ * and a field sent equal to what the filing records is not a correction. The reason is the record —
+ * standalone, for whoever reads it next, validated like every other staff reason.
+ */
+const FilingCorrectionBody = z.object({
+  filedOn: z.iso.date().optional(),
+  preparerPtinHolderId: z.uuid().optional(),
+  jurisdictions: z.array(z.string().min(1).max(20)).max(60).optional(),
+  /** With a corrected PTIN holder: also make them the assigned preparer, through the assign door. */
+  alsoAssignPreparer: z.boolean().optional(),
+  reason: reasonText(10, 1000),
 });
 
 const EstimateBody = z.object({
@@ -115,6 +136,16 @@ const WetSignatureBody = z.object({
 /** Who a return may be assigned to: a tax preparer, or the CEO working a return himself. */
 const AssignPreparerBody = z.object({ staffId: z.uuid() });
 
+/**
+ * THE 8879 SENT FOR SIGNATURE (Brian, 2026-09-26, R53): how it reached the client and the day.
+ * Recorded, never sent, by SAOS; the rules (delivered or later, no 8879 on file yet, not after today)
+ * live in f8879-sent.ts so a direct caller hears the same words the modal shows.
+ */
+const F8879SentBody = z.object({
+  method: z.enum(F8879_SENT_METHODS),
+  sentOn: z.iso.date(),
+});
+
 const ListQuery = z.object({
   stage: z.enum(TAX_STAGES).optional(),
   preparerId: z.uuid().optional(),
@@ -134,6 +165,19 @@ const DocRequestBody = z.object({
     .array(z.object({ labelEn: z.string().min(1), labelEs: z.string().optional() }))
     .default([]),
 });
+
+/**
+ * THE AUDIT ACTIONS THAT ARE A STEP (R50). What GET /tax-engagements/:id returns as `activity`, so
+ * the stepper can print who did each thing: the letter and the 8879 (signature.recorded_wet, with
+ * details.type saying which), the estimate lock, the preparer, the fee, the 8879 sent, the filing
+ * and every other stage change, the corrections, the paper mailings.
+ */
+const STEP_ACTIONS = [
+  'signature.recorded_wet', 'tax_engagement.estimate_locked', 'tax_engagement.preparer_assigned',
+  'tax_engagement.final_fee_set', 'tax_engagement.f8879_sent_recorded', 'tax_engagement.f8879_sent_declared_by_import',
+  'tax_engagement.stage_changed', 'tax_engagement.filing_corrected', 'tax_engagement.paper_mailed',
+  'tax_engagement.imported_at_stage', 'tax_engagement.extension_filed',
+];
 
 function meta(request: FastifyRequest) {
   return { ip: request.ip, userAgent: request.headers['user-agent'] ?? null };
@@ -397,17 +441,41 @@ export function registerTaxRoutes(app: FastifyInstance): void {
   app.get<{ Params: { id: string } }>('/tax-engagements/:id', read, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const { rows } = await app.db.query(
-      `SELECT te.*, e.contact_id, e.business_id, e.price_book_version_id, ptin.display_name AS preparer_of_record
+      `SELECT te.*, te.f8879_signed_at::date::text AS f8879_signed_on, te.f8879_sent_on::text AS f8879_sent_on,
+              te.engagement_letter_signed_at::date::text AS engagement_letter_signed_on,
+              e.contact_id, e.business_id, e.price_book_version_id, ptin.display_name AS preparer_of_record,
+              sentby.display_name AS f8879_sent_recorded_by_name
        FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
-       LEFT JOIN staff ptin ON ptin.id = te.preparer_ptin_holder_id WHERE te.id = $1`,
+       LEFT JOIN staff ptin ON ptin.id = te.preparer_ptin_holder_id
+       LEFT JOIN staff sentby ON sentby.id = te.f8879_sent_recorded_by WHERE te.id = $1`,
       [id]
     );
     if (!rows[0]) throw new AppError(404, 'not_found', 'Tax engagement not found.');
     // THE WALL (phase 2, 2026-09-12): the complexity inputs are the return interview. interviews.read only.
     if (!holds(request.staff!, 'interviews.read')) delete (rows[0] as Record<string, unknown>).complexity_inputs;
     const history = await app.db.query(
-      `SELECT stage, entered_at, changed_by_staff_id, waiting_on, note
-       FROM engagement_stage_history WHERE tax_engagement_id = $1 ORDER BY entered_at`,
+      `SELECT h.stage, h.entered_at, h.changed_by_staff_id, h.waiting_on, h.note, s.display_name AS changed_by_name
+       FROM engagement_stage_history h LEFT JOIN staff s ON s.id = h.changed_by_staff_id
+       WHERE h.tax_engagement_id = $1 ORDER BY h.entered_at`,
+      [id]
+    );
+    /*
+     * WHO DID EACH STEP, AND WHEN (R50, 2026-09-26). The stepper prints a check, the day and the person
+     * on every done step; the return's columns hold the facts but not the hands. The audit rows on
+     * this return do, so the ones that ARE a step come back as `activity`, oldest first, in the shape
+     * the stepper reads (the action, the actor's name, the instant, the details). Names only, never
+     * an address — actor_label is what the audit writer recorded.
+     */
+    const activity = await app.db.query<{ action: string; actor_label: string | null; at: Date; details: Record<string, unknown> }>(
+      `SELECT action, actor_label, occurred_at AS at, details FROM audit_log
+        WHERE object_type = 'tax_engagement' AND object_id = $1 AND action = ANY($2::text[])
+        ORDER BY occurred_at, id`,
+      [id, STEP_ACTIONS]
+    );
+    // The invoice the filing issued (or will have): the "paid" step reads its status and paid day.
+    const invoice = await app.db.query<{ id: string; status: string; total_cents: number; paid_at: Date | null; sent_at: Date | null }>(
+      `SELECT id, status::text AS status, total_cents, paid_at, sent_at FROM invoices
+        WHERE tax_engagement_id = $1 AND status <> 'void' ORDER BY created_at DESC LIMIT 1`,
       [id]
     );
     /*
@@ -421,7 +489,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       f8879_document_id: string | null; f8879_signed_at: Date | null;
       estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null;
     };
-    const [quotedRange, jurisdictions, assigned, staffOptions, solePreparer] = await Promise.all([
+    const [quotedRange, jurisdictions, assigned, staffOptions, solePreparer, corrections] = await Promise.all([
       quotedRangeFor(app, te),
       // The Mark filed modal's jurisdiction list: what the address suggests, and what the return
       // already declares (Brian, 2026-09-19 evening, ruling 2).
@@ -439,10 +507,29 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       // The firm's only tax preparer, when there is one: what the Assign preparer select opens on
       // for a return that has nobody yet.
       soleActiveTaxPreparerId(app),
+      /*
+       * THE FILING'S CORRECTIONS (Brian, 2026-09-26), oldest first: what moved, before and after, the
+       * reason, who and when. The row prints each as "Corrected <field> on <day> by <who>: <reason>".
+       * The actor is a name (actor_label), never an address.
+       */
+      app.db.query<{ id: string; fields: string[]; before: Record<string, unknown>; after: Record<string, unknown>; reason: string; actor_label: string; created_at: Date }>(
+        `SELECT id, fields, before, after, reason, actor_label, created_at
+           FROM tax_engagement_filing_corrections WHERE tax_engagement_id = $1 ORDER BY created_at, id`,
+        [id]
+      ),
     ]);
+    const teRow = rows[0] as Record<string, unknown>;
     return {
       taxEngagement: rows[0],
       stageHistory: history.rows,
+      filing_corrections: corrections.rows,
+      /* R53: the 8879 sent for signature, or null; R50: who did each step, and the filing's invoice. */
+      f8879_sent: f8879SentView(
+        teRow as Parameters<typeof f8879SentView>[0],
+        (teRow.f8879_sent_recorded_by_name as string | null) ?? null
+      ),
+      activity: activity.rows,
+      final_fee_invoice: invoice.rows[0] ?? null,
       quoted_range: quotedRange,
       default_jurisdictions: jurisdictions.defaultJurisdictions,
       declared_jurisdictions: jurisdictions.declaredJurisdictions,
@@ -470,9 +557,25 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     const b = TransitionBody.parse(request.body);
     const result = await transitionStage(app, actorOf(request), id, b.toStage, {
       note: b.note, preparerPtinHolderId: b.preparerPtinHolderId, jurisdictions: b.jurisdictions,
-      filingMethods: b.filingMethods, ...meta(request),
+      filingMethods: b.filingMethods, filedOn: b.filedOn, ...meta(request),
     });
     return { status: 'ok', ...result };
+  });
+
+  /**
+   * THE FILING, CORRECTED (Brian, 2026-09-26): the filed day, the PTIN holder and the declared
+   * jurisdictions of a return at filed, appended as a correction with a standalone reason and then
+   * reflected on the return. The rules and the refusals live in correctFiling (pipeline.ts); the
+   * preparer offer goes through the assign door from there.
+   */
+  app.post<{ Params: { id: string } }>('/tax-engagements/:id/filing-corrections', manage, async (request, reply) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = FilingCorrectionBody.parse(request.body);
+    const out = await correctFiling(app, { ...actorOf(request), ...meta(request) }, id, {
+      filedOn: b.filedOn, preparerPtinHolderId: b.preparerPtinHolderId, jurisdictions: b.jurisdictions,
+      alsoAssignPreparer: b.alsoAssignPreparer, reason: b.reason,
+    });
+    return reply.code(201).send({ status: 'ok', ...out });
   });
 
   /**
@@ -623,6 +726,14 @@ export function registerTaxRoutes(app: FastifyInstance): void {
         creep ? scopeCreepReason : null, creep ? (scopeCreepDescription ?? null) : null,
       ]
     );
+    // The fee is a step on the return (R50): who set it, to what, every time — the two rows below
+    // still register the exceptional cases on the money line.
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
+      action: 'tax_engagement.final_fee_set', objectType: 'tax_engagement', objectId: id,
+      contactId: te.contact_id, ...meta(request),
+      details: { final_fee_cents: b.finalFeeCents, scope_creep: creep, outside_quoted_range: outside },
+    });
     if (creep) {
       await writeAudit(app.db, {
         actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
@@ -694,28 +805,21 @@ export function registerTaxRoutes(app: FastifyInstance): void {
   app.post<{ Params: { id: string } }>('/tax-engagements/:id/preparer', manage, async (request) => {
     const id = z.uuid().parse(request.params.id);
     const b = AssignPreparerBody.parse(request.body);
-    const te = await loadTaxEngagement(app, id);
-    const { rows } = await app.db.query<{ id: string; name: string; role_key: string; is_active: boolean }>(
-      `SELECT s.id, s.display_name AS name, r.key AS role_key, s.is_active
-         FROM staff s JOIN roles r ON r.id = s.role_id WHERE s.id = $1`,
-      [b.staffId]
-    );
-    const s = rows[0];
-    if (!s) throw new AppError(404, 'staff_not_found', 'That staff member does not exist.');
-    if (!s.is_active) {
-      throw new AppError(409, 'preparer_inactive', `${s.name} is not an active staff member; a return is prepared by somebody who still works here.`);
-    }
-    if (!PREPARER_ROLE_KEYS.includes(s.role_key as (typeof PREPARER_ROLE_KEYS)[number])) {
-      throw new AppError(409, 'preparer_wrong_role', `${s.name} holds the ${s.role_key} role; a return is prepared by a tax preparer.`);
-    }
-    await app.db.query(`UPDATE tax_engagements SET preparer_id = $2 WHERE id = $1`, [id, s.id]);
-    await writeAudit(app.db, {
-      actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,
-      action: 'tax_engagement.preparer_assigned', objectType: 'tax_engagement', objectId: id,
-      contactId: te.contact_id, ...meta(request),
-      details: { preparer_id: s.id, preparer_role: s.role_key },
-    });
-    return { status: 'ok', preparer: { id: s.id, name: s.name } };
+    // The door itself is assignPreparer (pipeline.ts): the filing correction's preparer offer takes the same one.
+    const preparer = await assignPreparer(app, { ...actorOf(request), ...meta(request) }, id, b.staffId);
+    return { status: 'ok', preparer };
+  });
+
+  /*
+   * RECORD 8879 SENT (Brian, 2026-09-26, R53). Under engagements.tax.manage, the same permission as
+   * every other control on the row. The method and the day; the door in f8879-sent.ts holds the
+   * rules and refuses in words the modal renders beside the field. Nothing is sent from here.
+   */
+  app.post<{ Params: { id: string } }>('/tax-engagements/:id/8879-sent', manage, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = F8879SentBody.parse(request.body);
+    const recorded = await record8879Sent(app, { ...actorOf(request), ...meta(request) }, id, { method: b.method, sentOn: b.sentOn });
+    return { status: 'ok', f8879_sent: recorded };
   });
 
   // Document-request creation (automation 4): itemized request → client email

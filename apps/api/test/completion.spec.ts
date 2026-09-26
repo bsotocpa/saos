@@ -6,15 +6,17 @@
  *   - a return declared federal-only completes on federal;
  *   - a return declared federal + two states waits on both;
  *   - a return with no state (contact state null, no business) declares federal alone, as before;
- *   - a row for a state the return does not declare reads as needing review, opens an owned task
- *     through createTask, sends nothing and counts for nothing;
+ *   - a row for a state the return does not declare matches nothing (R43: only a return awaiting
+ *     that jurisdiction can match), sends nothing, counts for nothing and raises no task;
  *   - a rejection from either jurisdiction raises the preparer's re-file task through createTask,
  *     owned by the return's preparer, else the role holder, else the CEO (recorded as unfilled);
  *   - a completed engagement with a sent invoice reports open_balance_cents on GET /engagements
  *     and is counted in completedUnpaid on the executive dashboard.
  * Plus ruling 15 (2026-09-20): a PAPER jurisdiction is satisfied by its recorded mailing, not by an
- * acknowledgment that will never come, and an acknowledgment for one is surfaced for review.
- * Synthetic data only.
+ * acknowledgment that will never come, and an acknowledgment for one matches nothing (R43).
+ * The report rows are in the real ATX export's shape (R43, 2026-09-26): no tax-year column, the
+ * identifier's last four as the key, the entity's folded name as the tiebreak among the fixtures that
+ * share one synthetic EIN. Synthetic data only.
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,6 +27,7 @@ import { createTestConfig, makeContact, makeStaff, signed8879OnFile, type TestSt
 import type { Config } from '../src/config.ts';
 import type { Mailer } from '../src/mailer.ts';
 import { ingestReport } from '../src/modules/tax/efile-ack.ts';
+import { atxReport, atxRow, type AtxStatus } from './atx.ts';
 import { jurisdictionsAwaiting } from '../src/modules/tax/pipeline.ts';
 import { certifiedMailFollowUp, currentTaxYear, filingLane } from '../src/modules/tax/resolution.ts';
 
@@ -55,9 +58,13 @@ before(async () => {
 });
 after(async () => { await app.close(); });
 
-const BIZ_HEADER = 'Entity Name,EIN,Tax Year,Return Type,Agency,Status,Submission ID,Ack Date,Reject Code,Reject Reason';
-const IND_HEADER = 'Client Name,Tax Year,Return Type,Agency,Status,Submission ID,Ack Date,Reject Code,Reject Reason';
 let seq = 0;
+/**
+ * Every fixture business here shares one synthetic EIN on purpose (the folded name is the tiebreak the
+ * matcher is tested on). Since R54 (2026-09-26) a duplicate EIN on Add needs a standalone reason, so
+ * the fixtures say why they duplicate it; the reason is audited like any other.
+ */
+const SHARED_EIN = { ein: '55-5555555', duplicateReason: 'Every fixture in this spec shares one synthetic EIN on purpose: the entity name is the tiebreak under test.' };
 
 /**
  * A filed 1120S on its own client and Illinois business (businesses.state = IL), with the preparer
@@ -72,7 +79,7 @@ async function filedBusinessReturn(
 ): Promise<{ contactId: string; teId: string; engagementId: string; entity: string }> {
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: last, email: `${last.toLowerCase()}-completion@example.test` });
   const entity = `Synthetic ${last}, LLC`;
-  const biz = await app.inject({ method: 'POST', url: `/contacts/${c.id}/businesses`, headers: auth(brian), payload: { name: entity, ein: '55-5555555', entityType: 's_corp', state: 'IL' } });
+  const biz = await app.inject({ method: 'POST', url: `/contacts/${c.id}/businesses`, headers: auth(brian), payload: { name: entity, ...SHARED_EIN, entityType: 's_corp', state: 'IL' } });
   assert.equal(biz.statusCode, 201, biz.body);
   const te = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(ana), payload: {
     reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows',
@@ -96,6 +103,7 @@ async function filedIndividualReturn(first: string, last: string): Promise<{ con
   const c = await makeContact(app.db, { firstName: first, lastName: last, email: `${first}.${last}-completion@example.test`.toLowerCase() });
   const eng = await app.db.query<{ id: string }>(
     `INSERT INTO engagements (contact_id, service_line, title, status) VALUES ($1, 'tax', '2025 return', 'active') RETURNING id`, [c.id]);
+  await app.db.query(`UPDATE contacts SET ssn_last4 = '0100' WHERE id = $1`, [c.id]);
   const te = await app.db.query<{ id: string }>(
     `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, stage, preparer_id, engagement_letter_signed_at, estimate_locked_at)
      VALUES ($1, 2025, '1040', 'filed', $2, now(), now()) RETURNING id`, [eng.rows[0]!.id, ana.id]);
@@ -103,11 +111,13 @@ async function filedIndividualReturn(first: string, last: string): Promise<{ con
   return { contactId: c.id, teId: te.rows[0]!.id, engagementId: eng.rows[0]!.id };
 }
 
-async function ingest(lines: string[]) {
+async function ingest(rows: string[]) {
   seq++;
-  return ingestReport(app, actor(), { filename: `report-${seq}.csv`, text: lines.join('\n'), today: '2026-09-19' });
+  return ingestReport(app, actor(), { filename: `report-${seq}.csv`, text: atxReport(rows), today: '2026-09-19' });
 }
-const bizRow = (entity: string, agency: string, status: string, extra = ',,') => `"${entity}",5555,2025,1120S,${agency},${status},SUB-${++seq},09/19/2026${extra}`;
+/** One export row for the fixture entity: the EIN's last four (every fixture shares 55-5555555), the entity's name, the form the jurisdiction prints. */
+const bizRow = (entity: string, agency: string, status: AtxStatus) =>
+  atxRow({ name: entity.toUpperCase(), last4: '5555', jurisdiction: agency, type: agency === 'Federal' ? '1120S' : `${agency} 1120-ST`, status, when: '9/19/2026 5:00:00 PM' });
 
 async function returnState(teId: string) {
   const { rows } = await app.db.query<{ stage: string; federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null; efile_accepted_at: string | null; engagement_status: string }>(
@@ -126,7 +136,7 @@ test('federal then state: the return completes on the state acknowledgment, not 
   const r = await filedBusinessReturn('Fedfirst', ana.id);
   assert.deepEqual(await jurisdictionsAwaiting(app, r.teId), ['federal', 'IL']);
 
-  const fed = await ingest([BIZ_HEADER, bizRow(r.entity, 'Federal', 'Accepted')]);
+  const fed = await ingest([bizRow(r.entity, 'Federal', 'Accepted')]);
   assert.equal(fed.queued, 1, JSON.stringify(fed));
   let s = await returnState(r.teId);
   assert.equal(s.stage, 'filed', 'federal alone does not complete the return');
@@ -138,7 +148,7 @@ test('federal then state: the return completes on the state acknowledgment, not 
   const partial = await app.db.query(`SELECT 1 FROM audit_log WHERE action = 'tax_engagement.efile_accepted_partial' AND object_id = $1`, [r.teId]);
   assert.equal(partial.rows.length, 1, 'the partial acceptance is on the record');
 
-  const il = await ingest([BIZ_HEADER, bizRow(r.entity, 'IL', 'Accepted')]);
+  const il = await ingest([bizRow(r.entity, 'IL', 'Accepted')]);
   assert.equal(il.queued, 1, JSON.stringify(il));
   s = await returnState(r.teId);
   assert.equal(s.stage, 'completed', 'the second jurisdiction completes it');
@@ -152,7 +162,7 @@ test('federal then state: the return completes on the state acknowledgment, not 
 
 test('state then federal: the order does not matter; the second acknowledgment completes', async () => {
   const r = await filedBusinessReturn('Statefirst', ana.id);
-  const il = await ingest([BIZ_HEADER, bizRow(r.entity, 'IL', 'Accepted')]);
+  const il = await ingest([bizRow(r.entity, 'IL', 'Accepted')]);
   assert.equal(il.queued, 1, JSON.stringify(il));
   let s = await returnState(r.teId);
   assert.equal(s.stage, 'filed', 'the state alone does not complete the return');
@@ -161,7 +171,7 @@ test('state then federal: the order does not matter; the second acknowledgment c
   assert.deepEqual(await jurisdictionsAwaiting(app, r.teId), ['federal']);
   assert.match((await notesFor(il.reportId))[0]!.note, /waits on federal/);
 
-  const fed = await ingest([BIZ_HEADER, bizRow(r.entity, 'Federal', 'Accepted')]);
+  const fed = await ingest([bizRow(r.entity, 'Federal', 'Accepted')]);
   assert.equal(fed.queued, 1, JSON.stringify(fed));
   s = await returnState(r.teId);
   assert.equal(s.stage, 'completed');
@@ -172,7 +182,7 @@ test('state then federal: the order does not matter; the second acknowledgment c
 test('a return with no state completes on federal alone, as before', async () => {
   const r = await filedIndividualReturn('Federal', 'Only');
   assert.deepEqual(await jurisdictionsAwaiting(app, r.teId), ['federal']);
-  const fed = await ingest([IND_HEADER, `"Only, Federal",2025,1040,Federal,Accepted,SUB-${++seq},09/19/2026,,`]);
+  const fed = await ingest([atxRow({ name: 'ONLY, FEDERAL 2025', last4: '0100', jurisdiction: 'Federal', type: '1040', status: 'Accepted', when: '9/19/2026 5:00:00 PM' })]);
   assert.equal(fed.queued, 1, JSON.stringify(fed));
   const s = await returnState(r.teId);
   assert.equal(s.stage, 'completed');
@@ -180,31 +190,18 @@ test('a return with no state completes on federal alone, as before', async () =>
   assert.equal(s.engagement_status, 'completed');
 });
 
-test('a row for a state the return does not declare reads as needing review, opens an owned task, sends nothing and counts for nothing', async () => {
+test('a row for a state the return does not declare matches nothing: unmatched, no task, nothing sent, nothing counted (R43)', async () => {
   const r = await filedBusinessReturn('Wrongstate', ana.id, ['federal', 'IL']);
-  const rep = await ingest([BIZ_HEADER, bizRow(r.entity, 'Federal', 'Accepted'), bizRow(r.entity, 'WI', 'Accepted')]);
+  const rep = await ingest([bizRow(r.entity, 'Federal', 'Accepted'), bizRow(r.entity, 'WI', 'Accepted')]);
   assert.equal(rep.queued, 1, `only the federal row will send: ${JSON.stringify(rep)}`);
-  assert.equal(rep.tasks, 1, 'the undeclared state is a task');
+  assert.equal(rep.tasks, 0, 'an unmatched row is never a task');
+  assert.equal(rep.unmatched, 1, 'it is listed and counted');
   const notes = await notesFor(rep.reportId);
   assert.equal(notes[1]!.state_code, 'WI', 'the row is recorded as what it is');
-  assert.equal(notes[1]!.disposition, 'task', 'it reads as needing review, not as something that will send');
-  assert.match(notes[1]!.note, /needs review/);
-  assert.match(notes[1]!.note, /WI is not declared on this return/, 'naming the state and that it is not declared');
-  assert.match(notes[1]!.note, /federal, IL/, 'and what the return does declare');
-  assert.match(notes[1]!.note, /nothing sent/i);
-
-  const task = await app.db.query<{ id: string; assigned_staff_id: string | null; source: string; source_type: string; title: string; description: string; priority: number }>(
-    `SELECT id, assigned_staff_id, source::text AS source, source_type, title, description, priority FROM tasks WHERE source_type = 'efile_ack_review' AND source_id = $1`,
-    [`${rep.reportId}:2`]);
-  assert.equal(task.rows.length, 1, 'one task, through the one door');
-  assert.equal(task.rows[0]!.assigned_staff_id, ana.id, 'owned by the return\'s preparer');
-  assert.equal(task.rows[0]!.source, 'automation');
-  assert.equal(task.rows[0]!.priority, 1);
-  assert.match(task.rows[0]!.title, /WI/);
-  assert.match(task.rows[0]!.description, /does not declare|not on that list/);
-  const linked = await app.db.query<{ task_id: string | null }>(
-    `SELECT task_id FROM efile_acknowledgments WHERE report_id = $1 AND row_index = 2`, [rep.reportId]);
-  assert.equal(linked.rows[0]!.task_id, task.rows[0]!.id, 'the row points at the task it raised');
+  assert.equal(notes[1]!.disposition, 'unmatched', 'no return awaits Wisconsin for this identifier');
+  assert.match(notes[1]!.note, /no SAOS return at filed awaits WI/);
+  const task = await app.db.query(`SELECT 1 FROM tasks WHERE source_type = 'efile_ack_review' AND source_id = $1`, [`${rep.reportId}:2`]);
+  assert.equal(task.rows.length, 0, 'no task');
 
   let s = await returnState(r.teId);
   assert.equal(s.stage, 'filed', 'Wisconsin is not one of this return\'s jurisdictions');
@@ -217,7 +214,7 @@ test('a row for a state the return does not declare reads as needing review, ope
   assert.equal(manual.json().error, 'jurisdiction_not_declared');
   assert.match(manual.json().message, /WI is not declared/);
 
-  await ingest([BIZ_HEADER, bizRow(r.entity, 'IL', 'Accepted')]);
+  await ingest([bizRow(r.entity, 'IL', 'Accepted')]);
   s = await returnState(r.teId);
   assert.equal(s.stage, 'completed');
   assert.equal(s.state_accepted_code, 'IL');
@@ -228,7 +225,7 @@ test('a return declared federal-only completes on federal even though the entity
   // list rather than the address.
   const r = await filedBusinessReturn('Federalonly', ana.id, ['federal']);
   assert.deepEqual(await jurisdictionsAwaiting(app, r.teId), ['federal']);
-  const fed = await ingest([BIZ_HEADER, bizRow(r.entity, 'Federal', 'Accepted')]);
+  const fed = await ingest([bizRow(r.entity, 'Federal', 'Accepted')]);
   assert.equal(fed.queued, 1, JSON.stringify(fed));
   const s = await returnState(r.teId);
   assert.equal(s.stage, 'completed', 'nothing else was declared, so nothing else is awaited');
@@ -240,7 +237,7 @@ test('a return declared federal + two states waits on both: neither state alone 
   const r = await filedBusinessReturn('Twostates', ana.id, ['federal', 'IL', 'WI']);
   assert.deepEqual(await jurisdictionsAwaiting(app, r.teId), ['federal', 'IL', 'WI']);
 
-  const first = await ingest([BIZ_HEADER, bizRow(r.entity, 'Federal', 'Accepted'), bizRow(r.entity, 'IL', 'Accepted')]);
+  const first = await ingest([bizRow(r.entity, 'Federal', 'Accepted'), bizRow(r.entity, 'IL', 'Accepted')]);
   assert.equal(first.queued, 2, JSON.stringify(first));
   assert.equal(first.tasks, 0, 'both states are declared, so neither is a review row');
   let s = await returnState(r.teId);
@@ -249,7 +246,7 @@ test('a return declared federal + two states waits on both: neither state alone 
   assert.deepEqual(await jurisdictionsAwaiting(app, r.teId), ['WI']);
   assert.match((await notesFor(first.reportId))[1]!.note, /waits on WI/);
 
-  const wi = await ingest([BIZ_HEADER, bizRow(r.entity, 'WI', 'Accepted')]);
+  const wi = await ingest([bizRow(r.entity, 'WI', 'Accepted')]);
   assert.equal(wi.queued, 1, JSON.stringify(wi));
   s = await returnState(r.teId);
   assert.equal(s.stage, 'completed', 'the third acknowledgment completes it');
@@ -277,7 +274,7 @@ test('the manual door obeys the same rule: federal accepted leaves the return aw
 
 test('a rejection from the state opens the preparer\'s re-file task through createTask, owned by the return\'s preparer', async () => {
   const r = await filedBusinessReturn('Statereject', ana.id);
-  const rep = await ingest([BIZ_HEADER, bizRow(r.entity, 'IL', 'Rejected', ',IL-0042,Entity id does not match')]);
+  const rep = await ingest([bizRow(r.entity, 'IL', 'RejectedByAgency')]);
   assert.equal(rep.tasks, 1, JSON.stringify(rep));
   const s = await returnState(r.teId);
   assert.equal(s.stage, 'rejected');
@@ -290,10 +287,10 @@ test('a rejection from the state opens the preparer\'s re-file task through crea
   assert.equal(task.rows[0]!.priority, 1);
   assert.equal(task.rows[0]!.status, 'not_started');
   assert.match(task.rows[0]!.title, /REJECTED by IL/);
-  assert.match(task.rows[0]!.description, /IL-0042/);
+  assert.match(task.rows[0]!.description, /RejectedByAgency/, 'the export has no reject code; the ATX status is the reason on the task');
   const ack = (await notesFor(rep.reportId))[0]!;
   assert.equal(ack.disposition, 'task');
-  assert.match(ack.note, /rejected by IL/);
+  assert.match(ack.note, /RejectedByAgency by IL/);
   const linked = await app.db.query<{ task_id: string | null }>(`SELECT task_id FROM efile_acknowledgments WHERE report_id = $1`, [rep.reportId]);
   assert.equal(linked.rows[0]!.task_id, task.rows[0]!.id, 'the acknowledgment row points at the task it raised');
   const alert = await app.db.query(`SELECT 1 FROM notifications WHERE type = 'efile_rejected' AND staff_id = $1 AND related_object_id = $2`, [ana.id, r.teId]);
@@ -305,7 +302,7 @@ test('a federal rejection on a return with no preparer falls back through the ro
   // Nobody holds tax_preparer for the length of this test.
   await app.db.query(`UPDATE staff SET is_active = false WHERE id = $1`, [ana.id]);
   try {
-    const rep = await ingest([BIZ_HEADER, bizRow(r.entity, 'Federal', 'Rejected', ',R0000-902,EIN already used')]);
+    const rep = await ingest([bizRow(r.entity, 'Federal', 'RejectedByEfc')]);
     assert.equal(rep.tasks, 1, JSON.stringify(rep));
     const task = await app.db.query<{ assigned_staff_id: string | null; title: string }>(
       `SELECT assigned_staff_id, title FROM tasks WHERE source_type = 'efile_reject' AND source_id = $1`, [r.teId]);
@@ -330,7 +327,7 @@ test('a completed engagement with a sent invoice shows its open balance on GET /
     `INSERT INTO invoices (invoice_number, contact_id, engagement_id, status, subtotal_cents, total_cents, amount_paid_cents, sent_at)
      VALUES ($1, $2, $3, 'sent', $4, $4, 0, now())`,
     [`SYN-OWED-${seq}`, r.contactId, r.engagementId, total]);
-  const rep = await ingest([BIZ_HEADER, bizRow(r.entity, 'Federal', 'Accepted'), bizRow(r.entity, 'IL', 'Accepted')]);
+  const rep = await ingest([bizRow(r.entity, 'Federal', 'Accepted'), bizRow(r.entity, 'IL', 'Accepted')]);
   assert.equal(rep.queued, 2, JSON.stringify(rep));
   const s = await returnState(r.teId);
   assert.equal(s.stage, 'completed');
@@ -364,8 +361,8 @@ test('a completed engagement with a sent invoice shows its open balance on GET /
  * removed for the no-income-tax states, one lane over.
  *
  *   · federal e-file + IL paper completes on the federal ack PLUS the IL mailing;
- *   · an IL acknowledgment for that return is refused and surfaced for review, the way an undeclared
- *     state is: needs-review disposition, the reason on the row, an owned task, nothing counted;
+ *   · an IL acknowledgment for that return matches nothing (R43): a paper jurisdiction awaits no
+ *     acknowledgment, so the row is unmatched — listed, no task, nothing counted;
  *   · an old year defaults every jurisdiction to paper and completes on mailings alone, with no
  *     e-file acceptance stamped on it;
  *   · a current-year return defaults to e-file and the preparer switches one state to paper.
@@ -381,7 +378,7 @@ async function readyToFileReturn(
 ): Promise<{ contactId: string; teId: string; engagementId: string; entity: string }> {
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: last, email: `${last.toLowerCase()}-completion@example.test` });
   const entity = `Synthetic ${last}, LLC`;
-  const biz = await app.inject({ method: 'POST', url: `/contacts/${c.id}/businesses`, headers: auth(brian), payload: { name: entity, ein: '55-5555555', entityType: 's_corp', state: 'IL' } });
+  const biz = await app.inject({ method: 'POST', url: `/contacts/${c.id}/businesses`, headers: auth(brian), payload: { name: entity, ...SHARED_EIN, entityType: 's_corp', state: 'IL' } });
   assert.equal(biz.statusCode, 201, biz.body);
   const created = await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(ana), payload: {
     reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows',
@@ -436,7 +433,7 @@ test('a return declared federal e-file + IL paper completes on the federal ackno
   assert.deepEqual(await jurisdictionsAwaiting(app, r.teId), ['federal', 'IL']);
 
   // The federal acknowledgment alone does not finish it: IL has not been mailed.
-  const fed = await ingest([BIZ_HEADER, bizRow(r.entity, 'Federal', 'Accepted')]);
+  const fed = await ingest([bizRow(r.entity, 'Federal', 'Accepted')]);
   assert.equal(fed.queued, 1, JSON.stringify(fed));
   let s = await returnState(r.teId);
   assert.equal(s.stage, 'filed');
@@ -492,30 +489,19 @@ test('a return declared federal e-file + IL paper completes on the federal ackno
   assert.equal(again.json().error, 'mailing_already_recorded');
 });
 
-test('an acknowledgment for a jurisdiction filed on paper is refused and surfaced for review, and counts for nothing', async () => {
+test('an acknowledgment for a jurisdiction filed on paper matches nothing: unmatched, no task, nothing counted (R43)', async () => {
   const r = await filedThroughTheDoor('Paperack', 2025, ['federal', 'IL'], { IL: 'paper' });
 
-  const rep = await ingest([BIZ_HEADER, bizRow(r.entity, 'Federal', 'Accepted'), bizRow(r.entity, 'IL', 'Accepted')]);
+  const rep = await ingest([bizRow(r.entity, 'Federal', 'Accepted'), bizRow(r.entity, 'IL', 'Accepted')]);
   assert.equal(rep.queued, 1, `only the federal row will send: ${JSON.stringify(rep)}`);
-  assert.equal(rep.tasks, 1, 'the paper jurisdiction is a review row');
+  assert.equal(rep.tasks, 0, 'a paper jurisdiction awaits no acknowledgment, so the row matches nothing and raises nothing');
+  assert.equal(rep.unmatched, 1);
   const notes = await notesFor(rep.reportId);
   assert.equal(notes[1]!.state_code, 'IL');
-  assert.equal(notes[1]!.disposition, 'task', 'it reads as needing review, not as something that will send');
-  assert.match(notes[1]!.note, /needs review/);
-  assert.match(notes[1]!.note, /filed on PAPER/);
-  assert.match(notes[1]!.note, /nothing sent/i);
-
-  const task = await app.db.query<{ id: string; assigned_staff_id: string | null; source_type: string; title: string; description: string; priority: number }>(
-    `SELECT id, assigned_staff_id, source_type, title, description, priority FROM tasks WHERE source_type = 'efile_ack_review' AND source_id = $1`,
-    [`${rep.reportId}:2`]);
-  assert.equal(task.rows.length, 1, 'one task, through the one door');
-  assert.equal(task.rows[0]!.assigned_staff_id, ana.id, "owned by the return's preparer");
-  assert.equal(task.rows[0]!.priority, 1);
-  assert.match(task.rows[0]!.title, /filed on paper/i);
-  assert.match(task.rows[0]!.description, /no acknowledgment/);
-  const linked = await app.db.query<{ task_id: string | null }>(
-    `SELECT task_id FROM efile_acknowledgments WHERE report_id = $1 AND row_index = 2`, [rep.reportId]);
-  assert.equal(linked.rows[0]!.task_id, task.rows[0]!.id);
+  assert.equal(notes[1]!.disposition, 'unmatched', 'listed, not applied');
+  assert.match(notes[1]!.note, /no SAOS return at filed awaits IL/);
+  const task = await app.db.query(`SELECT 1 FROM tasks WHERE source_type = 'efile_ack_review' AND source_id = $1`, [`${rep.reportId}:2`]);
+  assert.equal(task.rows.length, 0, 'no task');
 
   const rows = await jurisdictionRows(r.teId);
   assert.equal(rows.find((d) => d.jurisdiction === 'IL')!.accepted_on, null, 'nothing was stamped on the paper row');

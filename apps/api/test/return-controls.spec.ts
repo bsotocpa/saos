@@ -301,8 +301,8 @@ test('filed with no 8879 on file refuses f8879_required; with the 8879 and a PTI
 
   const filed = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/transition`, headers: auth(ana), payload: { toStage: 'filed', preparerPtinHolderId: ana.id } });
   assert.equal(filed.statusCode, 200, filed.body);
-  assert.deepEqual(filed.json(), { status: 'ok', from: 'ready_to_file', to: 'filed', jurisdictions: ['federal'] },
-    'the filing declares where it went; this client has no state on file, so federal alone');
+  assert.deepEqual(filed.json(), { status: 'ok', from: 'ready_to_file', to: 'filed', jurisdictions: ['federal'], filedOn: todayChicago() },
+    'the filing declares where it went and the day it went (today, unsaid); this client has no state on file, so federal alone');
 
   // THE MONEY DOOR: transitionStage → invoiceForFiledEngagement → createInvoice. The row and its audit.
   const inv = await app.db.query<{ id: string; total_cents: number; status: string }>(
@@ -599,13 +599,17 @@ test('recording an extension: the form, the day it was filed, and a derived dead
   assert.equal(nothing.rows[0]!.filed, false, 'a refused date filed no extension');
   assert.equal(nothing.rows[0]!.form, null);
 
-  // Only the two real forms exist.
-  const notAForm = await file({ form: '8868', filedOn: todayChicago() });
+  // Only the three real forms exist (R43 admitted 8868, the exempt organization's).
+  const notAForm = await file({ form: '2350', filedOn: todayChicago() });
   assert.equal(notAForm.statusCode, 400, notAForm.body);
 
   // An 1120S extends on 7004, and the deadline is what the table derives — never a typed date.
   assert.equal(defaultExtensionForm('1120s'), '7004');
+  assert.equal(defaultExtensionForm('1065'), '7004');
+  assert.equal(defaultExtensionForm('1120'), '7004');
   assert.equal(defaultExtensionForm('1040'), '4868', 'an individual return extends on 4868');
+  assert.equal(defaultExtensionForm('990'), '8868', 'an exempt organization extends on 8868 (R43)');
+  assert.equal(defaultExtensionForm('990ez'), '8868');
   const filedOn = '2026-03-10';
   const ok = await file({ form: '7004', filedOn });
   assert.equal(ok.statusCode, 200, ok.body);

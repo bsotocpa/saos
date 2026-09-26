@@ -80,6 +80,15 @@ export function calendarDay(v: unknown, what = 'date'): CalendarDate {
   throw new TypeError(`${what} is not a calendar day (YYYY-MM-DD): ${JSON.stringify(v)}`);
 }
 
+/**
+ * TODAY, IN CHICAGO (2026-09-26): what a date control that defaults to "today" opens with — the
+ * office's calendar day, whatever device is reading, the same answer the API's todayChicago gives.
+ * The rule a date is held to ("not after today") stays the SERVER's; this only fills the field.
+ */
+export function todayChicago(): CalendarDate {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: OPS_TIME_ZONE }).format(new Date()) as CalendarDate;
+}
+
 /** The Chicago calendar day an instant fell on — for "paid on", "sent on" from timestamps. */
 export function dayOf(v: Instant | Date | null | undefined): string {
   const d = toDate(v);

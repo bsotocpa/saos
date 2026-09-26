@@ -517,9 +517,11 @@ export function registerFormRoutes(app: FastifyInstance): void {
    * never typed there. Behind a portal session there is no new exposure: this is the
    * same data the client can already read on /profile.
    *
-   * EMAIL IS DELIBERATELY ABSENT from what can be changed. It is the login identity, and
-   * the profile endpoint has never accepted it — a client who needs it changed should be
-   * talking to a person, not editing a field mid-questionnaire.
+   * EMAIL IS DELIBERATELY ABSENT from what can be changed. It is the CONTACT email of record
+   * (R45: every message we send goes to it; the sign-in address is the portal user's own and may
+   * differ), and the profile endpoint has never accepted it — a client who needs it changed should
+   * be talking to a person, not editing a field mid-questionnaire. The questionnaire's label says
+   * "your email on file", never "sign-in email", for that reason.
    */
   async function heldIdentity(contactId: string) {
     const { rows } = await app.db.query(

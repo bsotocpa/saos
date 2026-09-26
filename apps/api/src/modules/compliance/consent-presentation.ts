@@ -352,6 +352,30 @@ export async function recordConsentAnswer(
     [contactId]
   );
 
+  /*
+   * THE CONSENT ENVELOPE (R46, 2026-09-26). Intake queues one consent_7216 envelope per submission and
+   * nothing ever closed it, so an answered consent stayed at draft under "Waiting for your signature".
+   * Both §7216 consents answered (or a single one when only one was offered) completes the envelope;
+   * declining every one of them marks it declined. Answered is answered: a client who said no has done
+   * what was asked, and the row must not keep asking.
+   */
+  const { offers } = await consentsToPresent(app, contactId);
+  if (offers.length === 0) {
+    const anyGranted = await app.db.query(
+      `SELECT 1 FROM consents WHERE contact_id = $1 AND type IN ('7216_use', '7216_disclose') AND status = 'signed' LIMIT 1`,
+      [contactId]
+    );
+    const outcome = anyGranted.rows.length > 0 ? 'completed' : 'declined';
+    await app.db.query(
+      `UPDATE signature_envelopes
+          SET status = $2::envelope_status,
+              completed_at = CASE WHEN $2 = 'completed' THEN COALESCE(completed_at, now()) ELSE completed_at END,
+              declined_at  = CASE WHEN $2 = 'declined'  THEN COALESCE(declined_at, now())  ELSE declined_at  END
+        WHERE contact_id = $1 AND type = 'consent_7216' AND status IN ('draft', 'sent', 'viewed')`,
+      [contactId, outcome]
+    );
+  }
+
   await writeAudit(app.db, {
     actorType: 'client', actorId: contactId, actorLabel: 'consent answer',
     action: granted ? 'consent.granted' : 'consent.declined',

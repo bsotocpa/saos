@@ -91,6 +91,13 @@ const schema = z.object({
    * env variable, default the old one, and the harness boot sets v2 for its own taps.
    */
   OPS_QUOTE_BUILDER: z.enum(['v1', 'v2']).default('v1'),
+  /**
+   * THE RETURNS CARD AS A STEPPER (Brian, 2026-09-26, R50; the dark-ship rule R57). OFF in
+   * production until Brian approves the screenshots; the harness boots it ON and one spec flips
+   * both states through its own door. Same shape as OPS_REFUND_CONTROL: read at boot, reported on
+   * GET /auth/me, never changed at runtime by anything under src.
+   */
+  OPS_RETURN_STEPPER: z.enum(['on', 'off']).default('off'),
   // IL SOS good-standing checker: 'stub' (dev/test) or 'live' (self-hosted
   // scraper against ilsos.gov — no third-party service).
   // Meeting intelligence (M17). Transcription stays on owned infrastructure;

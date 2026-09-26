@@ -300,10 +300,15 @@ test.describe('The 1120S dry run', () => {
       await expect(page.getByRole('heading', { name: 'Thank you — that is everything we needed' }), 'the business onboarding form is submitted').toBeVisible();
 
       await page.goto(`${PORTAL}/documents`);
+      // The category starts unselected (R47) and the select is a controlled React input: a choice made
+      // before hydration is lost, so the page is read (its empty-card sentence) before the choice is made.
+      await expect(page.getByTestId('docs-empty')).toBeVisible();
       await page.getByLabel('Category').selectOption('business_records');
+      await expect(page.getByLabel('Category')).toHaveValue('business_records');
       await page.locator('input[type=file]').setInputFiles({ name: scorp.markers.document, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 synthetic bank statement\n%%EOF') });
       await expect(page.getByText('Uploaded — thank you!')).toBeVisible();
-      await expect(page.getByText(scorp.markers.document), 'the document is in their Document Center').toBeVisible();
+      // The page prints the name twice on purpose (R47/R49): the upload confirmation line and the document row; the row is the record.
+      await expect(page.locator('[data-testid="document-row"]').getByText(scorp.markers.document), 'the document is in their Document Center').toBeVisible();
       steps.push(`A3|portal /quote/:token button "Accept and start the work"; /sign (two affirmations + "Type your full name to sign" + "Sign the agreement", Schedule B on the document — the signature stamps the engagement letter on the return, closing pipeline gate 1); /questionnaire "Continue"…"Send it"; /documents "Category" + input[type=file]|${CLIENT_ROLE}|tap`);
 
       // ── 4a. THE PREPARER, THE EXTENSION, THE ESTIMATE AND THE STAGES, from the return's row.
@@ -381,7 +386,8 @@ test.describe('The 1120S dry run', () => {
       await expect(page.getByLabel('Tax engagement')).toHaveValue(te);
       await expect(page.getByLabel('Tax year')).toHaveValue(String(scorp.taxYear));
       await page.locator('input[type=file]').setInputFiles({ name: scorp.markers.returnFile, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 synthetic 1120S return\n%%EOF') });
-      await expect(page.getByText('Delivered — stage moved to Client Review and the client was notified.')).toBeVisible();
+      // R48: the confirmation states what happened. The harness arms every notice, so the client WAS emailed here.
+      await expect(page.getByTestId('delivery-result')).toContainText('The return is on the portal. The client was emailed. The stage moved to Client Review.');
       steps.push('A4|/upload-return "Find the client" + the client button, "Tax engagement" select, input[type=file] (Final return PDF, from ATX)|ceo, tax_preparer (documents.write)|tap');
 
       // ROLE PROOF: Jaqueline (ed_coo) holds engagements.read, so the return row is on her page, and no
@@ -403,6 +409,21 @@ test.describe('The 1120S dry run', () => {
       // 6. THE SIGNED 8879-CORP, from the return's row. A future date is refused beside the date; the real, past date authorizes.
       await signIn(page, fixtures.staff);
       await page.goto(clientPage);
+      /*
+       * R53 (2026-09-26): the 8879 reaches the client BEFORE the signed scan comes back, and the row
+       * records how — this one across the desk. In the stepper (R50) this is the step between delivered
+       * and 8879 on file, so the upload form is offered once it is recorded; the row offers both.
+       */
+      await page.getByTestId('record-8879-sent').click();
+      await expect(dialog.getByTestId('sent-8879-method'), 'the modal asks how the 8879 reached the client').toBeVisible();
+      await dialog.getByTestId('sent-8879-method').locator('select').selectOption('in_office');
+      await expect(dialog.getByLabel('Date sent'), 'the day opens on today').toHaveValue(today);
+      await dialog.getByRole('button', { name: 'Record 8879 sent' }).click();
+      await expect(dialog).toHaveCount(0);
+      const sentRec = (await read(page, `/tax-engagements/${te}`)) as { f8879_sent: { method: string; sent_on: string } | null };
+      expect(sentRec.f8879_sent?.method, 'recorded as handed over in office').toBe('in_office');
+      expect(sentRec.f8879_sent?.sent_on).toBe(today);
+      steps.push(`A6|/clients/:id Returns card, button "Record 8879 sent" (modal: "Method" In office, "Date sent" opening on today) → the return reads 8879 sent, in office|${ROLES}|tap`);
       const uploadBtn = page.getByTestId('upload-signed-8879');
       await expect(uploadBtn).toBeVisible();
       const pdf = { name: 'HARNESS-8879-CORP-SIGNED.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 synthetic 8879-CORP\n%%EOF') };
@@ -458,6 +479,8 @@ test.describe('The 1120S dry run', () => {
       await page.getByRole('button', { name: 'Mark filed' }).click();
       await expect(dialog.getByText('No signed authorization on file')).toHaveCount(0);
       await expect(dialog.getByLabel(/PTIN holder/), 'the PTIN holder defaults to the holder recorded on the signed 8879').toHaveValue(scorp.preparer.id);
+      // FILED ON (2026-09-26): the day the return went in, opening on today in Chicago; left as it opens.
+      await expect(dialog.getByLabel('Filed on'), 'the filed day opens on today').toHaveValue(today);
       await expect(dialog.getByText(`Issues the final-fee invoice for ${money(finalFeeCents)}`)).toBeVisible();
       /*
        * R15: every declared jurisdiction carries how it went out, and this return went out
@@ -474,27 +497,45 @@ test.describe('The 1120S dry run', () => {
       const inv = invoices.find((i) => i.total_cents === finalFeeCents);
       expect(inv, 'the filing issued the final-fee invoice at the fee set on the row').toBeTruthy();
       expect(inv!.status, 'issued, so the client can pay it the moment the filing commits').toBe('sent');
-      steps.push(`A7|/clients/:id Returns card, buttons "Set final fee" (modal: Final fee, "Scope-creep category", Reason), "Ready to file", "Mark filed" (modal: PTIN holder, Jurisdictions filed with a filing method per jurisdiction — E-filed for federal and IL)|${ROLES}|tap`);
+      expect((await read(page, `/tax-engagements/${te}`)).taxEngagement, 'the filed day is today, as a calendar day').toMatchObject({ filed_date: today });
+      steps.push(`A7|/clients/:id Returns card, buttons "Set final fee" (modal: Final fee, "Scope-creep category", Reason), "Ready to file", "Mark filed" (modal: "Filed on" opening on today, PTIN holder, Jurisdictions filed with a filing method per jurisdiction — E-filed for federal and IL)|${ROLES}|tap`);
 
-      // 8. THE ATX ACKNOWLEDGMENT REPORT, on the E-file acks screen, as the CEO.
+      /*
+       * 8. THE ATX E-FILES EXPORT, on the E-file acks screen, as the CEO (R43). The file is in the REAL
+       * export's shape: the committed synthetic fixture (34 rows that belong to nobody SAOS tracks, with
+       * 900-prefixed identifiers) plus two rows for this S corp — the entity's name as ATX prints it, the
+       * EIN's last four behind a synthetic prefix, "1120S" federal and "IL 1120-ST" for Illinois, no
+       * tax-year column, Central status dates. Two rows will send; thirty-four are listed as unmatched.
+       */
+      const fixture = readFileSync(resolve(root, 'apps', 'api', 'test', 'fixtures', 'atx', 'ATX_EFiles_synthetic.csv'), 'utf8').replace(/\s+$/, '');
+      const atxDate = `${Number(today.slice(5, 7))}/${Number(today.slice(8, 10))}/${today.slice(0, 4)}`;
+      const exportName = scorp.entityName.toUpperCase().replace(/[.,]/g, '');
       const report = [
-        'Entity Name,EIN,Tax Year,Return Type,Agency,Status,Submission ID,Ack Date,Reject Code,Reject Reason',
-        `"${scorp.entityName}",${scorp.einLast4},${scorp.taxYear},1120S,Federal,Accepted,H-FED-1,${today.slice(5, 7)}/${today.slice(8, 10)}/${today.slice(0, 4)},,`,
-        `"${scorp.entityName}",${scorp.einLast4},${scorp.taxYear},1120S,IL,Accepted,H-IL-1,${today.slice(5, 7)}/${today.slice(8, 10)}/${today.slice(0, 4)},,`,
+        fixture,
+        `${exportName},,,90000${scorp.einLast4},h1fed${scorp.einLast4}x9k2m4n7p,Federal,1120S,Federal,Accepted,${atxDate} 6:41:08 PM,TBD,0,Zero Balance,,0,Ogden`,
+        `${exportName},,,90000${scorp.einLast4},h1il${scorp.einLast4}x9k2m4n7pq,IL,IL 1120-ST,Return,AcceptedWithMessages,${atxDate} 7:02:30 PM,TBD,0,Zero Balance,,0,Illinois`,
       ].join('\n');
       await page.goto('/efile-acks');
       await expect(page.getByRole('heading', { name: 'E-file acknowledgments' })).toBeVisible();
-      await page.locator('input[type=file]').setInputFiles({ name: 'HARNESS-ATX-ACK-1120S.csv', mimeType: 'text/csv', buffer: Buffer.from(report) });
+      await page.locator('input[type=file]').setInputFiles({ name: 'E-Files.csv', mimeType: 'text/csv', buffer: Buffer.from(report, 'utf8') });
       await expect(page.getByRole('status')).toContainText('2 will send');
-      await expect(page.getByText(scorp.markers.business).first(), 'the report opened with its rows').toBeVisible();
+      await expect(page.getByRole('status'), 'the firm-wide rows are counted, not tasked').toContainText('34 unmatched');
+      await expect(page.getByRole('status')).toContainText('0 tasks raised');
+      await expect(page.getByTestId('ack-unmatched-count'), 'the report carries its unmatched count').toHaveText('34 unmatched');
+      await expect(page.getByText(scorp.markers.business).first(), 'the report opened with its matched rows').toBeVisible();
       const text = await page.evaluate(() => document.body.innerText);
       expect(text, 'both rows matched the entity').toContain(scorp.markers.business);
       expect(text, 'the federal row will send').toMatch(/Federal[\s\S]*Will send/);
-      expect(text, 'the Illinois row will send').toMatch(/\bIL\b[\s\S]*Will send/);
+      expect(text, 'the Illinois row will send, flagged accepted with messages').toMatch(/\bIL\b[\s\S]*Accepted with messages[\s\S]*Will send/);
+      expect(text, 'the identifier shows as its last four only').toContain(`•••••${scorp.einLast4}`);
+      expect(text, 'no full identifier reaches the screen').not.toMatch(/90000\d{4}/);
+      await page.getByTestId('ack-unmatched-rows').locator('summary').click();
+      await expect(page.getByTestId('ack-unmatched-rows').getByText('UNKNOWN, CLIENT 00 2025'), 'the unmatched rows are listed under their heading').toBeVisible();
+      await expect(page.getByTestId('withdraw-report'), 'the withdraw door is on the report').toBeVisible();
       await page.getByRole('button', { name: /^Release/ }).first().click();
       await page.locator('[role=dialog]').getByRole('button', { name: /^Release 2/ }).click();
       await expect(page.getByRole('status')).toContainText('Released: 2 queued to send');
-      steps.push('A8|/efile-acks input[type=file], the review rows, button "Release" + modal "Release 2"|ceo (efile.manage)|tap');
+      steps.push('A8|/efile-acks input[type=file] (the ATX E-Files export: the committed fixture + this S corp\'s two rows), status "2 will send … 34 unmatched", the matched rows with masked identifiers, details "Unmatched rows (34)", button "Withdraw report" (not tapped), button "Release" + modal "Release 2"|ceo (efile.manage)|tap');
 
       // 9. The harness API drains the outbox every two seconds; the rows say sent when it has.
       let acksSent = 0;

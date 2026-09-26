@@ -19,8 +19,13 @@ import { useAsk } from '../../../components/ask';
 import { AddBusinessModal } from '../../../components/add-business';
 import { EditBusinessModal } from '../../../components/edit-business';
 import { ReturnControls } from '../../../components/return-controls';
-import { consent7216Label, engagementStatusLabel, invoiceStatusLabel, letterStatusLabel, quoteStatusLabel } from '../../../lib/labels';
-import { dollarsToCents, jurisdictionLabel, jurisdictionStatusText, MAILING_METHOD_LABEL, type JurisdictionView } from '../../../lib/return-controls';
+import { ReturnStepper } from '../../../components/return-stepper';
+import { amountLabel, showExtendedBadge } from '../../../lib/return-stepper';
+import { consent7216Label, engagementStatusSentence, invoiceStatusLabel, letterStatusLabel, quoteStatusLabel } from '../../../lib/labels';
+import {
+  correctionLine, dollarsToCents, jurisdictionLabel, jurisdictionStatusText, MAILING_METHOD_LABEL,
+  type FilingCorrectionView, type JurisdictionView,
+} from '../../../lib/return-controls';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
 import { badgeToneFor, invoiceStatusLine } from '../../../lib/invoice-display';
 
@@ -35,6 +40,8 @@ interface Contact {
   portal_login_email: string | null;
   portal_last_login_at: string | null;
   portal_link_sent_at: string | null;
+  /** R45: a sign-in move waiting on the client's press at the new address; null when none is pending. */
+  portal_email_move_pending: { new_email: string; requested_at: string; expires_at: string } | null;
   health_score: number | null; health_components: Record<string, unknown> | null;
   sms_consent: boolean; source: string; ssn_status: string | null; ssn_last4: string | null;
   notes: string | null;
@@ -81,6 +88,8 @@ interface Engagement {
   period_key?: string | null;
   id: string; service_line: string; status: string; title: string | null; created_at: string;
   ended_on: string | null; close_reason: string | null;
+  /** R52: when the work was paused; the row reads "On hold since <day>" from it. */
+  work_paused_at?: string | null;
   /** #47 — what was agreed, snapshotted at acceptance. Empty for pre-#47 engagements. */
   scopeName: string | null;
   scope: Array<{ itemCode: string; descriptionEn: string; quantity: string; lineCents: number | null; isPassThrough: boolean }>;
@@ -254,6 +263,12 @@ export default function ClientPacketPage() {
    * done here as well because the row must print the mailing after the controls have gone.
    */
   const [jurisdictions, setJurisdictions] = useState<Record<string, JurisdictionView[]>>({});
+  /*
+   * THE FILING'S CORRECTIONS PER RETURN (2026-09-26): the same detail read, printed under the row at
+   * every stage — "Corrected <field> on <day> by <who>: <reason>" — because a correction is a fact
+   * about the filing and stays readable after the controls have gone.
+   */
+  const [corrections, setCorrections] = useState<Record<string, FilingCorrectionView[]>>({});
   const [docs, setDocs] = useState<Doc[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [error, setError] = useState('');
@@ -308,6 +323,12 @@ export default function ClientPacketPage() {
    * the session answers, so the row renders neither a control nor a sentence it cannot yet vouch for.
    */
   const [refundControl, setRefundControl] = useState<'on' | 'off' | null>(null);
+  /*
+   * THE RETURNS CARD AS A STEPPER (R50, 2026-09-26): OPS_RETURN_STEPPER, read from the same session
+   * answer. On renders return-stepper.tsx under each return's header; off renders the row production
+   * runs. Null until the session answers, so neither renders on a guess.
+   */
+  const [returnStepper, setReturnStepper] = useState<'on' | 'off' | null>(null);
   const [flaggedTest, setFlaggedTest] = useState('');
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -330,13 +351,14 @@ export default function ClientPacketPage() {
             // rather than costing the card every other return's.
             const rows = await Promise.all(
               r.taxEngagements.map(async (t) => {
-                const detail = await api<{ jurisdictions?: JurisdictionView[] }>(`/tax-engagements/${t.id}`).catch(() => null);
-                return [t.id, detail?.jurisdictions ?? []] as const;
+                const detail = await api<{ jurisdictions?: JurisdictionView[]; filing_corrections?: FilingCorrectionView[] }>(`/tax-engagements/${t.id}`).catch(() => null);
+                return [t.id, detail?.jurisdictions ?? [], detail?.filing_corrections ?? []] as const;
               })
             );
-            setJurisdictions(Object.fromEntries(rows));
+            setJurisdictions(Object.fromEntries(rows.map(([id, j]) => [id, j])));
+            setCorrections(Object.fromEntries(rows.map(([id, , c]) => [id, c])));
           })
-          .catch(() => { setReturns([]); setJurisdictions({}); }),
+          .catch(() => { setReturns([]); setJurisdictions({}); setCorrections({}); }),
         api<{ documents: Doc[] }>(`/documents?contactId=${params.id}`)
           .then((r) => setDocs(r.documents ?? []))
           .catch(() => setDocs([])),
@@ -415,7 +437,7 @@ export default function ClientPacketPage() {
   }, [router, load]);
   useEffect(() => {
     let alive = true;
-    api<{ permissions: string[]; switches?: { opsRefundControl?: 'on' | 'off' } }>('/auth/me')
+    api<{ permissions: string[]; switches?: { opsRefundControl?: 'on' | 'off'; returnStepper?: 'on' | 'off' } }>('/auth/me')
       .then((m) => {
         if (!alive) return;
         setCanAddBusiness(['*', 'contacts.write', 'businesses.write'].some((p) => m.permissions.includes(p)));
@@ -425,8 +447,9 @@ export default function ClientPacketPage() {
         setCanManageQuotes(['*', 'quotes.manage'].some((p) => m.permissions.includes(p)));
         // Anything but the server saying "on" is off: a missing field is a closed door, never an open one.
         setRefundControl(m.switches?.opsRefundControl === 'on' ? 'on' : 'off');
+        setReturnStepper(m.switches?.returnStepper === 'on' ? 'on' : 'off');
       })
-      .catch(() => { if (alive) { setCanAddBusiness(false); setCanFlagTest(false); setCanRefund(false); setCanManageQuotes(false); setRefundControl(null); } });
+      .catch(() => { if (alive) { setCanAddBusiness(false); setCanFlagTest(false); setCanRefund(false); setCanManageQuotes(false); setRefundControl(null); setReturnStepper(null); } });
     return () => { alive = false; };
   }, []);
 
@@ -641,8 +664,41 @@ export default function ClientPacketPage() {
                       Object.entries(edits).filter(([, v]) => v !== undefined && v !== '')
                     );
                     if (Object.keys(body).length === 0) { setEditing(false); return; }
-                    await api(`/contacts/${params.id}`, { method: 'PATCH', body });
-                    setActionMsg('Saved.');
+                    /*
+                     * THE SIGN-IN FOLLOWS THE CONTACT EMAIL, IF THE PERSON SAYS SO (Brian, 2026-09-26, R45).
+                     * A changed email on a client who signs in with the old one is asked about up front,
+                     * in the modal: move the sign-in too (one confirmation link to the new address; the
+                     * move happens when the client presses it) or save the contact email only. Cancel
+                     * saves nothing. The route does the work inside the modal so a refusal renders there.
+                     */
+                    const signsInAs = c.portal_state !== 'not_invited' ? c.portal_login_email : null;
+                    const newEmail = typeof body.email === 'string' ? body.email : null;
+                    let saved = 'Saved.';
+                    if (newEmail && signsInAs && newEmail.toLowerCase() !== signsInAs.toLowerCase()) {
+                      const r = await ask({
+                        title: 'Also move the portal sign-in to this address?',
+                        body: (
+                          <p>
+                            The client signs in as <strong>{signsInAs}</strong>. Moving it sends one confirmation link to the new
+                            address; the sign-in changes when they press it, and until then nothing changes for them.
+                          </p>
+                        ),
+                        choices: [
+                          { key: 'move', label: 'Save and move the sign-in', tone: 'primary' },
+                          { key: 'keep', label: 'Save the contact email only', tone: 'ghost' },
+                        ],
+                        run: async (choice) => {
+                          await api(`/contacts/${params.id}`, { method: 'PATCH', body: { ...body, movePortalSignIn: choice.choice === 'move' } });
+                        },
+                      });
+                      if (!r) return;
+                      saved = r.choice === 'move'
+                        ? 'Saved. A confirmation link was sent to the new address; the sign-in moves when the client presses it.'
+                        : 'Saved. The sign-in stays on its current address.';
+                    } else {
+                      await api(`/contacts/${params.id}`, { method: 'PATCH', body });
+                    }
+                    setActionMsg(saved);
                     setEdits({});
                     setEditing(false);
                     await load();
@@ -723,6 +779,18 @@ export default function ClientPacketPage() {
                 {' A sign-in link requested with the contact email will not reach this account.'}
               </span>
             ) : null}
+            {c.portal_email_move_pending ? (
+              /*
+               * A MOVE WAITING ON THE CLIENT (R45, 2026-09-26): the contact email changed and the person
+               * chose to move the sign-in with it. The line reads until the client presses the link at
+               * the new address; Resend below sends a fresh link (and retires the old one).
+               */
+              <span className="muted" data-testid="portal-email-move-pending" role="status">
+                {' · '}
+                <strong>Sign-in move pending confirmation</strong>
+                {` — a link was sent to ${c.portal_email_move_pending.new_email}; the sign-in moves when the client presses it (link valid until ${formatDateTime(c.portal_email_move_pending.expires_at)}).`}
+              </span>
+            ) : null}
             {c.portal_state === 'active' ? (
               c.portal_last_login_at ? (
                 <span className="muted"> · last signed in {dayOf(c.portal_last_login_at)}</span>
@@ -739,6 +807,31 @@ export default function ClientPacketPage() {
               </span>
             ) : null}
           </p>
+          {c.portal_email_move_pending && canFlagTest ? (
+            <p className="small" style={{ marginTop: 6 }}>
+              <button
+                className="btn ghost"
+                type="button"
+                disabled={busy}
+                data-testid="resend-portal-email-move"
+                onClick={async () => {
+                  const ok = await ask({
+                    title: 'Send another confirmation link?',
+                    body: <p>A fresh link goes to the new address; the earlier link stops working.</p>,
+                    choices: [{ key: 'go', label: 'Send the link', tone: 'primary' }],
+                    run: async () => { await api(`/contacts/${params.id}/portal-email-move`, { method: 'POST' }); },
+                  });
+                  if (!ok) return;
+                  setBusy(true);
+                  setActionMsg('Another confirmation link is on its way to the new address.');
+                  await load();
+                  setBusy(false);
+                }}
+              >
+                Resend the confirmation link
+              </button>
+            </p>
+          ) : null}
           {portalEmailDiffers && canFlagTest ? (
             <p className="small" style={{ marginTop: 6 }}>
               <button
@@ -1228,7 +1321,8 @@ export default function ClientPacketPage() {
             <div className="quote-line" key={e.id}>
               <span className="name">
                 {e.scopeName ?? e.title ?? e.service_line}{' '}
-                <span className="badge">{engagementStatusLabel(e.status)}</span>
+                {/* R52 (2026-09-26): the status in plain words — "On hold since Sep 20, 2026", "Withdrawn on Sep 18, 2026". */}
+                <span className="badge" data-testid="engagement-status">{engagementStatusSentence(e.status, { pausedDay: e.work_paused_at ? dayOf(e.work_paused_at) : null, endedDay: e.ended_on ? formatDate(e.ended_on) : null })}</span>
                 {/* THE OPEN BALANCE (2026-09-19): an engagement, completed or not, with an unpaid
                     invoice says so here — the work being done does not settle the bill. */}
                 {(e.open_balance_cents ?? 0) > 0 ? (
@@ -1425,8 +1519,11 @@ export default function ClientPacketPage() {
               <span className="name">
                 {t.tax_year} {t.return_type.toUpperCase()}{' '}
                 <span className="badge">{t.stage.replaceAll('_', ' ')}</span>
-                {t.extension_filed ? <span className="badge warn">extended</span> : null}
+                {/* R50 fix 4: the extension badge answers a deadline question a filed return no longer has. */}
+                {showExtendedBadge(t) ? <span className="badge warn">extended</span> : null}
               </span>
+              {/* With the stepper on (R50) the steps say when it was filed, by whom, and where the 8879 stands — once. */}
+              {returnStepper === 'on' ? null : (
               <span className="muted small" style={{ flex: '1 1 100%' }}>
                 {t.filed_date ? `filed ${formatDate(t.filed_date)}` : 'not filed'}
                 {/* The paid preparer of record (2026-09-12). Filed before it was recorded: say so, never assume. */}
@@ -1435,13 +1532,14 @@ export default function ClientPacketPage() {
                 {t.federal_accepted_on ? ` · IRS accepted ${formatDate(t.federal_accepted_on)}` : ''}
                 {t.state_accepted_on ? ` · ${t.state_accepted_code ?? 'state'} accepted ${formatDate(t.state_accepted_on)}` : ''}
               </span>
-              <span className="amt">
-                {t.final_fee_cents !== null
-                  ? formatMoney(t.final_fee_cents)
-                  : t.estimated_fee_max_cents !== null
-                    ? `est. ${formatMoney(t.estimated_fee_max_cents)}`
-                    : '—'}
-              </span>
+              )}
+              {/* R50 fix 3: the amount says what it is — a final fee, an estimate's top, or nothing yet. */}
+              <span className="amt" data-testid={`return-amount-${t.id}`}>{amountLabel(t, formatMoney)}</span>
+              {returnStepper === 'on' ? (
+                /* R50: the stepper prints the jurisdictions, the corrections and the controls itself, once. */
+                <ReturnStepper taxEngagementId={t.id} contactId={params.id} stage={t.stage} onChanged={load} />
+              ) : returnStepper === 'off' ? (
+              <>
               {/* WHERE A RECORDED MAILING IS READABLE (ruling 25, 2026-09-20): here, on the row, per
                   declared jurisdiction, at every stage. The identical block inside ReturnControls is
                   the one with the Record mailing control beside it and it stops at filed/rejected;
@@ -1456,10 +1554,22 @@ export default function ClientPacketPage() {
                   ))}
                 </ul>
               ) : null}
+              {/* THE FILING'S CORRECTIONS (2026-09-26): the history under the row, oldest first, at every stage. */}
+              {(corrections[t.id] ?? []).length > 0 ? (
+                <ul className="list" style={{ flex: '1 1 100%' }} data-testid={`filing-history-${t.id}`}>
+                  {(corrections[t.id] ?? []).map((c) => (
+                    <li key={c.id} data-testid={`filing-correction-${c.id}`}>
+                      <span className="grow muted small">{correctionLine(c, dayOf(c.created_at))}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               {/* STEP-7 CONTROLS (Brian, 2026-09-19, item 2): estimate lock, final fee, the legal next
                   stage, and the signed-8879 upload — for a session holding engagements.tax.manage;
                   nothing for anyone else. Each refusal renders beside its control. */}
               <ReturnControls taxEngagementId={t.id} contactId={params.id} stage={t.stage} onChanged={load} />
+              </>
+              ) : null}
             </div>
           ))
         )}

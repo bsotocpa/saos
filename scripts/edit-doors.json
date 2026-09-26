@@ -29,6 +29,7 @@
     "POST /close-cycles/:id/steps/:step",
     "POST /contacts/:contactId/schedule-session",
     "POST /contacts/:id/align-portal-email",
+    "POST /contacts/:id/portal-email-move",
     "POST /contacts/:id/archive",
     "POST /contacts/:id/lead-stage",
     "POST /contacts/:id/merge",
@@ -92,6 +93,7 @@
     "POST /tasks/:id/follow-up",
     "POST /tasks/:id/timer/start",
     "POST /tasks/bulk",
+    "POST /tax-engagements/:id/8879-sent",
     "POST /tax-engagements/:id/complexity",
     "POST /tax-engagements/:id/efile-result",
     "POST /tax-engagements/:id/estimate",
@@ -107,45 +109,237 @@
     "POST /tax-engagements/:id/signatures/remote-8879",
     "POST /tax-engagements/:id/signatures/wet",
     "POST /tax-engagements/:id/transition",
-    "POST /time-entries/:id/stop"
+    "POST /time-entries/:id/stop",
+    "POST /efile-acks/rows/:id/record-extension",
+    "POST /efile-acks/:id/withdraw",
+    "POST /efile-acks/:id/purge-identifiers",
+    "POST /tax-engagements/:id/filing-corrections"
   ],
   "entities": [
-    { "entity": "contact", "create": "POST /contacts", "createUi": "apps/internal/components/add-client.tsx", "update": "PATCH /contacts/:id", "updateUi": "apps/internal/app/clients/[id]/page.tsx" },
-    { "entity": "business", "create": "POST /contacts/:id/businesses", "createUi": "apps/internal/components/add-business.tsx", "update": "PATCH /businesses/:id", "updateUi": "apps/internal/components/edit-business.tsx" },
-    { "entity": "staff member", "create": "POST /staff", "createUi": "apps/internal/app/admin/staff/page.tsx", "update": "PATCH /staff/:id", "updateUi": "apps/internal/app/admin/staff/page.tsx" },
-    { "entity": "task", "create": "POST /tasks", "createUi": "apps/internal/app/tasks/task-form.tsx", "update": "PATCH /tasks/:id", "updateUi": "apps/internal/app/tasks/task-form.tsx" },
-    { "entity": "quote", "create": "POST /quotes", "createUi": "apps/internal/app/pipeline/page.tsx", "immutable": "edited by superseding: a draft is withdrawn with a reason and rebuilt; a sent quote pins its price-book version and is the client's to answer; a change to accepted work is a change-order quote" },
-    { "entity": "engagement packet", "create": "POST /contacts/:id/packet", "createUi": "apps/internal/app/clients/[id]/page.tsx", "immutable": "a document assembled from the record and signed as assembled; a change is a new packet, never an edit of one sent for signature" },
-    { "entity": "invoice", "create": "POST /invoices", "noCreateControl": "issued by quote acceptance, the final fee and notice billing; Ops issues none by hand", "immutable": "an issued document: voided or refunded through their own audited doors, never edited" },
-    { "entity": "task board", "create": "POST /boards", "createUi": "apps/internal/app/tasks/boards/page.tsx", "immutable": "named once; its content is its columns and cards, each moved or added through their own doors" },
-    { "entity": "task column", "create": "POST /boards/:id/columns", "noCreateControl": "columns are seeded with the board; no Ops screen adds one", "immutable": "named once; cards move between columns" },
-    { "entity": "saved task view", "create": "POST /task-views", "createUi": "apps/internal/app/tasks/page.tsx", "immutable": "a snapshot of its filters and sort; changed by saving the view again, not by editing the saved one" },
-    { "entity": "task comment", "create": "POST /tasks/:id/comments", "noCreateControl": "no Ops screen posts one yet; the task drawer reads them", "immutable": "what was said, when it was said" },
-    { "entity": "task checklist item", "create": "POST /tasks/:id/checklist", "noCreateControl": "no Ops screen adds one yet", "update": "PATCH /tasks/:id/checklist/:itemId" },
-    { "entity": "task dependency", "create": "POST /tasks/:id/dependencies", "createUi": "apps/internal/app/tasks/task-form.tsx", "immutable": "a link between two tasks: added or removed, nothing on it to edit" },
-    { "entity": "task template", "create": "POST /task-templates", "noCreateControl": "seeded definitions; API only" },
-    { "entity": "time entry", "create": "POST /time-entries", "noCreateControl": "started by the task timer, not typed", "immutable": "a timer record: started and stopped" },
-    { "entity": "broadcast", "create": "POST /broadcasts", "createUi": "apps/internal/app/announcements/page.tsx", "immutable": "approved and sent as composed (approval-gated, unsubscribe appended at send); a change is a new broadcast" },
-    { "entity": "event", "create": "POST /events", "noCreateControl": "no Ops screen creates one; events arrive by seed and API", "immutable": "published and completed as created; registrations are their own records" },
-    { "entity": "SOP", "create": "POST /sops", "noCreateControl": "seeded from meetings (seed-sop) and the API; the SOP screen reads", "update": "PATCH /sops/:slug" },
-    { "entity": "IRS notice", "create": "POST /irs-notices", "noCreateControl": "no Ops screen creates one yet; notices are entered through the API and inbound mail", "update": "PATCH /irs-notices/:id" },
-    { "entity": "grant voucher", "create": "POST /grant-vouchers", "noCreateControl": "status tracking only; no Ops screen creates one yet", "update": "PATCH /grant-vouchers/:id" },
-    { "entity": "PLLC conversion", "create": "POST /pllc-conversions", "noCreateControl": "no Ops screen creates one yet", "update": "PATCH /pllc-conversions/:id" },
-    { "entity": "entity group", "create": "POST /entity-groups", "noCreateControl": "groups come from the onboarding form and the API; the group screens are not built", "update": "PATCH /entity-groups/:id" },
-    { "entity": "entity group member", "create": "POST /entity-groups/:id/members", "noCreateControl": "memberships come from the onboarding form and the API", "immutable": "a membership is added, never edited" },
-    { "entity": "entity compliance item", "create": "POST /entity-compliance", "noCreateControl": "derived for each business by the compliance job; no Ops screen creates one", "immutable": "a derived obligation, marked filed through its own door" },
-    { "entity": "close cycle", "create": "POST /close-cycles", "noCreateControl": "no Ops screen creates one yet", "immutable": "a ledger of steps for one period; steps are recorded, the period never changes" },
-    { "entity": "client session", "create": "POST /client-sessions", "noCreateControl": "scheduled through the record's schedule-session door; no free-form create in Ops", "immutable": "a scheduled occurrence; rescheduling is a new session" },
-    { "entity": "document request", "create": "POST /document-requests", "noCreateControl": "raised by the chase job; no Ops screen creates one", "immutable": "a request as made; fulfilment and chasing are the record" },
-    { "entity": "tax engagement (return)", "create": "POST /tax-engagements", "noCreateControl": "created by quote acceptance; the API opens one by hand", "immutable": "no free-form edit by design: each field has its own audited door in return-controls.tsx (estimate, final fee, preparer, extension, transition, signatures, paper mailing)" },
-    { "entity": "resolution case", "create": "POST /resolution/cases", "noCreateControl": "no Ops screen creates one yet", "immutable": "a case as opened; representation and forms are its own doors" },
-    { "entity": "signature envelope", "create": "POST /signature-envelopes", "noCreateControl": "the remote e-sign path is retired; nothing in Ops creates one", "immutable": "an issued envelope" },
-    { "entity": "e-file acknowledgment report", "create": "POST /efile-acks", "createUi": "apps/internal/app/efile-acks/page.tsx", "immutable": "an uploaded report; its rows are held, unheld and released through their own doors" },
-    { "entity": "recording", "create": "POST /meetings/upload", "createUi": "apps/internal/app/recorder/page.tsx", "immutable": "an uploaded recording; its recap is drafted and edited through PATCH /meetings/:id/recap" },
-    { "entity": "price book version", "create": "POST /admin/price-book/versions", "createUi": "apps/internal/app/admin/pricing/page.tsx", "immutable": "effective-dated and versioned: a price change is a new version, never an edit of one in force" },
-    { "entity": "referral", "create": "POST /referrals", "noCreateControl": "suggested from the record and the portal; no free-form create in Ops", "immutable": "approved, declined or sent as suggested" },
-    { "entity": "document", "create": "POST /documents", "createUi": "apps/internal/app/upload-return/page.tsx", "immutable": "an uploaded file, scanned and filed as uploaded; withdrawn or superseded by another upload, never edited, every access audited" },
-    { "entity": "engagement", "create": "POST /engagements", "noCreateControl": "created by quote acceptance; the API opens one by hand", "immutable": "no free-form edit by design: each change is its own audited door (configure, maintenance mode, pause, resume, close, period, deposit transfer)" },
-    { "entity": "quote package", "create": "POST /quotes/packages", "createUi": "apps/internal/app/pipeline/page.tsx", "immutable": "composed from the price book only and saved by the CEO alone; a change is a new package, and the discount is admin-set at publish" }
+    {
+      "entity": "contact",
+      "create": "POST /contacts",
+      "createUi": "apps/internal/components/add-client.tsx",
+      "update": "PATCH /contacts/:id",
+      "updateUi": "apps/internal/app/clients/[id]/page.tsx"
+    },
+    {
+      "entity": "business",
+      "create": "POST /contacts/:id/businesses",
+      "createUi": "apps/internal/components/add-business.tsx",
+      "update": "PATCH /businesses/:id",
+      "updateUi": "apps/internal/components/edit-business.tsx"
+    },
+    {
+      "entity": "staff member",
+      "create": "POST /staff",
+      "createUi": "apps/internal/app/admin/staff/page.tsx",
+      "update": "PATCH /staff/:id",
+      "updateUi": "apps/internal/app/admin/staff/page.tsx"
+    },
+    {
+      "entity": "task",
+      "create": "POST /tasks",
+      "createUi": "apps/internal/app/tasks/task-form.tsx",
+      "update": "PATCH /tasks/:id",
+      "updateUi": "apps/internal/app/tasks/task-form.tsx"
+    },
+    {
+      "entity": "quote",
+      "create": "POST /quotes",
+      "createUi": "apps/internal/app/pipeline/page.tsx",
+      "immutable": "edited by superseding: a draft is withdrawn with a reason and rebuilt; a sent quote pins its price-book version and is the client's to answer; a change to accepted work is a change-order quote"
+    },
+    {
+      "entity": "engagement packet",
+      "create": "POST /contacts/:id/packet",
+      "createUi": "apps/internal/app/clients/[id]/page.tsx",
+      "immutable": "a document assembled from the record and signed as assembled; a change is a new packet, never an edit of one sent for signature"
+    },
+    {
+      "entity": "invoice",
+      "create": "POST /invoices",
+      "noCreateControl": "issued by quote acceptance, the final fee and notice billing; Ops issues none by hand",
+      "immutable": "an issued document: voided or refunded through their own audited doors, never edited"
+    },
+    {
+      "entity": "task board",
+      "create": "POST /boards",
+      "createUi": "apps/internal/app/tasks/boards/page.tsx",
+      "immutable": "named once; its content is its columns and cards, each moved or added through their own doors"
+    },
+    {
+      "entity": "task column",
+      "create": "POST /boards/:id/columns",
+      "noCreateControl": "columns are seeded with the board; no Ops screen adds one",
+      "immutable": "named once; cards move between columns"
+    },
+    {
+      "entity": "saved task view",
+      "create": "POST /task-views",
+      "createUi": "apps/internal/app/tasks/page.tsx",
+      "immutable": "a snapshot of its filters and sort; changed by saving the view again, not by editing the saved one"
+    },
+    {
+      "entity": "task comment",
+      "create": "POST /tasks/:id/comments",
+      "noCreateControl": "no Ops screen posts one yet; the task drawer reads them",
+      "immutable": "what was said, when it was said"
+    },
+    {
+      "entity": "task checklist item",
+      "create": "POST /tasks/:id/checklist",
+      "noCreateControl": "no Ops screen adds one yet",
+      "update": "PATCH /tasks/:id/checklist/:itemId"
+    },
+    {
+      "entity": "task dependency",
+      "create": "POST /tasks/:id/dependencies",
+      "createUi": "apps/internal/app/tasks/task-form.tsx",
+      "immutable": "a link between two tasks: added or removed, nothing on it to edit"
+    },
+    {
+      "entity": "task template",
+      "create": "POST /task-templates",
+      "noCreateControl": "seeded definitions; API only"
+    },
+    {
+      "entity": "time entry",
+      "create": "POST /time-entries",
+      "noCreateControl": "started by the task timer, not typed",
+      "immutable": "a timer record: started and stopped"
+    },
+    {
+      "entity": "broadcast",
+      "create": "POST /broadcasts",
+      "createUi": "apps/internal/app/announcements/page.tsx",
+      "immutable": "approved and sent as composed (approval-gated, unsubscribe appended at send); a change is a new broadcast"
+    },
+    {
+      "entity": "event",
+      "create": "POST /events",
+      "noCreateControl": "no Ops screen creates one; events arrive by seed and API",
+      "immutable": "published and completed as created; registrations are their own records"
+    },
+    {
+      "entity": "SOP",
+      "create": "POST /sops",
+      "noCreateControl": "seeded from meetings (seed-sop) and the API; the SOP screen reads",
+      "update": "PATCH /sops/:slug"
+    },
+    {
+      "entity": "IRS notice",
+      "create": "POST /irs-notices",
+      "noCreateControl": "no Ops screen creates one yet; notices are entered through the API and inbound mail",
+      "update": "PATCH /irs-notices/:id"
+    },
+    {
+      "entity": "grant voucher",
+      "create": "POST /grant-vouchers",
+      "noCreateControl": "status tracking only; no Ops screen creates one yet",
+      "update": "PATCH /grant-vouchers/:id"
+    },
+    {
+      "entity": "PLLC conversion",
+      "create": "POST /pllc-conversions",
+      "noCreateControl": "no Ops screen creates one yet",
+      "update": "PATCH /pllc-conversions/:id"
+    },
+    {
+      "entity": "entity group",
+      "create": "POST /entity-groups",
+      "noCreateControl": "groups come from the onboarding form and the API; the group screens are not built",
+      "update": "PATCH /entity-groups/:id"
+    },
+    {
+      "entity": "entity group member",
+      "create": "POST /entity-groups/:id/members",
+      "noCreateControl": "memberships come from the onboarding form and the API",
+      "immutable": "a membership is added, never edited"
+    },
+    {
+      "entity": "entity compliance item",
+      "create": "POST /entity-compliance",
+      "noCreateControl": "derived for each business by the compliance job; no Ops screen creates one",
+      "immutable": "a derived obligation, marked filed through its own door"
+    },
+    {
+      "entity": "close cycle",
+      "create": "POST /close-cycles",
+      "noCreateControl": "no Ops screen creates one yet",
+      "immutable": "a ledger of steps for one period; steps are recorded, the period never changes"
+    },
+    {
+      "entity": "client session",
+      "create": "POST /client-sessions",
+      "noCreateControl": "scheduled through the record's schedule-session door; no free-form create in Ops",
+      "immutable": "a scheduled occurrence; rescheduling is a new session"
+    },
+    {
+      "entity": "document request",
+      "create": "POST /document-requests",
+      "noCreateControl": "raised by the chase job; no Ops screen creates one",
+      "immutable": "a request as made; fulfilment and chasing are the record"
+    },
+    {
+      "entity": "tax engagement (return)",
+      "create": "POST /tax-engagements",
+      "noCreateControl": "created by quote acceptance; the API opens one by hand",
+      "immutable": "no free-form edit by design: each field has its own audited door in return-controls.tsx (estimate, final fee, preparer, extension, transition, signatures, paper mailing)"
+    },
+    {
+      "entity": "resolution case",
+      "create": "POST /resolution/cases",
+      "noCreateControl": "no Ops screen creates one yet",
+      "immutable": "a case as opened; representation and forms are its own doors"
+    },
+    {
+      "entity": "signature envelope",
+      "create": "POST /signature-envelopes",
+      "noCreateControl": "the remote e-sign path is retired; nothing in Ops creates one",
+      "immutable": "an issued envelope"
+    },
+    {
+      "entity": "e-file acknowledgment report",
+      "create": "POST /efile-acks",
+      "createUi": "apps/internal/app/efile-acks/page.tsx",
+      "immutable": "an uploaded report; its rows are held, unheld and released through their own doors"
+    },
+    {
+      "entity": "recording",
+      "create": "POST /meetings/upload",
+      "createUi": "apps/internal/app/recorder/page.tsx",
+      "immutable": "an uploaded recording; its recap is drafted and edited through PATCH /meetings/:id/recap"
+    },
+    {
+      "entity": "price book version",
+      "create": "POST /admin/price-book/versions",
+      "createUi": "apps/internal/app/admin/pricing/page.tsx",
+      "immutable": "effective-dated and versioned: a price change is a new version, never an edit of one in force"
+    },
+    {
+      "entity": "referral",
+      "create": "POST /referrals",
+      "noCreateControl": "suggested from the record and the portal; no free-form create in Ops",
+      "immutable": "approved, declined or sent as suggested"
+    },
+    {
+      "entity": "document",
+      "create": "POST /documents",
+      "createUi": "apps/internal/app/upload-return/page.tsx",
+      "immutable": "an uploaded file, scanned and filed as uploaded; withdrawn or superseded by another upload, never edited, every access audited"
+    },
+    {
+      "entity": "engagement",
+      "create": "POST /engagements",
+      "noCreateControl": "created by quote acceptance; the API opens one by hand",
+      "immutable": "no free-form edit by design: each change is its own audited door (configure, maintenance mode, pause, resume, close, period, deposit transfer)"
+    },
+    {
+      "entity": "quote package",
+      "create": "POST /quotes/packages",
+      "createUi": "apps/internal/app/pipeline/page.tsx",
+      "immutable": "composed from the price book only and saved by the CEO alone; a change is a new package, and the discount is admin-set at publish"
+    }
   ]
 }

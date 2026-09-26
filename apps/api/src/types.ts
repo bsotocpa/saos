@@ -52,7 +52,7 @@ declare module 'fastify' {
      * harness boot (apps/api/scripts/e2e-boot.ts) flips them through its own /harness/ route so
      * one API process can be tapped in both states. Nothing under src registers a /harness route.
      */
-    switches: { opsRefundControl: 'on' | 'off'; quoteBuilder: 'v1' | 'v2' };
+    switches: { opsRefundControl: 'on' | 'off'; quoteBuilder: 'v1' | 'v2'; returnStepper: 'on' | 'off' };
     /** preHandler: verifies the staff Bearer session and populates request.staff. */
     authenticate: (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>;
     /** preHandler: verifies the client portal session and populates request.client. */

@@ -138,6 +138,40 @@ export const templates = [
       '— Soto Accounting',
   },
   /*
+   * THE SIGN-IN MOVE, CONFIRMED BY THE NEW ADDRESS (Brian, 2026-09-26, R45). Sent once, to the NEW
+   * contact email, when staff accept the offer to move a portal sign-in with a changed contact email
+   * (or press Resend). Transactional, like the magic link: a person asked for it seconds ago. The
+   * button on the page moves the sign-in; opening the link does nothing. Functional copy, no legal
+   * language; admin-editable.
+   */
+  {
+    key: 'portal_email_change_confirm',
+    name: 'Portal sign-in email change — confirmation link',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'link', 'ttl_hours'],
+    subjectEn: 'Confirm your new sign-in email — Soto Accounting',
+    subjectEs: 'Confirme su nuevo correo de acceso — Soto Accounting',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'Your email on file with us changed to this address. To sign in to your Soto Accounting portal ' +
+      'with it from now on, open this link and press the button:\n\n' +
+      '{{link}}\n\n' +
+      'The link works once and expires in {{ttl_hours}} hours. Until you press the button, you keep ' +
+      'signing in with your previous email. If you did not ask for this change, reply to this email and ' +
+      'a person will look into it.\n\n' +
+      '— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Su correo registrado con nosotros cambió a esta dirección. Para entrar a su portal de Soto Accounting ' +
+      'con ella de ahora en adelante, abra este enlace y pulse el botón:\n\n' +
+      '{{link}}\n\n' +
+      'El enlace funciona una sola vez y vence en {{ttl_hours}} horas. Hasta que pulse el botón, usted sigue ' +
+      'entrando con su correo anterior. Si usted no pidió este cambio, responda a este correo y una persona ' +
+      'lo revisará.\n\n' +
+      '— Soto Accounting',
+  },
+  /*
    * HILO'S OWN LINK EMAILS (2026-08-15).
    *
    * Hilo entrepreneurs get portal accounts from the Hilo intake, but every portal email

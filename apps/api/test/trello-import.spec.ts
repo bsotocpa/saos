@@ -31,6 +31,8 @@ import { createTestConfig, makeContact, makeStaff, businessFor } from './helpers
 import type { Config } from '../src/config.ts';
 import type { AuthedStaff } from '../src/types.ts';
 import { assertImportPreconditions, declareImportedJurisdictions, setImportedStage } from '../src/modules/tax/import.ts';
+import { declareImported8879Sent } from '../src/modules/tax/f8879-sent.ts';
+import { stageFor } from '../scripts/trello-normalize.ts';
 import { applyNewReturnDefaults } from '../src/modules/tax/pipeline.ts';
 import { applyRecurringServiceFact, isLiveServiceFact, normalizeFilingFrequency } from '../src/modules/engagements/import-facts.ts';
 
@@ -185,6 +187,36 @@ test('R22: SEVERAL active preparers is not a refusal — the firm chooses, not t
   const { teId, contactId } = await freshReturn();
   const defaults = await applyNewReturnDefaults(app, teId, contactId);
   assert.equal(defaults.preparerId, null, 'the return lands unassigned and the count is reported');
+});
+
+// ── R53: AWAITING SIGNATURE ────────────────────────────────────────────────
+
+test('R53: "awaiting signature" lands at client_review with the 8879 declared SENT — no method invented, flagged, under the attestation', async () => {
+  const mapping = stageFor('awaiting signature');
+  assert.ok(mapping, 'the value is in the map');
+  assert.equal(mapping!.handling, 'stage');
+  assert.equal(mapping!.stage, 'client_review', 'the return was delivered; the signature is what it waits on');
+  assert.equal(mapping!.postImport, 'f8879_sent_declared');
+
+  const { teId } = await freshReturn();
+  await setImportedStage(app, actor, { taxEngagementId: teId, stage: mapping!.stage as 'client_review', trelloCardId: 'card-sig', asOf: BUNDLE_DATE });
+  const got = await declareImported8879Sent(app, actor, { taxEngagementId: teId, trelloCardId: 'card-sig', asOf: BUNDLE_DATE });
+  assert.equal(got.method, null, 'the card said nothing about how the form reached the client');
+  assert.equal(got.sentOn, BUNDLE_DATE, 'the day the bundle was true, not today');
+  assert.equal(got.declaredByImport, true);
+
+  const { rows } = await app.db.query<{ stage: string; method: string | null; sent_on: string; flagged: boolean; signed: Date | null; doc: string | null }>(
+    `SELECT stage::text AS stage, f8879_sent_method::text AS method, f8879_sent_on::text AS sent_on, f8879_sent_declared_by_import AS flagged,
+            f8879_signed_at AS signed, f8879_document_id AS doc FROM tax_engagements WHERE id = $1`, [teId]);
+  assert.equal(rows[0]!.stage, 'client_review');
+  assert.equal(rows[0]!.method, null);
+  assert.equal(rows[0]!.sent_on, BUNDLE_DATE);
+  assert.equal(rows[0]!.flagged, true);
+  assert.equal(rows[0]!.signed, null, 'the 8879 GATE is untouched: nothing signed');
+  assert.equal(rows[0]!.doc, null, 'and no scan invented');
+  const audit = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM audit_log WHERE object_id = $1 AND action = 'tax_engagement.f8879_sent_declared_by_import'`, [teId]);
+  assert.equal(audit.rows[0]!.n, 1, 'one audit row, naming the card');
 });
 
 // ── R23: AT OR PAST FILED ──────────────────────────────────────────────────

@@ -131,6 +131,52 @@ test('portal Sign Documents list is scoped to the session contact', async () => 
   assert.equal(res.json().envelopes.length, 1, 'only own envelopes visible');
 });
 
+/*
+ * R46 (Brian, 2026-09-26): documents of withdrawn engagements never show in the portal, and each row
+ * names the engagement it belongs to so two of one type can be told apart.
+ */
+test('portal list: an envelope on a withdrawn engagement is left out; a live one names its return', async () => {
+  const contact = await makeClient('Sigwithdrawn', 'sig-withdrawn@example.test');
+  const live = await makeTaxEngagement(contact);
+  // A second return on the same client needs its own year (return_exists refuses a second 2025).
+  const older = await app.inject({
+    method: 'POST', url: '/tax-engagements', headers: auth(ana),
+    payload: { reason: 'Return opened by hand for the fixture; the client engaged by phone and the quote follows', contactId: contact, taxYear: 2024, returnType: '1040' },
+  });
+  assert.equal(older.statusCode, 201, older.body);
+  const gone = older.json().id as string;
+  const engagementOf = async (te: string): Promise<string> =>
+    (await app.db.query<{ engagement_id: string }>(`SELECT engagement_id FROM tax_engagements WHERE id = $1`, [te])).rows[0]!.engagement_id;
+  const liveEng = await engagementOf(live);
+  const goneEng = await engagementOf(gone);
+  for (const engagementId of [liveEng, goneEng]) {
+    const r = await app.inject({
+      method: 'POST', url: '/signature-envelopes', headers: auth(ana),
+      payload: { contactId: contact, type: 'engagement_letter', engagementId, serviceLine: 'tax' },
+    });
+    assert.equal(r.statusCode, 201, r.body);
+  }
+  // The return first, then the engagement (0100: an engagement cannot be withdrawn over an unfiled return), with the reason 0064 requires.
+  await app.db.query(`UPDATE tax_engagements SET stage = 'withdrawn' WHERE id = $1`, [gone]);
+  await app.db.query(`UPDATE engagements SET status = 'withdrawn', ended_on = CURRENT_DATE, close_reason = 'Synthetic: withdrawn for the fixture' WHERE id = $1`, [goneEng]);
+
+  const user = await app.db.query<{ id: string }>(
+    `INSERT INTO portal_users (contact_id, email) VALUES ($1, 'sig-withdrawn@example.test') RETURNING id`, [contact]
+  );
+  const { token, hash } = generateToken();
+  await app.db.query(
+    `INSERT INTO portal_sessions (portal_user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval '1 day')`,
+    [user.rows[0]!.id, hash]
+  );
+  const res = await app.inject({ method: 'GET', url: '/portal/signature-envelopes', headers: { authorization: `Bearer ${token}` } });
+  assert.equal(res.statusCode, 200, res.body);
+  const rows = res.json().envelopes as Array<{ engagement_id: string; return_type: string; tax_year: number }>;
+  assert.equal(rows.length, 1, 'the withdrawn engagement\'s envelope is not listed');
+  assert.equal(rows[0]!.engagement_id, liveEng);
+  assert.equal(rows[0]!.return_type, '1040', 'the row names its return');
+  assert.equal(rows[0]!.tax_year, 2025);
+});
+
 // ── M26 flow 2: entity-group workflow — ONE envelope/KBA, packet, billing ────
 
 

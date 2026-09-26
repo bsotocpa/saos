@@ -387,10 +387,15 @@ test.describe('Path B', () => {
       // ── B7. A DOCUMENT UPLOADED BY THE CLIENT ──────────────────────────────────────────
       await page.goto(`${PORTAL}/documents`);
       const clientDoc = `HARNESS-PATHB-W2-${viewport}.pdf`;
+      // The category starts unselected (R47) and the select is controlled: the page is read (its empty-card
+      // sentence) before the choice is made, so a pre-hydration choice cannot be lost.
+      await expect(page.getByTestId('docs-empty')).toBeVisible();
       await page.getByLabel(COPY.docsCategory).selectOption('tax_documents');
+      await expect(page.getByLabel(COPY.docsCategory)).toHaveValue('tax_documents');
       await page.locator('input[type=file]').setInputFiles({ name: clientDoc, ...PDF });
       await expect(page.getByText(COPY.docsUploaded)).toBeVisible();
-      await expect(page.getByText(clientDoc)).toBeVisible();
+      // The page prints the name twice on purpose (R47/R49): the upload confirmation line and the document row; the row is the record.
+      await expect(page.locator('[data-testid="document-row"]').getByText(clientDoc)).toBeVisible();
       steps.push(`B7|portal /documents (Document Center), the "${COPY.docsCategory}" select + input[type=file]|${ROLES.client}|tap`);
 
       // ── THE RETURN WALKS TO INTERNAL REVIEW, from its own row ───────────────────────────
@@ -445,7 +450,8 @@ test.describe('Path B', () => {
       const returnFile = `HARNESS-PATHB-1040-RETURN-${viewport}.pdf`;
       await expect(page.getByLabel('Tax year')).toHaveValue(String(taxYear));
       await page.locator('input[type=file]').setInputFiles({ name: returnFile, ...PDF });
-      await expect(page.getByText('Delivered — stage moved to Client Review and the client was notified.')).toBeVisible();
+      // R48: the confirmation states what happened. The harness arms every notice, so the client WAS emailed here.
+      await expect(page.getByTestId('delivery-result')).toContainText('The return is on the portal. The client was emailed. The stage moved to Client Review.');
       await page.goto(`${PORTAL}/returns`);
       await expect(page.getByRole('heading', { name: COPY.returnsTitle })).toBeVisible();
       await expect(page.getByText(returnFile), 'the client can read the return in My Returns').toBeVisible();
@@ -453,6 +459,17 @@ test.describe('Path B', () => {
 
       // ── B9. THE SIGNED 8879, WET-SIGNED IN OFFICE ──────────────────────────────────────
       await page.goto(clientPage);
+      // R53 (2026-09-26): the 8879 is handed to the walk-in client across the desk before the signed
+      // scan is uploaded; the row records how, and the stepper (R50) offers the upload once it is.
+      await page.getByTestId('record-8879-sent').click();
+      await expect(dialog.getByTestId('sent-8879-method'), 'the modal asks how the 8879 reached the client').toBeVisible();
+      await dialog.getByTestId('sent-8879-method').locator('select').selectOption('in_office');
+      await expect(dialog.getByLabel('Date sent'), 'the day opens on today').toHaveValue(today);
+      await dialog.getByRole('button', { name: 'Record 8879 sent' }).click();
+      await expect(dialog).toHaveCount(0);
+      const sentRec = (await read(page, `/tax-engagements/${te}`)) as { f8879_sent: { method: string } | null };
+      expect(sentRec.f8879_sent?.method, 'recorded as handed over in office').toBe('in_office');
+      steps.push(`B9|/clients/:id Returns card, button "Record 8879 sent" (modal: "Method" In office, "Date sent" opening on today) → the return reads 8879 sent, in office|${ROLES.returnControls}|tap`);
       const uploadBtn = page.getByTestId('upload-signed-8879');
       await expect(uploadBtn).toBeVisible();
       await page.locator('input[type=file]').setInputFiles({ name: `HARNESS-PATHB-8879-SIGNED-${viewport}.pdf`, ...PDF });
@@ -493,6 +510,8 @@ test.describe('Path B', () => {
       await expect(dialog).toBeVisible();
       await expect(dialog.getByText('No signed authorization on file')).toHaveCount(0);
       await expect(dialog.getByText(`Issues the final-fee invoice for ${money(finalFeeCents)}`)).toBeVisible();
+      // FILED ON (2026-09-26): the day the return went in, opening on today in Chicago; left as it opens.
+      await expect(dialog.getByLabel('Filed on'), 'the filed day opens on today').toHaveValue(today);
       await dialog.getByLabel(/PTIN holder/).selectOption(preparer.id);
       /*
        * A MIXED FILING (R15, 2026-09-20): federal went electronically and Illinois went out on PAPER.
@@ -509,10 +528,11 @@ test.describe('Path B', () => {
       const filed = (await read(page, `/tax-engagements/${te}`)).taxEngagement as Record<string, unknown>;
       expect(filed.stage).toBe('filed');
       expect(filed.preparer_ptin_holder_id, 'the paid preparer of record is on the filing').toBe(preparer.id);
+      expect(filed.filed_date, 'the filed day is today, as a calendar day').toBe(today);
       const lanes = (await read(page, `/tax-engagements/${te}`)).jurisdictions as Array<{ jurisdiction: string; filingMethod: string }>;
       expect(lanes.find((j) => j.jurisdiction === 'federal')?.filingMethod, 'federal was e-filed').toBe('efile');
       expect(lanes.find((j) => j.jurisdiction === who.state)?.filingMethod, `${who.state} went out on paper`).toBe('paper');
-      steps.push(`B10|/clients/:id Returns card, button "Ready to file" then "Mark filed" (modal: PTIN holder, Jurisdictions filed + a filing method select per jurisdiction — "Paper (mailed)" for ${who.state}, E-filed for federal)|${ROLES.returnControls}|tap`);
+      steps.push(`B10|/clients/:id Returns card, button "Ready to file" then "Mark filed" (modal: "Filed on" opening on today, PTIN holder, Jurisdictions filed + a filing method select per jurisdiction — "Paper (mailed)" for ${who.state}, E-filed for federal)|${ROLES.returnControls}|tap`);
 
       /*
        * ── B13. THE FINAL INVOICE, issued by the filing through the money door ─────────────
@@ -533,31 +553,41 @@ test.describe('Path B', () => {
       steps.push(`B13|/clients/:id Returns card, "Set final fee" (modal: Final fee + Reason) then "Mark filed" issues it; the Invoices card shows it with the paid deposit credited|${ROLES.returnControls}|tap`);
 
       /*
-       * ── B11. THE ACKNOWLEDGMENT REPORT, uploaded and released ──────────────────────────
+       * ── B11. THE ATX E-FILES EXPORT, uploaded and released (R43) ──────────────────────
        *
-       * ONE ROW, NOT TWO (R15). A 1040's entity name is the person's and the taxpayer-id column
-       * carries the SSN last four — but Illinois went out on PAPER, and a paper filing gets no
-       * acknowledgment at all. So the report ATX produced for this return carries the federal row
-       * alone, and Illinois is satisfied further down, by the mailing.
+       * ONE ROW OF OURS, NOT TWO (R15). The export is in the REAL shape — the committed synthetic
+       * fixture (34 rows that belong to nobody SAOS tracks) plus this person's federal 1040 row: the
+       * name as ATX prints it ("LAST, FIRST <year>"), the SSN's last four behind a synthetic prefix,
+       * no tax-year column, a Central status date. Illinois went out on PAPER, and a paper filing
+       * gets no acknowledgment at all, so no Illinois row exists; Illinois is satisfied further
+       * down, by the mailing. The SAOS return supplies the tax year; the fixture rows are listed as
+       * unmatched and raise nothing.
        */
-      const ackFile = `HARNESS-ATX-ACK-1040-${viewport}.csv`;
+      const ackFile = `E-Files-${viewport}.csv`;
+      const atxFixture = readFileSync(resolve(root, 'apps', 'api', 'test', 'fixtures', 'atx', 'ATX_EFiles_synthetic.csv'), 'utf8').replace(/\s+$/, '');
+      const atxDate = `${Number(today.slice(5, 7))}/${Number(today.slice(8, 10))}/${today.slice(0, 4)}`;
+      const exportName = `${who.lastName}, ${who.firstName} ${taxYear}`.toUpperCase();
       const report = [
-        'Entity Name,EIN,Tax Year,Return Type,Agency,Status,Submission ID,Ack Date,Reject Code,Reject Reason',
-        `"${fullName}",${who.ssnLast4},${taxYear},1040,Federal,Accepted,H-PB-FED-${viewport},${usDate(today)},,`,
+        atxFixture,
+        `"${exportName}",,,'90000${who.ssnLast4},hpbfed${who.ssnLast4}${viewport}x9k2m4,Federal,1040,Federal,Accepted,${atxDate} 2:53:51 PM,Practitioner PIN,0,Zero Balance,X,0,Kansas City`,
       ].join('\n');
       await page.goto('/efile-acks');
       await expect(page.getByRole('heading', { name: 'E-file acknowledgments' })).toBeVisible();
-      await page.locator('input[type=file]').setInputFiles({ name: ackFile, mimeType: 'text/csv', buffer: Buffer.from(report) });
+      await page.locator('input[type=file]').setInputFiles({ name: ackFile, mimeType: 'text/csv', buffer: Buffer.from(report, 'utf8') });
       await expect(page.getByRole('status')).toContainText('1 will send');
+      await expect(page.getByRole('status'), 'the firm-wide rows are counted, not tasked').toContainText('34 unmatched');
       // The upload's own message lands before the review opens; the rows are what this reads.
       await expect(page.getByRole('heading', { name: ackFile }), 'the report opened with its rows').toBeVisible();
+      await expect(page.getByTestId('ack-unmatched-count')).toHaveText('34 unmatched');
       const rowsText = await page.evaluate(() => document.body.innerText);
-      expect(rowsText, 'the row matched the person').toContain(fullName);
+      expect(rowsText, 'the row matched the person: the SAOS contact, beside the name as the export printed it').toContain(fullName);
       expect(rowsText, 'the federal row will send').toMatch(/Federal[\s\S]*Will send/);
+      expect(rowsText, 'the identifier shows as its last four only').toContain(`•••••${who.ssnLast4}`);
+      expect(rowsText, 'no full identifier reaches the screen').not.toMatch(/90000\d{4}/);
       await page.getByRole('button', { name: /^Release/ }).first().click();
       await page.locator('[role=dialog]').getByRole('button', { name: /^Release 1/ }).click();
       await expect(page.getByRole('status')).toContainText('Released: 1 queued to send');
-      steps.push(`B11|/efile-acks input[type=file] "Upload ATX report", the review rows, button "Release 1 to clients" + modal "Release 1"|${ROLES.efile}|tap`);
+      steps.push(`B11|/efile-acks input[type=file] "Upload ATX report" (the ATX E-Files export: the committed fixture + this person's federal 1040 row), status "1 will send … 34 unmatched", the matched row with a masked identifier, details "Unmatched rows (34)", button "Withdraw report" (not tapped), button "Release 1 to clients" + modal "Release 1"|${ROLES.efile}|tap`);
 
       // ── B12. THE ACCEPTANCE EMAIL LEAVES, and the row says so ─────────────────────────
       const reportId = String(((await read(page, '/efile-acks')).reports as Array<{ id: string; filename: string }>)
