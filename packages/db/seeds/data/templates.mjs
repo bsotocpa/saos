@@ -184,6 +184,36 @@ export const templates = [
    * so these do not enumerate portal capabilities the way the Soto invite does.
    */
   {
+    /*
+     * STAFF MAIL, NOT CLIENT MAIL (2026-09-26, R65): sent to a staff member's sign-in address when the
+     * CEO resets their MFA. No automation gate: it is the notice of an action a person just took on
+     * their account, and it names nothing but the fact. Spanish is for the staff member who prefers it.
+     */
+    key: 'staff_mfa_reset',
+    name: 'Staff: your MFA was reset',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['display_name', 'reset_by'],
+    subjectEn: 'Your SAOS sign-in: MFA was reset',
+    subjectEs: 'Su acceso a SAOS: se restableció la MFA',
+    bodyEn:
+      'Hi {{display_name}},\n\n' +
+      '{{reset_by}} reset the multi-factor authentication on your SAOS staff account. Your open sessions ' +
+      'have been signed out, and the authenticator and recovery codes you had no longer work.\n\n' +
+      'At your next sign-in you will enrol a new authenticator and receive a new set of ' +
+      'recovery codes. Your password is unchanged.\n\n' +
+      'If you did not expect this, speak to {{reset_by}} before signing in.\n\n' +
+      '— SAOS',
+    bodyEs:
+      'Hola {{display_name}}:\n\n' +
+      '{{reset_by}} restableció la autenticación de varios factores de su cuenta de personal en SAOS. Sus ' +
+      'sesiones abiertas se cerraron, y el autenticador y los códigos de recuperación que tenía ya no funcionan.\n\n' +
+      'En su próximo inicio de sesión registrará un nuevo autenticador y recibirá un nuevo ' +
+      'juego de códigos de recuperación. Su contraseña no cambió.\n\n' +
+      'Si no esperaba esto, hable con {{reset_by}} antes de iniciar sesión.\n\n' +
+      '— SAOS',
+  },
+  {
     key: 'portal_invite_hilo',
     name: 'Portal invitation — Hilo (first-time access)',
     channel: 'email',
@@ -611,12 +641,12 @@ export const templates = [
       'Hi {{first_name}},\n\n' +
       'Your {{tax_year}} tax return is ready and waiting in your portal under “My Returns”:\n\n{{portal_link}}\n\n' +
       'Review it at your convenience — it’s available for download any time. ' +
-      'We’ll follow up on the e-file authorization next.\n\n— Soto Accounting',
+      'We’ll be in touch about signing next.\n\n— Soto Accounting',
     bodyEs:
       'Hola {{first_name}}:\n\n' +
       'Su declaración de impuestos {{tax_year}} está lista en su portal, en “Mis Declaraciones”:\n\n{{portal_link}}\n\n' +
       'Revísela con calma — puede descargarla en cualquier momento. ' +
-      'Luego le enviaremos la autorización de presentación electrónica.\n\n— Soto Accounting',
+      'Luego le escribiremos sobre la firma.\n\n— Soto Accounting',
   },
   /*
    * 2026-09-12: the e-file acknowledgment automation. Two templates because federal and state
@@ -1129,6 +1159,52 @@ const RETIRED = [
   },
 ];
 
+/*
+ * RULED COPY CORRECTIONS (Brian, 2026-09-26, R48). The insert above is insert-if-missing: a row already
+ * on the box is never overwritten, so an admin's edit in Admin → Templates survives every deploy. A
+ * sentence Brian rules in writing still has to reach a row that already exists, so each ruling here
+ * names the exact sentence it replaces: a row whose body still carries the OLD sentence gets the ruled
+ * one (version bumped, audited as the ruling); a row an admin has already changed — the old sentence
+ * gone — is left alone and named in the seed's report. Idempotent: a second run finds nothing to do.
+ */
+const RULED_COPY_CORRECTIONS = [
+  {
+    key: 'return_delivered',
+    ruling: 'R48 (Brian, 2026-09-26): the last sentence of the return-delivered notice',
+    en: { from: 'We’ll follow up on the e-file authorization next.', to: 'We’ll be in touch about signing next.' },
+    es: { from: 'Luego le enviaremos la autorización de presentación electrónica.', to: 'Luego le escribiremos sobre la firma.' },
+  },
+];
+
+/** Apply the ruled corrections to rows still carrying the old sentence; report each row touched or left. */
+export async function applyRuledCopyCorrections(client) {
+  const report = [];
+  for (const c of RULED_COPY_CORRECTIONS) {
+    const res = await client.query(
+      `UPDATE templates
+          SET body_en = replace(body_en, $2, $3),
+              body_es = replace(body_es, $4, $5),
+              version = version + 1
+        WHERE key = $1 AND (position($2 in body_en) > 0 OR position($4 in body_es) > 0)
+        RETURNING key`,
+      [c.key, c.en.from, c.en.to, c.es.from, c.es.to]
+    );
+    if (res.rowCount > 0) {
+      await client.query(
+        `INSERT INTO audit_log (actor_type, actor_label, action, object_type, object_id, details)
+         SELECT 'system', 'seed: ruled copy correction', 'template.updated', 'template', t.id::text,
+                jsonb_build_object('key', $1::text, 'ruling', $2::text, 'en_from', $3::text, 'en_to', $4::text, 'es_from', $5::text, 'es_to', $6::text)
+           FROM templates t WHERE t.key = $1`,
+        [c.key, c.ruling, c.en.from, c.en.to, c.es.from, c.es.to]
+      );
+      report.push(`${c.key}: corrected (${c.ruling})`);
+    } else {
+      report.push(`${c.key}: nothing to correct (the ruled sentence is in place, or the row was edited in Admin → Templates)`);
+    }
+  }
+  return report;
+}
+
 export async function seedTemplates(client) {
   let inserted = 0;
   for (const t of templates) {
@@ -1165,8 +1241,11 @@ export async function seedTemplates(client) {
     retired += res.rowCount;
   }
 
+  const corrections = await applyRuledCopyCorrections(client);
+
   return (
     `${inserted} of ${templates.length} templates inserted (existing keys left untouched)` +
-    (retired > 0 ? `, ${retired} retired` : '')
+    (retired > 0 ? `, ${retired} retired` : '') +
+    (corrections.length > 0 ? `; ruled copy: ${corrections.join('; ')}` : '')
   );
 }

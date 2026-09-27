@@ -396,25 +396,63 @@ export function registerPortalRoutes(app: FastifyInstance): void {
    *   f8879_sent         sent, the method not on the record (an import-declared row)
    *   f8879_on_file      the signed 8879 is on file           → "We are filing your return."
    *   filed              filed, acknowledgments pending
-   *   accepted           completed (every jurisdiction acknowledged)
+   *   accepted           completed (every jurisdiction answered)
+   *
+   * THE COMPLETED LINE READS PER JURISDICTION (Brian, 2026-09-26, R48): "Accepted by the IRS on
+   * <date>. Accepted by Illinois on <date>." or "Mailed to Illinois on <date>." — one line per row the
+   * return declared (tax_engagement_jurisdictions), an e-file row by its acceptance date and a paper row
+   * by its mailing date. `completed_lines` carries the code, the kind and the calendar day; the portal
+   * names the jurisdiction in the reader's language and renders the day through its date helper. A
+   * return completed before the jurisdictions table existed (migration 0104) has no declared rows and
+   * reads its lines from the summary columns.
    */
   app.get('/portal/returns', scoped, async (request) => {
     const client = request.client!;
     const { rows } = await app.db.query<{
-      id: string; filename: string; tax_year: number | null; uploaded_at: Date;
+      id: string; filename: string; tax_year: number | null; uploaded_at: Date; tax_engagement_id: string | null;
       stage: string | null; f8879_sent_method: string | null; f8879_sent_on: string | null; f8879_on_file: boolean | null;
+      federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null;
     }>(
-      `SELECT d.id, d.filename, d.tax_year, d.uploaded_at,
+      `SELECT d.id, d.filename, d.tax_year, d.uploaded_at, d.tax_engagement_id,
               te.stage::text AS stage,
               te.f8879_sent_method::text AS f8879_sent_method,
               te.f8879_sent_on::text AS f8879_sent_on,
-              (te.f8879_document_id IS NOT NULL) AS f8879_on_file
+              (te.f8879_document_id IS NOT NULL) AS f8879_on_file,
+              te.federal_accepted_on::text AS federal_accepted_on,
+              te.state_accepted_on::text AS state_accepted_on,
+              te.state_accepted_code
          FROM documents d
          LEFT JOIN tax_engagements te ON te.id = d.tax_engagement_id
         WHERE d.contact_id = $1 AND d.category = 'return_deliverable' AND d.archived_at IS NULL
         ORDER BY d.tax_year DESC NULLS LAST, d.uploaded_at DESC`,
       [client.contactId]
     );
+    type CompletedLine = { jurisdiction: string; kind: 'accepted' | 'mailed'; answered_on: string };
+    const completedIds = [...new Set(rows.filter((r) => r.stage === 'completed' && r.tax_engagement_id).map((r) => r.tax_engagement_id!))];
+    const declared = completedIds.length === 0 ? [] : (await app.db.query<{
+      tax_engagement_id: string; jurisdiction: string; accepted_on: string | null; mailed_on: string | null;
+    }>(
+      `SELECT tax_engagement_id, jurisdiction, accepted_on::text AS accepted_on, mailed_on::text AS mailed_on
+         FROM tax_engagement_jurisdictions
+        WHERE tax_engagement_id = ANY($1::uuid[])
+        ORDER BY (jurisdiction <> 'federal'), jurisdiction`,
+      [completedIds]
+    )).rows;
+    const completedLinesFor = (r: typeof rows[number]): CompletedLine[] => {
+      if (r.stage !== 'completed') return [];
+      const mine = declared.filter((d) => d.tax_engagement_id === r.tax_engagement_id);
+      if (mine.length > 0) {
+        return mine.flatMap((d): CompletedLine[] => {
+          if (d.mailed_on) return [{ jurisdiction: d.jurisdiction, kind: 'mailed', answered_on: d.mailed_on }];
+          if (d.accepted_on) return [{ jurisdiction: d.jurisdiction, kind: 'accepted', answered_on: d.accepted_on }];
+          return [];
+        });
+      }
+      const summary: CompletedLine[] = [];
+      if (r.federal_accepted_on) summary.push({ jurisdiction: 'federal', kind: 'accepted', answered_on: r.federal_accepted_on });
+      if (r.state_accepted_on && r.state_accepted_code) summary.push({ jurisdiction: r.state_accepted_code.toUpperCase(), kind: 'accepted', answered_on: r.state_accepted_on });
+      return summary;
+    };
     const nextStepFor = (r: typeof rows[number]): string | null => {
       if (!r.stage || r.stage === 'withdrawn') return null;
       if (r.stage === 'completed') return 'accepted';
@@ -433,6 +471,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
       returns: rows.map((r) => ({
         id: r.id, filename: r.filename, tax_year: r.tax_year, uploaded_at: r.uploaded_at,
         next_step: nextStepFor(r),
+        completed_lines: completedLinesFor(r),
       })),
     };
   });

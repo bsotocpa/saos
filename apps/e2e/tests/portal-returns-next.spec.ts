@@ -9,9 +9,13 @@
  *   8879 sent by Adobe Sign (R53)  "Look for an email from Adobe Sign with your Form 8879. Your return is filed once you sign."
  *   the signed 8879 on file        "We have your signed Form 8879 and are filing your return."
  *   filed                          "Filed. We will let you know when it is accepted."
+ *   completed                      one line per declared jurisdiction (R48, Brian's words):
+ *                                  "Accepted by the IRS on <date>. Mailed to Illinois on <date>."
  *
  * The in-office and mailed sentences share the same block and key shape; the states this spec can
- * reach through the doors are the four above.
+ * reach through the doors are the five above. The return declares federal (e-file) and Illinois (paper)
+ * at filing; the IRS acceptance (POST /efile-result) leaves it filed, the Illinois mailing (POST
+ * /jurisdictions/IL/mailing) completes it, and the completed line names both with their calendar days.
  */
 import { expect, test, type Page } from '@playwright/test';
 import * as OTPAuth from 'otpauth';
@@ -130,10 +134,23 @@ test('P5: the block reads the return\'s state — 8879 pending, sent by Adobe Si
 
     // FILED, acknowledgments pending.
     await asStaff(token, `/tax-engagements/${ret.id}/transition`, { method: 'POST', body: JSON.stringify({ toStage: 'ready_to_file' }) });
-    await asStaff(token, `/tax-engagements/${ret.id}/transition`, { method: 'POST', body: JSON.stringify({ toStage: 'filed', preparerPtinHolderId: preparer, jurisdictions: ['federal'] }) });
+    await asStaff(token, `/tax-engagements/${ret.id}/transition`, { method: 'POST', body: JSON.stringify({ toStage: 'filed', preparerPtinHolderId: preparer, jurisdictions: ['federal', 'IL'], filingMethods: { IL: 'paper' } }) });
     next = await readNext(page);
     expect(next.step).toBe('filed');
     expect(next.text).toContain('Filed. We will let you know when it is accepted.');
+
+    // THE IRS ACCEPTS; Illinois, declared on paper, is still awaited: the sentence stays "Filed."
+    await asStaff(token, `/tax-engagements/${ret.id}/efile-result`, { method: 'POST', body: JSON.stringify({ result: 'accepted', jurisdiction: 'federal', asOf: today }) });
+    next = await readNext(page);
+    expect(next.step).toBe('filed');
+
+    // ILLINOIS MAILED (the paper lane's acceptance): completed, and the line reads per jurisdiction (R48).
+    await asStaff(token, `/tax-engagements/${ret.id}/jurisdictions/IL/mailing`, { method: 'POST', body: JSON.stringify({ mailedOn: today, method: 'first_class', asOf: today }) });
+    next = await readNext(page);
+    expect(next.step).toBe('accepted');
+    const day = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${today}T00:00:00Z`));
+    expect(next.text).toContain(`Accepted by the IRS on ${day}. Mailed to Illinois on ${day}.`);
+    expect(next.text, 'the one-word line is gone').not.toMatch(/Accepted\.\s*$/);
     const text = await page.evaluate(() => document.body.innerText);
     expect(text, 'no raw key reaches the screen').not.toMatch(/returns_next_|f8879_/);
     expect(text, 'nothing on the page is a raw ISO timestamp').not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
@@ -141,6 +158,6 @@ test('P5: the block reads the return\'s state — 8879 pending, sent by Adobe Si
   } finally {
     if (!existsSync(shot)) await page.screenshot({ path: shot, fullPage: true }).catch(() => undefined);
     testInfo.annotations.push({ type: 'screenshot', description: keepScreenshot(`portal-returns-next-${viewport}`, passed, shot) });
-    testInfo.annotations.push({ type: 'walk-step', description: `P5|${CONTROL} at ${viewport}: the sentence for 8879 pending after delivery, for sent by Adobe Sign (POST /tax-engagements/:id/8879-sent), for the signed 8879 on file, and for filed|client (portal sign-in link); the return walked through the API doors as ceo|tap` });
+    testInfo.annotations.push({ type: 'walk-step', description: `P5|${CONTROL} at ${viewport}: the sentence for 8879 pending after delivery, for sent by Adobe Sign (POST /tax-engagements/:id/8879-sent), for the signed 8879 on file, for filed, and the completed line per jurisdiction ("Accepted by the IRS on <date>. Mailed to Illinois on <date>." after POST /efile-result and POST /jurisdictions/IL/mailing)|client (portal sign-in link); the return walked through the API doors as ceo|tap` });
   }
 });
