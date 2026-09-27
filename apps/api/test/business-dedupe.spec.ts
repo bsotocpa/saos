@@ -26,10 +26,15 @@ before(async () => {
 });
 after(async () => { await app.close(); });
 
+// Each business a second older than the next (2026-09-27): made a millisecond apart, a backward clock
+// step or a shared millisecond made "the older one wins" fall to the random uuid tie-break.
+let made = 0;
 async function business(contactId: string, name: string, extra: { ein?: string; entityType?: string } = {}): Promise<string> {
+  made += 1;
   const { rows } = await app.db.query<{ id: string }>(
-    `INSERT INTO businesses (name, ein, entity_type) VALUES ($1, $2, $3::business_entity_type) RETURNING id`,
-    [name, extra.ein ?? null, extra.entityType ?? null]);
+    `INSERT INTO businesses (name, ein, entity_type, created_at)
+     VALUES ($1, $2, $3::business_entity_type, timestamptz '2026-01-01 00:00:00+00' + make_interval(secs => $4)) RETURNING id`,
+    [name, extra.ein ?? null, extra.entityType ?? null, made]);
   await app.db.query(`INSERT INTO business_members (business_id, contact_id, member_role, is_primary) VALUES ($1, $2, 'owner', false)`, [rows[0]!.id, contactId]);
   return rows[0]!.id;
 }

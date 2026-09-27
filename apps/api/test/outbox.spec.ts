@@ -509,3 +509,21 @@ test('one pass of the fast lane performs a queued deposit email, without the res
   );
   assert.equal(row.rows[0]!.status, 'sent');
 });
+
+test('THE CLOCK STEP (2026-09-27): a row queued just before the database clock steps back is still due to the drain right behind it', async () => {
+  sent = [];
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Clockstep', email: 'clockstep@example.test' });
+  const quote = await createQuote(
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await depositItemCode() }] }, staffActor(await ceoId())
+  );
+  const s = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  sent = [];
+  const accepted = await acceptQuote(app, s.url.split('/').pop()!, {});
+  // The step, reproduced: the queued row's due time reads AHEAD of the drain's clock, as when the Docker
+  // VM's time sync steps the clock back between the enqueue and the drain. Measured steps are 1 to 2 ms;
+  // 500 ms here so the drain, a few ms behind, still reads it as ahead (a 2 ms reproduction had passed by
+  // the time the drain ran, and the first sabotage of the allowance stayed green).
+  await app.db.query(`UPDATE outbox SET next_attempt_at = now() + interval '500 milliseconds' WHERE object_id = $1 AND status = 'pending'`, [accepted.depositInvoiceId]);
+  const drained = await drainOutbox(app);
+  assert.equal(drained.sent, 1, 'claimed and sent, not left for the next sweep');
+});

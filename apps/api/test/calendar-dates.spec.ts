@@ -82,7 +82,9 @@ test('decision 6: the pause is measured on the database clock, so six backdated 
   await app.db.query(`UPDATE engagements SET price_lock_expires_on = CURRENT_DATE + 20 WHERE id = $1`, [eng.id]);
   await pauseEngagement(app, eng.id, { reason: 'clock test' }, { type: 'system', label: 'test' });
   for (let i = 0; i < 5; i++) {
-    await app.db.query(`UPDATE engagements SET work_paused_at = now() - interval '6 days' WHERE id = $1`, [eng.id]);
+    // Six days and a minute (receipt run 22): exactly six days sat on the floor's edge, and the database
+    // clock stepping back a millisecond between this write and the resume's now() floored it to five.
+    await app.db.query(`UPDATE engagements SET work_paused_at = now() - interval '6 days 1 minute' WHERE id = $1`, [eng.id]);
     const r = await resumeEngagement(app, eng.id, { type: 'system', label: 'test' });
     assert.equal(r.pausedDays, 6, `run ${i + 1}: one clock, six days`);
     await pauseEngagement(app, eng.id, { reason: 'clock test again' }, { type: 'system', label: 'test' });

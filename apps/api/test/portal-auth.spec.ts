@@ -392,7 +392,7 @@ test('#21: the first email is an INVITATION; the second is a bare sign-in link',
   // Both are audited by purpose, so "did they ever get an invite" is answerable.
   const purposes = await app.db.query<{ purpose: string }>(
     `SELECT details->>'purpose' AS purpose FROM audit_log
-      WHERE action = 'magic_link.issued' AND contact_id = $1 ORDER BY occurred_at`,
+      WHERE action = 'magic_link.issued' AND contact_id = $1 ORDER BY id`,
     [nueva.id]
   );
   assert.deepEqual(purposes.rows.map((r) => r.purpose), ['invite', 'login']);

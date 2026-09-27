@@ -41,7 +41,12 @@ after(async () => { await app.close(); });
 
 async function twin(last: string, n: number, extra: { phone?: string; isTest?: boolean; first?: string } = {}): Promise<string> {
   const c = await makeContact(app.db, { firstName: extra.first ?? 'Synthetic', lastName: last, email: `${last.toLowerCase()}-${n}@example.test` });
-  await app.db.query(`UPDATE contacts SET phone = $2, is_test = $3, test_note = CASE WHEN $3 THEN 'Synthetic test record for the duplicate scan spec' END WHERE id = $1`, [c.id, extra.phone ?? null, extra.isTest ?? false]);
+  // The twins' ages are set, n seconds apart (2026-09-27): made a millisecond apart, a backward clock step
+  // or a shared millisecond made "the older one wins" fall to the random uuid tie-break.
+  await app.db.query(
+    `UPDATE contacts SET phone = $2, is_test = $3, test_note = CASE WHEN $3 THEN 'Synthetic test record for the duplicate scan spec' END,
+            created_at = timestamptz '2026-01-01 00:00:00+00' + make_interval(secs => $4) WHERE id = $1`,
+    [c.id, extra.phone ?? null, extra.isTest ?? false, n]);
   return c.id;
 }
 

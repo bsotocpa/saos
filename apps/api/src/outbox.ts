@@ -369,7 +369,10 @@ export async function drainOutbox(app: FastifyInstance, limit = 25): Promise<Dra
       `UPDATE outbox SET attempts = attempts + 1, next_attempt_at = now() + interval '10 minutes'
         WHERE id = (
           SELECT id FROM outbox
-           WHERE status IN ('pending', 'failed') AND next_attempt_at <= now()
+           -- A second's allowance (2026-09-27, the clock-step audit after receipt runs 20 and 21): a row
+           -- enqueued just before a backward clock step reads as due a moment in the future, and a drain
+           -- right behind it claimed nothing. Every backoff is minutes, so a second early is no retry early.
+           WHERE status IN ('pending', 'failed') AND next_attempt_at <= now() + interval '1 second'
            ORDER BY created_at
            FOR UPDATE SKIP LOCKED
            LIMIT 1

@@ -168,7 +168,7 @@ test('admin toggles are audited and drive the gate immediately', async () => {
   assert.equal(await isAutomationEnabled(app, 'attachment_acks'), true);
 
   const audit = await app.db.query<{ action: string }>(
-    `SELECT action FROM audit_log WHERE object_type = 'automation' AND object_id = 'attachment_acks' ORDER BY occurred_at`
+    `SELECT action FROM audit_log WHERE object_type = 'automation' AND object_id = 'attachment_acks' ORDER BY id`
   );
   assert.deepEqual(audit.rows.map((r) => r.action), ['automation.disabled', 'automation.enabled']);
 

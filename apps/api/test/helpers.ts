@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 // Test infrastructure: each suite run gets a FRESH database (dropped and
 // recreated, migrated, seeded via @saos/db) so tests never touch dev data and
 // audit-log immutability can't pollute anything that matters.
@@ -14,9 +16,23 @@ import { encryptSecret } from '../src/crypto.ts';
  * processes — a shared name races on DROP/CREATE). Suffixes are a fixed set,
  * so reruns recycle the same databases instead of accumulating orphans.
  */
+/*
+ * ONE CHECKOUT, ITS OWN TEST DATABASES (2026-09-27). The receipt runs from a worktree
+ * (C:\Users\brian\saos-receipt) while specs run in the main checkout, against the same Postgres. A
+ * spec recreates its database with DROP ... WITH (FORCE), so the same spec in the other checkout lost
+ * its database mid-run. The name now carries a short tag of the checkout's own path.
+ */
+const CHECKOUT_TAG = createHash('sha1').update(fileURLToPath(new URL('../../..', import.meta.url)).toLowerCase()).digest('hex').slice(0, 6);
+
+/** The test database a spec's createTestConfig(suffix) creates, in this checkout. */
+export function testDatabaseName(dbSuffix: string): string {
+  return `saos_api_test_${CHECKOUT_TAG}_${dbSuffix}`;
+}
+
 export async function createTestConfig(dbSuffix: string): Promise<Config> {
   if (!/^[a-z0-9_]+$/.test(dbSuffix)) throw new Error('dbSuffix must be [a-z0-9_]+');
-  const testDb = `saos_api_test_${dbSuffix}`;
+  const testDb = testDatabaseName(dbSuffix);
+  if (testDb.length > 63) throw new Error(`test database name too long for Postgres: ${testDb}`);
   const base = loadConfig({ NODE_ENV: 'test' });
   const url = new URL(base.DATABASE_URL);
 

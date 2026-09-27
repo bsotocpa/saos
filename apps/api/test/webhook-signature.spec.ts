@@ -36,7 +36,7 @@ test('a bad signature is refused with 401, and the audit row names livemode, eve
   assert.equal(res.statusCode, 401, res.body);
 
   const audit = await app.db.query<{ object_id: string; details: Record<string, unknown> }>(
-    `SELECT object_id, details FROM audit_log WHERE action = 'webhook.signature_failed' ORDER BY occurred_at DESC LIMIT 1`);
+    `SELECT object_id, details FROM audit_log WHERE action = 'webhook.signature_failed' ORDER BY id DESC LIMIT 1`);
   assert.equal(audit.rows.length, 1, 'the failure is a durable record');
   const d = audit.rows[0]!.details;
   assert.equal(d.livemode, true, 'the world the event claims');
@@ -56,7 +56,7 @@ test('a body that is not JSON still fails safely, with livemode unknown', async 
   });
   assert.equal(res.statusCode, 401);
   const audit = await app.db.query<{ details: Record<string, unknown> }>(
-    `SELECT details FROM audit_log WHERE action = 'webhook.signature_failed' ORDER BY occurred_at DESC LIMIT 1`);
+    `SELECT details FROM audit_log WHERE action = 'webhook.signature_failed' ORDER BY id DESC LIMIT 1`);
   assert.equal(audit.rows[0]!.details.livemode, null);
   assert.equal(audit.rows[0]!.details.event_id, null);
 });

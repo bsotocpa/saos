@@ -27,7 +27,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
-import { createTestConfig, makeContact, makeStaff, businessFor } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, businessFor, testDatabaseName } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import type { AuthedStaff } from '../src/types.ts';
 import { assertImportPreconditions, declareImportedJurisdictions, setImportedStage } from '../src/modules/tax/import.ts';
@@ -568,10 +568,10 @@ test('R68: on a database whose name does not end in _copy the probe REFUSES befo
   const result = await runInImportContext(IMPORT_LABEL, async () => runImportModeProbe(app, 'spec-refused', await probeDeps(), { log: (l) => lines.push(l) }));
   assert.equal(result.refused, true, 'refused');
   if (!result.refused) return;
-  assert.equal(result.databaseName, 'saos_api_test_trello_import', 'the CONNECTION named the database, not the URL the script was handed');
-  assert.match(result.reason, /^the connection is on 'saos_api_test_trello_import', which does not end in _copy$/);
+  assert.equal(result.databaseName, testDatabaseName('trello_import'), 'the CONNECTION named the database, not the URL the script was handed');
+  assert.equal(result.reason, `the connection is on '${testDatabaseName('trello_import')}', which does not end in _copy`);
   assert.equal(lines.length, 1, 'one line in the run log');
-  assert.match(lines[0]!, /probe spec-refused REFUSED before writing: the connection is on 'saos_api_test_trello_import', which does not end in _copy\./);
+  assert.ok(lines[0]!.includes(`probe spec-refused REFUSED before writing: the connection is on '${testDatabaseName('trello_import')}', which does not end in _copy.`), lines[0]);
 
   // NOTHING WRITTEN: not the probe's own rows, and not a single row anywhere.
   assert.deepEqual(await probeFootprint('spec-refused'), { contacts: 0, engagements: 0, returns: 0, invoices: 0, notifications: 0 });
@@ -583,7 +583,7 @@ test('R68: on a database whose name does not end in _copy the probe REFUSES befo
 test('R68: the same body, with the name judged a copy through the spec-only override, files a synthetic return and raises its invoice — so the guard sits before the first write', async () => {
   const lines: string[] = [];
   const result = await runInImportContext(IMPORT_LABEL, async () =>
-    runImportModeProbe(app, 'spec-copy', await probeDeps(), { databaseNameForSpec: 'saos_api_test_trello_import_copy', log: (l) => lines.push(l) }));
+    runImportModeProbe(app, 'spec-copy', await probeDeps(), { databaseNameForSpec: `${testDatabaseName('trello_import')}_copy`, log: (l) => lines.push(l) }));
   assert.equal(result.refused, false, `not refused: ${JSON.stringify(result)}`);
   if (result.refused) return;
   assert.equal(result.reached, 'filed', `the probe walked to filed; log: ${lines.join(' / ')}`);

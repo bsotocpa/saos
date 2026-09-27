@@ -352,7 +352,7 @@ test('the purge door: a report persisted the way the 2026-09-20 parser did is re
   assert.match(after.rows[0]!.description, /\*\*\*\*\*5678 and \*\*\*\*\*1234/);
   const twice = await purgeReportIdentifiers(app, actor(), r.reportId);
   assert.deepEqual(twice, { rawFileIdentifiers: 0, ackRowsRewritten: 0, tasksRewritten: 0, auditRowsHoldingIdentifiers: 0 }, 'idempotent');
-  const audit = await app.db.query<{ details: Record<string, number> }>(`SELECT details FROM audit_log WHERE action = 'efile_ack.identifiers_purged' AND object_id = $1 ORDER BY occurred_at`, [r.reportId]);
+  const audit = await app.db.query<{ details: Record<string, number> }>(`SELECT details FROM audit_log WHERE action = 'efile_ack.identifiers_purged' AND object_id = $1 ORDER BY id`, [r.reportId]);
   assert.equal(audit.rows.length, 2);
   assert.equal(audit.rows[0]!.details['raw_file_identifiers_masked'], 1);
   assert.equal(audit.rows[0]!.details['tasks_rewritten'], 1);
