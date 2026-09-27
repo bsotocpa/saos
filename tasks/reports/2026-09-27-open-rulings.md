@@ -1,17 +1,15 @@
 # open-rulings (2026-09-27)
 
-Generated 2026-09-27T06:55:59.864Z by scripts/report-table.mjs from the log open-rulings.log; 150 row(s).
-
-Every ruling in tasks/todo.md at the end of the 2026-09-26/27 batch 6, with its state.
+Generated 2026-09-27T11:19:52.784Z by scripts/report-table.mjs from the log open.log; 163 row(s).
 
 ```sql
-node scripts/open-rulings.mjs  (every ruling line in tasks/todo.md, classified open or closed)
+node scripts/open-rulings.mjs
 ```
 
 | id | date | text | state | outcome |
 |---|---|---|---|---|
 | R-01 | 2026-09-12 | Co-facilitation: a session records one staffer (the uploader) | OPEN |  |
-| R-02 | 2026-09-12 | Hilo referral discount: a price-book tier applied at quote time, shown on the proposal; Brian supplies the amount in v6 (2026-09-12, ruling | OPEN |  |
+| R-02 | 2026-09-12 | Hilo referral discount: a price-book tier applied at quote time, shown on the proposal; Brian supplies the amount in v6 (2026-09-12, ruling | closed | closed |
 | R-03 | 2026-10-12 | Docuseal volume and /mnt/saos-data/docuseal: remove on 2026-10-12. | OPEN |  |
 | R-04 | 2026-09-26 | d) Soto Accounting LLC business record: | closed | DONE 2026-09-26, Brian entered it with its EIN through the Edit control (R38). Was: missing on the box; Brian enters it with the EIN on the |
 | R-05 | 2026-09-12 | Monday's first message re-checks the standing rules (Brian, 2026-09-12 evening). | OPEN |  |
@@ -147,16 +145,29 @@ node scripts/open-rulings.mjs  (every ruling line in tasks/todo.md, classified o
 | R-135 | 2026-09-26 | RULED 2026-09-26 (batch 6), R69: the 8879 signed date is correctable. "Correct the filing" gains "Signed on" for the authorization: standalo | closed | SHIPPED 2026-09-27: "Correct the filing" gains "Signed on" (refused after today or after the filed day), "Form" (the variant) and "Replace t |
 | R-136 | 2026-09-26 | RULED 2026-09-26 (batch 6), R40 build: the business page at /businesses/[id] as proposed (entity details, owners, engagements, returns, serv | closed | BUILT 2026-09-27 (local; the switch is off in .env.production until Brian approves): GET /businesses/:id (crm/routes.ts, per-card refusals a |
 | R-137 | 2026-09-26 | RULED 2026-09-26 (batch 6), R32: when Brian writes "keys are set," run the live refund spec, paste the pass line and the table, flip OPS_REF | closed | DONE 2026-09-27: keys set; the live spec passed against Stripe's test API (2 payments, a full and two partial refunds through the adapter, t |
-| R-138 | 2026-09-26 | RULED 2026-09-26 (batch 6), R41 and R50: both stay off until Brian's approval message; on R50's approval flip the switch, run the receipt, d | OPEN |  |
-| R-139 | 2026-09-26 | RULED 2026-09-26 (batch 6, BUILD ORDER): 1 R63 first, before Brian's re-upload is more than an hour old. 2 R48. 3 R64 and R65; deploy; a sho | OPEN |  |
-| R-140 | 2026-09-26 | RULED 2026-09-26 (batch 6, REPORT; open with OPEN RULINGS; tables are files written by scripts; counts only): the R63 answer and any purge; | OPEN |  |
+| R-138 | 2026-09-26 | RULED 2026-09-26 (batch 6), R41 and R50: both stay off until Brian's approval message; on R50's approval flip the switch, run the receipt, d | closed | closed |
+| R-139 | 2026-09-26 | RULED 2026-09-26 (batch 6, BUILD ORDER): 1 R63 first, before Brian's re-upload is more than an hour old. 2 R48. 3 R64 and R65; deploy; a sho | closed | closed |
+| R-140 | 2026-09-26 | RULED 2026-09-26 (batch 6, REPORT; open with OPEN RULINGS; tables are files written by scripts; counts only): the R63 answer and any purge; | closed | closed |
 | R-141 | 2026-09-27 | RULED 2026-09-27 (batch 6), R50 sent back | closed | BUILT 2026-09-27 as five phases behind OPS_RETURN_STEPPER (off): nine full-resolution screenshots in C:\Users\brian\saos-shots\stepper-v2 se |
 | R-142 | 2026-09-27 | RULED 2026-09-27 (batch 6), R69 amended: "Correct the filing" also allows replacing the signed-authorization scan with the same reason; the | closed | SHIPPED 2026-09-27 with R69 above. |
 | R-143 | 2026-09-27 | RULED 2026-09-27 (batch 6), R47 verified | closed | closed |
-| R-144 |  | Then the Monday walk as written. | OPEN |  |
-| R-145 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
-| R-146 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |
-| R-147 | 2026-09-12 | RULED 2026-09-12 | OPEN |  |
-| R-148 | 2026-09-12 | RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks th | OPEN |  |
-| R-149 | 2026-09-12 | Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12). | closed | closed |
-| R-150 | 2026-09-12 | FIRST REAL-DATA RUN (Brian, 2026-09-12) | OPEN |  |
+| R-144 | 2026-09-27 | RULED 2026-09-27 (batch 7), R70: the stepper's "in view when the row opens" is the page-mount scroll | closed | closed |
+| R-145 | 2026-09-27 | RULED 2026-09-27 (batch 7), R71 | closed | BUILT 2026-09-27: OPS_URL in the env files; the reset-MFA mail gains "Sign in here: <link>" (rows on a box through the ruled copy correction |
+| R-146 | 2026-09-27 | RULED 2026-09-27 (batch 7), R72: 8879-F is the authorization variant defaulted for a 1041 | closed | BUILT 2026-09-27: the fifth variant in the API and Ops, migration 0127, unit tests, sabotage logged. |
+| R-147 | 2026-09-27 | RULED 2026-09-27 (batch 7), R73 | closed | ANSWERED 2026-09-27 in a short message (tasks/reports/2026-09-27-path-b-preflight.md): the change-order send gate matched (contact, line, pe |
+| R-148 | 2026-09-27 | RULED 2026-09-27 (batch 7), R74 (report-only): handover packet for Ana-Maria, one page at docs/handover/2026-10-19-ana-maria.md, plain Engli | closed | closed |
+| R-149 | 2026-09-27 | RULED 2026-09-27 (batch 7), R48 confirm: state that the return-delivered notice went live with "We'll be in touch about signing next." and t | closed | closed |
+| R-150 | 2026-09-27 | RULED 2026-09-27 (batch 7), R41, R50, R40: all three stay off until Brian's approval message; each flipped on its own, each with a receipt r | OPEN |  |
+| R-151 | 2026-09-27 | RULED 2026-09-27 (batch 7), TRELLO CUTOVER PREPARATION (report-only, build nothing until Brian rules): about 30 of the 55 sales-tax cards ar | OPEN |  |
+| R-152 | 2026-09-27 | RULED 2026-09-27 (batch 7), R75: price book v6 | closed | BUILT 2026-09-27: the door takes new lines and rules and now copies catalog groups and packages; migration 0129; the discount through quote, |
+| R-153 | 2026-09-27 | RULED 2026-09-27 (batch 7, BUILD ORDER): 1 R73 first, as a message. 2 R71 and R72 (and R75), taps and one logged sabotage each; deploy. 3 R7 | closed | closed |
+| R-154 | 2026-09-27 | RULED 2026-09-27 (batch 7, REPORT; open with OPEN RULINGS; tables are files written by scripts; counts only): the R73 answers, the R48 confi | OPEN |  |
+| R-155 | 2026-09-27 | RULING NEEDED (batch 7, 2026-09-27): the temporary-password notice and the recovery-code alert did not exist as mail before R71; they were a | OPEN |  |
+| R-156 | 2026-09-27 | KNOWN RISK (batch 7, 2026-09-27, the clock-step audit): orderings by created_at between back-to-back requests remain in the config history r | OPEN |  |
+| R-157 |  | Then the Monday walk as written. | OPEN |  |
+| R-158 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
+| R-159 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |
+| R-160 | 2026-09-12 | RULED 2026-09-12 | OPEN |  |
+| R-161 | 2026-09-12 | RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks th | OPEN |  |
+| R-162 | 2026-09-12 | Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12). | closed | closed |
+| R-163 | 2026-09-12 | FIRST REAL-DATA RUN (Brian, 2026-09-12) | OPEN |  |
