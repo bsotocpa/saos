@@ -42,6 +42,8 @@ const schema = z.object({
   MAGIC_LINK_TTL_MINUTES: z.coerce.number().int().positive().default(30),
   PORTAL_SESSION_DAYS: z.coerce.number().int().positive().default(30),
   PORTAL_BASE_URL: z.url().default('http://localhost:3000'),
+  // The Ops app's origin (R71, 2026-09-27): staff mail links to its sign-in page (OPS_URL + /login).
+  OPS_URL: z.url().default('http://localhost:3005'),
   // Google Business Profile review link (M27 review asks). Defaults to the GBP
   // search-redirect form so the automation is never sending a broken link; Brian
   // pastes the short g.page link once the profile is verified.

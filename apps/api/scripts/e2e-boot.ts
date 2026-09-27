@@ -59,6 +59,8 @@ process.env.OPS_BUSINESS_PAGE = 'on';
  * the config is read: a spec navigates to what the client was emailed, never to a URL it assembled.
  */
 process.env.PORTAL_BASE_URL = `http://localhost:${process.env.E2E_PORTAL_PORT ?? 3106}`;
+// R71 (2026-09-27): staff mail links to the Ops sign-in page; in the harness that is the harness Ops app.
+process.env.OPS_URL = `http://localhost:${process.env.E2E_OPS_PORT ?? 3105}`;
 const config = await createTestConfig('e2e');
 if (!/localhost|127\.0\.0\.1/.test(config.DATABASE_URL)) throw new Error('refusing: the harness database is not local');
 /*
@@ -83,6 +85,12 @@ const quoteLinks: string[] = [];
  */
 const confirmTokens: string[] = [];
 const confirmLinks: string[] = [];
+/*
+ * AND THE STAFF MAIL (R71, 2026-09-27): the reset-MFA notice, the temporary-password notice and the
+ * recovery-code alert each link to the Ops sign-in page. Kept whole with the recipient and subject, so a
+ * spec opens the link a named member was emailed, and can assert what the message does NOT carry.
+ */
+const staffMails: Array<{ to: string; subject: string; text: string; opsLinks: string[] }> = [];
 const silentMailer: Mailer = {
   transport: 'console',
   async send(msg) {
@@ -93,6 +101,8 @@ const silentMailer: Mailer = {
     if (confirm) { confirmTokens.push(confirm[2]!); confirmLinks.push(confirm[1]!); }
     const quote = /(https?:\/\/\S+\/quote\/([A-Za-z0-9_-]{20,}))/.exec(body);
     if (quote) { quoteTokens.push(quote[2]!); quoteLinks.push(quote[1]!); }
+    const ops = [...body.matchAll(/(https?:\/\/\S+\/login)(?=\s|$)/g)].map((m) => m[1]!);
+    if (ops.length > 0) staffMails.push({ to: msg.to, subject: msg.subject ?? '', text: msg.text ?? '', opsLinks: ops });
     return { id: 'e2e' };
   },
 };
@@ -103,7 +113,7 @@ const app = buildServer(config, { mailer: silentMailer });
  * Registered before ready(), served on the harness API port, and it exists only in this script —
  * nothing in apps/api/src knows about it, and the boot has already refused a non-local database.
  */
-app.get('/harness/mail-links', async () => ({ quoteTokens, magicTokens, quoteLinks, magicLinks, confirmTokens, confirmLinks }));
+app.get('/harness/mail-links', async () => ({ quoteTokens, magicTokens, quoteLinks, magicLinks, confirmTokens, confirmLinks, staffMails }));
 /*
  * THE MIGRATED CLIENT (Brian, 2026-09-20). A client who came over from the old system signs in
  * with the address their portal account was made on; the contact record carries the corrected one.

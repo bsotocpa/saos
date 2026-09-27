@@ -13,6 +13,10 @@
  *       next sign-in lands on the enrolment screen;
  *   M4  the role proof: comms_billing (Rene's role) sees no Reset MFA control and the route says
  *       "This session does not hold staff.mfa.reset."
+ *   M5  R71 (2026-09-27): the three staff mails this walk produced (the temporary-password notice at
+ *       Add staff, the recovery-code alert to the CEO at M2, the reset notice at M3) are read from the
+ *       harness mailbox; each link opens the Ops sign-in page, the notice never carries the password,
+ *       and the reset mail's link signs the member in to the enrolment screen.
  *
  * Nothing here is a secret: the accounts are synthetic and the codes die with the harness database.
  */
@@ -39,6 +43,7 @@ const M1_CONTROL = '/login Email, Password (the temporary one), "Sign in"; secre
 const M2_CONTROL = '/login "Authenticator code or recovery code (if enrolled)" with a recovery code, "Sign in"; the mfa_recovery_used task and the Ops alert read through GET /tasks/search and GET /notifications as the CEO; the same code again refused inline';
 const M3_CONTROL = '/admin/staff row button "Reset MFA…", modal "Reset MFA for …?", reason textarea, button "Reset MFA"; the row\'s MFA badge reads pending; the member\'s /login lands on the enrolment screen';
 const M4_CONTROL = '/admin/staff as comms_billing: no "Reset MFA…" button; POST /staff/:id/mfa/reset answers 403 "This session does not hold staff.mfa.reset."';
+const M5_CONTROL = 'the harness mailbox (GET /harness/mail-links staffMails): "Your SAOS sign-in: a temporary password was issued", "SAOS alert: … signed in with an MFA recovery code", "Your SAOS sign-in: MFA was reset"; each "Sign in here:" link opened in the address bar → /login Email, Password, "Sign in"; the reset link signs the member in to the enrolment screen';
 const ROLES = 'ceo (staff.mfa.reset, explicit-only); the member signs in as themselves';
 
 const code = (secret: string) => new OTPAuth.TOTP({ algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(secret) }).generate();
@@ -93,7 +98,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 }
 
 test.describe('Ops → MFA recovery codes and Reset MFA (R65)', () => {
-  test('M1–M4: enrolment shows the codes once, a code signs in once and alerts the CEO, the CEO resets MFA with a reason, comms_billing is refused', async ({ page }, testInfo) => {
+  test('M1–M5: enrolment shows the codes once, a code signs in once and alerts the CEO, the CEO resets MFA with a reason, comms_billing is refused, each staff mail links to the Ops sign-in page', async ({ page }, testInfo) => {
     test.setTimeout(300_000);
     const viewport = testInfo.project.name;
     const cap = viewport.charAt(0).toUpperCase() + viewport.slice(1);
@@ -223,14 +228,49 @@ test.describe('Ops → MFA recovery codes and Reset MFA (R65)', () => {
       expect(refused.body.message).toBe('This session does not hold staff.mfa.reset.');
       await page.screenshot({ path: shot('M4'), fullPage: true });
       cleared.add('M4');
+
+      // ── M5 (R71): each staff mail's link, read from the harness mailbox, opens the Ops sign-in page.
+      await signOut(page);
+      const box = (await (await fetch(`${API}/harness/mail-links`)).json()) as {
+        staffMails: Array<{ to: string; subject: string; text: string; opsLinks: string[] }>;
+      };
+      const one = (subject: string, to?: string) => {
+        const hits = box.staffMails.filter((m) => m.subject === subject && (to === undefined || m.to === to));
+        expect(hits.length, `one mail "${subject}"`).toBe(1);
+        expect(hits[0]!.opsLinks.length, `"${subject}" carries one sign-in link`).toBe(1);
+        return hits[0]!;
+      };
+      const notice = one('Your SAOS sign-in: a temporary password was issued', email);
+      expect(notice.text, 'the notice never carries the password').not.toContain(tempPassword);
+      const alertMail = one(`SAOS alert: ${displayName} signed in with an MFA recovery code`);
+      for (const c of codes) expect(alertMail.text, 'no code in the alert mail').not.toContain(c);
+      const resetMail = one('Your SAOS sign-in: MFA was reset', email);
+      for (const m of [notice, alertMail, resetMail]) {
+        const link = m.opsLinks[0]!;
+        expect(new URL(link).pathname, `${m.subject}: the Ops sign-in page`).toBe('/login');
+        await page.goto(link);
+        await page.waitForLoadState('networkidle');
+        await expect(page.getByLabel('Email'), `${m.subject}: the sign-in form`).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+      }
+      // The reset mail's page is a working sign-in: the member lands on enrolment, as M3 said they would.
+      await page.goto(resetMail.opsLinks[0]!);
+      await page.waitForLoadState('networkidle');
+      await page.getByLabel('Email').fill(email);
+      await page.getByLabel('Password', { exact: true }).fill(ownPassword);
+      await expect(page.getByLabel('Email')).toHaveValue(email);
+      await page.getByRole('button', { name: 'Sign in' }).click();
+      await expect(page.getByTestId('totp-secret'), 'the link signs the member in to enrolment').toBeVisible();
+      await page.screenshot({ path: shot('M5'), fullPage: true });
+      cleared.add('M5');
     } finally {
-      for (const step of ['M1', 'M2', 'M3', 'M4']) {
+      for (const step of ['M1', 'M2', 'M3', 'M4', 'M5']) {
         const file = shots[step] ?? testInfo.outputPath(`mfa-${step}-${viewport}.png`);
         // A step that never reached its own screenshot keeps the screen as it was when the walk stopped.
         if (!shots[step] && !existsSync(file)) await page.screenshot({ path: file, fullPage: true }).catch(() => undefined);
         testInfo.annotations.push({ type: 'screenshot', description: keepScreenshot(`mfa-${step}-${viewport}`, cleared.has(step), file) });
       }
-      const controls: Record<string, string> = { M1: M1_CONTROL, M2: M2_CONTROL, M3: M3_CONTROL, M4: M4_CONTROL };
+      const controls: Record<string, string> = { M1: M1_CONTROL, M2: M2_CONTROL, M3: M3_CONTROL, M4: M4_CONTROL, M5: M5_CONTROL };
       for (const step of cleared) testInfo.annotations.push({ type: 'walk-step', description: `${step}|${controls[step]}|${step === 'M4' ? 'role proof: comms_billing sees no control, POST refused 403' : ROLES}|tap` });
     }
   });

@@ -363,6 +363,9 @@ export async function raiseRecoveryCodeUsedAlert(
       relatedObjectType: 'task',
       relatedObjectId: task.id,
     });
+    // R71: and a mail to the same person, linking to the Ops sign-in page. The task and the alert stand either way.
+    const { sendMfaRecoveryUsedMail } = await import('../staff/mail.ts');
+    await sendMfaRecoveryUsedMail(app, recipient, { memberName: used.fullName, remaining: used.remaining });
   }
 }
 

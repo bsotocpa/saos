@@ -193,7 +193,7 @@ export const templates = [
     name: 'Staff: your MFA was reset',
     channel: 'email',
     isPlaceholder: false,
-    variables: ['display_name', 'reset_by'],
+    variables: ['display_name', 'reset_by', 'ops_signin_url'],
     subjectEn: 'Your SAOS sign-in: MFA was reset',
     subjectEs: 'Su acceso a SAOS: se restableció la MFA',
     bodyEn:
@@ -202,6 +202,7 @@ export const templates = [
       'have been signed out, and the authenticator and recovery codes you had no longer work.\n\n' +
       'At your next sign-in you will enrol a new authenticator and receive a new set of ' +
       'recovery codes. Your password is unchanged.\n\n' +
+      'Sign in here: {{ops_signin_url}}\n\n' +
       'If you did not expect this, speak to {{reset_by}} before signing in.\n\n' +
       '— SAOS',
     bodyEs:
@@ -210,7 +211,66 @@ export const templates = [
       'sesiones abiertas se cerraron, y el autenticador y los códigos de recuperación que tenía ya no funcionan.\n\n' +
       'En su próximo inicio de sesión registrará un nuevo autenticador y recibirá un nuevo ' +
       'juego de códigos de recuperación. Su contraseña no cambió.\n\n' +
+      'Inicie sesión aquí: {{ops_signin_url}}\n\n' +
       'Si no esperaba esto, hable con {{reset_by}} antes de iniciar sesión.\n\n' +
+      '— SAOS',
+  },
+  {
+    /*
+     * STAFF MAIL (Brian, 2026-09-27, R71): a temporary password was issued by Add staff or Regenerate.
+     * The password is NEVER in this message; it is handed over by the person who minted it, as before.
+     * The mail says who will hand it over and where the Ops sign-in page is.
+     */
+    key: 'staff_temp_password',
+    name: 'Staff: a temporary password was issued',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['display_name', 'issued_by', 'ops_signin_url'],
+    subjectEn: 'Your SAOS sign-in: a temporary password was issued',
+    subjectEs: 'Su acceso a SAOS: se emitió una contraseña temporal',
+    bodyEn:
+      'Hi {{display_name}},\n\n' +
+      '{{issued_by}} issued a temporary password for your SAOS staff account. {{issued_by}} will give it ' +
+      'to you directly; it is never sent by email. It works for one sign-in and expires 72 hours after ' +
+      'it was issued.\n\n' +
+      'Sign in here: {{ops_signin_url}}\n\n' +
+      'If you did not expect this, speak to {{issued_by}} before signing in.\n\n' +
+      '— SAOS',
+    bodyEs:
+      'Hola {{display_name}}:\n\n' +
+      '{{issued_by}} emitió una contraseña temporal para su cuenta de personal en SAOS. {{issued_by}} se la ' +
+      'entregará directamente; nunca se envía por correo electrónico. Sirve para un inicio de sesión y vence ' +
+      '72 horas después de emitida.\n\n' +
+      'Inicie sesión aquí: {{ops_signin_url}}\n\n' +
+      'Si no esperaba esto, hable con {{issued_by}} antes de iniciar sesión.\n\n' +
+      '— SAOS',
+  },
+  {
+    /*
+     * STAFF MAIL (Brian, 2026-09-27, R71): the alert recipient (the CEO) is told a member signed in with
+     * a single-use MFA recovery code. The task and the Ops alert are unchanged; this is the same news in
+     * the inbox, with the way into Ops. Never the code.
+     */
+    key: 'staff_mfa_recovery_used',
+    name: 'Staff alert: an MFA recovery code was used',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['display_name', 'member', 'remaining', 'ops_signin_url'],
+    subjectEn: 'SAOS alert: {{member}} signed in with an MFA recovery code',
+    subjectEs: 'Alerta de SAOS: {{member}} inició sesión con un código de recuperación de MFA',
+    bodyEn:
+      'Hi {{display_name}},\n\n' +
+      '{{member}} signed in to SAOS with one of their single-use MFA recovery codes instead of their ' +
+      'authenticator; {{remaining}} of the set remain. The task is waiting in Ops: ask them why, and if the ' +
+      'phone is gone, reset their MFA on their row in Staff.\n\n' +
+      'Sign in here: {{ops_signin_url}}\n\n' +
+      '— SAOS',
+    bodyEs:
+      'Hola {{display_name}}:\n\n' +
+      '{{member}} inició sesión en SAOS con uno de sus códigos de recuperación de MFA de un solo uso en lugar ' +
+      'de su autenticador; le quedan {{remaining}}. La tarea le espera en Ops: pregúntele por qué y, si ya no ' +
+      'tiene el teléfono, restablezca su MFA en su fila de Personal.\n\n' +
+      'Inicie sesión aquí: {{ops_signin_url}}\n\n' +
       '— SAOS',
   },
   {
@@ -1174,6 +1234,23 @@ const RULED_COPY_CORRECTIONS = [
     en: { from: 'We’ll follow up on the e-file authorization next.', to: 'We’ll be in touch about signing next.' },
     es: { from: 'Luego le enviaremos la autorización de presentación electrónica.', to: 'Luego le escribiremos sobre la firma.' },
   },
+  {
+    /*
+     * R71: the reset-MFA mail links to the Ops sign-in page. The `from` spans the two sentences the link
+     * goes between, so once it has landed the old text is gone and a second run finds nothing to do.
+     */
+    key: 'staff_mfa_reset',
+    ruling: 'R71 (Brian, 2026-09-27): staff mail links to the Ops sign-in page',
+    en: {
+      from: 'Your password is unchanged.\n\nIf you did not expect this',
+      to: 'Your password is unchanged.\n\nSign in here: {{ops_signin_url}}\n\nIf you did not expect this',
+    },
+    es: {
+      from: 'Su contraseña no cambió.\n\nSi no esperaba esto',
+      to: 'Su contraseña no cambió.\n\nInicie sesión aquí: {{ops_signin_url}}\n\nSi no esperaba esto',
+    },
+    addVariables: ['ops_signin_url'],
+  },
 ];
 
 /** Apply the ruled corrections to rows still carrying the old sentence; report each row touched or left. */
@@ -1190,6 +1267,13 @@ export async function applyRuledCopyCorrections(client) {
       [c.key, c.en.from, c.en.to, c.es.from, c.es.to]
     );
     if (res.rowCount > 0) {
+      // A variable the ruled sentence introduces joins the row's list, so Admin → Templates names it.
+      for (const v of c.addVariables ?? []) {
+        await client.query(
+          `UPDATE templates SET variables = variables || to_jsonb($2::text) WHERE key = $1 AND NOT (variables ? $2)`,
+          [c.key, v]
+        );
+      }
       await client.query(
         `INSERT INTO audit_log (actor_type, actor_label, action, object_type, object_id, details)
          SELECT 'system', 'seed: ruled copy correction', 'template.updated', 'template', t.id::text,

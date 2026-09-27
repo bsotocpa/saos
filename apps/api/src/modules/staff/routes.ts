@@ -9,7 +9,7 @@ import { writeAudit } from '../../audit.ts';
 import { requirePermission } from '../../plugins/auth.ts';
 import { reasonText } from '../../reasons.ts';
 import { AppError } from '../../types.ts';
-import { sendTemplatedEmail } from '../templates/service.ts';
+import { sendStaffMfaResetMail, sendStaffTempPasswordMail } from './mail.ts';
 
 const CreateStaffBody = z.object({
   email: z.email(),
@@ -110,7 +110,12 @@ export function registerStaffRoutes(app: FastifyInstance): void {
       ...meta(request),
       details: { role: role.key },
     });
-    return reply.code(201).send({ id: staffId, tempPassword });
+    // R71: the member is told a temporary password exists, who will hand it over, and where to sign in.
+    // Never the password itself; the reveal below stays the only place it is shown.
+    const mail = await sendStaffTempPasswordMail(
+      app, { id: staffId, email: body.email, displayName: body.displayName ?? body.legalName }, actor.fullName
+    );
+    return reply.code(201).send({ id: staffId, tempPassword, emailed: mail.emailed });
   });
 
   app.patch<{ Params: { id: string } }>('/staff/:id', guarded, async (request) => {
@@ -198,8 +203,8 @@ export function registerStaffRoutes(app: FastifyInstance): void {
   app.post<{ Params: { id: string } }>('/staff/:id/password/regenerate', guarded, async (request) => {
     const actor = request.staff!;
     const targetId = z.uuid().parse(request.params.id);
-    const { rows } = await app.db.query<{ id: string; is_active: boolean; display_name: string }>(
-      `SELECT id, is_active, display_name FROM staff WHERE id = $1`, [targetId]
+    const { rows } = await app.db.query<{ id: string; is_active: boolean; display_name: string; email: string }>(
+      `SELECT id, is_active, display_name, email FROM staff WHERE id = $1`, [targetId]
     );
     const target = rows[0];
     if (!target) throw new AppError(404, 'not_found', 'Staff member not found.');
@@ -220,7 +225,11 @@ export function registerStaffRoutes(app: FastifyInstance): void {
       ...meta(request),
       details: { sessions_revoked: revoked.rowCount ?? 0, expires_in_hours: 72 },
     });
-    return { id: targetId, tempPassword };
+    // R71: the notice with the Ops sign-in link, never the password.
+    const mail = await sendStaffTempPasswordMail(
+      app, { id: targetId, email: target.email, displayName: target.display_name }, actor.fullName
+    );
+    return { id: targetId, tempPassword, emailed: mail.emailed };
   });
 
   /**
@@ -251,22 +260,11 @@ export function registerStaffRoutes(app: FastifyInstance): void {
         `UPDATE staff_sessions SET revoked_at = now() WHERE staff_id = $1 AND revoked_at IS NULL`, [targetId]
       );
 
-      // Staff mail (not client mail): the member learns their authenticator is gone before they meet the enrolment screen.
-      let emailed = false;
-      let emailRefused: string | null = null;
-      try {
-        await sendTemplatedEmail(app, {
-          to: target.email,
-          templateKey: 'staff_mfa_reset',
-          language: 'en',
-          vars: { display_name: target.display_name, reset_by: actor.fullName },
-        });
-        emailed = true;
-      } catch (err) {
-        // The reset stands whether or not the mail went; the answer says which.
-        emailRefused = err instanceof Error ? err.message : 'mail refused';
-        app.log.warn({ err, staffId: targetId }, 'staff_mfa_reset mail not sent');
-      }
+      // Staff mail (not client mail): the member learns their authenticator is gone before they meet the
+      // enrolment screen, and (R71) where the sign-in page is. The reset stands whether or not the mail went.
+      const { emailed, emailRefused } = await sendStaffMfaResetMail(
+        app, { id: targetId, email: target.email, displayName: target.display_name }, actor.fullName
+      );
 
       await writeAudit(app.db, {
         actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,

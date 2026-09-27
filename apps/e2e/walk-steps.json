@@ -78,7 +78,8 @@
         { "id": "M1", "text": "Enrolment shows eight recovery codes once and waits for 'I saved these'", "device": "phone + laptop" },
         { "id": "M2", "text": "A recovery code signs in once and is consumed; the same code is refused; the CEO gets the alert task", "device": "phone + laptop" },
         { "id": "M3", "text": "The CEO presses Reset MFA with a reason on the staff row; the member's next sign-in lands on enrolment", "device": "phone + laptop" },
-        { "id": "M4", "text": "Role proof: comms_billing sees no Reset MFA control and the route refuses 403", "device": "phone + laptop" }
+        { "id": "M4", "text": "Role proof: comms_billing sees no Reset MFA control and the route refuses 403", "device": "phone + laptop" },
+        { "id": "M5", "text": "Each staff mail (temporary password issued, recovery code used, MFA reset) links to the Ops sign-in page; the link opened from the mailbox signs the member in; the notice never carries the password (R71)", "device": "phone + laptop" }
       ]
     },
     "P": {

@@ -97,11 +97,23 @@ export const UNGATED_CLIENT_SENDS: Record<string, UngatedClientSend> = {
   },
 
   // ── Staff mail: the notice of an action on their own account ────────────────
-  'modules/staff/routes.ts:registerStaffRoutes': {
+  'modules/staff/mail.ts:sendStaffMfaResetMail': {
     template: 'staff_mfa_reset',
     recipientClass: 'staff',
     reason:
-      'R65: the CEO pressed Reset MFA on a staff member with a reason, and the one message tells that staff member their authenticator no longer works and to enrol again at next sign-in. Not client mail, so no automation toggle: a toggle here would leave a member locked out of a re-enrolment nobody told them about.',
+      'R65: the CEO pressed Reset MFA on a staff member with a reason, and the one message tells that staff member their authenticator no longer works and to enrol again at next sign-in (R71: with the Ops sign-in link). Not client mail, so no automation toggle: a toggle here would leave a member locked out of a re-enrolment nobody told them about.',
+  },
+  'modules/staff/mail.ts:sendStaffTempPasswordMail': {
+    template: 'staff_temp_password',
+    recipientClass: 'staff',
+    reason:
+      'R71: the CEO pressed Create account or Regenerate on a staff member, and the one message tells that member a temporary password exists, who will hand it over, and where the Ops sign-in page is. Never the password. Staff mail, a person\'s press seconds earlier: no automation toggle.',
+  },
+  'modules/staff/mail.ts:sendMfaRecoveryUsedMail': {
+    template: 'staff_mfa_recovery_used',
+    recipientClass: 'staff',
+    reason:
+      'R71: a staff member signed in with a single-use MFA recovery code; the alert recipient (the CEO) gets the mail beside the task and the Ops alert, linking to the Ops sign-in page. An internal security alert, never client mail; internal alerts are never gated.',
   },
 
   // ── Gated, but by something stronger than an automation toggle ──────────────
