@@ -293,6 +293,11 @@ const dict = {
   returns_next_f8879_on_file: ['We have your signed Form 8879 and are filing your return.', 'Tenemos su Formulario 8879 firmado y estamos presentando su declaración.'],
   returns_next_filed: ['Filed. We will let you know when it is accepted.', 'Presentada. Le avisaremos cuando sea aceptada.'],
   returns_next_accepted: ['Accepted.', 'Aceptada.'],
+  // The completed line reads per declared jurisdiction (R48, Brian's words): {{where}} is the IRS or the
+  // state's name in the reader's language (lib/states.ts), {{date}} the calendar day through formatDate.
+  returns_next_accepted_by: ['Accepted by {{where}} on {{date}}.', 'Aceptada por {{where}} el {{date}}.'],
+  returns_next_mailed_to: ['Mailed to {{where}} on {{date}}.', 'Enviada por correo a {{where}} el {{date}}.'],
+  jurisdiction_irs: ['the IRS', 'el IRS'],
 
   // Sign
   sign_title: ['Sign Documents', 'Firmar documentos'],

@@ -18,7 +18,9 @@ export const roles = [
     // "Brian only" at all.
     // 'pricing.packages.save' (2026-09-20): saving a quote's lines as a package is the CEO's
     // alone, the same explicit-only mechanism as the deposit override.
-    permissions: ['*', 'deposits.override', 'pricing.packages.save'], // '*' includes referrals.approve (Jackson too)
+    // 'staff.mfa.reset' (2026-09-26, R65): resetting a staff member's MFA is the CEO's alone, the same
+    // explicit-only mechanism; comms_billing and every '*' holder that is not this role are refused.
+    permissions: ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset'], // '*' includes referrals.approve (Jackson too)
   },
   {
     key: 'ed_coo',

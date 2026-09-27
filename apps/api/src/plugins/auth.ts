@@ -98,6 +98,9 @@ export const EXPLICIT_ONLY_PERMISSIONS: ReadonlySet<string> = new Set([
   'deposits.override',
   // Saving a quote's lines as a package (2026-09-20): the CEO alone.
   'pricing.packages.save',
+  // Resetting a staff member's MFA (2026-09-26, R65): the CEO alone. Not money, but the one door
+  // that removes a second factor from an account, so the wildcard must not hand it out.
+  'staff.mfa.reset',
 ]);
 
 /**

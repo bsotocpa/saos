@@ -21,6 +21,13 @@ export interface TaskTypeSop {
 }
 
 export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
+  // ── Security (the CEO) ─────────────────────────────────────────────────────
+  /**
+   * A staff member signed in with an MFA recovery code instead of their authenticator
+   * (2026-09-26, R65). One task per use, owned by the CEO; the procedure is the questions to ask
+   * and the Reset MFA door on the staff page.
+   */
+  mfa_recovery_used: { sop: 'brian-mfa-recovery-used' },
   // ── Client comms & billing (Rene) ──────────────────────────────────────────
   ladder_call: { sop: 'rene-escalation-call' },
   dunning_call: { sop: 'rene-dunning-call' },

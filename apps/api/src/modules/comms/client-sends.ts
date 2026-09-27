@@ -96,6 +96,14 @@ export const UNGATED_CLIENT_SENDS: Record<string, UngatedClientSend> = {
       'The document request a preparer just built, item by item, and sent — the client is being told what is needed to continue their return. The recurring reminders that follow while it sits open ARE gated, as `document_chase`. Arming the first message would mean a preparer assembles a list, presses send, and the client never learns anything is wanted.',
   },
 
+  // ── Staff mail: the notice of an action on their own account ────────────────
+  'modules/staff/routes.ts:registerStaffRoutes': {
+    template: 'staff_mfa_reset',
+    recipientClass: 'staff',
+    reason:
+      'R65: the CEO pressed Reset MFA on a staff member with a reason, and the one message tells that staff member their authenticator no longer works and to enrol again at next sign-in. Not client mail, so no automation toggle: a toggle here would leave a member locked out of a re-enrolment nobody told them about.',
+  },
+
   // ── Gated, but by something stronger than an automation toggle ──────────────
   'modules/comms/broadcast.ts:sendBroadcast': {
     template: 'broadcast (approved campaign body, email and SMS)',

@@ -817,6 +817,23 @@ A client declined a proposal and gave a reason.
 3. Close the lead or re-open it. Either is fine; leaving it is not.
 `),
 
+  sop('brian-mfa-recovery-used', 'A staff member signed in with an MFA recovery code', 'ceo', 'Security', `
+## Why you have this task
+A staff member signed in with one of their single-use MFA recovery codes instead of a code from
+their authenticator app. The task names the person and how many codes remain. Either they lost
+the phone, or the codes were used by someone else.
+
+1. Ask the person, by phone or in person, whether they signed in without their authenticator and why.
+2. If the phone is gone or replaced: open **Staff**, find their row, press **Reset MFA…**, and write
+   the reason. Their sessions end, they are emailed, and their next sign-in enrols a new
+   authenticator with a new set of recovery codes.
+3. If they did not sign in: Reset MFA with the reason, then **New temp password** on the same row so
+   the old password is dead too, and hand the new one over out of band. Read the audit log for
+   what that session did.
+4. If they still have the phone and only used a code for convenience: no reset. Ask them to issue a
+   new set from **Account** so the remaining codes are not sitting in a drawer.
+5. Close the task with what happened.
+`),
   sop('brian-portal-page-error', 'A portal page failed in a client\'s browser', 'ceo', 'Portal', `
 ## Why you have this task
 A page of the client portal threw while rendering in a client's browser. The client saw one

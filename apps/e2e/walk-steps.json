@@ -72,6 +72,15 @@
         { "id": "Q4", "text": "Withdraw a draft with a reason: the row reads Withdrawn", "device": "phone + laptop" }
       ]
     },
+    "M": {
+      "title": "MFA recovery codes and Reset MFA (R65)",
+      "steps": [
+        { "id": "M1", "text": "Enrolment shows eight recovery codes once and waits for 'I saved these'", "device": "phone + laptop" },
+        { "id": "M2", "text": "A recovery code signs in once and is consumed; the same code is refused; the CEO gets the alert task", "device": "phone + laptop" },
+        { "id": "M3", "text": "The CEO presses Reset MFA with a reason on the staff row; the member's next sign-in lands on enrolment", "device": "phone + laptop" },
+        { "id": "M4", "text": "Role proof: comms_billing sees no Reset MFA control and the route refuses 403", "device": "phone + laptop" }
+      ]
+    },
     "P": {
       "title": "The contact email and the sign-in, the portal after signing, the upload control, Deliver Return, My Returns (R45 to R48)",
       "steps": [
@@ -107,6 +116,15 @@
         { "id": "S1", "text": "With the switch on, the stepper renders its sixteen steps; the current step carries its one control and one sentence, and each later step says what unlocks it", "device": "phone + laptop" },
         { "id": "S2", "text": "The details area carries the secondary actions (change preparer, record extension, correct the filing at filed); ed_coo reads the steps with no control and no details area", "device": "phone + laptop" },
         { "id": "S3", "text": "With the switch off the row renders as production runs it, and GET /auth/me reports the state", "device": "phone + laptop" }
+      ]
+    },
+    "T": {
+      "title": "The preparer's day: home, navigation, a return end to end, the cards (R64)",
+      "steps": [
+        { "id": "T1", "text": "Signed in as the tax preparer, / lands on My Queue, never on the Executive view; nothing is left loading", "device": "phone + laptop" },
+        { "id": "T2", "text": "The top navigation shows only her pages; the count and names equal the tax_preparer row of the nav-items-by-role record", "device": "phone + laptop" },
+        { "id": "T3", "text": "From the queue's Client packet, the assigned return worked end to end: lock estimate, the stages to internal review, deliver, record 8879 sent, upload the signed 8879, final fee, ready to file, filed with Filed on, the acknowledgment uploaded and released", "device": "phone + laptop" },
+        { "id": "T4", "text": "The client page's cards: Invoices and the next session read \"Not available to your role\" with no count; every card she can read renders", "device": "phone + laptop" }
       ]
     }
   }

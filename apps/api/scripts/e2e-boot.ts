@@ -303,6 +303,8 @@ const laura = await makeStaff(app.db, config, { email: 'laura-walker@example.tes
 const jaqueline = await makeStaff(app.db, config, { email: 'jaqueline-walker@example.test', name: 'Synthetic Jaqueline', role: 'ed_coo', password: 'jaqueline-synthetic-2026', totpSecret: TOTP_SECRET });
 // The bookkeeper (Marian's role): the role proof for Add a business moves here (R4, 2026-09-19 evening).
 const bookkeeper = await makeStaff(app.db, config, { email: 'bookkeeper-walker@example.test', name: 'Synthetic Bookkeeper', role: 'bookkeeper', password: 'bookkeeper-synthetic-2026', totpSecret: TOTP_SECRET });
+// Rene's role (comms_billing): the role proof for Reset MFA (R65, 2026-09-26) — no control, the route refuses 403.
+const rene = await makeStaff(app.db, config, { email: 'rene-walker@example.test', name: 'Synthetic Rene', role: 'comms_billing', password: 'rene-synthetic-2026', totpSecret: TOTP_SECRET });
 await app.db.query(`UPDATE contacts SET ssn_last4 = $2 WHERE id = $1`, [contact.id, WALL.ssnLast4]);
 const minio = makeMinioClient(config);
 const PDF = Buffer.from('%PDF-1.4 synthetic harness document — no real client data\n%%EOF');
@@ -509,6 +511,7 @@ console.log('E2E_READY ' + JSON.stringify({
     jaqueline: { email: jaqueline.email, password: 'jaqueline-synthetic-2026', totpSecret: TOTP_SECRET },
     bookkeeper: { email: bookkeeper.email, password: 'bookkeeper-synthetic-2026', totpSecret: TOTP_SECRET },
     anamaria: { email: anamaria.email, password: 'anamaria-synthetic-2026', totpSecret: TOTP_SECRET },
+    rene: { email: rene.email, password: 'rene-synthetic-2026', totpSecret: TOTP_SECRET },
     quoteId: q1.id, taxEngagementId, cpaMeetingId,
     taxDocumentId: taxDocument.id, entityDocumentId: entityDocument.id, bankDocumentId: bankDocument.id,
     markers: WALL,

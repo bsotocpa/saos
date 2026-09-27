@@ -88,6 +88,7 @@
     "POST /signature-envelopes/:id/send",
     "POST /sops/:slug/publish",
     "POST /staff/:id/password/regenerate",
+    "POST /staff/:id/mfa/reset",
     "POST /task-templates/:id/instantiate",
     "POST /tasks/:id/duplicate",
     "POST /tasks/:id/follow-up",

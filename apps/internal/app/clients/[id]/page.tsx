@@ -249,6 +249,14 @@ function jurisdictionLine(j: JurisdictionView): string {
   return [status, method, j.trackingNumber].filter(Boolean).join(' · ');
 }
 
+/** R64: the sentence a refused card prints, in place of a count it never had. */
+function RoleUnavailable({ card, inline }: { card: string; inline?: boolean }) {
+  const text = 'Not available to your role';
+  return inline
+    ? <span className="muted" data-testid="role-unavailable" data-card={card}>{text}</span>
+    : <p className="muted small" data-testid="role-unavailable" data-card={card}>{text}</p>;
+}
+
 export default function ClientPacketPage() {
   const router = useRouter();
   // Item 12 (2026-09-09): every "are you sure / why" is the in-app modal, never the browser's.
@@ -297,6 +305,17 @@ export default function ClientPacketPage() {
   const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
   const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const [previewErr, setPreviewErr] = useState('');
+  /*
+   * A CARD THE ROLE CANNOT READ SAYS SO (R64, 2026-09-26). Each card's read used to swallow a 403
+   * into its empty state, so a preparer read "Invoices (0) · Nothing invoiced yet." for a list the
+   * route refused her. Now each refused card renders "Not available to your role" and drops its
+   * count; any other failure keeps the empty state it had.
+   */
+  const [unavailable, setUnavailable] = useState<Record<string, boolean>>({});
+  const refused = (card: string, empty: () => void) => (err: unknown) => {
+    empty();
+    if ((err as { status?: number }).status === 403) setUnavailable((u) => ({ ...u, [card]: true }));
+  };
   const [addingBusiness, setAddingBusiness] = useState(false);
   /*
    * WHO SEES THE DOOR (2026-09-19, walk step 1 role proof): the button renders for a session holding
@@ -342,6 +361,7 @@ export default function ClientPacketPage() {
     try {
       const p = await api<Packet>(`/contacts/${params.id}`);
       setPacket(p);
+      setUnavailable({});
       // These are separate reads so a failure in one does not blank the packet.
       await Promise.all([
         api<{ taxEngagements: TaxEngagement[] }>(`/tax-engagements?contactId=${params.id}`)
@@ -358,28 +378,28 @@ export default function ClientPacketPage() {
             setJurisdictions(Object.fromEntries(rows.map(([id, j]) => [id, j])));
             setCorrections(Object.fromEntries(rows.map(([id, , c]) => [id, c])));
           })
-          .catch(() => { setReturns([]); setJurisdictions({}); setCorrections({}); }),
+          .catch(refused('returns', () => { setReturns([]); setJurisdictions({}); setCorrections({}); })),
         api<{ documents: Doc[] }>(`/documents?contactId=${params.id}`)
           .then((r) => setDocs(r.documents ?? []))
-          .catch(() => setDocs([])),
+          .catch(refused('documents', () => setDocs([]))),
         api<{ quotes: Quote[] }>(`/contacts/${params.id}/quotes`)
           .then((r) => setQuotes(r.quotes ?? []))
-          .catch(() => setQuotes([])),
+          .catch(refused('quotes', () => setQuotes([]))),
         api<{ engagements: Engagement[] }>(`/engagements?contactId=${params.id}`)
           .then((r) => setEngagements(r.engagements ?? []))
-          .catch(() => setEngagements([])),
+          .catch(refused('engagements', () => setEngagements([]))),
         api<{ invoices: Invoice[] }>(`/invoices?contactId=${params.id}`)
           .then((r) => setInvoices(r.invoices ?? []))
-          .catch(() => setInvoices([])),
+          .catch(refused('invoices', () => setInvoices([]))),
         api<{ session: NextSession | null }>(`/contacts/${params.id}/next-session`)
           .then((r) => setNextSession(r.session ?? null))
-          .catch(() => setNextSession(null)),
+          .catch(refused('nextSession', () => setNextSession(null))),
         api<{ packets: PacketRow[] }>(`/contacts/${params.id}/packets`)
           .then((r) => setPackets(r.packets ?? []))
-          .catch(() => setPackets([])),
+          .catch(refused('packets', () => setPackets([]))),
         api<{ meetings: Session[] }>(`/contacts/${params.id}/meetings`)
           .then((r) => setSessions(r.meetings ?? []))
-          .catch(() => setSessions([])),
+          .catch(refused('meetings', () => setSessions([]))),
         // The preview refuses when there is nothing to paper (no services, attest
         // without an Addendum, text not final). Its message IS the explanation, so
         // it is shown rather than swallowed.
@@ -387,6 +407,8 @@ export default function ClientPacketPage() {
           .then((r) => { setPreview(r); setPreviewErr(''); })
           .catch((err: unknown) => {
             setPreview(null);
+            // The packet card is engagements.read on both its reads; a refusal is the card's sentence, not the preview's.
+            if ((err as { status?: number }).status === 403) { setUnavailable((u) => ({ ...u, packets: true })); setPreviewErr(''); return; }
             setPreviewErr(err instanceof Error ? err.message : 'Could not work out the packet.');
           }),
       ]);
@@ -1020,8 +1042,10 @@ export default function ClientPacketPage() {
         </section>
 
         <section className="card">
-          <h2>Documents ({docs.length})</h2>
-          {docs.length === 0 ? (
+          <h2>Documents{unavailable.documents ? '' : ` (${docs.length})`}</h2>
+          {unavailable.documents ? (
+            <RoleUnavailable card="documents" />
+          ) : docs.length === 0 ? (
             <p className="muted small">Nothing uploaded yet.</p>
           ) : (
             docs.slice(0, 12).map((d) => (
@@ -1048,7 +1072,9 @@ export default function ClientPacketPage() {
             send site as the first send), Withdraw (a draft, with a reason; a sent quote is the
             client's to answer). A refusal renders under the row it was about, in the server's words.
           */}
-          {quotes.length === 0 ? (
+          {unavailable.quotes ? (
+            <RoleUnavailable card="quotes" />
+          ) : quotes.length === 0 ? (
             <p className="muted small">No quotes sent.</p>
           ) : (
             quotes.slice(0, 6).map((q) => (
@@ -1171,7 +1197,9 @@ export default function ClientPacketPage() {
         <h2>Engagement packet</h2>
         {/* Audit item 5 (2026-09-09): the gate card above is the one place that explains a blocked
             state; this card only shows the packet, or the one action that creates it. */}
-        {packets.length > 0 ? (
+        {unavailable.packets ? (
+          <RoleUnavailable card="packets" />
+        ) : packets.length > 0 ? (
           <>
             {packets.map((p) => (
               <div className="quote-line" key={p.id}>
@@ -1312,7 +1340,12 @@ export default function ClientPacketPage() {
         snapshot of the quote lines at acceptance, so this is the agreement speaking rather
         than a title someone typed.
       */}
-      {engagements.length > 0 ? (
+      {unavailable.engagements ? (
+        <section className="card span" style={{ marginTop: 12 }}>
+          <h2>Engagements</h2>
+          <RoleUnavailable card="engagements" />
+        </section>
+      ) : engagements.length > 0 ? (
         <section className="card span" style={{ marginTop: 12 }}>
           <h2>Engagements</h2>
           {/* The result reports HERE, beside the button that caused it — #40's lesson:
@@ -1493,7 +1526,9 @@ export default function ClientPacketPage() {
 
       <section className="card span" style={{ marginTop: 12 }}>
         <h2>Returns</h2>
-        {returns.length === 0 ? (
+        {unavailable.returns ? (
+          <RoleUnavailable card="returns" />
+        ) : returns.length === 0 ? (
           <>
             {/* The old copy — "No tax engagements." — was accurate and read as a
                 contradiction: the client list counts ENGAGEMENTS (service-line
@@ -1593,8 +1628,10 @@ export default function ClientPacketPage() {
         a call.
       */}
       <section className="card" style={{ marginTop: 12 }}>
-        <h2>Invoices ({invoices.length})</h2>
-        {invoices.length === 0 ? (
+        <h2>Invoices{unavailable.invoices ? '' : ` (${invoices.length})`}</h2>
+        {unavailable.invoices ? (
+          <RoleUnavailable card="invoices" />
+        ) : invoices.length === 0 ? (
           <p className="muted small">Nothing invoiced yet.</p>
         ) : (
           <ul className="list">
@@ -1915,7 +1952,9 @@ export default function ClientPacketPage() {
       */}
       <section className="card" style={{ marginTop: 12 }}>
         <h2>Meetings</h2>
-        {nextSession ? (
+        {unavailable.nextSession ? (
+          <p className="small">Next session: <RoleUnavailable card="next-session" inline /></p>
+        ) : nextSession ? (
           <p className="small">
             <span className="badge ok">scheduled</span>{' '}
             Next session {formatDateTime(nextSession.starts_at)}
@@ -1966,8 +2005,10 @@ export default function ClientPacketPage() {
         )}
         {/* Audit item 10 (2026-09-09): recorded sessions live here, under the calendar — one card for
             everything a meeting with this client produced. A row with a transcript says "recorded". */}
-        <h3 style={{ marginTop: 14 }}>Recorded ({sessions.length})</h3>
-        {sessions.length === 0 ? (
+        <h3 style={{ marginTop: 14 }}>Recorded{unavailable.meetings ? '' : ` (${sessions.length})`}</h3>
+        {unavailable.meetings ? (
+          <RoleUnavailable card="meetings" />
+        ) : sessions.length === 0 ? (
           <p className="muted small">No recorded sessions.</p>
         ) : (
           sessions.map((s) => (
