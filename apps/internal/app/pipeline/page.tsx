@@ -16,8 +16,9 @@ import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
 import {
   addCustomLine, addLine, bookPrice, builderSummary, isOffBook, isPicked, lineTotals, matchesFilter, orderGroups,
-  packageDiscountCents, parseDollars, quotedRange, showsQuantity, taxYearLabel, taxYearOptions, unitWords,
-  type CatalogGroup, type ClientType, type PickedLine, type TaxYearSource,
+  packageDiscountCents, parseDollars, pickedDepositCents as depositOfPicked, quotedRange, referralDiscountCents,
+  referralRowLabel, showsQuantity, taxYearLabel, taxYearOptions, unitWords,
+  type CatalogGroup, type ClientType, type PickedLine, type ReferralRule, type TaxYearSource,
 } from './builder-lib';
 import { BuilderV1Composer } from './builder-v1';
 
@@ -224,6 +225,12 @@ export default function PipelinePage() {
   const [overrideForm, setOverrideForm] = useState<{ waive: boolean; amount: string; reason: string } | null>(null);
   const [overrideError, setOverrideError] = useState('');
   const [canOverrideDeposit, setCanOverrideDeposit] = useState(false);
+  /**
+   * R75: the Hilo referral discount for the chosen contact, as GET /quotes/referral-discount answers
+   * it — the book's rule when it applies, null when it does not (or no contact is chosen). The totals
+   * mirror it; the server applies it on createQuote and nothing the builder sends reaches it.
+   */
+  const [referralRule, setReferralRule] = useState<ReferralRule | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -290,6 +297,19 @@ export default function PipelinePage() {
       .catch(() => setBusinesses([]));
   }, [contact]);
 
+  /** R75: whether a quote for this contact takes the Hilo referral discount — asked once per chosen contact. */
+  useEffect(() => {
+    setReferralRule(null);
+    if (!contact) return;
+    let alive = true;
+    void api<{ applies: true; rule: ReferralRule } | { applies: false; why: string }>(
+      `/quotes/referral-discount?contactId=${encodeURIComponent(contact.id)}`
+    )
+      .then((r) => { if (alive) setReferralRule(r.applies ? r.rule : null); })
+      .catch(() => { if (alive) setReferralRule(null); });
+    return () => { alive = false; };
+  }, [contact]);
+
   /** The groups follow the business select — business work leads when a business is chosen — until the person flips them. */
   useEffect(() => {
     if (!clientTypeChosen) setClientType(businessId ? 'business' : 'individual');
@@ -313,16 +333,12 @@ export default function PipelinePage() {
    * charge. Mirrored EXACTLY, including the two things worth knowing about it: it is not
    * quantity-weighted, and it counts optional lines whether or not the client ticks them.
    * Showing a "corrected" figure here would just be a new lie in the other direction; the
-   * server is the place to change the rule, and the builder must agree with it.
+   * server is the place to change the rule, and the builder must agree with it. R75: a line the
+   * Hilo referral discount reaches asks its deposit at the discounted rate, as the server does.
    *
    * `null` means no chosen line carries a deposit — which is different from a deposit of zero.
    */
-  const pickedDepositCents = useMemo(() => {
-    const perLine = picked
-      .map((p) => catalog.find((i) => i.item_code === p.itemCode)?.deposit_cents ?? null)
-      .filter((d): d is number => d !== null);
-    return perLine.length === 0 ? null : perLine.reduce((a, b) => a + b, 0);
-  }, [picked, catalog]);
+  const pickedDepositCents = useMemo(() => depositOfPicked(picked, catalog, referralRule), [picked, catalog, referralRule]);
   /** The catalog as grouped rows: the groups fitting the client type first, the filter applied inside each. */
   const groupedCatalog = useMemo(() => {
     const ordered = orderGroups(groups, clientType);
@@ -344,7 +360,9 @@ export default function PipelinePage() {
   }, [catalog, groups, clientType, itemFilter]);
   const summary = useMemo(() => builderSummary(picked, catalog), [picked, catalog]);
   const discountCents = packageRule ? packageDiscountCents(packageRule, summary.committedCents) : 0;
-  const quotedTotalCents = Math.max(0, summary.committedCents - discountCents);
+  /** R75: the referral discount's own figure, beside the package discount; the quoted total is net of both. */
+  const referralCents = referralDiscountCents(picked, catalog, referralRule);
+  const quotedTotalCents = Math.max(0, summary.committedCents - discountCents - referralCents);
   const range = quotedRange(quotedTotalCents, bandPercent, asRange);
   const unconfirmed = picked.filter((p) => catalog.find((i) => i.item_code === p.itemCode)?.needs_confirmation);
   const itemOf = (code: string) => catalog.find((i) => i.item_code === code);
@@ -923,6 +941,7 @@ export default function PipelinePage() {
                   notes={notes}
                   setNotes={setNotes}
                   pickedDepositCents={pickedDepositCents}
+                  referralRule={referralRule}
                   defaultTaxYear={defaultTaxYear}
                   taxYear={taxYear}
                   taxYearSource={taxYearSource}
@@ -1090,7 +1109,7 @@ export default function PipelinePage() {
                       <div className="builder-summary" aria-live="polite">
                         <span><strong>{summary.lineCount}</strong> line{summary.lineCount === 1 ? '' : 's'}</span>
                         <span>Subtotal <strong>{money(summary.committedCents)}</strong></span>
-                        <span>Deposit <strong>{summary.depositCents === null ? 'none' : money(summary.depositCents)}</strong></span>
+                        <span>Deposit <strong>{pickedDepositCents === null ? 'none' : money(pickedDepositCents)}</strong></span>
                       </div>
                       <table className="qb-lines">
                         <thead>
@@ -1194,6 +1213,12 @@ export default function PipelinePage() {
                         <div className="qb-total-row"><span>Subtotal</span><strong>{money(summary.committedCents)}</strong></div>
                         {packageRule && discountCents > 0 ? (
                           <div className="qb-total-row"><span>Package discount</span><strong>−{money(discountCents)}</strong></div>
+                        ) : null}
+                        {/* R75: the Hilo referral discount, its own row, only when the book's rule reaches this contact. */}
+                        {referralRule ? (
+                          <div className="qb-total-row" data-testid="qb-referral-discount">
+                            <span>{referralRowLabel(referralRule)}</span><strong>−{money(referralCents)}</strong>
+                          </div>
                         ) : null}
                         {/* The checkbox stays (2026-09-20): the book carries no one-time / recurring attribute on
                             an item, so whether the quote is a range is still the person's call here. */}

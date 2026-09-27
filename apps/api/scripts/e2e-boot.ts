@@ -363,6 +363,59 @@ const loggedIn = await app.inject({
 if (loggedIn.statusCode !== 200) throw new Error(`the walker could not sign in: ${loggedIn.statusCode} ${loggedIn.body}`);
 const staffToken = loggedIn.json().token as string;
 
+/*
+ * PRICE BOOK v6 IN THE HARNESS (R75, 2026-09-27). Production publishes v6 effective 2026-10-01; the
+ * harness publishes the same change set through the same door, effective the harness's today, so every
+ * walk from here quotes under the book production will hold from October, and the Hilo referral
+ * discount can be tapped before that date.
+ */
+{
+  const { versionRequestFor } = await import('../src/modules/admin/price-book-change-set.ts');
+  const { todayChicago: harnessToday } = await import('../src/modules/tax/deadlines.ts');
+  // @ts-expect-error — the change set is plain JavaScript data under packages/db, where the book lives.
+  const { PRICE_BOOK_V6 } = await import('../../../packages/db/seeds/data/price_book_v6.mjs');
+  const v6 = await app.inject({
+    method: 'POST', url: '/admin/price-book/versions',
+    headers: { authorization: `Bearer ${staffToken}` },
+    payload: await versionRequestFor(app.db, PRICE_BOOK_V6, { effectiveFrom: harnessToday() }),
+  });
+  if (v6.statusCode !== 201) throw new Error(`price book v6 was refused at the door: ${v6.statusCode} ${v6.body}`);
+}
+
+/*
+ * THE HILO-REFERRED CLIENTS (R75): one per viewport, Hilo referral on the record (the column a verified
+ * transition link writes), no engagement yet, one business (a recurring line needs it). The spec builds
+ * their quotes in Ops; the lines are named here from the book in force, never priced here.
+ */
+async function buildHiloClient(viewport: 'phone' | 'desk') {
+  const last = viewport === 'phone' ? 'Hiloref' : 'Hilodesk';
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: last, email: `${last.toLowerCase()}@example.test` });
+  await app.db.query(`UPDATE contacts SET br1_referred_by_hilo = true WHERE id = $1`, [c.id]);
+  // The business is named apart from the person, so a search by the last name finds the person's chip alone.
+  const businessName = viewport === 'phone' ? 'Harness Maple Studio LLC' : 'Harness Cedar Studio LLC';
+  const biz = await app.db.query<{ id: string }>(
+    `INSERT INTO businesses (name, entity_type, state) VALUES ($1, 'llc', 'IL') RETURNING id`, [businessName]);
+  await app.db.query(`INSERT INTO business_members (business_id, contact_id, member_role, is_primary) VALUES ($1, $2, 'owner', true)`, [biz.rows[0]!.id, c.id]);
+  return { contactId: c.id, fullName: `Synthetic ${last}`, lastName: last, businessName };
+}
+const hiloLines = await app.db.query<{ item_code: string; name_en: string; service_line: string }>(
+  `SELECT DISTINCT ON (pbi.service_line) pbi.item_code, pbi.name_en, pbi.service_line::text AS service_line
+     FROM price_book_items pbi JOIN price_book_versions v ON v.id = pbi.version_id
+    WHERE v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
+      AND pbi.is_active AND pbi.display_on_quote AND pbi.pricing_mode = 'flat' AND pbi.amount_cents > 0
+      AND ((pbi.service_line = 'individual_tax' AND pbi.item_code = 'IND_BASE_SINGLE') OR pbi.service_line = 'recurring_accounting')
+    ORDER BY pbi.service_line, pbi.sort_order, pbi.item_code`
+);
+const hiloReached = hiloLines.rows.find((r) => r.service_line === 'individual_tax');
+const hiloNotReached = hiloLines.rows.find((r) => r.service_line === 'recurring_accounting');
+if (!hiloReached || !hiloNotReached) throw new Error('the book in force lacks the lines the Hilo walk quotes');
+const hilo = {
+  phone: await buildHiloClient('phone'),
+  desk: await buildHiloClient('desk'),
+  reached: { itemCode: hiloReached.item_code, name: hiloReached.name_en },
+  notReached: { itemCode: hiloNotReached.item_code, name: hiloNotReached.name_en },
+};
+
 const taxEngagement = await app.inject({
   method: 'POST', url: '/tax-engagements',
   headers: { authorization: `Bearer ${staffToken}` },
@@ -535,6 +588,7 @@ console.log('E2E_READY ' + JSON.stringify({
   documents,
   signing,
   billingHold,
+  hilo,
   wall: {
     laura: { email: laura.email, password: 'laura-synthetic-2026', totpSecret: TOTP_SECRET },
     jaqueline: { email: jaqueline.email, password: 'jaqueline-synthetic-2026', totpSecret: TOTP_SECRET },

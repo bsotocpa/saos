@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  CONSENT_7216_LABEL, ENGAGEMENT_STATUS_LABEL, INVOICE_STATUS_LABEL, LETTER_STATUS_LABEL, QUOTE_STATUS_LABEL, TAX_STAGE_LABEL,
+  CONSENT_7216_LABEL, DISCOUNT_CONDITION_LABEL, DISCOUNT_SCOPE_LABEL, ENGAGEMENT_STATUS_LABEL, PRICE_SERVICE_LINE_LABEL, INVOICE_STATUS_LABEL, LETTER_STATUS_LABEL, QUOTE_STATUS_LABEL, TAX_STAGE_LABEL,
   clientSearchLabel, engagementStatusLabel, engagementStatusSentence, invoiceStatusLabel, quoteStatusLabel, taxStageLabel,
 } from '../lib/labels.ts';
 
@@ -15,6 +15,11 @@ const ENGAGEMENT_STATUSES = ['draft', 'active', 'on_hold', 'completed', 'withdra
 const QUOTE_STATUSES = ['draft', 'sent', 'accepted', 'declined', 'expired', 'void'];
 const CONSENT_STATES = ['not_on_file', 'requested', 'signed', 'declined', 'revoked'];
 const LETTER_STATUSES = ['none', 'pending', 'signed'];
+// R75: the price book's service lines (migration enum price_service_line) and the discount rule's
+// condition and scope (migration 0129's CHECKs).
+const PRICE_SERVICE_LINES = ['individual_tax', 'business_tax', 'recurring_accounting', 'scope_ladder', 'setup_conversion', 'software_passthrough', 'filings_1099_w2', 'entity_services', 'attest', 'specialized_cpa', 'coo', 'deposit'];
+const DISCOUNT_CONDITIONS = ['referred_by_hilo'];
+const DISCOUNT_SCOPES = ['first_engagement'];
 const TAX_STAGES = ['intake_started', 'scheduled', 'documents_requested', 'pending_client_response', 'in_preparation', 'internal_review', 'client_review', 'ready_to_file', 'filed', 'completed', 'on_hold', 'withdrawn', 'rejected'];
 
 test('every enum value has a word, and no word is the raw enum', () => {
@@ -25,6 +30,9 @@ test('every enum value has a word, and no word is the raw enum', () => {
     ['tax_stage', TAX_STAGES, TAX_STAGE_LABEL],
     ['consent_7216_state', CONSENT_STATES, CONSENT_7216_LABEL],
     ['letter_status', LETTER_STATUSES, LETTER_STATUS_LABEL],
+    ['price_service_line', PRICE_SERVICE_LINES, PRICE_SERVICE_LINE_LABEL],
+    ['discount_condition', DISCOUNT_CONDITIONS, DISCOUNT_CONDITION_LABEL],
+    ['discount_scope', DISCOUNT_SCOPES, DISCOUNT_SCOPE_LABEL],
   ] as const) {
     for (const v of values) {
       const word = (map as Record<string, string>)[v];

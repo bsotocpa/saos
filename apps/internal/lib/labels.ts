@@ -66,6 +66,30 @@ export const LETTER_STATUS_LABEL = {
   signed: 'Signed',
 } as const;
 
+/** The price book's service lines (price_service_line), in words: what a discount rule reaches, for one. */
+export const PRICE_SERVICE_LINE_LABEL = {
+  individual_tax: 'Individual tax returns',
+  business_tax: 'Business tax returns',
+  recurring_accounting: 'Recurring accounting',
+  scope_ladder: 'Scope ladder',
+  setup_conversion: 'Setup and conversion',
+  software_passthrough: 'Software pass-through',
+  filings_1099_w2: '1099 / W-2 filings',
+  entity_services: 'Entity services',
+  attest: 'Attest',
+  specialized_cpa: 'Specialized CPA',
+  coo: 'COO services',
+  deposit: 'Deposits',
+} as const;
+
+/** R75: a price-book discount rule's condition (who qualifies) and scope (when), in words. */
+export const DISCOUNT_CONDITION_LABEL = {
+  referred_by_hilo: 'Referred by Hilo on the record',
+} as const;
+export const DISCOUNT_SCOPE_LABEL = {
+  first_engagement: 'First engagement only',
+} as const;
+
 /** The word for a status; an unknown value falls back to the raw enum with underscores spaced, never crashes a page. */
 export function invoiceStatusLabel(status: string): string {
   return (INVOICE_STATUS_LABEL as Record<string, string>)[status] ?? status.replaceAll('_', ' ');
@@ -84,6 +108,15 @@ export function consent7216Label(status: string): string {
 }
 export function letterStatusLabel(status: string): string {
   return (LETTER_STATUS_LABEL as Record<string, string>)[status] ?? status.replaceAll('_', ' ');
+}
+export function priceServiceLineLabel(line: string): string {
+  return (PRICE_SERVICE_LINE_LABEL as Record<string, string>)[line] ?? line.replaceAll('_', ' ');
+}
+export function discountConditionLabel(condition: string): string {
+  return (DISCOUNT_CONDITION_LABEL as Record<string, string>)[condition] ?? condition.replaceAll('_', ' ');
+}
+export function discountScopeLabel(scope: string): string {
+  return (DISCOUNT_SCOPE_LABEL as Record<string, string>)[scope] ?? scope.replaceAll('_', ' ');
 }
 
 /**

@@ -25,6 +25,7 @@
 
 import { useEffect, useState } from 'react';
 import { api, formatMoney } from '../../../lib/api';
+import { discountConditionLabel, discountScopeLabel, priceServiceLineLabel } from '../../../lib/labels';
 
 interface Item {
   item_code: string; service_line: string; name_en: string;
@@ -36,9 +37,15 @@ interface Item {
   percent_rate: string | null;
   structure_needs_confirmation: boolean; structure_confirmation_note: string | null;
 }
+/** R75: a discount rule of the version in force (price_book_discount_rules), read-only here. */
+interface DiscountRule {
+  rule_code: string; name_en: string; name_es: string; description_en: string | null;
+  percent_rate: number; applies_to_service_lines: string[]; condition: string; scope: string; is_active: boolean;
+}
 interface Book {
   version: { version_number: number; effective_from: string; note: string | null; pending: boolean };
   items: Item[];
+  discountRules?: DiscountRule[];
 }
 type Kind = 'price' | 'structure';
 interface Pending { kind: Kind; note: string; items: Item[] }
@@ -317,6 +324,30 @@ export default function PricingAdminPage() {
           ))}
         </div>
       </section>
+
+      {/* ── Discount rules (R75): the book's, read-only; a new version is where one changes ── */}
+      {book.discountRules && book.discountRules.length > 0 ? (
+        <section className="card" data-testid="discount-rules">
+          <h2>Discount rules</h2>
+          <p className="muted small">
+            Part of this version of the book. Quotes apply them on the server; a quote cannot widen one.
+          </p>
+          {book.discountRules.map((r) => (
+            <div className="quote-line" key={r.rule_code} data-testid={`discount-rule-${r.rule_code}`}>
+              <span className="name">
+                {r.name_en}{' '}
+                <span className={`badge ${r.is_active ? 'ok' : 'warn'}`}>{r.is_active ? 'Active' : 'Inactive'}</span>
+              </span>
+              <span className="small">
+                <strong>{Number(r.percent_rate)}% off</strong> {r.applies_to_service_lines.map(priceServiceLineLabel).join(', ')}
+                <br />
+                Who: {discountConditionLabel(r.condition)} · When: {discountScopeLabel(r.scope)}
+                {r.description_en ? <><br /><span className="muted">{r.description_en}</span></> : null}
+              </span>
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       {changes.length > 0 ? (
         <section className="card" style={{ borderColor: 'var(--electric)' }}>

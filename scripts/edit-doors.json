@@ -79,6 +79,7 @@
     "POST /packets/:id/send",
     "POST /quotes/:id/client-link",
     "POST /quotes/:id/deposit-override",
+    "POST /quotes/:id/referral-discount/remove",
     "POST /quotes/:id/send",
     "POST /quotes/:id/withdraw-draft",
     "POST /referrals/:id/approve",

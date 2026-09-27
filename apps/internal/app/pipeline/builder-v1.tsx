@@ -16,7 +16,10 @@
  */
 
 import type { ReactNode } from 'react';
-import { builderSummary, isPicked, taxYearLabel, taxYearOptions, togglePick, type PickedLine, type TaxYearSource } from './builder-lib';
+import {
+  builderSummary, isPicked, referralDiscountCents, referralRowLabel, taxYearLabel, taxYearOptions, togglePick,
+  type PickedLine, type ReferralRule, type TaxYearSource,
+} from './builder-lib';
 
 export interface V1CatalogItem {
   item_code: string;
@@ -50,6 +53,8 @@ export interface BuilderV1Props {
   setNotes: (n: string) => void;
   /** The summed price-book deposit of the picked lines, as the page mirrors the server. */
   pickedDepositCents: number | null;
+  /** R75: the Hilo referral discount the server will apply for the chosen contact; null when it does not. */
+  referralRule: ReferralRule | null;
   defaultTaxYear: number | null;
   taxYear: number | null;
   taxYearSource: TaxYearSource;
@@ -70,7 +75,7 @@ export function BuilderV1Composer(p: BuilderV1Props): React.JSX.Element {
   const {
     catalog, bundles, picked, setPicked, bundleSlug, setBundleSlug, language, setLanguage,
     expiresInDays, setExpiresInDays, asRange, setAsRange, itemFilter, setItemFilter, notes, setNotes,
-    pickedDepositCents, defaultTaxYear, taxYear, taxYearSource, setTaxYear, setTaxYearSource,
+    pickedDepositCents, referralRule, defaultTaxYear, taxYear, taxYearSource, setTaxYear, setTaxYearSource,
     busy, hasContact, buildAndSend, errAt,
   } = p;
 
@@ -85,6 +90,8 @@ export function BuilderV1Composer(p: BuilderV1Props): React.JSX.Element {
     const item = catalog.find((i) => i.item_code === line.itemCode);
     return sum + (item?.amount_cents ?? 0) * line.quantity;
   }, 0);
+  /** R75: the referral discount on the picked lines it reaches, as createQuote will write it. */
+  const referralCents = referralDiscountCents(picked, catalog, referralRule);
   const unconfirmed = picked.filter((line) => catalog.find((i) => i.item_code === line.itemCode)?.needs_confirmation);
 
   return (
@@ -116,7 +123,7 @@ export function BuilderV1Composer(p: BuilderV1Props): React.JSX.Element {
           <p className="muted small">
             {pickedDepositCents === null
               ? 'None — no chosen line carries a deposit in the price book in force.'
-              : `${money(pickedDepositCents)} — summed from the lines' price-book deposits, exactly as the client will see it on the proposal.`}
+              : `${money(pickedDepositCents)} — summed from the lines' price-book deposits${referralRule ? `, at ${referralRule.rate}% off on the lines the ${referralRule.labelEn} reaches` : ''}, exactly as the client will see it on the proposal.`}
           </p>
         </div>
         <label className="field">
@@ -139,6 +146,7 @@ export function BuilderV1Composer(p: BuilderV1Props): React.JSX.Element {
       {bundleSlug ? (
         <p className="muted small">
           The package composes itself from its price-book components when the quote is created.
+          {referralRule ? ` The ${referralRowLabel(referralRule)} is applied then to the lines it reaches.` : ''}
         </p>
       ) : (
         <>
@@ -198,7 +206,7 @@ export function BuilderV1Composer(p: BuilderV1Props): React.JSX.Element {
                     {s.hasRange ? `${money(s.committedMinCents)}–${money(s.committedMaxCents)}` : money(s.committedCents)}
                   </strong>
                 </span>
-                <span>Deposit <strong>{s.depositCents === null ? 'none' : money(s.depositCents)}</strong></span>
+                <span>Deposit <strong>{pickedDepositCents === null ? 'none' : money(pickedDepositCents)}</strong></span>
               </div>
             );
           })() : null}
@@ -248,8 +256,13 @@ export function BuilderV1Composer(p: BuilderV1Props): React.JSX.Element {
               </div>
             );
           })}
+          {referralRule ? (
+            <p className="small" data-testid="qb-referral-discount">
+              {referralRowLabel(referralRule)} <strong>−{money(referralCents)}</strong>
+            </p>
+          ) : null}
           <p className="small">
-            <strong>Committed total: {money(runningTotal)}</strong>
+            <strong>Committed total: {money(Math.max(0, runningTotal - referralCents))}</strong>
             {asRange ? ' (a range is applied when the quote is built)' : ''}
           </p>
           {unconfirmed.length > 0 ? (

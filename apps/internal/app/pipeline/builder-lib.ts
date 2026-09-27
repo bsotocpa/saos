@@ -245,3 +245,75 @@ export function taxYearLabel(year: number | string, source: TaxYearSource): stri
 export function taxYearOptions(defaultYear: number): number[] {
   return [defaultYear + 1, defaultYear, defaultYear - 1, defaultYear - 2, defaultYear - 3, defaultYear - 4];
 }
+
+/*
+ * THE HILO REFERRAL DISCOUNT, MIRRORED (R75, 2026-09-27). The server decides whether a quote takes
+ * it (GET /quotes/referral-discount answers for the chosen contact) and applies it on createQuote;
+ * nothing the builder sends sets it. These mirror the server's arithmetic so the totals the person
+ * reads are the totals the quote will carry: pricing/referral-discount.ts referralDiscountCents over
+ * the counted lines, and quotes.ts summedLineDeposits for the deposit.
+ */
+export interface ReferralRule {
+  ruleCode: string;
+  labelEn: string;
+  labelEs: string;
+  /** Percent off, as the book holds it (50 = half). */
+  rate: number;
+  /** The price lines (price_service_line) the rule reaches. */
+  serviceLines: string[];
+}
+
+/** The line's price service line: the book item's, else the custom line's own (the server's lineOf ?? serviceLine). */
+function serviceLineOf(line: PickedLine, item: CatalogLine | undefined): string | null {
+  return item?.service_line ?? line.custom?.serviceLine ?? null;
+}
+
+/**
+ * The discount the server will write on createQuote: the rate on the committed lines it reaches —
+ * required (not optional), not pass-through, priced exact (a range-priced line carries no unit amount
+ * and counts nothing, as on the server) — rounded to the cent once, over the sum.
+ */
+export function referralDiscountCents(
+  picked: readonly PickedLine[],
+  catalog: readonly CatalogLine[],
+  rule: Pick<ReferralRule, 'rate' | 'serviceLines'> | null
+): number {
+  if (!rule) return 0;
+  let reached = 0;
+  for (const p of picked) {
+    const item = catalog.find((i) => i.item_code === p.itemCode);
+    if (!item && !p.custom) continue;
+    if (p.isOptional || item?.is_pass_through) continue;
+    const line = serviceLineOf(p, item);
+    if (line === null || !rule.serviceLines.includes(line)) continue;
+    const t = lineTotals(p, item);
+    if (t.exactCents !== null) reached += t.exactCents;
+  }
+  return Math.round((reached * rule.rate) / 100);
+}
+
+/**
+ * The deposit acceptance will ask for — summedLineDeposits: every picked book line's price-book
+ * deposit (not quantity-weighted, optional lines included, custom lines carry none); a line the
+ * rule reaches asks its deposit at the discounted rate, rounded per line. null when no line carries
+ * a deposit, which is different from a deposit of zero.
+ */
+export function pickedDepositCents(
+  picked: readonly PickedLine[],
+  catalog: readonly CatalogLine[],
+  rule: Pick<ReferralRule, 'rate' | 'serviceLines'> | null
+): number | null {
+  const perLine: number[] = [];
+  for (const p of picked) {
+    const item = catalog.find((i) => i.item_code === p.itemCode);
+    if (!item || item.deposit_cents === null) continue;
+    const reached = rule !== null && item.service_line !== undefined && rule.serviceLines.includes(item.service_line);
+    perLine.push(reached ? Math.round((item.deposit_cents * (100 - rule.rate)) / 100) : item.deposit_cents);
+  }
+  return perLine.length === 0 ? null : perLine.reduce((a, b) => a + b, 0);
+}
+
+/** The words on the discount's own row: the book's label and its rate, "Hilo referral discount (50%)". */
+export function referralRowLabel(rule: Pick<ReferralRule, 'labelEn' | 'rate'>): string {
+  return `${rule.labelEn} (${rule.rate}%)`;
+}

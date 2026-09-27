@@ -146,3 +146,71 @@ test('the quoted range is the same arithmetic the server does, and a package rul
   assert.equal(packageDiscountCents({ kind: 'override', value: 80000 }, 100000), 20000);
   assert.equal(packageDiscountCents({ kind: 'none', value: null }, 100000), 0);
 });
+
+// ── R75 (2026-09-27): THE HILO REFERRAL DISCOUNT, MIRRORED ──
+// The server applies the rule on createQuote (pricing/referral-discount.ts) and resolves the deposit
+// (quotes.ts summedLineDeposits); the builder's totals must read the same figures before the quote exists.
+import {
+  pickedDepositCents, referralDiscountCents, referralRowLabel, type ReferralRule,
+} from '../app/pipeline/builder-lib.ts';
+
+const hilo: ReferralRule = {
+  ruleCode: 'HILO_REFERRAL', labelEn: 'Hilo referral discount', labelEs: 'Descuento por referencia de Hilo',
+  rate: 50, serviceLines: ['individual_tax', 'business_tax', 'entity_services'],
+};
+const book: CatalogLine[] = [
+  { item_code: 'IND_1040', service_line: 'individual_tax', amount_cents: 30001, price_min_cents: null, price_max_cents: null, deposit_cents: 10001, is_pass_through: false },
+  { item_code: 'BIZ_1120S', service_line: 'business_tax', amount_cents: 70000, price_min_cents: null, price_max_cents: null, deposit_cents: 30000, is_pass_through: false },
+  { item_code: 'BIZ_ADDL_STATE', service_line: 'business_tax', amount_cents: 35000, price_min_cents: null, price_max_cents: null, deposit_cents: null, is_pass_through: false, unit: 'per_state' },
+  { item_code: 'ENT_ANNUAL', service_line: 'entity_services', amount_cents: 20000, price_min_cents: null, price_max_cents: null, deposit_cents: null, is_pass_through: false },
+  { item_code: 'IND_CPA_LETTER', service_line: 'individual_tax', amount_cents: null, price_min_cents: 25000, price_max_cents: 50000, deposit_cents: null, is_pass_through: false },
+  { item_code: 'BK_MONTHLY', service_line: 'recurring_accounting', amount_cents: 40000, price_min_cents: null, price_max_cents: null, deposit_cents: 40000, is_pass_through: false },
+  { item_code: 'SW_QBO', service_line: 'software_passthrough', amount_cents: 9000, price_min_cents: null, price_max_cents: null, deposit_cents: null, is_pass_through: true },
+  { item_code: 'ATT_REVIEW', service_line: 'attest', amount_cents: 500000, price_min_cents: null, price_max_cents: null, deposit_cents: 100000, is_pass_through: false },
+  { item_code: 'COO_MONTHLY', service_line: 'coo', amount_cents: 300000, price_min_cents: null, price_max_cents: null, deposit_cents: null, is_pass_through: false },
+];
+const line = (itemCode: string, extra: Partial<PickedLine> = {}): PickedLine => ({ itemCode, quantity: 1, isOptional: false, unitCents: null, ...extra });
+
+test('no rule, no discount; the deposit is the book\'s', () => {
+  const picked = [line('IND_1040'), line('BIZ_1120S')];
+  assert.equal(referralDiscountCents(picked, book, null), 0);
+  assert.equal(pickedDepositCents(picked, book, null), 10001 + 30000);
+  assert.equal(pickedDepositCents([], book, null), null, 'no line with a deposit is no deposit, not zero');
+});
+
+test('the rate reaches tax-return and entity-services lines only: never recurring accounting, pass-through, attest or COO', () => {
+  const picked = ['IND_1040', 'BIZ_1120S', 'ENT_ANNUAL', 'BK_MONTHLY', 'SW_QBO', 'ATT_REVIEW', 'COO_MONTHLY'].map((c) => line(c));
+  assert.equal(referralDiscountCents(picked, book, hilo), Math.round(((30001 + 70000 + 20000) * 50) / 100));
+});
+
+test('committed lines only: an optional line, a range-priced line and a pass-through take nothing; quantity and a set amount count', () => {
+  assert.equal(referralDiscountCents([line('IND_1040', { isOptional: true })], book, hilo), 0, 'optional: not committed');
+  assert.equal(referralDiscountCents([line('IND_CPA_LETTER')], book, hilo), 0, 'a range carries no unit amount on the server');
+  assert.equal(referralDiscountCents([line('IND_CPA_LETTER', { unitCents: 40000 })], book, hilo), 20000, 'priced exact, it is reached');
+  assert.equal(referralDiscountCents([line('BIZ_ADDL_STATE', { quantity: 3 })], book, hilo), 52500, 'three states');
+});
+
+test('rounded once over the sum, the way the server rounds', () => {
+  // 30001 + 30001 = 60002 → 30001; per-line rounding would give 15001 + 15001 = 30002.
+  const picked = [line('IND_1040'), line('IND_1040')];
+  assert.equal(referralDiscountCents(picked, book, hilo), 30001);
+});
+
+test('a custom line is reached by its own service line', () => {
+  let picked = addCustomLine([], { name: 'Amended return', serviceLine: 'individual_tax', unitCents: 10000 });
+  picked = addCustomLine(picked, { name: 'Cleanup', serviceLine: 'recurring_accounting', unitCents: 10000 });
+  assert.equal(referralDiscountCents(picked, book, hilo), 5000);
+});
+
+test('the deposit: a reached line asks its deposit at the discounted rate, rounded per line; others ask the book\'s', () => {
+  const picked = [line('IND_1040'), line('BIZ_1120S'), line('BK_MONTHLY'), line('ATT_REVIEW', { isOptional: true })];
+  // round(10001 × 0.5) = 5001 (half up, as Postgres round() on a positive numeric), 15000, 40000 full, 100000 full.
+  assert.equal(pickedDepositCents(picked, book, hilo), 5001 + 15000 + 40000 + 100000);
+  const custom = addCustomLine([], { name: 'Amended return', serviceLine: 'individual_tax', unitCents: 10000 });
+  assert.equal(pickedDepositCents(custom, book, hilo), null, 'a custom line carries no deposit');
+});
+
+test('the row reads the book\'s label with its rate', () => {
+  assert.equal(referralRowLabel(hilo), 'Hilo referral discount (50%)');
+  assert.equal(referralRowLabel({ labelEn: 'Hilo referral discount', rate: 12.5 }), 'Hilo referral discount (12.5%)');
+});

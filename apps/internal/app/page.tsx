@@ -22,6 +22,8 @@ interface Executive {
   moneyActionsToday: MoneyActionRow[];
   /** Stripe refunds with no SAOS initiator: money that moved outside the door. */
   moneyOutsideTheDoor?: MoneyActionRow[];
+  /** R75: discounts a price-book rule took off invoices today. */
+  moneyDiscounts?: MoneyActionRow[];
   /** Item 4 (2026-09-19): completed engagements the client still owes on. */
   completedUnpaid?: { count: number; balanceCents: number };
   mrr: { cents: number; note: string };
@@ -276,6 +278,9 @@ export default function ExecutivePage() {
           <MoneyList rows={data.moneyActionsToday} empty="None so far today." />
           <h3 style={{ marginTop: 10 }} data-testid="money-outside-the-door">Money moved outside the door today: {(data.moneyOutsideTheDoor ?? []).length}</h3>
           <MoneyList rows={data.moneyOutsideTheDoor ?? []} empty="Nothing moved outside the door today." />
+          {/* R75: the Hilo referral discount, counted as a discount: what the rule took off invoices today. */}
+          <h3 style={{ marginTop: 10 }} data-testid="money-discounts-today">Discounts today: {(data.moneyDiscounts ?? []).length}</h3>
+          <MoneyList rows={data.moneyDiscounts ?? []} empty="No discounts today." />
           {/* Item 4 (2026-09-19): the work is done; the money is not in. */}
           {data.completedUnpaid ? (
             <div className="stat-row" style={{ marginTop: 10 }}>

@@ -12,6 +12,7 @@ import { dayOf, formatDate, formatDateTime, formatTime } from '../../../lib/date
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { api, ApiError, formatMoney } from '../../../lib/api';
+import { referralCentsWithTicks, referralRowText, type ReferralOnQuote } from '../../../lib/referral';
 import { useSession } from '../../../lib/session';
 
 interface Line {
@@ -28,6 +29,8 @@ interface Line {
   is_optional: boolean;
   chosen: boolean;
   is_pass_through: boolean;
+  /** R75: whether the quote's Hilo referral discount reaches this line (an add-on the client ticks takes it too). */
+  referral_reached?: boolean;
 }
 
 /**
@@ -70,6 +73,8 @@ export default function QuotePage() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [deposit, setDeposit] = useState<Deposit | null>(null);
+  /** R75: the Hilo referral discount on this quote, its own row; null when the quote carries none. */
+  const [referral, setReferral] = useState<ReferralOnQuote | null>(null);
   /** Decision 2 (2026-09-09): the tax year this proposal is for, from the server. */
   const [taxYear, setTaxYear] = useState<string | null>(null);
   const [taxYearSource, setTaxYearSource] = useState<string | null>(null);
@@ -85,10 +90,11 @@ export default function QuotePage() {
 
   const load = useCallback(async () => {
     try {
-      const r = await api<{ quote: Quote; lines: Line[]; deposit: Deposit; periods?: Array<{ serviceLine: string; periodKey: string | null; source?: string }> }>(`/public/quote/${token}`);
+      const r = await api<{ quote: Quote; lines: Line[]; deposit: Deposit; referralDiscount?: ReferralOnQuote | null; periods?: Array<{ serviceLine: string; periodKey: string | null; source?: string }> }>(`/public/quote/${token}`);
       setQuote(r.quote);
       setLines(r.lines);
       setDeposit(r.deposit);
+      setReferral(r.referralDiscount ?? null);
       const taxPeriod = r.periods?.find((p) => p.serviceLine === 'tax');
       setTaxYear(taxPeriod?.periodKey ?? null);
       setTaxYearSource(taxPeriod?.source ?? null);
@@ -110,7 +116,10 @@ export default function QuotePage() {
 
   const chosenOptional = lines.filter((l) => l.is_optional && picked[l.item_code]);
   const optionalCents = chosenOptional.reduce((sum, l) => sum + (l.line_cents ?? 0), 0);
-  const runningTotal = (quote?.total_cents ?? 0) + optionalCents;
+  // R75: total_cents is already net of the referral discount on the included lines; a ticked add-on it
+  // reaches takes it too, as acceptance will compute it.
+  const referralCents = referralCentsWithTicks(lines, referral, picked);
+  const runningTotal = (quote?.total_cents ?? 0) + optionalCents - (referralCents - (referral?.cents ?? 0));
 
   // A range quote stays a range when the client ticks an add-on. The band is
   // whatever the server applied (max ÷ min) — reading it back off the quote
@@ -276,17 +285,23 @@ export default function QuotePage() {
 
       <section className="card">
         <ul className="quote-lines">
+          {quote!.discount_cents > 0 || referral ? (
+            <li>
+              <span className="quote-desc">{t('quote_subtotal')}</span>
+              <span className="quote-amount">{formatMoney(quote!.subtotal_cents)}</span>
+            </li>
+          ) : null}
           {quote!.discount_cents > 0 ? (
-            <>
-              <li>
-                <span className="quote-desc">{t('quote_subtotal')}</span>
-                <span className="quote-amount">{formatMoney(quote!.subtotal_cents)}</span>
-              </li>
-              <li>
-                <span className="quote-desc">{t('quote_discount')}</span>
-                <span className="quote-amount">−{formatMoney(quote!.discount_cents)}</span>
-              </li>
-            </>
+            <li>
+              <span className="quote-desc">{t('quote_discount')}</span>
+              <span className="quote-amount">−{formatMoney(quote!.discount_cents)}</span>
+            </li>
+          ) : null}
+          {referral ? (
+            <li data-testid="quote-referral-discount">
+              <span className="quote-desc">{referralRowText(referral, lang)}</span>
+              <span className="quote-amount">−{formatMoney(referralCents)}</span>
+            </li>
           ) : null}
           <li className="quote-total">
             <span className="quote-desc">

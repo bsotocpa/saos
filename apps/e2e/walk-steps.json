@@ -163,6 +163,15 @@
         { "id": "L2", "text": "The CEO lifts the hold with a reason: a chat-artifact reason is refused under the field in the server's words; the real one lands; the badge leaves the re-read row", "device": "phone + laptop" },
         { "id": "L3", "text": "Role proof: ed_coo reads the badge with no control; comms_billing has no control and the route refuses 403 engagements.billing_hold.lift", "device": "phone + laptop" }
       ]
+    },
+    "V": {
+      "title": "The Hilo referral discount on a quote (R75), under price book v6",
+      "steps": [
+        { "id": "V1", "text": "The CEO builds a Hilo-referred client's first quote: the builder shows the discount at half the tax-return line and nothing off the recurring line; Create and send; the server applied the same figure", "device": "phone + laptop" },
+        { "id": "V2", "text": "The client's emailed proposal shows the discount as its own row", "device": "phone + laptop" },
+        { "id": "V3", "text": "The CEO removes it on the Ops quote page with a reason; the row reads removed with the reason and the total returns to the book's", "device": "phone + laptop" },
+        { "id": "V4", "text": "Role proof: the preparer reads the discount with no Remove control and the route refuses 403 quotes.referral_discount.remove", "device": "phone + laptop" }
+      ]
     }
   }
 }
