@@ -127,15 +127,33 @@ export default function ExecutivePage() {
   const [data, setData] = useState<Executive | null>(null);
   const [rollup, setRollup] = useState<Rollup | null>(null);
   const [health, setHealth] = useState<SystemHealth | null>(null);
+  /*
+   * NOBODY LANDS ON A PAGE THAT HANGS (R64, 2026-09-26). This view needs dashboards.executive; a
+   * session without it used to read "Loading…" forever because the refusal was never caught. Now a
+   * 403 renders one sentence and the link to the role's own home (from GET /auth/me), any other
+   * failure renders its words, and the "Needs you today" card says when the rollup is not the
+   * session's to read.
+   */
+  const [unavailable, setUnavailable] = useState<{ home: string } | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [rollupUnavailable, setRollupUnavailable] = useState(false);
 
   useEffect(() => {
     if (!isAuthed()) {
       router.replace('/login');
       return;
     }
-    void api<Executive>('/dashboards/executive').then(setData);
-    void api<Rollup>('/tasks/rollup').then(setRollup);
-    void api<SystemHealth>('/admin/system-health').then(setHealth);
+    const statusOf = (err: unknown) => (err as { status?: number }).status;
+    api<Executive>('/dashboards/executive').then(setData).catch(async (err: unknown) => {
+      if (statusOf(err) === 403) {
+        const me = await api<{ home?: string }>('/auth/me').catch(() => null);
+        setUnavailable({ home: me?.home ?? '/account' });
+      } else {
+        setLoadError(err instanceof Error && err.message ? err.message : 'The dashboard could not be read.');
+      }
+    });
+    api<Rollup>('/tasks/rollup').then(setRollup).catch((err: unknown) => { if (statusOf(err) === 403) setRollupUnavailable(true); });
+    api<SystemHealth>('/admin/system-health').then(setHealth).catch(() => undefined);
   }, [router]);
 
   const awaitingScan = (health?.documentScans ?? [])
@@ -143,6 +161,17 @@ export default function ExecutivePage() {
     .reduce((n, s) => n + s.n, 0);
   const infectedCount = (health?.documentScans ?? []).find((s) => s.status === 'infected')?.n ?? 0;
 
+  if (unavailable) {
+    return (
+      <>
+        <h1>Executive</h1>
+        <p className="muted" data-testid="role-unavailable">
+          Not available to your role. <Link href={unavailable.home}>Go to your home page</Link>
+        </p>
+      </>
+    );
+  }
+  if (loadError) return <div className="alert error" role="alert">{loadError}</div>;
   if (!data) return <p className="muted">Loading…</p>;
 
   const bands = Object.fromEntries(data.healthDistribution.map((h) => [h.band, h.count]));
@@ -191,6 +220,12 @@ export default function ExecutivePage() {
         </section>
       ) : null}
 
+      {rollupUnavailable ? (
+        <section className="card" data-testid="owner-rollup">
+          <h2>Needs you today</h2>
+          <p className="muted" data-testid="role-unavailable">Not available to your role</p>
+        </section>
+      ) : null}
       {rollup ? (
         <section className="card" data-testid="owner-rollup" style={rollup.mine.length + rollup.approvals.length > 0 ? { borderColor: 'var(--electric)' } : undefined}>
           <h2>

@@ -49,6 +49,8 @@ export default function QueuePage() {
   const [counts, setCounts] = useState<{ total: number; atRisk: number; rejected: number; awaitingDocs: number } | null>(null);
   const [scoped, setScoped] = useState(true);
   const [error, setError] = useState('');
+  /** R64: the queue is engagements.read; a session without it reads one sentence, not an empty queue. */
+  const [unavailable, setUnavailable] = useState(false);
   /* Leadership sees everyone's returns by default (Brian, 2026-09-19: the dry run is solo); a preparer sees their own. */
   const [everyone, setEveryone] = useState(true);
 
@@ -63,6 +65,7 @@ export default function QueuePage() {
       setCounts(r.counts);
       setScoped(r.scoped);
     } catch (err) {
+      if ((err as { status?: number }).status === 403) { setUnavailable(true); return; }
       setError((err as Error).message);
     }
   }, [everyone]);
@@ -84,6 +87,11 @@ export default function QueuePage() {
         </p>
       ) : null}
       {error ? <div className="alert error">{error}</div> : null}
+      {unavailable ? (
+        <section className="card">
+          <p className="muted" data-testid="role-unavailable">Not available to your role</p>
+        </section>
+      ) : null}
 
       {counts ? (
         <section className="card" style={{ marginBottom: 12 }}>
@@ -111,7 +119,7 @@ export default function QueuePage() {
         </section>
       ) : null}
 
-      {rows.length === 0 ? (
+      {unavailable ? null : rows.length === 0 ? (
         <section className="card">
           <p className="muted">
             {counts ? (everyone && !scoped ? 'No open returns right now.' : 'Nothing assigned to you right now.') : 'Loading…'}
