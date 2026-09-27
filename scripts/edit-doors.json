@@ -1,5 +1,5 @@
 {
-  "_comment": "THE EDIT-DOOR REGISTRY (Brian, 2026-09-20, edit after create). scripts/edit-doors.mjs joins this file with the API's own route registrations (app.post / app.patch / app.put under apps/api/src/modules) and prints one row per entity; scripts/check-edit-doors.mjs fails the root chain on any POST route this file does not classify, on any entity whose create control (createUi) has no update route with a UI caller (updateUi) unless it is marked immutable, and on any claim here the code contradicts (a createUi that does not call the route, a noCreateControl over a route some Ops screen does call). Paths are 'METHOD /path' as registered, :params kept.",
+  "_comment": "THE EDIT-DOOR REGISTRY (Brian, 2026-09-20, edit after create). scripts/edit-doors.mjs joins this file with the API's own route registrations (app.post / app.patch / app.put under apps/api/src/modules) and prints one row per entity; scripts/check-edit-doors.mjs fails the root chain on any POST route this file does not classify, on any entity whose create control (createUi) has no update route with a UI caller (updateUi) unless it is marked immutable, and on any claim here the code contradicts (a createUi that does not call the route, a noCreateControl over a route some Ops screen does call, an updateUiRenderedBy page that does not render the updateUi component). Paths are 'METHOD /path' as registered, :params kept. updateUiRenderedBy (R40) lists the pages that open a shared edit component, so the inventory names every screen the door is reached from.",
   "excluded": {
     "/auth/": "sessions and credentials, not records",
     "/portal/": "the client's own screens; Ops edits nothing there",
@@ -41,6 +41,7 @@
     "POST /efile-acks/rows/:id/unhold",
     "POST /engagements/:id/attest-addendum",
     "POST /engagements/:id/close",
+    "POST /engagements/:id/billing-hold/lift",
     "POST /engagements/:id/configure",
     "POST /engagements/:id/maintenance-mode",
     "POST /engagements/:id/pause",
@@ -114,7 +115,8 @@
     "POST /efile-acks/rows/:id/record-extension",
     "POST /efile-acks/:id/withdraw",
     "POST /efile-acks/:id/purge-identifiers",
-    "POST /tax-engagements/:id/filing-corrections"
+    "POST /tax-engagements/:id/filing-corrections",
+    "POST /tax-engagements/:id/reopen"
   ],
   "entities": [
     {
@@ -129,7 +131,8 @@
       "create": "POST /contacts/:id/businesses",
       "createUi": "apps/internal/components/add-business.tsx",
       "update": "PATCH /businesses/:id",
-      "updateUi": "apps/internal/components/edit-business.tsx"
+      "updateUi": "apps/internal/components/edit-business.tsx",
+      "updateUiRenderedBy": ["apps/internal/app/clients/[id]/page.tsx", "apps/internal/app/businesses/[id]/page.tsx"]
     },
     {
       "entity": "staff member",

@@ -79,6 +79,14 @@ export function fileCalls(file, key) {
   }
 }
 
+/** Whether `pageFile` imports the component module `componentFile` (R40: a shared edit door named by the pages that open it). */
+export function rendersComponentFrom(pageFile, componentFile) {
+  const abs = resolve(root, pageFile);
+  if (!existsSync(abs)) return false;
+  const stem = componentFile.replace(/\\/g, '/').split('/').pop().replace(/\.tsx?$/, '');
+  return new RegExp(`from\\s+['"][^'"]*/${stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`).test(readFileSync(abs, 'utf8'));
+}
+
 /** Every Ops file that calls the route (for checking a "no create control" claim). */
 export function opsCallers(key) {
   const out = [];
@@ -150,6 +158,10 @@ export function derive() {
       updateUiOk = Boolean(update) && fileCalls(e.updateUi, e.update);
       if (!updateUiOk) problems.push(`${e.entity}: ${e.updateUi} does not call ${e.update}; the edit control the registry names is not there`);
     }
+    // R40: a shared edit component is reached from more than one page; each page named must render it.
+    for (const pageFile of e.updateUiRenderedBy ?? []) {
+      if (!e.updateUi || !rendersComponentFrom(pageFile, e.updateUi)) problems.push(`${e.entity}: ${pageFile} does not import ${e.updateUi ?? '(no updateUi)'}; the registry says the edit door is reached from there`);
+    }
     if (e.createUi && !e.immutable && !updateUiOk) {
       problems.push(`${e.entity}: Ops creates one (${e.createUi}) and cannot edit it — no update route with a UI caller, and no "immutable because …" entry`);
     }
@@ -159,7 +171,7 @@ export function derive() {
       e.entity,
       `${e.create}${create ? ` (${create.file})` : ' (NOT REGISTERED)'}`,
       e.update ? `${e.update}${update ? ` (${update.file})` : ' (NOT REGISTERED)'}` : '—',
-      e.updateUi ?? (e.createUi ? `create only: ${e.createUi}` : '—'),
+      e.updateUi ? `${e.updateUi}${e.updateUiRenderedBy?.length ? ` (rendered by ${e.updateUiRenderedBy.join(', ')})` : ''}` : (e.createUi ? `create only: ${e.createUi}` : '—'),
       e.updateUi ? (t.phone ?? 'no') : '—',
       e.updateUi ? (t.desk ?? 'no') : '—',
       why,

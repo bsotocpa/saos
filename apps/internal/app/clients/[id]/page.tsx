@@ -12,18 +12,19 @@
 // That is deliberate and worth knowing: opening a client's packet leaves a trail.
 
 import { dayOf, formatDate, formatDateTime, formatTime } from '../../../lib/dates';
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../../lib/api';
 import { useAsk } from '../../../components/ask';
 import { AddBusinessModal } from '../../../components/add-business';
 import { EditBusinessModal } from '../../../components/edit-business';
-import { ReturnControls } from '../../../components/return-controls';
+import { ReopenReturnControl, ReopenedNotice, ReturnControls } from '../../../components/return-controls';
 import { ReturnStepper } from '../../../components/return-stepper';
 import { amountLabel, showExtendedBadge } from '../../../lib/return-stepper';
 import { consent7216Label, engagementStatusSentence, invoiceStatusLabel, letterStatusLabel, quoteStatusLabel } from '../../../lib/labels';
 import {
-  correctionLine, dollarsToCents, jurisdictionLabel, jurisdictionStatusText, MAILING_METHOD_LABEL,
+  correctionLine, dollarsToCents, f8879OnFileText, jurisdictionLabel, jurisdictionStatusText, MAILING_METHOD_LABEL,
   type FilingCorrectionView, type JurisdictionView,
 } from '../../../lib/return-controls';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
@@ -70,9 +71,13 @@ interface TaxEngagement {
   extension_filed: boolean; filed_date: string | null;
   preparer_of_record?: string | null; federal_accepted_on?: string | null; state_accepted_on?: string | null; state_accepted_code?: string | null;
   f8879_document_id?: string | null; f8879_signed_on?: string | null;
+  /** R66: which Form 8879 the scan on file is; R67: set while a reopened return awaits new answers. */
+  f8879_variant?: string | null; reopened_at?: string | null; reopen_reason?: string | null;
 }
 interface Doc {
   id: string; category: string; original_filename: string; created_at: string;
+  /** R69: a scan replaced through the correction door is kept and marked; the row says so. */
+  superseded_at?: string | null; superseded_by?: string | null; f8879_variant?: string | null;
 }
 interface Quote {
   created_by?: string | null;
@@ -90,6 +95,9 @@ interface Engagement {
   ended_on: string | null; close_reason: string | null;
   /** R52: when the work was paused; the row reads "On hold since <day>" from it. */
   work_paused_at?: string | null;
+  /** R68: the importer's billing hold — no invoice factory bills this engagement until the CEO lifts it. */
+  billing_hold?: boolean;
+  billing_hold_reason?: string | null;
   /** #47 — what was agreed, snapshotted at acceptance. Empty for pre-#47 engagements. */
   scopeName: string | null;
   scope: Array<{ itemCode: string; descriptionEn: string; quantity: string; lineCents: number | null; isPassThrough: boolean }>;
@@ -331,6 +339,12 @@ export default function ClientPacketPage() {
    * quotes.manage (or the wildcard) and for nobody else — not disabled, absent.
    */
   const [canManageQuotes, setCanManageQuotes] = useState(false);
+  /*
+   * LIFTING THE BILLING HOLD (R68, 2026-09-26): engagements.billing_hold.lift is EXPLICIT-ONLY, so the
+   * wildcard is not enough here — the grant must be on the session by name. The CEO's role carries it;
+   * every other session sees the hold and no control.
+   */
+  const [canLiftBillingHold, setCanLiftBillingHold] = useState(false);
   /** The business being edited in the Businesses card's Edit door (2026-09-20). */
   const [editingBusiness, setEditingBusiness] = useState<Business | null>(null);
   /** One line under one quote row: the copied link, or that the proposal went out again. */
@@ -348,6 +362,12 @@ export default function ClientPacketPage() {
    * runs. Null until the session answers, so neither renders on a guess.
    */
   const [returnStepper, setReturnStepper] = useState<'on' | 'off' | null>(null);
+  /*
+   * THE BUSINESS PAGE (R40, 2026-09-26): OPS_BUSINESS_PAGE, read from the same session answer. On, the
+   * business name in the Businesses card is a link to /businesses/:id; off (production until Brian
+   * approves the screenshots), it stays plain text and no link to the page is rendered anywhere.
+   */
+  const [businessPage, setBusinessPage] = useState<'on' | 'off' | null>(null);
   const [flaggedTest, setFlaggedTest] = useState('');
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -459,7 +479,7 @@ export default function ClientPacketPage() {
   }, [router, load]);
   useEffect(() => {
     let alive = true;
-    api<{ permissions: string[]; switches?: { opsRefundControl?: 'on' | 'off'; returnStepper?: 'on' | 'off' } }>('/auth/me')
+    api<{ permissions: string[]; switches?: { opsRefundControl?: 'on' | 'off'; returnStepper?: 'on' | 'off'; businessPage?: 'on' | 'off' } }>('/auth/me')
       .then((m) => {
         if (!alive) return;
         setCanAddBusiness(['*', 'contacts.write', 'businesses.write'].some((p) => m.permissions.includes(p)));
@@ -467,11 +487,14 @@ export default function ClientPacketPage() {
         setCanFlagTest(['*', 'contacts.write'].some((p) => m.permissions.includes(p)));
         setCanRefund(['*', 'billing.manage'].some((p) => m.permissions.includes(p)));
         setCanManageQuotes(['*', 'quotes.manage'].some((p) => m.permissions.includes(p)));
+        // Explicit-only: the named grant, never '*'.
+        setCanLiftBillingHold(m.permissions.includes('engagements.billing_hold.lift'));
         // Anything but the server saying "on" is off: a missing field is a closed door, never an open one.
         setRefundControl(m.switches?.opsRefundControl === 'on' ? 'on' : 'off');
         setReturnStepper(m.switches?.returnStepper === 'on' ? 'on' : 'off');
+        setBusinessPage(m.switches?.businessPage === 'on' ? 'on' : 'off');
       })
-      .catch(() => { if (alive) { setCanAddBusiness(false); setCanFlagTest(false); setCanRefund(false); setCanManageQuotes(false); setRefundControl(null); setReturnStepper(null); } });
+      .catch(() => { if (alive) { setCanAddBusiness(false); setCanFlagTest(false); setCanRefund(false); setCanManageQuotes(false); setRefundControl(null); setReturnStepper(null); setBusinessPage(null); } });
     return () => { alive = false; };
   }, []);
 
@@ -947,7 +970,8 @@ export default function ClientPacketPage() {
           ) : (
             packet.businesses.map((b) => (
               <div className="lead-card" key={b.id}>
-                <strong>{b.name}</strong>
+                {/* R40: the name opens the business page when OPS_BUSINESS_PAGE is on; plain text otherwise. */}
+                <strong>{businessPage === 'on' ? <Link href={`/businesses/${b.id}`} data-testid={`business-link-${b.id}`}>{b.name}</Link> : b.name}</strong>
                 {b.is_primary ? <span className="badge">primary</span> : null}
                 {b.is_test ? <span className="badge warn test-client-badge" title={b.test_note ?? undefined}>TEST</span> : null}
                 {b.unverified_import_source ? (
@@ -1051,7 +1075,10 @@ export default function ClientPacketPage() {
             docs.slice(0, 12).map((d) => (
               <p key={d.id} className="small" style={{ margin: '3px 0', overflowWrap: 'anywhere' }}>
                 <span className="badge">{d.category.replaceAll('_', ' ')}</span> {d.original_filename}
+                {d.f8879_variant ? <span className="muted"> · {d.f8879_variant}</span> : null}
                 <span className="muted"> · {dayOf(d.created_at)}</span>
+                {/* R69: a replaced scan stays on the record, downloadable, and reads what it is. */}
+                {d.superseded_at ? <span className="badge warn" data-testid={`document-superseded-${d.id}`}> superseded {dayOf(d.superseded_at)}</span> : null}
               </p>
             ))
           )}
@@ -1355,7 +1382,12 @@ export default function ClientPacketPage() {
               <span className="name">
                 {e.scopeName ?? e.title ?? e.service_line}{' '}
                 {/* R52 (2026-09-26): the status in plain words — "On hold since Sep 20, 2026", "Withdrawn on Sep 18, 2026". */}
-                <span className="badge" data-testid="engagement-status">{engagementStatusSentence(e.status, { pausedDay: e.work_paused_at ? dayOf(e.work_paused_at) : null, endedDay: e.ended_on ? formatDate(e.ended_on) : null })}</span>
+                <span className="badge" data-testid="engagement-status">{engagementStatusSentence(e.status, { pausedDay: e.work_paused_at ? dayOf(e.work_paused_at) : null, endedDay: e.ended_on ? formatDate(e.ended_on) : null, billingHold: e.billing_hold === true })}</span>
+                {/* R68 (2026-09-26): the importer's billing hold. No invoice factory bills this engagement
+                    until the CEO lifts it; the badge carries the hold's own reason. */}
+                {e.billing_hold ? (
+                  <span className="badge warn" data-testid="engagement-billing-hold" title={e.billing_hold_reason ?? undefined}>Billing on hold (imported)</span>
+                ) : null}
                 {/* THE OPEN BALANCE (2026-09-19): an engagement, completed or not, with an unpaid
                     invoice says so here — the work being done does not settle the bill. */}
                 {(e.open_balance_cents ?? 0) > 0 ? (
@@ -1518,6 +1550,33 @@ export default function ClientPacketPage() {
                   )}
                 </span>
               ) : null}
+              {/*
+                LIFT THE BILLING HOLD (R68, 2026-09-26). Renders for the named grant only — explicit-only,
+                the CEO's — and asks for the reason where the decision is made. The outcome is re-read from
+                the server: the badge leaves because the row came back without the hold, not because the
+                button was pressed.
+              */}
+              {e.billing_hold && canLiftBillingHold ? (
+                <span className="rowactions">
+                  <button
+                    className="btn ghost small" type="button" disabled={busy} data-testid="lift-billing-hold"
+                    onClick={async () => {
+                      const a = await ask({
+                        title: 'Lift the billing hold?',
+                        body: <p className="small">{e.billing_hold_reason ?? 'This engagement is held for billing.'} Once lifted, every invoice path may bill this engagement. This is the record of why billing begins.</p>,
+                        reason: { label: 'Why does billing start now?', required: true },
+                        choices: [{ key: 'lift', label: 'Lift billing hold', tone: 'primary' }],
+                        run: async (r) => { await api(`/engagements/${e.id}/billing-hold/lift`, { method: 'POST', body: { reason: r.reason } }); },
+                      });
+                      if (!a) return;
+                      setActionMsg('Billing hold lifted. Invoices can be raised on this engagement from now on.');
+                      await load();
+                    }}
+                  >
+                    Lift billing hold…
+                  </button>
+                </span>
+              ) : null}
               {errAt(`eng:${e.id}`)}
             </div>
           ))}
@@ -1563,7 +1622,8 @@ export default function ClientPacketPage() {
                 {t.filed_date ? `filed ${formatDate(t.filed_date)}` : 'not filed'}
                 {/* The paid preparer of record (2026-09-12). Filed before it was recorded: say so, never assume. */}
                 {t.filed_date ? ` · preparer of record: ${t.preparer_of_record ?? 'not recorded'}` : ''}
-                {!t.filed_date ? (t.f8879_document_id ? ` · 8879 on file, signed ${formatDate(t.f8879_signed_on ?? '')}` : ' · 8879 not on file') : ''}
+                {/* R66: the row names which 8879 is on file ("8879-TE on file, signed …"). */}
+                {!t.filed_date ? (t.f8879_document_id ? ` · ${f8879OnFileText(t.f8879_variant, formatDate(t.f8879_signed_on ?? ''))}` : ' · 8879 not on file') : ''}
                 {t.federal_accepted_on ? ` · IRS accepted ${formatDate(t.federal_accepted_on)}` : ''}
                 {t.state_accepted_on ? ` · ${t.state_accepted_code ?? 'state'} accepted ${formatDate(t.state_accepted_on)}` : ''}
               </span>
@@ -1572,7 +1632,12 @@ export default function ClientPacketPage() {
               <span className="amt" data-testid={`return-amount-${t.id}`}>{amountLabel(t, formatMoney)}</span>
               {returnStepper === 'on' ? (
                 /* R50: the stepper prints the jurisdictions, the corrections and the controls itself, once. */
-                <ReturnStepper taxEngagementId={t.id} contactId={params.id} stage={t.stage} onChanged={load} />
+                <>
+                  <ReturnStepper taxEngagementId={t.id} contactId={params.id} stage={t.stage} onChanged={load} />
+                  {/* R67: the reopen door and the reopened notice belong to the row whichever rendering is on; the stepper's Close step is not a control. */}
+                  {t.reopened_at && t.stage === 'filed' ? <ReopenedNotice reason={t.reopen_reason} /> : null}
+                  {t.stage === 'completed' ? <ReopenReturnControl taxEngagementId={t.id} taxYear={t.tax_year} returnType={t.return_type} onChanged={load} /> : null}
+                </>
               ) : returnStepper === 'off' ? (
               <>
               {/* WHERE A RECORDED MAILING IS READABLE (ruling 25, 2026-09-20): here, on the row, per

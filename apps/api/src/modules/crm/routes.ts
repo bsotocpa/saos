@@ -17,8 +17,11 @@ import { AppError } from '../../types.ts';
 import { refreshEnrichmentGaps } from './service.ts';
 import { withTransaction } from '../../db.ts';
 import { runHealthRefresh } from './health.ts';
+import { readableCategories } from '../documents/wall.ts';
+import { scopeForEngagements, scopeName, scopeSummary } from '../engagements/scope.ts';
 
 import { createInvoice } from '../billing/service.ts';
+import { assertNotBillingHeld } from '../billing/billing-hold.ts';
 
 const ContactCreateBody = z.object({
   firstName: z.string().min(1),
@@ -308,6 +311,14 @@ export function registerCrmRoutes(app: FastifyInstance): void {
                  CASE WHEN $1::text IS NOT NULL AND b.name ILIKE $1 THEN 0 ELSE 1 END,
                  bm.is_primary DESC, b.name
                LIMIT 1) AS business_name,
+              -- R40 (2026-09-26): the same business's id, so the clients-list row for a business match
+              -- can open the business page when OPS_BUSINESS_PAGE is on.
+              (SELECT b.id FROM business_members bm JOIN businesses b ON b.id = bm.business_id
+               WHERE bm.contact_id = c.id AND NOT b.is_archived
+               ORDER BY
+                 CASE WHEN $1::text IS NOT NULL AND b.name ILIKE $1 THEN 0 ELSE 1 END,
+                 bm.is_primary DESC, b.name
+               LIMIT 1) AS business_id,
               -- R51 (2026-09-26): true when the search hit a business legal name, so every Ops
               -- search (Deliver Return, New quote, the clients list) can print "Business — owner".
               ($1::text IS NOT NULL AND EXISTS (
@@ -684,6 +695,197 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     return { businesses: rows };
   });
 
+  /*
+   * THE BUSINESS PAGE'S READ (Brian, 2026-09-26, R40; proposal docs/proposals/2026-09-20-business-page.md).
+   *
+   * One aggregate for /businesses/:id in Ops: the entity, its members, and one block per card. The
+   * page is contacts.read (the same gate as GET /businesses); each card is its own permission, checked
+   * HERE, in the handler, never on the screen: engagements and returns are engagements.read, invoices
+   * are billing.manage, documents are documents.read with the §7216 category wall in the query. A card
+   * the session cannot read is sent as `{ refused: true, permission }` with no rows, so the page prints
+   * "Not available to your role" (R64) instead of an empty state it cannot vouch for. The entity,
+   * owners and service facts ride on the page's own gate.
+   *
+   * THE EIN (the ruling): the last four leave with contacts.read; the whole number only to pii.read.
+   * An archived (or merged) business is the same 404 as one that does not exist — its history stays
+   * on the owner's record, not on a page. Reading the page is audited (business.viewed), and listing
+   * its documents is audited the way GET /documents audits its list (documents.listed).
+   *
+   * Behind OPS_BUSINESS_PAGE (R57): while off the route refuses with the sentence the page prints.
+   */
+  app.get<{ Params: { id: string } }>('/businesses/:id', read, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const actor = request.staff!;
+    if (app.switches.businessPage !== 'on') throw new AppError(409, 'business_page_off', 'This page is not switched on.');
+
+    const biz = await app.db.query<Record<string, unknown> & { ein: string | null }>(
+      `SELECT b.id, b.name, b.status::text AS status, b.entity_type::text AS entity_type, b.ein,
+              b.state, b.fiscal_year_end_month, b.industry, b.naics_code,
+              b.formation_date::text AS formation_date, b.formation_date_source,
+              b.il_sos_status::text AS il_sos_status, b.il_sos_checked_at,
+              b.is_test, b.test_note, b.unverified_import_source::text AS unverified_import_source,
+              b.books_current_through::text AS books_current_through, b.books_current_through_as_of::text AS books_current_through_as_of,
+              b.qbo_paid_by::text AS qbo_paid_by, b.qbo_paid_by_as_of::text AS qbo_paid_by_as_of,
+              b.created_at
+         FROM businesses b WHERE b.id = $1 AND NOT b.is_archived`,
+      [id]
+    );
+    const row = biz.rows[0];
+    if (!row) throw new AppError(404, 'not_found', 'Business not found.');
+    const { ein, books_current_through, books_current_through_as_of, qbo_paid_by, qbo_paid_by_as_of, ...entity } = row;
+    const digits = (ein ?? '').replace(/\D/g, '');
+    const business: Record<string, unknown> = {
+      ...entity,
+      ein_on_file: ein !== null,
+      ein_last4: digits.length >= 4 ? digits.slice(-4) : null,
+    };
+    // THE WALL, field filtering: the whole EIN leaves only for pii.read (the client page hands it to
+    // contacts.read for Laura's filings; this page is the one Brian ruled last-four-only).
+    if (holds(actor, 'pii.read')) business.ein = ein;
+
+    const members = await app.db.query(
+      `SELECT m.contact_id, c.first_name, c.last_name, m.member_role, m.is_primary, c.is_archived AS contact_archived
+         FROM business_members m JOIN contacts c ON c.id = m.contact_id
+        WHERE m.business_id = $1 ORDER BY m.is_primary DESC, c.last_name, c.first_name`,
+      [id]
+    );
+
+    // ── Engagements and returns: engagements.read. ────────────────────────────────────────────────
+    const canEngagements = holds(actor, 'engagements.read');
+    let engagements: unknown = { refused: true, permission: 'engagements.read' };
+    let returns: unknown = { refused: true, permission: 'engagements.read' };
+    if (canEngagements) {
+      const eng = await app.db.query(
+        `SELECT e.id, e.contact_id, e.service_line::text AS service_line, e.status::text AS status, e.title, e.period_key,
+                e.lead_staff_id, ls.display_name AS lead_staff_name,
+                e.started_on::text AS started_on, e.ended_on::text AS ended_on, e.close_reason, e.work_paused_at, e.created_at,
+                e.prep_cadence::text AS prep_cadence, e.filing_frequency, e.payroll_provider,
+                (SELECT COALESCE(sum(i.total_cents - i.amount_paid_cents), 0)::bigint
+                   FROM invoices i WHERE i.engagement_id = e.id AND i.status IN ('sent', 'overdue')) AS open_balance_cents
+           FROM engagements e LEFT JOIN staff ls ON ls.id = e.lead_staff_id
+          WHERE e.business_id = $1
+          ORDER BY CASE e.status WHEN 'active' THEN 0 WHEN 'on_hold' THEN 1 ELSE 2 END, e.created_at DESC
+          LIMIT 200`,
+        [id]
+      );
+      const scopes = await scopeForEngagements(app, eng.rows.map((r) => String(r.id)));
+      engagements = {
+        rows: eng.rows.map((r) => {
+          const items = scopes.get(String(r.id)) ?? [];
+          return { ...r, open_balance_cents: Number(r.open_balance_cents), scopeName: scopeName(items, 'en'), scopeSummary: scopeSummary(items) };
+        }),
+      };
+      const ret = await app.db.query(
+        `SELECT te.id, te.engagement_id, te.tax_year, te.return_type, te.stage::text AS stage,
+                te.preparer_id, prep.display_name AS preparer_name,
+                te.preparer_ptin_holder_id, ptin.display_name AS preparer_of_record,
+                te.extension_filed, te.filed_date::text AS filed_date,
+                te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
+                te.estimated_fee_min_cents, te.estimated_fee_max_cents, te.final_fee_cents,
+                te.f8879_document_id, te.f8879_signed_at::date::text AS f8879_signed_on,
+                e.contact_id, c.first_name, c.last_name
+           FROM tax_engagements te
+           JOIN engagements e ON e.id = te.engagement_id
+           JOIN contacts c ON c.id = e.contact_id
+           LEFT JOIN staff ptin ON ptin.id = te.preparer_ptin_holder_id
+           LEFT JOIN staff prep ON prep.id = te.preparer_id
+          WHERE e.business_id = $1
+          ORDER BY te.tax_year DESC, te.created_at DESC LIMIT 200`,
+        [id]
+      );
+      returns = { rows: ret.rows };
+    }
+
+    // ── Service facts (the 0105–0111 tables): the page's own gate. ───────────────────────────────
+    const compliance = await app.db.query(
+      `SELECT ec.state, ec.anniversary_mmdd, ec.anniversary_kind, ec.annual_report_due_date::text AS annual_report_due_date,
+              ec.status::text AS status, ec.last_filed_date::text AS last_filed_date
+         FROM entity_compliance ec WHERE ec.business_id = $1`,
+      [id]
+    );
+    const access = await app.db.query(
+      `SELECT fact, as_of::text AS as_of, source::text AS source, recorded_at FROM business_access_facts WHERE business_id = $1 ORDER BY fact`,
+      [id]
+    );
+    // Sales-tax frequency and payroll provider are facts about the service, read from the open
+    // engagements that carry them, and printed without the engagement (that card has its own gate).
+    const lineFacts = await app.db.query<{ service_line: string; filing_frequency: string | null; payroll_provider: string | null }>(
+      `SELECT e.service_line::text AS service_line, e.filing_frequency, e.payroll_provider FROM engagements e
+        WHERE e.business_id = $1 AND e.status IN ('active', 'on_hold') AND (e.filing_frequency IS NOT NULL OR e.payroll_provider IS NOT NULL)
+        ORDER BY e.created_at`,
+      [id]
+    );
+    const imports = await app.db.query(
+      `SELECT source::text AS source, trello_source_id, fact_type, as_of::text AS as_of, applied_at, applied_by, rows_written
+         FROM service_fact_imports WHERE business_id = $1 ORDER BY applied_at DESC, fact_type`,
+      [id]
+    );
+    const serviceFacts = {
+      books: { currentThrough: books_current_through ?? null, asOf: books_current_through_as_of ?? null },
+      qbo: { paidBy: qbo_paid_by ?? 'unknown', asOf: qbo_paid_by_as_of ?? null },
+      annualReport: compliance.rows[0] ?? null,
+      accessFacts: access.rows,
+      salesTaxFrequencies: [...new Set(lineFacts.rows.map((r) => r.filing_frequency).filter((v): v is string => v !== null))],
+      payrollProviders: [...new Set(lineFacts.rows.map((r) => r.payroll_provider).filter((v): v is string => v !== null))],
+      imports: imports.rows,
+    };
+
+    // ── Invoices: billing.manage, attributed through the engagement (invoices carry no business_id). ──
+    const canInvoices = holds(actor, 'billing.manage');
+    let invoices: unknown = { refused: true, permission: 'billing.manage' };
+    if (canInvoices) {
+      const inv = await app.db.query(
+        `SELECT i.id, i.invoice_number, i.status::text AS status, i.total_cents, i.amount_paid_cents, i.amount_refunded_cents,
+                i.sent_at, i.paid_at, i.void_reason, i.voided_at, COALESCE(vs.full_name, i.voided_by_label) AS voided_by,
+                (SELECT max(r.created_at) FROM invoice_refunds r WHERE r.invoice_id = i.id) AS refunded_at,
+                i.contact_id, i.engagement_id, i.tax_engagement_id, i.created_at
+           FROM invoices i
+           LEFT JOIN staff vs ON vs.id = i.voided_by_staff_id
+          WHERE i.engagement_id IN (SELECT e.id FROM engagements e WHERE e.business_id = $1)
+             OR i.tax_engagement_id IN (SELECT te.id FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE e.business_id = $1)
+          ORDER BY i.created_at DESC LIMIT 200`,
+        [id]
+      );
+      invoices = { rows: inv.rows };
+    }
+
+    // ── Documents: documents.read, the category wall in the query, the list audited. ────────────
+    const canDocuments = holds(actor, 'documents.read');
+    let documents: unknown = { refused: true, permission: 'documents.read' };
+    if (canDocuments) {
+      const readable = readableCategories(actor);
+      const params: unknown[] = [id];
+      let categoryClause = '';
+      if (readable !== null) {
+        params.push([...readable]);
+        categoryClause = ` AND d.category = ANY($${params.length}::document_category[])`;
+      }
+      const docs = await app.db.query(
+        `SELECT d.id, d.contact_id, d.category::text AS category, d.filename AS original_filename, d.mime_type, d.size_bytes,
+                d.tax_year, d.status::text AS status, d.scan_status::text AS scan_status, d.uploaded_by_type, d.created_at
+           FROM documents d
+          WHERE d.business_id = $1 AND d.archived_at IS NULL${categoryClause}
+          ORDER BY d.created_at DESC LIMIT 200`,
+        params
+      );
+      documents = { rows: docs.rows };
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+        action: 'documents.listed', objectType: 'business', objectId: id, ...meta(request),
+        details: { count: docs.rows.length, category: null, categories: readable ?? 'all', page: 'business' },
+      });
+    }
+
+    // Reading a business record is audited like reading a contact record (contact.viewed).
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+      action: 'business.viewed', objectType: 'business', objectId: id, ...meta(request),
+      details: { ein_shown: holds(actor, 'pii.read') ? 'full' : 'last4', cards_refused: [canEngagements ? null : 'engagements', canEngagements ? null : 'returns', canInvoices ? null : 'invoices', canDocuments ? null : 'documents'].filter(Boolean) },
+    });
+
+    return { business, members: members.rows, engagements, returns, serviceFacts, invoices, documents };
+  });
+
   /** Archive a business (2026-09-12): never a delete; a primary that goes clears the flag and nothing is promoted. */
   app.post<{ Params: { id: string } }>('/businesses/:id/archive', write, async (request) => {
     const id = z.uuid().parse(request.params.id);
@@ -959,10 +1161,10 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       throw new AppError(409, 'per_entity_mode', 'This group bills per entity — invoice each engagement individually.');
     }
     const billable = await app.db.query<{
-      te_id: string; business_name: string; return_type: string; tax_year: number;
+      te_id: string; engagement_id: string; business_name: string; return_type: string; tax_year: number;
       final_fee_cents: number; contact_id: string;
     }>(
-      `SELECT te.id AS te_id, b.name AS business_name, te.return_type, te.tax_year,
+      `SELECT te.id AS te_id, e.id AS engagement_id, b.name AS business_name, te.return_type, te.tax_year,
               te.final_fee_cents, e.contact_id
        FROM entity_group_members gm
        JOIN businesses b ON b.id = gm.business_id
@@ -975,6 +1177,10 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     );
     if (billable.rows.length === 0) {
       throw new AppError(400, 'nothing_billable', 'No filed group engagements with a final fee are awaiting an invoice.');
+    }
+    // R68: the consolidated invoice names no engagement of its own, so each return's parent is asked.
+    for (const engagementId of new Set(billable.rows.map((r) => r.engagement_id))) {
+      await assertNotBillingHeld(app, engagementId, { type: 'staff', id: request.staff!.id, label: request.staff!.fullName }, { via: 'entity_group.invoice' });
     }
     const invoice = await createInvoice(
       app,

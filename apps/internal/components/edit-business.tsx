@@ -39,6 +39,11 @@ export interface EditBusinessProps {
   business: {
     id: string; name: string; entity_type: string | null; state: string | null;
     ein: string | null; formation_date?: string | null; industry: string | null;
+    /**
+     * R40: the business page hands the whole EIN only to pii.read; for anyone else `ein` is null
+     * while one is on file, and this says so, so the empty field is not read as "no EIN".
+     */
+    ein_withheld_last4?: string | null;
   };
   onClose: () => void;
   onSaved: () => Promise<void> | void;
@@ -152,6 +157,9 @@ export function EditBusinessModal(props: EditBusinessProps): React.JSX.Element {
         </label>
         <label className="field">
           EIN <span className="muted small">(XX-XXXXXXX)</span>
+          {!b.ein && b.ein_withheld_last4 ? (
+            <span className="muted small" data-testid="ein-withheld"> · on file, ending {b.ein_withheld_last4}; not shown to your role. Type a full EIN only to replace it.</span>
+          ) : null}
           <input value={ein} onChange={(e) => setEin(e.target.value)} inputMode="numeric" placeholder="12-3456789" aria-invalid={error?.field === 'ein' || undefined} />
           {errAt('ein')}
         </label>

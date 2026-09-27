@@ -33,6 +33,8 @@ interface ClientRow {
   business_name: string | null;
   /** R51: the search reached this row through the business legal name; the row reads "Business — owner". */
   business_matched?: boolean;
+  /** R40: the matched business's id, so the row can open the business page. */
+  business_id?: string | null;
   active_engagements: number;
 }
 
@@ -57,6 +59,14 @@ export default function ClientsPage() {
    */
   const [canAddClient, setCanAddClient] = useState(false);
   const [adding, setAdding] = useState(false);
+  /*
+   * THE BUSINESS PAGE (R40, 2026-09-26): with OPS_BUSINESS_PAGE on, a row the search reached through a
+   * business legal name ("Business — owner") opens /businesses/:id; off, every row opens the client.
+   * Anything but the server saying "on" is off. Deliver Return and New quote keep their client rows.
+   */
+  const [businessPage, setBusinessPage] = useState<'on' | 'off' | null>(null);
+  const rowHref = (r: ClientRow): string =>
+    businessPage === 'on' && r.business_matched && r.business_id ? `/businesses/${r.business_id}` : `/clients/${r.id}`;
   const LIMIT = 25;
 
   const load = useCallback(async () => {
@@ -94,9 +104,13 @@ export default function ClientsPage() {
   }, [load, router]);
   useEffect(() => {
     let alive = true;
-    api<{ permissions: string[] }>('/auth/me')
-      .then((m) => { if (alive) setCanAddClient(['*', 'contacts.write'].some((p) => m.permissions.includes(p))); })
-      .catch(() => { if (alive) setCanAddClient(false); });
+    api<{ permissions: string[]; switches?: { businessPage?: 'on' | 'off' } }>('/auth/me')
+      .then((m) => {
+        if (!alive) return;
+        setCanAddClient(['*', 'contacts.write'].some((p) => m.permissions.includes(p)));
+        setBusinessPage(m.switches?.businessPage === 'on' ? 'on' : 'off');
+      })
+      .catch(() => { if (alive) { setCanAddClient(false); setBusinessPage(null); } });
     return () => { alive = false; };
   }, []);
 
@@ -179,7 +193,7 @@ export default function ClientsPage() {
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      <Link href={`/clients/${r.id}`}>
+                      <Link href={rowHref(r)}>
                         {clientSearchLabel(r)}
                       </Link>{' '}
                       {r.is_test ? <span className="badge warn">TEST</span> : null}
@@ -205,7 +219,7 @@ export default function ClientsPage() {
           {/* 390px: one card per client, the whole card clickable. */}
           <section className="phone-only">
             {rows.map((r) => (
-              <Link key={r.id} href={`/clients/${r.id}`} className="card lead-card-link" style={{ display: 'block', marginBottom: 8 }}>
+              <Link key={r.id} href={rowHref(r)} className="card lead-card-link" style={{ display: 'block', marginBottom: 8 }}>
                 <strong>{clientSearchLabel(r)}</strong>{' '}
                 {r.is_test ? <span className="badge warn">TEST</span> : null}
                 {r.business_name && !r.business_matched ? (
