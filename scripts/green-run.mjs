@@ -33,7 +33,9 @@ function git(args, env = {}) {
 
 /** The tree hash of the WORKING TREE: tracked and untracked, ignored excluded, as a commit would see it. */
 function workingTreeHash() {
-  const tmpIndex = join(ROOT, '.git', `green-run-index-${process.pid}`);
+  // In a worktree `.git` is a file that points at the real git dir; ask git where that is (2026-09-27:
+  // the first receipt run from a worktree passed every suite and then could not write its index here).
+  const tmpIndex = join(resolve(ROOT, git(['rev-parse', '--git-dir'])), `green-run-index-${process.pid}`);
   try {
     const env = { GIT_INDEX_FILE: tmpIndex };
     git(['read-tree', 'HEAD'], env);
