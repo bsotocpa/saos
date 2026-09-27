@@ -74,10 +74,14 @@ export async function assertChangeOrderIfActive(
   changeOrderOf: string | undefined
 ): Promise<ChangeOrderTarget | null> {
   const periods = await periodsForQuote(app, quoteId);
+  // The engagements this quote creates carry the quote's business (acceptance copies it), so the
+  // work it would duplicate is the work on that same business, or the person's own when none.
+  const q = await app.db.query<{ business_id: string | null }>(`SELECT business_id FROM quotes WHERE id = $1`, [quoteId]);
+  const businessId = q.rows[0]?.business_id ?? null;
   const candidates: Array<{ id: string; title: string | null; serviceLine: string; periodKey: string }> = [];
   for (const p of periods) {
     if (p.periodKey === null) continue; // per-matter lines: not enforced (period.ts)
-    for (const e of await activeEngagementsFor(app, contactId, p.serviceLine, p.periodKey)) {
+    for (const e of await activeEngagementsFor(app, contactId, p.serviceLine, p.periodKey, businessId)) {
       candidates.push({ id: e.id, title: e.title, serviceLine: p.serviceLine, periodKey: p.periodKey });
     }
   }

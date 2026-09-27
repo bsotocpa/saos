@@ -148,6 +148,43 @@ test('CHANGE ORDER: accepted atomically — old withdrawn with the reason, new a
   assert.equal(audit.rows[0]!.details.quote_id, co.id);
 });
 
+test('THE OWNER AND THE ENTITY (R73, 2026-09-27): an S corporation owner with the 1120-S active quotes their own 1040 for the same year as a plain quote; a second 1040 is still a change order of the first, never of the 1120-S', async () => {
+  const c = await client();
+  const biz = await businessFor(app.db, c.id);
+  // The entity's return: a business line on the business, accepted, active for the default year.
+  const entity = await createQuote(app, { contactId: c.id, businessId: biz, lines: [{ itemCode: 'BIZ_1120S' }] }, actor);
+  await acceptQuote(app, (await sendQuote(app, entity.id, actor)).url.split('/').pop()!, {});
+  const [scorp] = await engagements(c.id);
+  assert.equal(scorp!.status, 'active');
+
+  // The owner's 1040: no business on the quote (the builder's default). A plain quote, sent and accepted.
+  const own = await createQuote(app, { contactId: c.id, lines: [{ itemCode: 'IND_BASE_SINGLE' }] }, actor);
+  const sent = await sendQuote(app, own.id, actor);
+  const accepted = await acceptQuote(app, sent.url.split('/').pop()!, {});
+  const eng = await engagements(c.id);
+  const active = eng.filter((e) => e.status === 'active');
+  assert.equal(active.length, 2, 'two returns for one year on one contact: the 1120-S and the 1040');
+  assert.equal(new Set(active.map((e) => e.period_key)).size, 1, 'the same period');
+  assert.equal(eng.find((e) => e.id === scorp!.id)!.status, 'active', 'the 1120-S engagement is untouched');
+
+  // A second 1040 for that year is the same work twice: refused, naming the 1040, not the 1120-S.
+  const again = await createQuote(app, { contactId: c.id, lines: [{ itemCode: 'IND_BASE_SINGLE' }] }, actor);
+  await assert.rejects(
+    sendQuote(app, again.id, actor),
+    (err: unknown) => err instanceof AppError && err.code === 'change_order_required'
+      && JSON.stringify(err).includes(accepted.engagementId) && !JSON.stringify(err).includes(scorp!.id),
+    'the candidate is the 1040 engagement alone'
+  );
+  // And a second 1120-S on the business is refused naming the 1120-S alone.
+  const entityAgain = await createQuote(app, { contactId: c.id, businessId: biz, lines: [{ itemCode: 'BIZ_1120S' }] }, actor);
+  await assert.rejects(
+    sendQuote(app, entityAgain.id, actor),
+    (err: unknown) => err instanceof AppError && err.code === 'change_order_required'
+      && JSON.stringify(err).includes(scorp!.id) && !JSON.stringify(err).includes(accepted.engagementId),
+    'the candidate is the 1120-S engagement alone'
+  );
+});
+
 test('DIFFERENT PERIODS coexist: a 2024 return and a 2025 return are two legitimate engagements', async () => {
   const c = await client();
   const item = await itemFor('tax');

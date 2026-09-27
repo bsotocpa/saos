@@ -53,20 +53,30 @@ export function isOneActivePerPeriodViolation(err: unknown): boolean {
   return e.code === '23505' && e.constraint === 'engagements_one_active_per_line_period';
 }
 
-/** Active engagements on this contact + line + period — the ones a new quote must replace. */
+/**
+ * Active engagements on this contact + line + period + ENTITY — the ones a new quote must replace.
+ *
+ * The entity is part of the key exactly as migration 0098 put it in the index: the owner's own
+ * work (no business) collides with itself, and each business's work with that business's. The
+ * send gate read (contact, line, period) alone after 0098, so an S corporation owner's 1040 quote
+ * was refused as a "change order" of the corporation's 1120-S, whose engagement the change order
+ * would then have withdrawn (R73 preflight, 2026-09-27).
+ */
 export async function activeEngagementsFor(
   app: FastifyInstance,
   contactId: string,
   serviceLine: string,
-  periodKey: string
+  periodKey: string,
+  businessId: string | null
 ): Promise<Array<{ id: string; title: string | null; status: string; periodKey: string }>> {
   const { rows } = await app.db.query<{ id: string; title: string | null; status: string; period_key: string }>(
     `SELECT id, title, status::text AS status, period_key
        FROM engagements
       WHERE contact_id = $1 AND service_line = $2::service_line AND period_key = $3
+        AND business_id IS NOT DISTINCT FROM $4::uuid
         AND status IN ('active', 'on_hold')
       ORDER BY created_at`,
-    [contactId, serviceLine, periodKey]
+    [contactId, serviceLine, periodKey, businessId]
   );
   return rows.map((r) => ({ id: r.id, title: r.title, status: r.status, periodKey: r.period_key }));
 }
