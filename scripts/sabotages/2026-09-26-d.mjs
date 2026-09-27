@@ -6,8 +6,9 @@
  *        its 8879 tomorrow. test/f8879-sent.spec.ts is red on the refusal test.
  *
  *   R50  The current step's control removed from the stepper. return-stepper.tsx renders the one
- *        control on the current step for a session holding engagements.tax.manage; make that branch
- *        unreachable and the stepper shows steps with nothing to tap. ops-return-stepper-switch.spec.ts
+ *        control on the current step of the open phase for a session holding engagements.tax.manage
+ *        (v2, 2026-09-27: five phases, the anchor one level deeper); make that branch unreachable and
+ *        the rail shows its phases and steps with nothing to tap. ops-return-stepper-switch.spec.ts
  *        (S1) is red at both viewports: no letter upload on the current step. Harness kind: the run
  *        boots the API and both Next apps, so hold the harness lock while this item runs.
  *
@@ -37,12 +38,12 @@ export const items = [
   {
     item: 'R50 the current step carries its one control: the branch that renders it made unreachable',
     file: 'apps/internal/components/return-stepper.tsx',
-    change: "`{s.state === 'current' && canManage ? (` replaced by `{false ? (`; the stepper shows sixteen steps and no control to tap",
+    change: "`{s.state === 'current' && canManage ? (` replaced by `{false ? (`; the rail shows five phases, the open one its steps, and no control to tap",
     test: { kind: 'harness', spec: 'tests/ops-return-stepper-switch.spec.ts' },
     apply: (t) => {
-      const a = "            {s.state === 'current' && canManage ? (";
+      const a = "                    {s.state === 'current' && canManage ? (";
       must(t, a);
-      return t.replace(a, () => '            {false ? ( // SABOTAGE: the current step’s control removed');
+      return t.replace(a, () => '                    {false ? ( // SABOTAGE: the current step’s control removed');
     },
     expectRed: /off renders the row with its control grid/,
   },

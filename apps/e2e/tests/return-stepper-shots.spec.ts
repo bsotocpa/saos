@@ -1,29 +1,38 @@
 /*
- * THE RETURNS CARD AS A STEPPER, FOR BRIAN'S APPROVAL (2026-09-26, R50). Three states of the stepper
- * at three widths — 390, 768 and 1280 — saved as full-page PNGs under
- * C:\Users\brian\saos-shots\return-stepper\<state>-<width>.png:
+ * THE RAIL OF FIVE PHASES, FOR BRIAN'S APPROVAL (2026-09-26 R50; re-shot 2026-09-27 for R50 v2). Three
+ * states of the rail at three widths — 390, 768 and 1280 — saved as full-page PNGs at full resolution
+ * under C:\Users\brian\saos-shots\stepper-v2\<state>-<width>.png:
  *
- *   mid-preparation      letter, preparer, estimate, scheduled, documents requested, in preparation
- *                        done; internal review current with its "Internal review" button; an extension
+ *   mid-preparation      Engage done (one line, dated by "scheduled"); Prepare open with documents
+ *                        requested and in preparation done and internal review current with its
+ *                        "Internal review" button; Sign, File, Close their greyed names; an extension
  *                        recorded, so the details area carries the badge
- *   filed-awaiting-acks  everything through filed done (8879 sent through Adobe Sign, then on file;
- *                        the fee; filed with federal and IL e-filed); the jurisdiction step current,
- *                        waiting on the acknowledgments; paid and completed later
- *   completed            both jurisdictions accepted, the return completed and the invoice paid:
- *                        every step done, nothing current
+ *   filed-awaiting-acks  Engage, Prepare and Sign done (Sign dated by the 8879 on file); File open with
+ *                        the fee, ready to file and filed done and the jurisdiction step current, waiting
+ *                        on the acknowledgments for federal and IL; Close its greyed name
+ *   completed            both jurisdictions accepted, the return completed and the invoice paid: five
+ *                        done lines, nothing open, the jurisdiction record under the rail
+ *
+ * FULL RESOLUTION: this file runs its browser at deviceScaleFactor 2 (test.use below, over the desk
+ * project's default of 1) and screenshots with scale 'device', so a 390-wide page is a 780-pixel PNG,
+ * 768 → 1536 and 1280 → 2560.
  *
  * One project sets the three widths itself (the other project skips), signed in as the CEO fixture.
  * The three returns are opened once through the API doors the walks already tap (the return record,
  * the signed letter, the estimate, the stages, Record 8879 sent, the signed 8879, the fee, the filing,
  * the ATX acceptance and the Stripe event), then photographed at each width. Beside the pictures the
- * spec reads what a person would: which step is current, that it alone carries a control, that a done
- * step names its day and its person, no page-level horizontal scroll and 44px targets at 390.
+ * spec reads what a person would: which phase is open and which step in it is current, that it alone
+ * carries a control, that a done phase is one line with its date and a future phase its name alone,
+ * that a done step names its day and its person, no page-level horizontal scroll, 44px targets at 390
+ * and the current phase in view at 390.
  */
 import { expect, test, type Page } from '@playwright/test';
 import * as OTPAuth from 'otpauth';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+test.use({ deviceScaleFactor: 2 });
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
@@ -33,7 +42,7 @@ const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixt
   scorp: { taxYear: number; preparer: { id: string; name: string }; webhookSecret: string };
 };
 const API = `http://127.0.0.1:${fixtures.port}`;
-const SHOTS = 'C:\\Users\\brian\\saos-shots\\return-stepper';
+const SHOTS = 'C:\\Users\\brian\\saos-shots\\stepper-v2';
 const WIDTHS: Array<{ width: number; height: number }> = [
   { width: 390, height: 844 },
   { width: 768, height: 1024 },
@@ -123,7 +132,7 @@ async function returnIn(token: string, state: State): Promise<{ contactId: strin
   return { contactId: contact.id, te };
 }
 
-test('the three stepper states at 390, 768 and 1280', async ({ page }, testInfo) => {
+test('the three rail states at 390, 768 and 1280, at full resolution', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desk', 'one project sets the three widths itself');
   test.setTimeout(600_000);
   mkdirSync(SHOTS, { recursive: true });
@@ -132,6 +141,8 @@ test('the three stepper states at 390, 768 and 1280', async ({ page }, testInfo)
   const states: State[] = ['mid-preparation', 'filed-awaiting-acks', 'completed'];
   const returns = new Map<State, { contactId: string; te: string }>();
   for (const s of states) returns.set(s, await returnIn(token, s));
+  const PHASES = ['engage', 'prepare', 'sign', 'file', 'close'] as const;
+  const NAME = { engage: 'Engage', prepare: 'Prepare', sign: 'Sign', file: 'File', close: 'Close' } as const;
 
   await signIn(page, fixtures.staff);
   const saved: string[] = [];
@@ -143,26 +154,39 @@ test('the three stepper states at 390, 768 and 1280', async ({ page }, testInfo)
       const card = page.locator('section.card', { has: page.getByRole('heading', { name: 'Returns' }) });
       const stepper = card.getByTestId('return-stepper');
       await expect(stepper).toBeVisible();
-      await expect(stepper.locator('li.step')).toHaveCount(16);
+      await expect(stepper.locator('li.phase'), 'five phases').toHaveCount(5);
+      await expect(stepper.locator('li.phase.current'), 'at most one open phase').toHaveCount(state === 'completed' ? 0 : 1);
+      await expect(stepper.getByTestId('current-step-control'), 'at most one control in the rail').toHaveCount(state === 'completed' ? 0 : 1);
       // The details area belongs to a return with something secondary left to do: before filing and while filed; not once completed.
       await expect(card.getByTestId('return-details')).toHaveCount(state === 'completed' ? 0 : 1);
       const width = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
       expect(width.scroll, `no page-level horizontal scroll at ${size.width} (${state})`).toBeLessThanOrEqual(width.client);
+      /** A done phase: one line, check, name, date; a future phase: its name; neither draws a step. */
+      const closedPhase = async (key: (typeof PHASES)[number], kind: 'done' | 'future', dateText?: string) => {
+        const phase = stepper.getByTestId(`phase-${key}`);
+        await expect(phase).toHaveAttribute('data-state', kind);
+        await expect(phase, `${NAME[key]} ${kind}: one line`).toHaveText(kind === 'done' ? `✓${NAME[key]} · ${dateText}` : `${PHASES.indexOf(key) + 1}${NAME[key]}`);
+        await expect(phase.locator('li.step'), `${NAME[key]}: no steps drawn`).toHaveCount(0);
+      };
 
       if (state === 'mid-preparation') {
-        await expect(stepper.locator('li.step.done')).toHaveCount(6);
-        await expect(stepper.locator('li.step.current')).toHaveAttribute('data-testid', 'step-internal_review');
+        await closedPhase('engage', 'done', dayText(today)); // dated by its last step, "scheduled", moved today
+        const open = stepper.locator('li.phase.current');
+        await expect(open).toHaveAttribute('data-testid', 'phase-prepare');
+        await expect(open.locator('li.step')).toHaveCount(3);
+        await expect(open.locator('li.step.done')).toHaveCount(2);
+        await expect(open.locator('li.step.current')).toHaveAttribute('data-testid', 'step-internal_review');
         await expect(stepper.getByTestId('current-step-control').getByRole('button', { name: 'Internal review', exact: true }), 'the one control').toBeVisible();
-        await expect(stepper.getByTestId('step-letter')).toContainText(`Letter signed ${dayText(addDays(today, -12))}`);
-        await expect(stepper.getByTestId('step-letter'), 'who: the uploaded scan').toContainText(`by ${me.fullName} (uploaded scan)`);
-        await expect(stepper.getByTestId('step-preparer')).toContainText(`Preparer: ${fixtures.scorp.preparer.name}`);
-        await expect(stepper.getByTestId('step-estimate')).toContainText(/price book v\d+/);
-        await expect(stepper.getByTestId('step-in_preparation')).toContainText(`by ${me.fullName}`);
-        await expect(stepper.getByTestId('step-f8879_sent')).toContainText('Unlocks when the return has been delivered');
+        await expect(stepper.getByTestId('current-step-control'), 'and its one sentence').toContainText('Moves the return to internal review.');
+        await expect(open.getByTestId('step-documents_requested'), 'a done step: check, name, day, person').toContainText(`Documents requested ${dayText(today)} · by ${me.fullName}`);
+        await expect(open.getByTestId('step-in_preparation')).toContainText(`In preparation ${dayText(today)} · by ${me.fullName}`);
+        await expect(stepper.getByTestId('step-letter'), 'a done phase’s steps are not drawn').toHaveCount(0);
+        for (const key of ['sign', 'file', 'close'] as const) await closedPhase(key, 'future');
         await expect(card.getByText(/Extended · Form 7004 · deadline/), 'the extension lives in the details area').toBeVisible();
         await expect(card.getByText('extended', { exact: true }), 'and the badge on the header before filing').toBeVisible();
         await expect(card.getByTestId(`return-amount-${te}`), 'fix 3: the amount is labelled').toHaveText('Estimate up to $800.00');
         if (size.width === 390) {
+          await expect(open, 'the current phase is in view when the row opens at 390').toBeInViewport();
           for (const target of [stepper.getByTestId('current-step-control').getByRole('button', { name: 'Internal review', exact: true }), card.getByTestId('assign-preparer')]) {
             const box = await target.boundingBox();
             expect(box && box.height >= 44, `a 44px target at 390 (got ${box?.height})`).toBeTruthy();
@@ -170,19 +194,25 @@ test('the three stepper states at 390, 768 and 1280', async ({ page }, testInfo)
         }
       }
       if (state === 'filed-awaiting-acks') {
-        await expect(stepper.locator('li.step.done')).toHaveCount(13);
-        await expect(stepper.locator('li.step.current')).toHaveAttribute('data-testid', 'step-jurisdictions');
+        await closedPhase('engage', 'done', dayText(today));
+        await closedPhase('prepare', 'done', dayText(today)); // internal review, moved today
+        await closedPhase('sign', 'done', dayText(addDays(today, -3))); // the signed 8879, its last step
+        const open = stepper.locator('li.phase.current');
+        await expect(open).toHaveAttribute('data-testid', 'phase-file');
+        await expect(open.locator('li.step')).toHaveCount(4);
+        await expect(open.locator('li.step.done')).toHaveCount(3);
+        await expect(open.locator('li.step.current')).toHaveAttribute('data-testid', 'step-jurisdictions');
         await expect(stepper.getByTestId('current-step-control'), 'no control of its own: it waits on ATX').toContainText('Waiting on the acknowledgments from ATX');
-        await expect(stepper.getByTestId('step-f8879_sent')).toContainText(`8879 sent ${dayText(addDays(today, -4))}`);
-        await expect(stepper.getByTestId('step-f8879_sent')).toContainText('Adobe Sign');
-        await expect(stepper.getByTestId('step-f8879_on_file')).toContainText(`8879 on file ${dayText(addDays(today, -3))}`);
-        await expect(stepper.getByTestId('step-final_fee')).toContainText('current $700.00');
-        await expect(stepper.getByTestId('step-filed')).toContainText(`Filed ${dayText(addDays(today, -2))}`);
-        await expect(stepper.getByTestId('step-filed')).toContainText(`preparer of record: ${fixtures.scorp.preparer.name}`);
-        // Fix 1: the jurisdictions print once — two lines, inside the one status block.
+        await expect(open.getByTestId('step-final_fee')).toContainText('current $700.00');
+        await expect(open.getByTestId('step-filed')).toContainText(`Filed ${dayText(addDays(today, -2))}`);
+        await expect(open.getByTestId('step-filed')).toContainText(`preparer of record: ${fixtures.scorp.preparer.name}`);
+        await expect(stepper.getByTestId('step-f8879_sent'), 'Sign is done: its steps are not drawn').toHaveCount(0);
+        await closedPhase('close', 'future');
+        // Fix 1: the jurisdictions print once — two lines, inside the one status block, as the body of the current step.
         await expect(card.getByTestId('jurisdiction-line-federal')).toHaveCount(1);
         await expect(card.getByTestId('jurisdiction-line-IL')).toHaveCount(1);
-        await expect(card.getByTestId('jurisdiction-status')).toContainText('Awaiting acceptance');
+        await expect(open.getByTestId('jurisdiction-status')).toContainText('Awaiting acceptance');
+        await expect(card.getByTestId('jurisdiction-record'), 'no second copy under the rail while File is open').toHaveCount(0);
         // Fix 2: no paper jurisdiction, no paper sentence.
         await expect(card.getByText(/A paper jurisdiction has no acknowledgment to wait for/)).toHaveCount(0);
         // Fix 4: the "extended" badge left with the filing; the extension itself is still in the details.
@@ -190,20 +220,27 @@ test('the three stepper states at 390, 768 and 1280', async ({ page }, testInfo)
         await expect(card.getByTestId('correct-filing'), 'the correction sits in the details area at filed').toBeVisible();
         await expect(card.getByTestId(`return-amount-${te}`)).toHaveText('Final fee $700.00');
         await expect(card.getByText('not filed'), 'the summary line does not repeat the steps').toHaveCount(0);
+        if (size.width === 390) await expect(open, 'the current phase is in view at 390').toBeInViewport();
       }
       if (state === 'completed') {
-        await expect(stepper.locator('li.step.done')).toHaveCount(16);
-        await expect(stepper.locator('li.step.current')).toHaveCount(0);
-        await expect(stepper.getByTestId('current-step-control')).toHaveCount(0);
-        await expect(stepper.getByTestId('step-paid')).toContainText('by the client');
-        await expect(stepper.getByTestId('step-completed')).toContainText('Completed');
-        await expect(card.getByTestId('jurisdiction-line-federal')).toContainText(`Accepted ${dayText(addDays(today, -1))}`);
-        await expect(card.getByTestId('jurisdiction-line-IL')).toContainText(`Accepted ${dayText(today)}`);
+        await expect(stepper.locator('li.phase.done'), 'five done lines').toHaveCount(5);
+        await expect(stepper.locator('li.step'), 'nothing open').toHaveCount(0);
+        await closedPhase('engage', 'done', dayText(today));
+        await closedPhase('prepare', 'done', dayText(today));
+        await closedPhase('sign', 'done', dayText(addDays(today, -3)));
+        await closedPhase('file', 'done', dayText(today)); // the latest acceptance: IL, today
+        await closedPhase('close', 'done', dayText(today)); // completed, its last step, moved today by automation
+        // The record under the rail: where it was filed, readable at every stage; no mailing block once nothing is awaited.
+        const record = card.getByTestId('jurisdiction-record');
+        await expect(record).toHaveCount(1);
+        await expect(record.getByTestId('jurisdiction-line-federal')).toContainText(`Accepted ${dayText(addDays(today, -1))}`);
+        await expect(record.getByTestId('jurisdiction-line-IL')).toContainText(`Accepted ${dayText(today)}`);
+        await expect(card.getByTestId('jurisdiction-line-federal'), 'printed once').toHaveCount(1);
         await expect(card.getByTestId('jurisdiction-status'), 'no mailing block once nothing is awaited').toHaveCount(0);
         await expect(card.getByTestId('return-details'), 'nothing secondary is left to do').toHaveCount(0);
       }
       const path = resolve(SHOTS, `${state}-${size.width}.png`);
-      await page.screenshot({ path, fullPage: true });
+      await page.screenshot({ path, fullPage: true, scale: 'device' });
       saved.push(path);
     }
   }

@@ -8,6 +8,9 @@
  * the amount is labelled, the "extended" badge leaves at filing, the paper sentence needs a paper
  * jurisdiction, and the jurisdiction line reads as the record did.
  *
+ * R50 v2 (2026-09-27): the sixteen steps group into five phases; the current phase is the one holding
+ * the current step, a done phase is dated by its last step, the rest are future.
+ *
  * The wiring â€” the client page rendering the stepper when GET /auth/me says the switch is on and the
  * row otherwise, the stepper reusing the row's actions rather than its own modals â€” is checked in
  * the source, because the front-end has no render harness.
@@ -16,8 +19,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  STEP_KEYS, STEP_LABEL, STEP_UNLOCKS, amountLabel, buildSteps, currentStep, effectiveStage, feeDetail, hasPaperJurisdiction,
-  showExtendedBadge, type StepperInput,
+  PHASE_KEYS, PHASE_LABEL, PHASE_STEPS, STEP_KEYS, STEP_LABEL, STEP_UNLOCKS, amountLabel, buildPhases, buildSteps, currentPhase, currentStep,
+  effectiveStage, feeDetail, hasPaperJurisdiction, phaseOf, showExtendedBadge, type StepperInput,
 } from '../lib/return-stepper.ts';
 import { stageActionLabel } from '../lib/return-controls.ts';
 
@@ -248,6 +251,12 @@ test('the wiring: the page decides from the switch, the stepper reuses the rowâ€
   assert.match(stepper, /useReturnActions\(\{ taxEngagementId, contactId, stage, detail, after \}\)/, 'one set of actions');
   assert.doesNotMatch(stepper, /await ask\(/, 'the stepper opens no modal of its own');
   assert.match(stepper, /data-testid="current-step-control"/, 'the current step carries the control');
+  assert.match(stepper, /data-testid=\{`phase-\$\{p\.key\}`\}\s+data-state=\{p\.state\}/, 'each phase carries its key and state');
+  assert.match(stepper, /\{p\.state === 'current' \? \([\s\S]*p\.steps\.map/, 'only the current phase opens to its steps');
+  assert.match(stepper, /p\.state === 'done' \? phaseLine\(p\) : p\.label/, 'a done phase is one line, a future phase its name');
+  assert.match(stepper, /scrollIntoView\(\{ block: 'nearest', behavior: still \? 'auto' : 'smooth' \}\)/, 'the current phase scrolls into view on the phone');
+  assert.match(stepper, /prefers-reduced-motion: reduce/, 'respecting reduced motion');
+  assert.match(stepper, /matchMedia\('\(min-width: 768px\)'\)\.matches\) return;/, 'and only on the phone');
   assert.match(stepper, /data-testid="return-details"/, 'the details area');
   assert.match(stepper, /hasPaperJurisdiction\(rows\) \? <p className="muted small">\{CONTROL_SENTENCES\.mailing\}/, 'fix 2');
 
@@ -262,4 +271,103 @@ test('the wiring: the page decides from the switch, the stepper reuses the rowâ€
   assert.match(controls, /data-testid="record-8879-sent"/, 'R53 is on the row too');
   assert.match(controls, /\/tax-engagements\/\$\{taxEngagementId\}\/8879-sent/, 'through its own door');
   assert.match(controls, /data-testid="upload-8879-form"[\s\S]*data-testid="upload-signed-8879"/, 'the 8879 upload is one grouped form with its button beneath');
+});
+
+test('five phases in the order ruled; every step in exactly one phase, in step order', () => {
+  assert.deepEqual([...PHASE_KEYS], ['engage', 'prepare', 'sign', 'file', 'close']);
+  assert.deepEqual(PHASE_LABEL, { engage: 'Engage', prepare: 'Prepare', sign: 'Sign', file: 'File', close: 'Close' });
+  assert.deepEqual(PHASE_KEYS.flatMap((p) => [...PHASE_STEPS[p]]), [...STEP_KEYS], 'the phases partition the sixteen steps, in order');
+  assert.deepEqual([...PHASE_STEPS.engage], ['letter', 'preparer', 'estimate', 'scheduled']);
+  assert.deepEqual([...PHASE_STEPS.prepare], ['documents_requested', 'in_preparation', 'internal_review']);
+  assert.deepEqual([...PHASE_STEPS.sign], ['delivered', 'f8879_sent', 'f8879_on_file']);
+  assert.deepEqual([...PHASE_STEPS.file], ['final_fee', 'ready_to_file', 'filed', 'jurisdictions']);
+  assert.deepEqual([...PHASE_STEPS.close], ['paid', 'completed']);
+  for (const k of STEP_KEYS) assert.ok(PHASE_STEPS[phaseOf(k)].includes(k), `${k} is in the phase phaseOf names`);
+});
+
+test('a fresh return: Engage is current with its four steps, the four others future with no date', () => {
+  const phases = buildPhases(buildSteps(input()));
+  assert.deepEqual(phases.map((p) => [p.key, p.state]), [['engage', 'current'], ['prepare', 'future'], ['sign', 'future'], ['file', 'future'], ['close', 'future']]);
+  assert.equal(currentPhase(phases)!.key, 'engage');
+  assert.deepEqual(phases[0]!.steps.map((s) => [s.key, s.state]), [['letter', 'current'], ['preparer', 'later'], ['estimate', 'later'], ['scheduled', 'later']]);
+  for (const p of phases) assert.equal(p.doneOn, null, `${p.key}: nothing done, no date`);
+});
+
+test('mid-preparation: Engage done and dated by its last step (scheduled, an instant), Prepare current, the rest future', () => {
+  const phases = buildPhases(buildSteps(input({
+    te: { stage: 'in_preparation', engagement_letter_signed_at: '2026-09-20T15:00:00.000Z', estimate_locked_at: '2026-09-21T15:00:00.000Z' },
+    assigned_preparer: { id: 'p1', name: 'Synthetic Ana' },
+    stageHistory: [
+      { stage: 'scheduled', entered_at: '2026-09-22T15:00:00.000Z', changed_by_name: 'Synthetic CEO', note: null },
+      { stage: 'documents_requested', entered_at: '2026-09-23T15:00:00.000Z', changed_by_name: 'Synthetic CEO', note: null },
+      { stage: 'in_preparation', entered_at: '2026-09-24T15:00:00.000Z', changed_by_name: 'Synthetic Ana', note: null },
+    ],
+    legal_next_stages: ['internal_review'],
+  })));
+  assert.deepEqual(phases.map((p) => p.state), ['done', 'current', 'future', 'future', 'future']);
+  assert.deepEqual(phases[0]!.doneOn, { day: null, at: '2026-09-22T15:00:00.000Z' }, 'the phase is dated by scheduled, not by the letter');
+  const open = currentPhase(phases)!;
+  assert.equal(open.key, 'prepare');
+  assert.deepEqual(open.steps.map((s) => [s.key, s.state]), [['documents_requested', 'done'], ['in_preparation', 'done'], ['internal_review', 'current']]);
+  assert.equal(open.doneOn, null, 'the current phase has no done date');
+  assert.equal(phases[2]!.doneOn, null);
+});
+
+test('filed awaiting acks: Engage, Prepare and Sign done (Sign dated by the 8879 on file, a day), File current at the jurisdiction step, Close future', () => {
+  const phases = buildPhases(buildSteps(input({
+    te: { stage: 'filed', engagement_letter_signed_at: 'x', estimate_locked_at: 'x', final_fee_cents: 70000, filed_date: '2026-09-26', f8879_signed_on: '2026-09-24' },
+    assigned_preparer: { id: 'p1', name: 'Synthetic Ana' }, preparer_of_record: 'Synthetic Ana', signed_authorization_on_file: true,
+    stageHistory: [{ stage: 'filed', entered_at: '2026-09-26T15:00:00.000Z', changed_by_name: 'Synthetic Ana', note: null }],
+    jurisdictions: [
+      { jurisdiction: 'federal', filingMethod: 'efile', acceptedOn: null, mailedOn: null, mailingMethod: null, trackingNumber: null, receiptDocumentId: null },
+      { jurisdiction: 'IL', filingMethod: 'efile', acceptedOn: null, mailedOn: null, mailingMethod: null, trackingNumber: null, receiptDocumentId: null },
+    ],
+    final_fee_invoice: { status: 'sent', paid_at: null, total_cents: 70000 },
+    legal_next_stages: ['completed', 'rejected'],
+  })));
+  assert.deepEqual(phases.map((p) => p.state), ['done', 'done', 'done', 'current', 'future']);
+  assert.deepEqual(phases[2]!.doneOn, { day: '2026-09-24', at: null }, 'Sign is dated by the signed 8879');
+  assert.equal(phases[1]!.doneOn, null, 'Prepare reached with no history rows: done, undated');
+  const open = currentPhase(phases)!;
+  assert.equal(open.key, 'file');
+  assert.deepEqual(open.steps.map((s) => [s.key, s.state]), [['final_fee', 'done'], ['ready_to_file', 'done'], ['filed', 'done'], ['jurisdictions', 'current']]);
+});
+
+test('completed: Close is current while unpaid (File dated by the latest answer); paid, every phase is done and Close is dated by completed, its last step', () => {
+  const unpaid = input({
+    te: { stage: 'completed', engagement_letter_signed_at: 'x', estimate_locked_at: 'x', final_fee_cents: 70000, filed_date: '2026-09-26', f8879_signed_on: '2026-09-24' },
+    assigned_preparer: { id: 'p1', name: 'Synthetic Ana' }, preparer_of_record: 'Synthetic Ana', signed_authorization_on_file: true,
+    stageHistory: [
+      { stage: 'filed', entered_at: '2026-09-26T15:00:00.000Z', changed_by_name: 'Synthetic Ana', note: null },
+      { stage: 'completed', entered_at: '2026-09-27T15:00:00.000Z', changed_by_name: null, note: 'auto: every declared jurisdiction has accepted' },
+    ],
+    jurisdictions: [
+      { jurisdiction: 'federal', filingMethod: 'efile', acceptedOn: '2026-09-27', mailedOn: null, mailingMethod: null, trackingNumber: null, receiptDocumentId: null },
+      { jurisdiction: 'IL', filingMethod: 'paper', acceptedOn: null, mailedOn: '2026-09-26', mailingMethod: 'certified', trackingNumber: '9400X', receiptDocumentId: null },
+    ],
+    final_fee_invoice: { status: 'sent', paid_at: null, total_cents: 70000 },
+    legal_next_stages: [],
+  });
+  const phases = buildPhases(buildSteps(unpaid));
+  assert.deepEqual(phases.map((p) => p.state), ['done', 'done', 'done', 'done', 'current']);
+  assert.deepEqual(phases[3]!.doneOn, { day: '2026-09-27', at: null }, 'File is dated by the latest acceptance or mailing');
+  assert.deepEqual(currentPhase(phases)!.steps.map((s) => [s.key, s.state]), [['paid', 'current'], ['completed', 'done']], 'a done step after the current one stays done inside the open phase');
+
+  const paid = buildPhases(buildSteps(input({ ...unpaid, final_fee_invoice: { status: 'paid', paid_at: '2026-09-28T15:00:00.000Z', total_cents: 70000 } })));
+  assert.deepEqual(paid.map((p) => p.state), ['done', 'done', 'done', 'done', 'done']);
+  assert.equal(currentPhase(paid), null, 'nothing current once every step is done');
+  assert.deepEqual(paid[4]!.doneOn, { day: null, at: '2026-09-27T15:00:00.000Z' }, 'Close is dated by completed (its last step), not by the later payment');
+});
+
+test('a done phase whose last step recorded no date falls back to the latest dated step of the phase', () => {
+  const phases = buildPhases(buildSteps(input({
+    te: { stage: 'client_review', engagement_letter_signed_at: '2026-09-18T15:00:00.000Z', estimate_locked_at: '2026-09-19T15:00:00.000Z' },
+    assigned_preparer: { id: 'p1', name: 'Synthetic Ana' },
+    stageHistory: [{ stage: 'client_review', entered_at: '2026-09-20T15:00:00.000Z', changed_by_name: null, note: 'Steps before this stage were completed outside SAOS, per Trello card abc, as of 2026-09-19.' }],
+    legal_next_stages: ['ready_to_file'],
+  })));
+  assert.deepEqual(phases.map((p) => p.state), ['done', 'done', 'current', 'future', 'future']);
+  assert.deepEqual(phases[0]!.doneOn, { day: null, at: '2026-09-19T15:00:00.000Z' }, 'scheduled has no history row: Engage reads the estimate lock');
+  assert.equal(phases[1]!.doneOn, null, 'Prepare has no dated step at all: done, undated');
+  assert.equal(currentPhase(phases)!.steps[1]!.key, 'f8879_sent');
 });

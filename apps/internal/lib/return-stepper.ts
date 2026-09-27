@@ -12,6 +12,11 @@
  * done: the state of each step is a fact about the return, and only "which one carries the control"
  * is a rule about order.
  *
+ * FIVE PHASES (R50 v2, 2026-09-27): the steps group into Engage, Prepare, Sign, File and Close. The
+ * CURRENT phase is the one holding the current step; a phase whose steps are all done is DONE and
+ * dated by its last step; any other phase is FUTURE. The rail draws the phases; only the current one
+ * opens to its steps (buildPhases, below the steps).
+ *
  * Everything here is a pure function of GET /tax-engagements/:id, so the rule can be proven by a
  * test rather than believed from a screenshot. No React, no fetch, and — like return-controls.ts —
  * NO DATE FORMATTER: every day or instant leaves here raw, tagged as a calendar day or an instant,
@@ -299,6 +304,65 @@ export function buildSteps(input: StepperInput): StepView[] {
 /** The current step, or null for a return that has finished every step (or was withdrawn). */
 export function currentStep(steps: readonly StepView[]): StepView | null {
   return steps.find((s) => s.state === 'current') ?? null;
+}
+
+/*
+ * THE FIVE PHASES (Brian, 2026-09-27, R50 v2). Engage: letter signed, preparer assigned, estimate
+ * locked, scheduled. Prepare: documents requested, in preparation, internal review. Sign: delivered
+ * to client, 8879 sent, 8879 on file. File: final fee set, ready to file, filed, accepted or mailed
+ * per jurisdiction. Close: paid, completed. Every step sits in exactly one phase, in the step order.
+ */
+export const PHASE_KEYS = ['engage', 'prepare', 'sign', 'file', 'close'] as const;
+export type PhaseKey = (typeof PHASE_KEYS)[number];
+
+export const PHASE_LABEL: Record<PhaseKey, string> = { engage: 'Engage', prepare: 'Prepare', sign: 'Sign', file: 'File', close: 'Close' };
+
+export const PHASE_STEPS: Record<PhaseKey, readonly StepKey[]> = {
+  engage: ['letter', 'preparer', 'estimate', 'scheduled'],
+  prepare: ['documents_requested', 'in_preparation', 'internal_review'],
+  sign: ['delivered', 'f8879_sent', 'f8879_on_file'],
+  file: ['final_fee', 'ready_to_file', 'filed', 'jurisdictions'],
+  close: ['paid', 'completed'],
+};
+
+/** The phase a step belongs to. */
+export function phaseOf(step: StepKey): PhaseKey {
+  return PHASE_KEYS.find((p) => PHASE_STEPS[p].includes(step))!;
+}
+
+export interface PhaseView {
+  key: PhaseKey;
+  label: string;
+  /** DONE: every step done. CURRENT: holds the current step. FUTURE: anything else. */
+  state: 'done' | 'current' | 'future';
+  /** The phase's steps, in order, each with its own state (a future phase can hold a done step; it is not drawn). */
+  steps: StepView[];
+  /** A done phase's date: its last step's day or instant, raw (the component formats); null when none was recorded. */
+  doneOn: { day: string | null; at: string | null } | null;
+}
+
+/** A done phase is dated by its LAST step; a last step without a date (an imported stage) falls back to the latest dated step of the phase. */
+function phaseDate(own: readonly StepView[]): PhaseView['doneOn'] {
+  const dated = own.map((s) => s.done).filter((d): d is StepDone => Boolean(d && (d.day || d.at)));
+  const lastStep = own[own.length - 1]?.done;
+  const pick = lastStep && (lastStep.day || lastStep.at) ? lastStep : dated[dated.length - 1];
+  return pick ? { day: pick.day ?? null, at: pick.at ?? null } : null;
+}
+
+/** The five phases over the sixteen steps: the current phase holds the current step; done phases are dated; the rest are future. */
+export function buildPhases(steps: readonly StepView[]): PhaseView[] {
+  const current = currentStep(steps);
+  const holder = current ? phaseOf(current.key) : null;
+  return PHASE_KEYS.map((key) => {
+    const own = PHASE_STEPS[key].map((k) => steps.find((s) => s.key === k)!);
+    const state: PhaseView['state'] = key === holder ? 'current' : own.every((s) => s.state === 'done') ? 'done' : 'future';
+    return { key, label: PHASE_LABEL[key], state, steps: own, doneOn: state === 'done' ? phaseDate(own) : null };
+  });
+}
+
+/** The current phase, or null when every step is done (or the return was withdrawn). */
+export function currentPhase(phases: readonly PhaseView[]): PhaseView | null {
+  return phases.find((p) => p.state === 'current') ?? null;
 }
 
 /**

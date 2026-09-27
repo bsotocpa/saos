@@ -1,41 +1,48 @@
 'use client';
 
 /*
- * THE RETURNS CARD AS A STEPPER (Brian, 2026-09-26, R50). Behind OPS_RETURN_STEPPER, off in
- * production until Brian approves the screenshots (the dark-ship rule, R57); the client page renders
- * this in place of the row when GET /auth/me says the switch is on, and the row otherwise.
+ * THE RETURNS CARD AS A RAIL OF FIVE PHASES (Brian, 2026-09-26 R50; sent back and rebuilt 2026-09-27,
+ * R50 v2). Behind OPS_RETURN_STEPPER, off in production until Brian approves the screenshots (the
+ * dark-ship rule, R57); the client page renders this in place of the row when GET /auth/me says the
+ * switch is on, and the row otherwise.
  *
- * Sixteen steps in the order ruled (lib/return-stepper.ts holds the order and the rules). A DONE step
- * shows a check, the day and who did it. The CURRENT step shows its one control and one sentence —
- * the same control the row offers, from the same useReturnActions hook, so nothing here re-implements
- * a modal. A LATER step says what unlocks it. Horizontal on the desk (a grid the current step spans),
- * vertical on the phone.
+ * THE RAIL shows five phases — Engage, Prepare, Sign, File, Close (lib/return-stepper.ts holds the
+ * phases, their steps and the rules). A DONE phase is one line: check, name, date. A FUTURE phase is
+ * its name, greyed. Only the CURRENT phase is open; inside it the current step shows its one control
+ * and one sentence — the same control the row offers, from the same useReturnActions hook, so nothing
+ * here re-implements a modal — and the other steps of the phase are one line each (a done step: check,
+ * name, day, person; a later step: its greyed name). Horizontal on the desk, vertical on the phone,
+ * where the current phase is scrolled into view when the row opens.
  *
  * SECONDARY ACTIONS — record the extension, change the preparer, correct the filing — sit in a details
- * area under the steps, at every stage they apply, because none of them is a step: an extension can go
+ * area under the rail, at every stage they apply, because none of them is a step: an extension can go
  * in at any time before filing and a preparer can change.
  *
- * THE FOUR FIXES Brian named live here: the jurisdictions print once (the record IS the step's body,
- * and the Record mailing controls hang off the same list); the paper sentence prints only when a
- * paper jurisdiction is declared; the amount is labelled (the page's header, amountLabel); and the
- * "extended" badge leaves at filing (showExtendedBadge).
+ * THE JURISDICTION RECORD prints once (R50 fix 1): as the body of the "accepted or mailed" step while
+ * the File phase is open, and as its own block under the rail at every other stage, since where a
+ * return was filed and mailed is readable at every stage (ruling 25). The Record mailing controls hang
+ * off the same list wherever it is. The paper sentence prints only when a paper jurisdiction is declared
+ * (fix 2); the amount is labelled by the page's header (amountLabel, fix 3); the "extended" badge leaves
+ * at filing (showExtendedBadge, fix 4).
  *
- * WHO SEES WHAT: everyone who can read the return sees the steps (engagements.read, the same read
+ * WHO SEES WHAT: everyone who can read the return sees the phases (engagements.read, the same read
  * GET /tax-engagements/:id requires); only a session holding engagements.tax.manage sees a control,
  * the details area or the mailing block — the same rule as the row, decided from the same session read.
  *
  * WHERE A REFUSAL RENDERS: in the modal, beside its field, in the server's words; a failure reading the
- * return renders beside the steps. Never at the page top.
+ * return renders beside the rail. Never at the page top.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, formatMoney } from '../lib/api';
 import { dayOf, formatDate } from '../lib/dates';
 import {
   canManageReturns, controlsApply, correctionLine, correctionsApply, extensionBadgeText, jurisdictionLabel, jurisdictionStatusText,
   mailingControlsApply, mailingsNeeded, stageActionLabel, MAILING_METHOD_LABEL, type FilingCorrectionView, type JurisdictionView,
 } from '../lib/return-controls';
-import { buildSteps, currentStep, feeDetail, hasPaperJurisdiction, type StepView, type StepperInput } from '../lib/return-stepper';
+import {
+  buildPhases, buildSteps, currentPhase, currentStep, feeDetail, hasPaperJurisdiction, type PhaseView, type StepView, type StepperInput,
+} from '../lib/return-stepper';
 import {
   CONTROL_SENTENCES, me, sent8879Line, Upload8879, UploadEngagementLetter, useReturnActions, type Detail,
 } from './return-controls';
@@ -118,43 +125,78 @@ function StepperBody({ taxEngagementId, contactId, stage, detail, canManage, err
   };
   const steps = buildSteps(input);
   const current = currentStep(steps);
+  const phases = buildPhases(steps);
+  const open = currentPhase(phases);
   const preFiled = controlsApply(stage);
   const mailable = mailingControlsApply(stage);
   const corrections: FilingCorrectionView[] = detail.filing_corrections ?? [];
+  const mailingControls = canManage && mailable;
+
+  // ON THE PHONE THE CURRENT PHASE IS IN VIEW when the row opens: once, when the rail mounts, and only
+  // for the top return's rail when the client has several (one scroll, not one per return). The desk
+  // rail sits beside the header and needs none. A reader who asked for reduced motion gets a jump.
+  const railRef = useRef<HTMLOListElement>(null);
+  const openRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    const rail = railRef.current;
+    const el = openRef.current;
+    if (!rail || !el || window.matchMedia('(min-width: 768px)').matches) return;
+    if (document.querySelector('[data-testid="return-stepper"]') !== rail) return;
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ block: 'nearest', behavior: still ? 'auto' : 'smooth' });
+  }, []);
+
+  const jurisdictionBlock = <JurisdictionBlock detail={detail} controls={mailingControls} onMailing={actions.recordMailing} />;
 
   return (
     <>
-      <ol className="stepper" data-testid="return-stepper" aria-label="Return steps">
-        {steps.map((s, i) => (
-          <li key={s.key} className={`step ${s.state}`} data-testid={`step-${s.key}`} data-state={s.state} aria-current={s.state === 'current' ? 'step' : undefined}>
-            <div className="step-head">
-              <span className="step-mark" aria-hidden="true">{s.state === 'done' ? '✓' : i + 1}</span>
-              {/* ONE ELEMENT per step's words: a done step's label, day, person and detail are one text, so a
-                  reader (and the walk's getByText) finds the line once. */}
-              <span className="step-label">{s.state === 'done' && s.done ? doneLine(s, te, actions.rangeText) : s.label}</span>
+      <ol className="stepper" data-testid="return-stepper" aria-label="Return phases" ref={railRef}>
+        {phases.map((p, i) => (
+          <li
+            key={p.key}
+            ref={p.state === 'current' ? openRef : undefined}
+            className={`phase ${p.state}`}
+            data-testid={`phase-${p.key}`}
+            data-state={p.state}
+            aria-current={p.state === 'current' ? 'step' : undefined}
+          >
+            <div className="phase-head">
+              <span className="step-mark" aria-hidden="true">{p.state === 'done' ? '✓' : i + 1}</span>
+              {/* ONE ELEMENT per phase's words: a done phase's name and date are one text, so a reader (and
+                  the walk's getByText) finds the line once. */}
+              <span className="phase-label">{p.state === 'done' ? phaseLine(p) : p.label}</span>
             </div>
-            {s.state === 'later' && s.unlocks ? <p className="step-when">{s.unlocks}</p> : null}
-            {s.key === 'jurisdictions' ? (
-              <JurisdictionBlock
-                detail={detail}
-                controls={canManage && mailable}
-                onMailing={actions.recordMailing}
-              />
-            ) : null}
-            {s.state === 'current' && canManage ? (
-              <div className="step-panel" data-testid="current-step-control">
-                <CurrentControl step={s} detail={detail} actions={actions} contactId={contactId} taxEngagementId={taxEngagementId} after={after} />
-              </div>
+            {p.state === 'current' ? (
+              <ol className="phase-steps" aria-label={`${p.label} steps`}>
+                {p.steps.map((s, j) => (
+                  <li key={s.key} className={`step ${s.state}`} data-testid={`step-${s.key}`} data-state={s.state} aria-current={s.state === 'current' ? 'step' : undefined}>
+                    <div className="step-head">
+                      <span className="step-mark" aria-hidden="true">{s.state === 'done' ? '✓' : j + 1}</span>
+                      <span className="step-label">{s.state === 'done' && s.done ? doneLine(s, te, actions.rangeText) : s.label}</span>
+                    </div>
+                    {s.key === 'jurisdictions' ? jurisdictionBlock : null}
+                    {s.state === 'current' && canManage ? (
+                      <div className="step-panel" data-testid="current-step-control">
+                        <CurrentControl step={s} detail={detail} actions={actions} contactId={contactId} taxEngagementId={taxEngagementId} after={after} />
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
             ) : null}
           </li>
         ))}
       </ol>
+      {/* The record, at every stage the File phase is not open (ruling 25: readable at every stage). */}
+      {open?.key !== 'file' && (detail.jurisdictions ?? []).length > 0 ? (
+        <div className="step-record" data-testid="jurisdiction-record">{jurisdictionBlock}</div>
+      ) : null}
       {canManage && (preFiled || mailable) ? (
         <div className="step-details" data-testid="return-details">
           <p className="muted small" style={{ gridColumn: '1 / -1', margin: 0 }}>Details</p>
           {preFiled && current?.key !== 'preparer' ? (
             <div>
-              {/* The step above names the preparer; this changes them. */}
+              {/* The Engage phase names the preparer; this changes them. */}
               <button type="button" className="btn small ghost" data-testid="assign-preparer" onClick={() => void actions.assignPreparer()}>
                 {detail.assigned_preparer ? 'Change preparer' : 'Assign preparer'}
               </button>
@@ -193,6 +235,13 @@ function StepperBody({ taxEngagementId, contactId, stage, detail, canManage, err
   );
 }
 
+/** "Engage · Sep 26, 2026" — a done phase's one line after its check: the name and the day its last step was done. */
+function phaseLine(p: PhaseView): string {
+  const d = p.doneOn;
+  const when = d?.day ? formatDate(d.day) : d?.at ? dayOf(d.at) : '';
+  return when ? `${p.label} · ${when}` : p.label;
+}
+
 /** "Filed Sep 26, 2026 · by Brian Soto · preparer of record: Ana" — a done step's one line: the check, the day, the person, the detail. */
 function doneLine(s: StepView, te: Detail['taxEngagement'], rangeText: string): string {
   const d = s.done!;
@@ -206,10 +255,11 @@ function doneLine(s: StepView, te: Detail['taxEngagement'], rangeText: string): 
 }
 
 /**
- * THE JURISDICTIONS, PRINTED ONCE (fix 1). The record — one line per declared jurisdiction, at every
- * stage — is the step's body; at filed and rejected, for a manager, the same list sits inside the
- * mailing block with a Record mailing control per paper jurisdiction that has none. The paper
- * sentence prints only when a paper jurisdiction is declared (fix 2).
+ * THE JURISDICTIONS, PRINTED ONCE (fix 1). The record — one line per declared jurisdiction — is the
+ * body of the "accepted or mailed" step while the File phase is open, and its own block under the rail
+ * otherwise; at filed and rejected, for a manager, the same list sits inside the mailing block with a
+ * Record mailing control per paper jurisdiction that has none. The paper sentence prints only when a
+ * paper jurisdiction is declared (fix 2).
  */
 function JurisdictionBlock({ detail, controls, onMailing }: {
   detail: Detail; controls: boolean; onMailing: (jurisdiction: string) => Promise<void>;
