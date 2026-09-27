@@ -83,6 +83,17 @@ async function variantOnFile(id: string): Promise<string | null> {
   return rows[0]?.v ?? null;
 }
 
+test('R72: a 1041 defaults to the 8879-F; the five variants are the API\'s list, and the documents constraint takes the fifth', async () => {
+  assert.equal(f8879VariantFor('1041'), '8879-F');
+  for (const [t, v] of [['1040', '8879'], ['1120s', '8879-CORP'], ['1065', '8879-PE'], ['990', '8879-TE']] as const) {
+    assert.equal(f8879VariantFor(t), v, `${t} unchanged`);
+  }
+  assert.deepEqual([...F8879_VARIANTS], ['8879', '8879-CORP', '8879-PE', '8879-TE', '8879-F']);
+  const { rows } = await app.db.query<{ def: string }>(
+    `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'documents_f8879_variant_values'`);
+  assert.match(rows[0]!.def, /'8879-F'/, 'migration 0127 lets the fifth variant onto a document row');
+});
+
 test('990-PF and 990-T are return types: a return opens on them, the deadlines derive from the table, the extension defaults to 8868 for the whole family', async () => {
   for (const t of ['990', '990ez', '990pf', '990t'] as const) {
     assert.equal(originalDeadline(t, 2025, 12), '2026-05-15', `${t}: the 15th day of the fifth month`);
@@ -162,7 +173,8 @@ test('correcting the form goes through the R44 correction door: appended with a 
   const same = await correct({ f8879Variant: '8879-CORP' });
   assert.equal(same.statusCode, 409, same.body);
   assert.equal(same.json().error, 'nothing_to_correct');
-  const unlisted = await correct({ f8879Variant: '8879-F' });
+  // R72 listed the 8879-F; an unlisted form is still refused.
+  const unlisted = await correct({ f8879Variant: '8879-Z' });
   assert.equal(unlisted.statusCode, 400, unlisted.body);
   assert.equal(unlisted.json().error, 'f8879_variant_invalid');
 

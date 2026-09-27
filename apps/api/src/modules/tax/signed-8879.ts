@@ -26,14 +26,13 @@ export function taxYearEndedOn(taxYear: number, fiscalYearEndMonth: number | nul
 }
 
 /*
- * WHICH 8879 THE PAPER IS (Brian, 2026-09-26, R66). One Form 8879 is four forms: 8879 for an
- * individual return, 8879-CORP for a corporation, 8879-PE for a partnership, 8879-TE for an exempt
- * organization. The upload says which, defaulted from the return type; the row prints it; the
- * correction door moves it. Stored on the DOCUMENT row, because the document is the 8879. The
- * ruling names these four and no other: a 1041 (whose paper is an 8879-F) defaults to '8879' here
- * until Brian adds the variant.
+ * WHICH 8879 THE PAPER IS (Brian, 2026-09-26, R66; 2026-09-27, R72). One Form 8879 is five forms:
+ * 8879 for an individual return, 8879-CORP for a corporation, 8879-PE for a partnership, 8879-TE for
+ * an exempt organization, 8879-F for an estate or trust (the 1041, R72). The upload says which,
+ * defaulted from the return type; the row prints it; the correction door moves it. Stored on the
+ * DOCUMENT row, because the document is the 8879 (migration 0127 holds the five in its CHECK).
  */
-export const F8879_VARIANTS = ['8879', '8879-CORP', '8879-PE', '8879-TE'] as const;
+export const F8879_VARIANTS = ['8879', '8879-CORP', '8879-PE', '8879-TE', '8879-F'] as const;
 export type F8879Variant = (typeof F8879_VARIANTS)[number];
 
 export function f8879VariantFor(returnType: string): F8879Variant {
@@ -41,6 +40,7 @@ export function f8879VariantFor(returnType: string): F8879Variant {
   if (t === '1065') return '8879-PE';
   if (t.startsWith('1120')) return '8879-CORP';
   if (t.startsWith('990')) return '8879-TE';
+  if (t === '1041') return '8879-F';
   return '8879';
 }
 

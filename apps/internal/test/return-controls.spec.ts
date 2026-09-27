@@ -408,8 +408,9 @@ test('R66: which 8879 the paper is follows the return type, the select carries t
   assert.equal(defaultF8879Variant('1120f_foreign'), '8879-CORP');
   assert.equal(defaultF8879Variant('1065'), '8879-PE');
   for (const t of ['990', '990ez', '990pf', '990t']) assert.equal(defaultF8879Variant(t), '8879-TE', t);
+  assert.equal(defaultF8879Variant('1041'), '8879-F', 'R72: a 1041 opens on the fiduciary form');
   assert.equal(defaultF8879Variant(null), '8879', 'no return type: the bare form, never a crash');
-  assert.deepEqual([...F8879_VARIANTS], ['8879', '8879-CORP', '8879-PE', '8879-TE'], 'the ruling\'s four and no other');
+  assert.deepEqual([...F8879_VARIANTS], ['8879', '8879-CORP', '8879-PE', '8879-TE', '8879-F'], 'R66\'s four and R72\'s 8879-F, no other');
   for (const v of F8879_VARIANTS) assert.match(F8879_VARIANT_LABEL[v], new RegExp(`^Form ${v.replace('-', '\\-')} \\(`), 'each option names its form');
   assert.equal(f8879OnFileText('8879-TE', 'Sep 15, 2026'), '8879-TE on file, signed Sep 15, 2026');
   assert.equal(f8879OnFileText(null, 'Sep 15, 2026'), '8879 on file, signed Sep 15, 2026', 'a scan filed before the form was named reads the bare form');

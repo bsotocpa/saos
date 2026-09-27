@@ -404,15 +404,14 @@ export function jurisdictionSatisfiedText(row: JurisdictionView | undefined, day
 }
 
 /*
- * ═══ 2026-09-26, R66: WHICH 8879 THE PAPER IS ═════════════════════════════════════════════════
+ * ═══ 2026-09-26, R66 (and 2026-09-27, R72): WHICH 8879 THE PAPER IS ═══════════════════════════
  *
- * One Form 8879 is four forms, by the return it authorizes: 8879 (an individual return), 8879-CORP
- * (a corporation), 8879-PE (a partnership), 8879-TE (an exempt organization). The upload's select
- * opens on the return type's default — the same rule the API applies (signed-8879.ts) — and the
- * person can say the other one. The ruling names these four; a 1041 opens on '8879' until Brian adds
- * the fiduciary variant.
+ * One Form 8879 is five forms, by the return it authorizes: 8879 (an individual return), 8879-CORP
+ * (a corporation), 8879-PE (a partnership), 8879-TE (an exempt organization), 8879-F (an estate or
+ * trust, the 1041: R72). The upload's select opens on the return type's default — the same rule the
+ * API applies (signed-8879.ts) — and the person can say another one.
  */
-export const F8879_VARIANTS = ['8879', '8879-CORP', '8879-PE', '8879-TE'] as const;
+export const F8879_VARIANTS = ['8879', '8879-CORP', '8879-PE', '8879-TE', '8879-F'] as const;
 export type F8879Variant = (typeof F8879_VARIANTS)[number];
 
 export const F8879_VARIANT_LABEL: Record<F8879Variant, string> = {
@@ -420,6 +419,7 @@ export const F8879_VARIANT_LABEL: Record<F8879Variant, string> = {
   '8879-CORP': 'Form 8879-CORP (corporation)',
   '8879-PE': 'Form 8879-PE (partnership)',
   '8879-TE': 'Form 8879-TE (exempt organization)',
+  '8879-F': 'Form 8879-F (estate or trust)',
 };
 
 export function defaultF8879Variant(returnType: string | null | undefined): F8879Variant {
@@ -427,6 +427,7 @@ export function defaultF8879Variant(returnType: string | null | undefined): F887
   if (t === '1065') return '8879-PE';
   if (t.startsWith('1120')) return '8879-CORP';
   if (t.startsWith('990')) return '8879-TE';
+  if (t === '1041') return '8879-F';
   return '8879';
 }
 

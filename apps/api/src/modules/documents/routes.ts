@@ -37,7 +37,7 @@ const StaffUploadFields = z.object({
   /** A signed 8879 (category signed_authorizations + taxEngagementId): the date on the signature and whose PTIN is on it. */
   signedOn: z.iso.date().optional(),
   preparerPtinHolderId: z.uuid().optional(),
-  /** Which Form 8879 the scan is (R66: 8879, 8879-CORP, 8879-PE, 8879-TE); the return type's default when unsaid. */
+  /** Which Form 8879 the scan is (R66: 8879, 8879-CORP, 8879-PE, 8879-TE; R72: 8879-F); the return type's default when unsaid. */
   f8879Variant: z.string().trim().min(1).max(12).optional(),
   /**
    * A signed engagement letter on paper (category signed_authorizations + taxEngagementId): the
