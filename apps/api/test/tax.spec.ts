@@ -592,3 +592,21 @@ test('withdrawing needs a reason, and closing twice is refused', async () => {
     /engagements_withdrawn_has_reason/
   );
 });
+
+test('RECEIPT RUN 21: the stage history reads in the order it was written, even when the clock stepped back between two rows', async () => {
+  const { rows: te } = await app.db.query<{ id: string }>(
+    `SELECT id FROM tax_engagements ORDER BY id LIMIT 1`);
+  assert.ok(te[0], 'a return exists from the tests above');
+  const id = te[0]!.id;
+  // Two rows written one after the other; the second's clock reading lands 2 ms BEFORE the first's,
+  // as the Docker VM's clock correction made it in run 21.
+  await app.db.query(`INSERT INTO engagement_stage_history (tax_engagement_id, stage, note) VALUES ($1, 'filed', 'clock step: first')`, [id]);
+  await app.db.query(
+    `INSERT INTO engagement_stage_history (tax_engagement_id, stage, note, entered_at)
+     VALUES ($1, 'completed', 'clock step: second', (SELECT max(entered_at) FROM engagement_stage_history WHERE tax_engagement_id = $1) - interval '2 milliseconds')`,
+    [id]
+  );
+  const res = await app.inject({ method: 'GET', url: `/tax-engagements/${id}`, headers: auth(preparer) });
+  const notes = (res.json().stageHistory as Array<{ note: string | null }>).map((h) => h.note).filter((n) => n?.startsWith('clock step'));
+  assert.deepEqual(notes, ['clock step: first', 'clock step: second'], 'written order, not clock order');
+});

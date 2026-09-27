@@ -165,7 +165,7 @@ test('2c: withdrawing an engagement withdraws its unfiled returns, and the datab
   const te = await app.db.query<{ stage: string }>(`SELECT stage::text AS stage FROM tax_engagements WHERE id = $1`, [teId]);
   assert.equal(te.rows[0]!.stage, 'withdrawn', 'no return is left behind on a withdrawn engagement');
   const history = await app.db.query<{ stage: string; note: string; changed_by_staff_id: string | null }>(
-    `SELECT stage::text AS stage, note, changed_by_staff_id FROM engagement_stage_history WHERE tax_engagement_id = $1 ORDER BY entered_at DESC LIMIT 1`, [teId]);
+    `SELECT stage::text AS stage, note, changed_by_staff_id FROM engagement_stage_history WHERE tax_engagement_id = $1 ORDER BY seq DESC LIMIT 1`, [teId]);
   assert.equal(history.rows[0]!.stage, 'withdrawn');
   assert.match(history.rows[0]!.note, /^engagement withdrawn: The client decided/);
   assert.equal(history.rows[0]!.changed_by_staff_id, brian.id, 'the person who withdrew it is named');

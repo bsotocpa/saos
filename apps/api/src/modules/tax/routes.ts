@@ -473,7 +473,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     const history = await app.db.query(
       `SELECT h.stage, h.entered_at, h.changed_by_staff_id, h.waiting_on, h.note, s.display_name AS changed_by_name
        FROM engagement_stage_history h LEFT JOIN staff s ON s.id = h.changed_by_staff_id
-       WHERE h.tax_engagement_id = $1 ORDER BY h.entered_at`,
+       WHERE h.tax_engagement_id = $1 ORDER BY h.seq`, // the order written (0128), never the clock's
       [id]
     );
     /*

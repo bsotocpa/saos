@@ -14,6 +14,11 @@
  *                                               instants stay, for the record and for display.
  *
  * Existing rows take the value the old comparison gives them today, once, with the count printed.
+ *
+ * THE SAME CLOCK, ONE TABLE OVER (receipt run 21): the stage history was read ORDER BY entered_at, and
+ * the pipeline march wrote nine rows within a few milliseconds; a backward step put in_preparation
+ * before documents_requested. engagement_stage_history.seq records the order the rows were written (a
+ * sequence never runs backward); existing rows are numbered in the order entered_at gives them today.
  */
 exports.shorthands = undefined;
 
@@ -31,6 +36,23 @@ exports.up = async (pgm) => {
     RETURNING tax_engagement_id
   `);
   console.log(`0128: ${rows.length} jurisdiction row(s) carry a stale answer from an earlier reopen (from the 0126 comparison, once)`);
+  await pgm.db.query(`ALTER TABLE engagement_stage_history ADD COLUMN IF NOT EXISTS seq bigint`);
+  await pgm.db.query(`
+    UPDATE engagement_stage_history h SET seq = n.rn
+      FROM (SELECT id, row_number() OVER (ORDER BY entered_at, id) AS rn FROM engagement_stage_history) n
+     WHERE n.id = h.id AND h.seq IS NULL
+  `);
+  await pgm.db.query(`CREATE SEQUENCE IF NOT EXISTS engagement_stage_history_seq OWNED BY engagement_stage_history.seq`);
+  await pgm.db.query(`SELECT setval('engagement_stage_history_seq', GREATEST((SELECT max(seq) FROM engagement_stage_history), 0) + 1, false)`);
+  await pgm.db.query(`
+    ALTER TABLE engagement_stage_history
+      ALTER COLUMN seq SET DEFAULT nextval('engagement_stage_history_seq'),
+      ALTER COLUMN seq SET NOT NULL
+  `);
+  await pgm.db.query(`
+    COMMENT ON COLUMN engagement_stage_history.seq IS
+      'The order the rows were written (0128). Readers order the history by seq, never by entered_at: the wall clock can step backward.'
+  `);
   await pgm.db.query(`
     COMMENT ON COLUMN tax_engagement_jurisdictions.answer_stale IS
       'R67 (0128): true from a reopen until the next acceptance or mailing on this row. A stale answer does not count toward completion. A flag, not a comparison of answered_at and reopened_at: the wall clock can step backward.'
@@ -38,5 +60,6 @@ exports.up = async (pgm) => {
 };
 
 exports.down = async (pgm) => {
+  await pgm.db.query(`ALTER TABLE engagement_stage_history DROP COLUMN IF EXISTS seq`);
   await pgm.db.query(`ALTER TABLE tax_engagement_jurisdictions DROP COLUMN IF EXISTS answer_stale`);
 };

@@ -151,7 +151,7 @@ test('the CEO reopens a completed return: back to filed with the reason, the eng
   assert.equal(await filedCount(), countBefore + 1, 'the executive view counts it as open again');
 
   const history = await app.db.query<{ stage: string; note: string | null }>(
-    `SELECT stage::text AS stage, note FROM engagement_stage_history WHERE tax_engagement_id = $1 ORDER BY entered_at DESC LIMIT 1`, [te.id]);
+    `SELECT stage::text AS stage, note FROM engagement_stage_history WHERE tax_engagement_id = $1 ORDER BY seq DESC LIMIT 1`, [te.id]);
   assert.equal(history.rows[0]!.stage, 'filed');
   assert.match(history.rows[0]!.note ?? '', /^reopened: /);
   const audit = await app.db.query<{ action: string; actor_label: string; details: Record<string, unknown> }>(
