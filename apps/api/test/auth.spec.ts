@@ -126,7 +126,13 @@ test('wrong password fails, wrong TOTP fails, correct pair logs in (all audited)
   // pricing.packages.save joined the explicit-only list on 2026-09-20 (R41): saving a package is
   // Brian's alone, and the wildcard must not hand it to every '*' holder.
   // staff.mfa.reset joined on 2026-09-26 (R65): resetting a staff member's MFA is the CEO's alone.
-  assert.deepEqual(me.json().permissions, ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset']);
+  // engagements.billing_hold.lift joined on 2026-09-26 (R68): lifting an imported engagement's billing hold is the CEO's alone.
+  // engagements.tax.reopen joined on 2026-09-26 (R67): reopening a completed return is the CEO's alone.
+  // The list is compared as a SET: array_agg returns the grants in index order, not seed order.
+  assert.deepEqual(
+    [...(me.json().permissions as string[])].sort(),
+    ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset', 'engagements.billing_hold.lift', 'engagements.tax.reopen'].sort()
+  );
 });
 
 test('failed-login lockout engages at the limit and blocks even correct credentials', async () => {

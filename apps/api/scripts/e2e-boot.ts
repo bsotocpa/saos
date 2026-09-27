@@ -29,8 +29,10 @@ import { todayChicago } from '../src/modules/tax/deadlines.ts';
 import { defaultTaxYear } from '../src/modules/engagements/period.ts';
 import * as OTPAuth from 'otpauth';
 import { buildPathB } from './e2e-fixtures/path-b.ts';
+import { buildPath990 } from './e2e-fixtures/path-b-990.ts';
 import { buildDocumentsFixture } from './e2e-fixtures/documents.ts';
 import { buildSigningFixture } from './e2e-fixtures/portal-signing.ts';
+import { buildBillingHoldFixture } from './e2e-fixtures/billing-hold.ts';
 
 const PORT = Number(process.env.E2E_API_PORT ?? 3101);
 const TOTP_SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
@@ -48,6 +50,9 @@ process.env.OPS_QUOTE_BUILDER = 'v2';
 // The Returns card as a stepper (R50, 2026-09-26): production defaults to off until Brian approves the
 // screenshots; the harness taps the stepper, and the switch spec flips to off through /harness/return-stepper.
 process.env.OPS_RETURN_STEPPER = 'on';
+// The business page (R40, 2026-09-26): production defaults to off until Brian approves the two
+// screenshots; the harness taps the page, and its switch spec flips to off through /harness/business-page.
+process.env.OPS_BUSINESS_PAGE = 'on';
 /*
  * THE EMAILED HREF IS THE ONE THE SPEC FOLLOWS (2026-09-20). Every portal link the mailer sees is
  * kept whole, and it must point at the harness portal, so the base URL is the harness port before
@@ -163,6 +168,14 @@ app.post<{ Body: { state?: unknown } }>('/harness/return-stepper', async (reques
   if (state !== 'on' && state !== 'off') throw new Error('state must be on or off');
   app.switches.returnStepper = state;
   return { returnStepper: app.switches.returnStepper };
+});
+// The business page (R40), flipped the same way: ops-business-page.spec.ts taps off (the sentence, no
+// links) and on (the page) from one API process, and leaves it on for the specs after it.
+app.post<{ Body: { state?: unknown } }>('/harness/business-page', async (request) => {
+  const state = (request.body as { state?: unknown } | null)?.state;
+  if (state !== 'on' && state !== 'off') throw new Error('state must be on or off');
+  app.switches.businessPage = state;
+  return { businessPage: app.switches.businessPage };
 });
 /*
  * THE DOCUMENTS PAGE MADE TO FAIL (R49, 2026-09-26). The error-boundary spec needs a page that
@@ -463,6 +476,10 @@ const pathB = await buildPathB(app, { staffToken, magicTokens, magicLinks, makeM
 const documents = await buildDocumentsFixture(app, { staffToken, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app) });
 // The portal home after signing (R46): a signed packet beside a withdrawn 1040's letter and duplicate envelopes, one client per viewport.
 const signing = await buildSigningFixture(app, { staffToken, actor, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app) });
+// The billing hold the importer places (R68): one held client per viewport, made through the importer's own function.
+const billingHold = await buildBillingHoldFixture(app, { actor });
+// The 990 variant of Path B (R66): an exempt organization's return at ready to file, one per viewport.
+const path990 = await buildPath990(app, { staffToken, preparer: { id: anamaria.id, name: anamaria.fullName }, taxYear: scorpTaxYear });
 await app.listen({ port: PORT, host: '127.0.0.1' });
 // The harness API runs no scheduler (that is index.ts's job). The outbox fast lane is what a person
 // waits on after a release, so the harness drains it every two seconds, the way the box does every minute.
@@ -504,8 +521,10 @@ console.log('E2E_READY ' + JSON.stringify({
   scorpDesk: scorpFixture(D, 'Harness Desk Corp, LLC', '5556', 'Harness Desk Corp'),
   amend: { invoiceId: acc1.depositInvoiceId },
   pathB,
+  path990,
   documents,
   signing,
+  billingHold,
   wall: {
     laura: { email: laura.email, password: 'laura-synthetic-2026', totpSecret: TOTP_SECRET },
     jaqueline: { email: jaqueline.email, password: 'jaqueline-synthetic-2026', totpSecret: TOTP_SECRET },

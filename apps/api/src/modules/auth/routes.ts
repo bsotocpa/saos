@@ -107,7 +107,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
        * decides who sees the Refund control from this session; whether the control is ON at all is
        * the server's setting, read here so the page never guesses it from a failed request.
        */
-      switches: { opsRefundControl: app.switches.opsRefundControl, quoteBuilder: app.switches.quoteBuilder, returnStepper: app.switches.returnStepper },
+      switches: { opsRefundControl: app.switches.opsRefundControl, quoteBuilder: app.switches.quoteBuilder, returnStepper: app.switches.returnStepper, businessPage: app.switches.businessPage },
     };
   });
 

@@ -20,7 +20,11 @@ export const roles = [
     // alone, the same explicit-only mechanism as the deposit override.
     // 'staff.mfa.reset' (2026-09-26, R65): resetting a staff member's MFA is the CEO's alone, the same
     // explicit-only mechanism; comms_billing and every '*' holder that is not this role are refused.
-    permissions: ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset'], // '*' includes referrals.approve (Jackson too)
+    // 'engagements.billing_hold.lift' (2026-09-26, R68): lifting the billing hold on an imported
+    // engagement is the CEO's alone, the same mechanism — "until Brian lifts the hold".
+    // 'engagements.tax.reopen' (2026-09-26, R67): reopening a completed return is the CEO's alone, the same
+    // explicit-only mechanism; a preparer is refused 403 in the server's words.
+    permissions: ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset', 'engagements.billing_hold.lift', 'engagements.tax.reopen'], // '*' includes referrals.approve (Jackson too)
   },
   {
     key: 'ed_coo',

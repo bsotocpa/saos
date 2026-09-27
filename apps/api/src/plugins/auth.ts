@@ -101,6 +101,12 @@ export const EXPLICIT_ONLY_PERMISSIONS: ReadonlySet<string> = new Set([
   // Resetting a staff member's MFA (2026-09-26, R65): the CEO alone. Not money, but the one door
   // that removes a second factor from an account, so the wildcard must not hand it out.
   'staff.mfa.reset',
+  // Lifting the billing hold on an imported engagement (2026-09-26, R68): the CEO alone. "Until
+  // Brian lifts the hold" — money starts moving on a client whose history lives in the old system.
+  'engagements.billing_hold.lift',
+  // Reopening a completed return (2026-09-26, R67): the CEO alone. A completed return's acceptance
+  // is a fact the firm reported to the client; unmaking it is one person's call, never the wildcard's.
+  'engagements.tax.reopen',
 ]);
 
 /**

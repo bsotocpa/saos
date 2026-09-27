@@ -61,6 +61,10 @@ test('R52: the engagement row states its status in plain words, with the day for
   assert.equal(engagementStatusSentence('completed', { endedDay: 'Sep 1, 2026' }), 'Completed on Sep 1, 2026');
   assert.equal(engagementStatusSentence('completed'), 'Completed');
   assert.equal(engagementStatusSentence('active', { pausedDay: 'Sep 20, 2026', endedDay: 'Sep 1, 2026' }), 'Active', 'an active engagement carries no day');
+  // R68: the importer's billing hold is said beside the state, whatever the state is.
+  assert.equal(engagementStatusSentence('active', { billingHold: true }), 'Active · billing on hold (imported)');
+  assert.equal(engagementStatusSentence('on_hold', { pausedDay: 'Sep 20, 2026', billingHold: true }), 'On hold since Sep 20, 2026 · billing on hold (imported)');
+  assert.equal(engagementStatusSentence('active', { billingHold: false }), 'Active', 'a lifted hold says nothing');
 });
 
 test('the helpers never crash a page on an unknown value', () => {

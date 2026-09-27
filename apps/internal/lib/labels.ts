@@ -101,9 +101,11 @@ export function clientSearchLabel(r: { first_name: string; last_name: string; bu
  * over, the day that happened. The caller formats the days (dayOf for the pause instant, formatDate
  * for the calendar day it ended), so this file stays a map of words with no date dependency.
  */
-export function engagementStatusSentence(status: string, days: { pausedDay?: string | null; endedDay?: string | null } = {}): string {
+export function engagementStatusSentence(status: string, days: { pausedDay?: string | null; endedDay?: string | null; billingHold?: boolean } = {}): string {
   const word = engagementStatusLabel(status);
-  if (status === 'on_hold' && days.pausedDay) return `${word} since ${days.pausedDay}`;
-  if ((status === 'completed' || status === 'withdrawn') && days.endedDay) return `${word} on ${days.endedDay}`;
-  return word;
+  // R68 (2026-09-26): the importer's billing hold is not a work hold; the sentence says both facts.
+  const hold = days.billingHold ? ' · billing on hold (imported)' : '';
+  if (status === 'on_hold' && days.pausedDay) return `${word} since ${days.pausedDay}${hold}`;
+  if ((status === 'completed' || status === 'withdrawn') && days.endedDay) return `${word} on ${days.endedDay}${hold}`;
+  return `${word}${hold}`;
 }

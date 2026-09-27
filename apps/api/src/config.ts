@@ -98,6 +98,15 @@ const schema = z.object({
    * GET /auth/me, never changed at runtime by anything under src.
    */
   OPS_RETURN_STEPPER: z.enum(['on', 'off']).default('off'),
+  /**
+   * THE BUSINESS PAGE (Brian, 2026-09-26, R40; the dark-ship rule R57). /businesses/:id in Ops and the
+   * aggregate GET /businesses/:id behind it. OFF in production until Brian sees the two screenshots
+   * (a business with engagements; an empty one) at 390 and 1280; the harness boots it ON and one
+   * spec flips both states through its own door. Same shape as OPS_REFUND_CONTROL: read at boot,
+   * reported on GET /auth/me, never changed at runtime by anything under src. While off, the route
+   * refuses with the sentence the page prints, and the links to the page are not rendered.
+   */
+  OPS_BUSINESS_PAGE: z.enum(['on', 'off']).default('off'),
   // IL SOS good-standing checker: 'stub' (dev/test) or 'live' (self-hosted
   // scraper against ilsos.gov — no third-party service).
   // Meeting intelligence (M17). Transcription stays on owned infrastructure;

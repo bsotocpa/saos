@@ -30,6 +30,7 @@ import {
   EXTENSION_FORMS, EXTENSION_FORM_LABEL, FILING_METHODS, FILING_METHOD_LABEL,
   MAILING_METHODS, MAILING_METHOD_LABEL, SCOPE_CREEP_CATEGORIES, SCOPE_CREEP_LABEL,
   changedFilingFields, correctionLine, correctionsApply, jurisdictionSatisfiedText, preparerOfferDefault,
+  canReopenReturns, defaultF8879Variant, f8879OnFileText, reopenApplies, F8879_VARIANTS, F8879_VARIANT_LABEL,
   type JurisdictionView,
 } from '../lib/return-controls.ts';
 
@@ -230,7 +231,17 @@ test('the paper engagement-letter door is in the 8879 shape, with its own labels
   assert.match(component, /\n\s*Signed engagement letter \(scan\)\n/);
   // NOT "Signed on": that label belongs to the 8879 door and the browser walk taps it by name.
   assert.match(component, /\n\s*Date signed\n/);
-  assert.equal((component.match(/\n\s*Signed on\n/g) ?? []).length, 1, 'exactly one control is labelled "Signed on"');
+  /*
+   * TWO controls carry "Signed on" since R69 (2026-09-27): the 8879 upload's, and the correction modal's
+   * (the same fact, corrected). They never render together — the upload leaves the row the moment the
+   * 8879 is on file, and the correction modal opens only at filed — and the walk taps the modal's inside
+   * the dialog. The letter door stays "Date signed". Anything else labelled "Signed on" is a collision.
+   */
+  assert.equal((component.match(/\n\s*Signed on\n/g) ?? []).length, 2, 'exactly two controls are labelled "Signed on": the 8879 upload and the correction modal');
+  const uploadForm = component.slice(component.indexOf('export function Upload8879'), component.indexOf('export function sent8879Applies'));
+  const correctionModal = component.slice(component.indexOf('function CorrectionFields'), component.indexOf('function MailingFields'));
+  assert.equal((uploadForm.match(/\n\s*Signed on\n/g) ?? []).length, 1, 'one in the upload form');
+  assert.equal((correctionModal.match(/\n\s*Signed on\n/g) ?? []).length, 1, 'one in the correction modal');
   assert.match(component, /fd\.append\('category', 'signed_authorizations'\)/);
   assert.match(component, /fd\.append\('engagementLetterSignedOn', signedOn\)/, 'its own field, so the route knows which paper arrived');
   // The refusal renders beside the date, and the control leaves once the letter is on the return.
@@ -339,7 +350,8 @@ test('the Record mailing modal: the day, the method, optional tracking, optional
   assert.match(component, /jurisdictionStatusText\(j, j\.filingMethod === 'paper' \? \(j\.mailedOn \? formatDate\(j\.mailedOn\) : ''\)/);
   // Two windows, one gate: the pre-filing controls are hidden after filing, the mailing control is not.
   assert.match(component, /const preFiled = controlsApply\(stage\);/);
-  assert.match(component, /const applies = preFiled \|\| mailingControlsApply\(stage\);/);
+  // Three windows since R67: the completed row renders for the reopen alone, and only for the session that holds it.
+  assert.match(component, /const applies = preFiled \|\| mailingControlsApply\(stage\) \|\| \(canReopen && reopenApplies\(stage\)\);/);
   assert.match(component, /if \(!canManage \|\| !applies\) return null;/, 'nothing, not disabled buttons');
 });
 
@@ -384,4 +396,68 @@ test('only what moved is sent; the history line names the field, the day, the pe
   assert.equal(jurisdictionSatisfiedText({ ...row, filingMethod: 'paper', acceptedOn: null, mailedOn: '2026-09-21' }, 'Sep 21, 2026'), 'mailed Sep 21, 2026');
   assert.equal(jurisdictionSatisfiedText({ ...row, acceptedOn: null }, ''), '');
   assert.equal(jurisdictionSatisfiedText(undefined, ''), '');
+});
+
+/* ═══ R69, R66, R67 (2026-09-26/27) ═══════════════════════════════════════════════════════════════ */
+
+test('R66: which 8879 the paper is follows the return type, the select carries the four forms in words, and the row prints the one on file', () => {
+  assert.equal(defaultF8879Variant('1040'), '8879');
+  assert.equal(defaultF8879Variant('1040_expat'), '8879');
+  assert.equal(defaultF8879Variant('1120s'), '8879-CORP');
+  assert.equal(defaultF8879Variant('1120'), '8879-CORP');
+  assert.equal(defaultF8879Variant('1120f_foreign'), '8879-CORP');
+  assert.equal(defaultF8879Variant('1065'), '8879-PE');
+  for (const t of ['990', '990ez', '990pf', '990t']) assert.equal(defaultF8879Variant(t), '8879-TE', t);
+  assert.equal(defaultF8879Variant(null), '8879', 'no return type: the bare form, never a crash');
+  assert.deepEqual([...F8879_VARIANTS], ['8879', '8879-CORP', '8879-PE', '8879-TE'], 'the ruling\'s four and no other');
+  for (const v of F8879_VARIANTS) assert.match(F8879_VARIANT_LABEL[v], new RegExp(`^Form ${v.replace('-', '\\-')} \\(`), 'each option names its form');
+  assert.equal(f8879OnFileText('8879-TE', 'Sep 15, 2026'), '8879-TE on file, signed Sep 15, 2026');
+  assert.equal(f8879OnFileText(null, 'Sep 15, 2026'), '8879 on file, signed Sep 15, 2026', 'a scan filed before the form was named reads the bare form');
+  // The upload form: the select opens on the return type's default and sends the field; the correction modal carries the same select.
+  assert.match(component, /useState<F8879Variant>\(defaultF8879Variant\(returnType\)\)/, 'the upload select opens on the default');
+  assert.match(component, /fd\.append\('f8879Variant', variant\);/, 'and the upload sends it');
+  assert.match(component, /data-testid="f8879-variant"/);
+  assert.match(component, /data-testid="correction-f8879-variant"/, 'correctable through the correction modal');
+  assert.match(page, /f8879OnFileText\(t\.f8879_variant, formatDate\(t\.f8879_signed_on \?\? ''\)\)/, 'the Returns card prints the form on file');
+});
+
+test('R69: the signed date and the scan move through the correction door — only what differs is sent, the history line names each, the modal carries "Signed on" and "Replace the scan"', () => {
+  const current = { filedOn: '2026-09-26', ptin: 'a', jurisdictions: ['federal'], f8879SignedOn: '2026-09-20', f8879Variant: '8879-CORP' };
+  assert.deepEqual(changedFilingFields(current, { ...current }), {}, 'nothing changed, nothing sent');
+  assert.deepEqual(changedFilingFields(current, { ...current, f8879SignedOn: '2026-09-15' }), { f8879SignedOn: '2026-09-15' });
+  assert.deepEqual(changedFilingFields(current, { ...current, f8879Variant: '8879-TE' }), { f8879Variant: '8879-TE' });
+  assert.deepEqual(changedFilingFields(current, { ...current, f8879Variant: '' }), {}, 'an emptied select is not a correction');
+  assert.deepEqual(
+    changedFilingFields(current, { ...current, f8879SignedOn: '2026-09-15', filedOn: '2026-09-15' }),
+    { filedOn: '2026-09-15', f8879SignedOn: '2026-09-15' },
+    'Brian\'s shape: the signed day and the filed day, corrected to the same day'
+  );
+  assert.equal(correctionLine({ fields: ['f8879_signed_on'], reason: 'The scan is dated the 15th.', actor_label: 'Synthetic CEO' }, 'Sep 27, 2026'),
+    'Corrected the 8879 signed date on Sep 27, 2026 by Synthetic CEO: The scan is dated the 15th.');
+  assert.equal(correctionLine({ fields: ['f8879_document'], reason: 'r', actor_label: 'x' }, 'd'), 'Corrected the 8879 scan on d by x: r');
+  assert.equal(correctionLine({ fields: ['f8879_variant'], reason: 'r', actor_label: 'x' }, 'd'), 'Corrected the 8879 form on d by x: r');
+  const modal = component.slice(component.indexOf('function CorrectionFields'), component.indexOf('function MailingFields'));
+  assert.match(modal, /\n\s*Signed on\n/, 'the label the walk taps, inside the correction modal');
+  assert.match(modal, /\n\s*Replace the scan\n/, 'the replacement file input');
+  assert.match(modal, /data-testid="correction-f8879-scan"/);
+  assert.ok(!/min=|max=/.test(modal), 'no client-side bound on the signed day: the route holds the rules');
+  assert.match(component, /fd\.append\('category', 'signed_authorizations'\);\n\s*fd\.append\('taxEngagementId', taxEngagementId\);\n\s*fd\.append\('file', draft\.scan, draft\.scan\.name\);/, 'the replacement goes through /documents with no signed date');
+  assert.match(component, /\.\.\.\(f8879DocumentId \? \{ f8879DocumentId \} : \{\}\),/, 'and the correction carries its id');
+  assert.match(page, /document-superseded-\$\{d\.id\}/, 'the Documents card marks a replaced scan');
+});
+
+test('R67: Reopen belongs to the completed row and to the named permission alone — the wildcard does not show it', () => {
+  assert.equal(canReopenReturns(CEO), false, 'the CEO\'s wildcard alone is not the grant; the seed names engagements.tax.reopen');
+  assert.equal(canReopenReturns([...CEO, 'engagements.tax.reopen']), true);
+  assert.equal(canReopenReturns(PREPARER), false);
+  assert.equal(canReopenReturns(BOOKKEEPER), false);
+  assert.equal(canReopenReturns(null), false);
+  for (const s of ['intake_started', 'ready_to_file', 'filed', 'rejected', 'withdrawn']) assert.equal(reopenApplies(s), false, s);
+  assert.equal(reopenApplies('completed'), true);
+  assert.match(component, /const applies = preFiled \|\| mailingControlsApply\(stage\) \|\| \(canReopen && reopenApplies\(stage\)\);/, 'the completed row renders for the reopen alone');
+  assert.match(component, /data-testid="reopen-return"/);
+  assert.match(component, /\/reopen`, \{ method: 'POST', body: \{ reason: r\.reason \} \}/, 'the route the modal posts to, with the reason');
+  assert.match(component, /label: 'Reopen the return', tone: 'primary'/);
+  assert.match(component, /placeholder: 'Say why the completion is in doubt/, 'the reason is required and standalone');
+  assert.match(component, /data-testid="reopened-notice"/, 'a reopened return says so on the filed row');
 });

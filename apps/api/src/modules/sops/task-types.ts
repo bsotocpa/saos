@@ -38,6 +38,10 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   sms_unmatched: { sop: 'rene-unmatched-inbound' },
   invoice_overdue: { sop: 'rene-dunning-call' },
   invoice_needed: { sop: 'rene-invoice-on-filed' },
+  // R68 (2026-09-26): a return filed on an engagement the importer holds for billing. The invoice
+  // was refused and counted; the work is to have the CEO lift the hold, then invoice the return —
+  // the same procedure as a filed return with no invoice yet.
+  invoice_billing_hold: { sop: 'rene-invoice-on-filed' },
   quote_accepted: { sop: 'rene-quote-accepted-onboarding' },
   // 2026-09-09. A card dispute has a deadline set by the card network, carried on the
   // task as its due date; the procedure is how to assemble evidence and where to submit.

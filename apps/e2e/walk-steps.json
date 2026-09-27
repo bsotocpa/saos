@@ -97,7 +97,26 @@
         { "id": "F1", "text": "Mark filed takes Filed on: opens on today, a day after today refused, a day before the signed 8879 refused, today files", "device": "phone + laptop" },
         { "id": "F2", "text": "Correct the filing: remove a jurisdiction with a reason; the line leaves the row and the history line reads the correction; the bookkeeper has no control and the route refuses her", "device": "phone + laptop" },
         { "id": "F3", "text": "Correct the filing: change the PTIN holder; the offer to move the assigned preparer opens checked and both move", "device": "phone + laptop" },
-        { "id": "F4", "text": "Correct the filing: move the filed date earlier; a day before the signed 8879 refused in the modal, the 8879's day lands", "device": "phone + laptop" }
+        { "id": "F5", "text": "Correct the filing: the 8879 signed date moved earlier to the day on the paper; a day after today refused in the modal; the history line reads the correction (R69)", "device": "phone + laptop" },
+        { "id": "F6", "text": "Correct the filing: the 8879 scan replaced; the previous document row reads superseded, stays listed and downloadable; the return points at the new scan (R69)", "device": "phone + laptop" },
+        { "id": "F4", "text": "Correct the filing: move the filed date earlier; a day before the CORRECTED signed 8879 refused in the modal naming that day, the corrected signed day lands (the rule reads the corrected value, inclusive)", "device": "phone + laptop" }
+      ]
+    },
+    "N": {
+      "title": "The Form 990 on extension, 8879-TE (Path B, 990 variant, R66)",
+      "steps": [
+        { "id": "N1", "text": "The exempt organization's 990 at ready to file (fixture); Record extension opens on Form 8868 and the row reads the derived extended deadline", "device": "phone + laptop" },
+        { "id": "N2", "text": "Upload the signed 8879: the Form select opens on 8879-TE; the row reads \"8879-TE on file, signed <date>\"", "device": "phone + laptop" },
+        { "id": "N3", "text": "Mark filed: federal alone (IL removed in the modal), e-filed, with the PTIN holder", "device": "phone + laptop" },
+        { "id": "N4", "text": "The ATX export with the organization's 990 Federal Accepted row: uploaded, matched on the EIN, released; the return completes and the engagement closes", "device": "phone + laptop" }
+      ]
+    },
+    "R": {
+      "title": "Reopen a completed return (R67)",
+      "steps": [
+        { "id": "R1", "text": "The CEO's \"Reopen…\" on a completed row: a standalone reason; the row reads filed and Reopened", "device": "phone + laptop" },
+        { "id": "R2", "text": "The engagement is active again and the executive view counts the return as open", "device": "phone + laptop" },
+        { "id": "R3", "text": "Re-completion refused until a new acceptance is recorded; the new acceptance completes it; the preparer has no control and the route refuses 403", "device": "phone + laptop" }
       ]
     },
     "H": {
@@ -113,8 +132,8 @@
     "S": {
       "title": "The Returns card as a stepper (R50), behind OPS_RETURN_STEPPER",
       "steps": [
-        { "id": "S1", "text": "With the switch on, the stepper renders its sixteen steps; the current step carries its one control and one sentence, and each later step says what unlocks it", "device": "phone + laptop" },
-        { "id": "S2", "text": "The details area carries the secondary actions (change preparer, record extension, correct the filing at filed); ed_coo reads the steps with no control and no details area", "device": "phone + laptop" },
+        { "id": "S1", "text": "With the switch on, the rail shows five phases (Engage, Prepare, Sign, File, Close); only the current phase is open, its current step carries the one control and one sentence and its other steps are one line each; a done phase is one line with its date, a future phase its greyed name", "device": "phone + laptop" },
+        { "id": "S2", "text": "The details area carries the secondary actions (change preparer, record extension, correct the filing at filed); ed_coo reads the phases with no control and no details area", "device": "phone + laptop" },
         { "id": "S3", "text": "With the switch off the row renders as production runs it, and GET /auth/me reports the state", "device": "phone + laptop" }
       ]
     },
@@ -125,6 +144,23 @@
         { "id": "T2", "text": "The top navigation shows only her pages; the count and names equal the tax_preparer row of the nav-items-by-role record", "device": "phone + laptop" },
         { "id": "T3", "text": "From the queue's Client packet, the assigned return worked end to end: lock estimate, the stages to internal review, deliver, record 8879 sent, upload the signed 8879, final fee, ready to file, filed with Filed on, the acknowledgment uploaded and released", "device": "phone + laptop" },
         { "id": "T4", "text": "The client page's cards: Invoices and the next session read \"Not available to your role\" with no count; every card she can read renders", "device": "phone + laptop" }
+      ]
+    },
+    "U": {
+      "title": "The business page (R40), behind OPS_BUSINESS_PAGE",
+      "steps": [
+        { "id": "U1", "text": "From the client page's Businesses card the business name opens /businesses/:id: the entity, the owner linked back, the seven cards in the proposal's order; Edit business saves and the entity card reads it back", "device": "phone + laptop" },
+        { "id": "U2", "text": "From search: the clients-list \"Business — owner\" row opens the business page", "device": "phone + laptop" },
+        { "id": "U3", "text": "Role proof: the bookkeeper reads entity, owners, service facts and documents; Engagements, Returns and Invoices read \"Not available to your role\" with no count; the EIN is the last four only; no Edit business", "device": "phone + laptop" },
+        { "id": "U4", "text": "With the switch off the route prints \"This page is not switched on.\", the Businesses card name is plain text, and the clients-list row opens the client", "device": "phone + laptop" }
+      ]
+    },
+    "L": {
+      "title": "The billing hold on an imported engagement (R68)",
+      "steps": [
+        { "id": "L1", "text": "The client page's engagement row reads \"Billing on hold (imported)\" with the importer's reason, the status sentence says it, and the CEO has \"Lift billing hold…\"", "device": "phone + laptop" },
+        { "id": "L2", "text": "The CEO lifts the hold with a reason: a chat-artifact reason is refused under the field in the server's words; the real one lands; the badge leaves the re-read row", "device": "phone + laptop" },
+        { "id": "L3", "text": "Role proof: ed_coo reads the badge with no control; comms_billing has no control and the route refuses 403 engagements.billing_hold.lift", "device": "phone + laptop" }
       ]
     }
   }

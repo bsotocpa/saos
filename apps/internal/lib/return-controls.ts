@@ -280,7 +280,8 @@ export type ExtensionForm = (typeof EXTENSION_FORMS)[number];
 export function defaultExtensionForm(returnType: string | null | undefined): ExtensionForm {
   const t = (returnType ?? '').toLowerCase();
   if (t === '1040' || t === '1040_expat') return '4868';
-  if (t === '990' || t === '990ez') return '8868';
+  // R66: the whole 990 family (990, 990-EZ, 990-PF, 990-T) extends on 8868.
+  if (t.startsWith('990')) return '8868';
   return '7004';
 }
 
@@ -330,6 +331,10 @@ export const CORRECTION_FIELD_LABEL: Record<string, string> = {
   filed_date: 'the filed date',
   preparer_ptin_holder_id: 'the PTIN holder',
   jurisdictions: 'the declared jurisdictions',
+  // R69 / R66 (2026-09-26/27): the authorization's day, its scan, and which 8879 it is.
+  f8879_signed_on: 'the 8879 signed date',
+  f8879_document: 'the 8879 scan',
+  f8879_variant: 'the 8879 form',
 };
 
 /**
@@ -348,6 +353,10 @@ export interface FilingAsRecorded {
   filedOn: string;
   ptin: string;
   jurisdictions: string[];
+  /** R69: the day on the signed 8879, as recorded; '' when none is on file. Optional so older callers and tests stand. */
+  f8879SignedOn?: string;
+  /** R66: which Form 8879 the scan is, as recorded; '' when unrecorded. */
+  f8879Variant?: string;
 }
 
 /**
@@ -357,16 +366,23 @@ export interface FilingAsRecorded {
  * difference. An empty result is sent as-is: the route's refusal — nothing to correct — is the
  * words the modal shows.
  */
-export function changedFilingFields(
-  current: FilingAsRecorded,
-  draft: FilingAsRecorded
-): { filedOn?: string; preparerPtinHolderId?: string; jurisdictions?: string[] } {
-  const out: { filedOn?: string; preparerPtinHolderId?: string; jurisdictions?: string[] } = {};
+export interface FilingCorrectionBody {
+  filedOn?: string;
+  preparerPtinHolderId?: string;
+  jurisdictions?: string[];
+  f8879SignedOn?: string;
+  f8879Variant?: string;
+}
+export function changedFilingFields(current: FilingAsRecorded, draft: FilingAsRecorded): FilingCorrectionBody {
+  const out: FilingCorrectionBody = {};
   if (draft.filedOn && draft.filedOn !== current.filedOn) out.filedOn = draft.filedOn;
   if (draft.ptin && draft.ptin !== current.ptin) out.preparerPtinHolderId = draft.ptin;
   const was = normaliseJurisdictions(current.jurisdictions);
   const now = normaliseJurisdictions(draft.jurisdictions);
   if (was.join(',') !== now.join(',')) out.jurisdictions = now;
+  // R69 / R66: the authorization's day and its form move the same way — only when they differ from the record.
+  if (draft.f8879SignedOn && draft.f8879SignedOn !== (current.f8879SignedOn ?? '')) out.f8879SignedOn = draft.f8879SignedOn;
+  if (draft.f8879Variant && draft.f8879Variant !== (current.f8879Variant ?? '')) out.f8879Variant = draft.f8879Variant;
   return out;
 }
 
@@ -385,4 +401,57 @@ export function jurisdictionSatisfiedText(row: JurisdictionView | undefined, day
   if (row.acceptedOn) return `accepted ${dayText}`;
   if (row.mailedOn) return `mailed ${dayText}`;
   return '';
+}
+
+/*
+ * ═══ 2026-09-26, R66: WHICH 8879 THE PAPER IS ═════════════════════════════════════════════════
+ *
+ * One Form 8879 is four forms, by the return it authorizes: 8879 (an individual return), 8879-CORP
+ * (a corporation), 8879-PE (a partnership), 8879-TE (an exempt organization). The upload's select
+ * opens on the return type's default — the same rule the API applies (signed-8879.ts) — and the
+ * person can say the other one. The ruling names these four; a 1041 opens on '8879' until Brian adds
+ * the fiduciary variant.
+ */
+export const F8879_VARIANTS = ['8879', '8879-CORP', '8879-PE', '8879-TE'] as const;
+export type F8879Variant = (typeof F8879_VARIANTS)[number];
+
+export const F8879_VARIANT_LABEL: Record<F8879Variant, string> = {
+  '8879': 'Form 8879 (individual)',
+  '8879-CORP': 'Form 8879-CORP (corporation)',
+  '8879-PE': 'Form 8879-PE (partnership)',
+  '8879-TE': 'Form 8879-TE (exempt organization)',
+};
+
+export function defaultF8879Variant(returnType: string | null | undefined): F8879Variant {
+  const t = (returnType ?? '').toLowerCase();
+  if (t === '1065') return '8879-PE';
+  if (t.startsWith('1120')) return '8879-CORP';
+  if (t.startsWith('990')) return '8879-TE';
+  return '8879';
+}
+
+/**
+ * "8879-TE on file, signed Sep 15, 2026" — the row's words for the authorization. The variant is the
+ * document's own; an unrecorded one reads the bare form rather than a guess. The day arrives
+ * formatted (this file has no date formatter).
+ */
+export function f8879OnFileText(variant: string | null | undefined, signedDayText: string): string {
+  return `${variant || '8879'} on file, signed ${signedDayText}`;
+}
+
+/*
+ * ═══ 2026-09-26, R67: REOPEN A COMPLETED RETURN ═══════════════════════════════════════════════
+ *
+ * The one control on a COMPLETED row, for the one person who holds it. engagements.tax.reopen is
+ * explicit-only on the API: the wildcard does not confer it, so this reads the named permission and
+ * never '*' — a session that holds every other control still gets no Reopen unless it holds this one.
+ */
+export const REOPEN_PERMISSION = 'engagements.tax.reopen';
+
+export function canReopenReturns(permissions: readonly string[] | null | undefined): boolean {
+  return Boolean(permissions?.includes(REOPEN_PERMISSION));
+}
+
+export function reopenApplies(stage: string): boolean {
+  return stage === 'completed';
 }

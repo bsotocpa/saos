@@ -38,6 +38,19 @@
  *                     day; recorded, never sent, by SAOS. The queue reads the return as awaiting
  *                     signature until the signed scan is uploaded.
  *
+ * And, since 2026-09-26/27 (R69, R66, R67):
+ *
+ *   Correct the filing also takes "Signed on" (the day on the signed 8879), "Form" (which 8879 the
+ *                     paper is) and "Replace the scan" (a new file, uploaded through /documents; the
+ *                     old row is kept and marked superseded). The filed-date rule then reads the
+ *                     corrected signed day.
+ *   Upload the signed 8879 takes "Form": 8879, 8879-CORP, 8879-PE or 8879-TE, opening on the return
+ *                     type's default; the row prints it ("8879-TE on file, signed …").
+ *   Reopen the return — on a COMPLETED row, for the CEO alone (engagements.tax.reopen is explicit-only,
+ *                     so the wildcard does not show it): a standalone reason; the return goes back to
+ *                     filed, the engagement to active, and every jurisdiction needs a new acceptance
+ *                     or mailing before it completes again.
+ *
  * ONE SET OF ACTIONS, TWO RENDERINGS (R50, 2026-09-26). The modals live in useReturnActions below
  * and are shared by this row and by the stepper (return-stepper.tsx), which renders in its place
  * when OPS_RETURN_STEPPER is on. Neither duplicates the other's logic: the stepper shows the same
@@ -60,14 +73,14 @@ import { api, formatMoney } from '../lib/api';
 import { formatDate, todayChicago } from '../lib/dates';
 import { TAX_STAGE_LABEL } from '../lib/labels';
 import {
-  aboveLockedEstimate, addState, canManageReturns, changedFilingFields, controlsApply, correctionsApply,
-  defaultExtensionForm, defaultPreparerId, dollarsToCents, extensionBadgeText, filingMethodsFor, jurisdictionLabel,
+  aboveLockedEstimate, addState, canManageReturns, canReopenReturns, changedFilingFields, controlsApply, correctionsApply,
+  defaultExtensionForm, defaultF8879Variant, defaultPreparerId, dollarsToCents, extensionBadgeText, f8879OnFileText, filingMethodsFor, jurisdictionLabel,
   jurisdictionSatisfiedText, jurisdictionStatusText, jurisdictionsSentence, mailingControlsApply, mailingsNeeded,
-  normaliseJurisdictions, outsideRange, preparerLine, preparerOfferDefault, removeState, stageActionLabel,
+  normaliseJurisdictions, outsideRange, preparerLine, preparerOfferDefault, removeState, reopenApplies, stageActionLabel,
   startingFilingMethods, startingJurisdictions,
-  EXTENSION_FORMS, EXTENSION_FORM_LABEL, FEDERAL, FILING_METHODS, FILING_METHOD_LABEL,
+  EXTENSION_FORMS, EXTENSION_FORM_LABEL, F8879_VARIANTS, F8879_VARIANT_LABEL, FEDERAL, FILING_METHODS, FILING_METHOD_LABEL,
   MAILING_METHODS, MAILING_METHOD_LABEL, SCOPE_CREEP_CATEGORIES, SCOPE_CREEP_LABEL,
-  type ExtensionForm, type FilingAsRecorded, type FilingCorrectionView, type FilingMethod, type JurisdictionView, type MailingMethod, type QuotedRange,
+  type ExtensionForm, type F8879Variant, type FilingAsRecorded, type FilingCorrectionView, type FilingMethod, type JurisdictionView, type MailingMethod, type QuotedRange,
 } from '../lib/return-controls';
 import { F8879_SENT_METHODS, F8879_SENT_METHOD_LABEL, type ActivityRow, type F8879SentView, type StageHistoryRow } from '../lib/return-stepper';
 import { useAsk } from './ask';
@@ -94,6 +107,11 @@ export interface Detail {
     filed_date: string | null;
     /** The day on the signed 8879, a calendar day; the floor under "Filed on". */
     f8879_signed_on: string | null;
+    /** Which Form 8879 the scan is (R66): 8879, 8879-CORP, 8879-PE, 8879-TE; null on a scan filed before the form was named. */
+    f8879_variant?: string | null;
+    /** R67: set when the CEO reopened this completed return; the row says so until every jurisdiction answers again. */
+    reopened_at?: string | null;
+    reopen_reason?: string | null;
   };
   /** R53: the 8879 sent for signature, or null. */
   f8879_sent: F8879SentView | null;
@@ -143,8 +161,9 @@ export const CONTROL_SENTENCES = {
   preparer: 'Names who prepares this return; preparation cannot start until somebody is on it.',
   extension: 'Records an extension that already went in; the extended deadline is derived from the return type, never typed.',
   letter: 'This scan is the signed engagement letter; the return is stamped with the date the client signed it.',
-  correction: 'Corrects the filed date, the PTIN holder or the declared jurisdictions of this filing; each correction is kept with its reason and printed under the row.',
+  correction: 'Corrects the filed date, the PTIN holder, the declared jurisdictions, or the signed 8879 (its date, its form, its scan) of this filing; each correction is kept with its reason and printed under the row.',
   sent8879: 'Records that Form 8879 went to the client for signature — through Adobe Sign, across the desk, or by mail — and the day; nothing is sent from here.',
+  reopen: 'Takes a completed return back to filed with a reason; the engagement is active again and every jurisdiction needs a new acceptance or mailing before it completes.',
 } as const;
 
 export interface ReturnControlsProps {
@@ -338,11 +357,14 @@ export function useReturnActions({ taxEngagementId, contactId, stage, detail, af
       filedOn: te.filed_date ?? '',
       ptin: te.preparer_ptin_holder_id ?? '',
       jurisdictions: normaliseJurisdictions(detail.declared_jurisdictions),
+      f8879SignedOn: te.f8879_signed_on ?? '',
+      f8879Variant: te.f8879_variant ?? '',
     };
-    const draft: FilingAsRecorded & { alsoAssign: boolean } = {
+    const draft: FilingAsRecorded & { alsoAssign: boolean; scan: File | null } = {
       ...current,
       jurisdictions: [...current.jurisdictions],
       alsoAssign: preparerOfferDefault(te.preparer_ptin_holder_id, detail.assigned_preparer?.id),
+      scan: null,
     };
     const a = await ask({
       title: 'Correct the filing',
@@ -365,10 +387,27 @@ export function useReturnActions({ taxEngagementId, contactId, stage, detail, af
       choices: [{ key: 'correct', label: 'Correct the filing', tone: 'primary' }],
       run: async (r) => {
         const changed = changedFilingFields(current, draft);
+        /*
+         * THE REPLACEMENT SCAN (R69, amended): through /documents under Signed Authorizations against
+         * this return — the same door the row's upload uses — with no signed date on it, so nothing
+         * stamps the return; the correction below is what makes it the 8879 on file and marks the
+         * previous scan superseded.
+         */
+        let f8879DocumentId: string | undefined;
+        if (draft.scan) {
+          const fd = new FormData();
+          fd.append('contactId', contactId);
+          fd.append('category', 'signed_authorizations');
+          fd.append('taxEngagementId', taxEngagementId);
+          fd.append('file', draft.scan, draft.scan.name);
+          const doc = await api<{ id: string }>('/documents', { method: 'POST', formData: fd });
+          f8879DocumentId = doc.id;
+        }
         await api(`/tax-engagements/${taxEngagementId}/filing-corrections`, {
           method: 'POST',
           body: {
             ...changed,
+            ...(f8879DocumentId ? { f8879DocumentId } : {}),
             ...(changed.preparerPtinHolderId && draft.alsoAssign ? { alsoAssignPreparer: true } : {}),
             reason: r.reason,
           },
@@ -376,6 +415,17 @@ export function useReturnActions({ taxEngagementId, contactId, stage, detail, af
       },
     });
     if (!a) return;
+    await after();
+  };
+
+  /*
+   * REOPEN A COMPLETED RETURN (Brian, 2026-09-26, R67). One reason, standalone; the route holds the
+   * rules (completed only, the CEO alone) and its words render in the modal. The return goes back to
+   * filed and the engagement to active; the row then reads "Reopened" until every jurisdiction has
+   * answered again.
+   */
+  const reopenReturn = async () => {
+    if (!(await askReopen(ask, { taxEngagementId, taxYear: te.tax_year, returnType: te.return_type }))) return;
     await after();
   };
 
@@ -446,20 +496,91 @@ export function useReturnActions({ taxEngagementId, contactId, stage, detail, af
     await after();
   };
 
-  return { lockEstimate, setFinalFee, assignPreparer, recordExtension, transition, correctFiling, recordMailing, record8879Sent, rangeText, range, te };
+  return { lockEstimate, setFinalFee, assignPreparer, recordExtension, transition, correctFiling, recordMailing, record8879Sent, reopenReturn, rangeText, range, te };
+}
+
+/** The Reopen modal (R67): one reason, the route's words on a refusal. Returns whether the return was reopened. */
+async function askReopen(
+  ask: ReturnType<typeof useAsk>,
+  te: { taxEngagementId: string; taxYear: number; returnType: string }
+): Promise<boolean> {
+  const a = await ask({
+    title: 'Reopen this return',
+    body: (
+      <p className="small">
+        {te.taxYear} {te.returnType.toUpperCase()} goes back to filed and its engagement to active. The acceptance or mailing
+        that completed it no longer counts: every jurisdiction needs a new one before the return completes again.
+      </p>
+    ),
+    reason: {
+      label: 'Reason',
+      required: true,
+      placeholder: 'Say why the completion is in doubt and what must happen now, for whoever reads this next.',
+    },
+    choices: [{ key: 'reopen', label: 'Reopen the return', tone: 'primary' }],
+    run: async (r) => {
+      await api(`/tax-engagements/${te.taxEngagementId}/reopen`, { method: 'POST', body: { reason: r.reason } });
+    },
+  });
+  return Boolean(a);
+}
+
+/*
+ * THE ONE CONTROL ON A COMPLETED ROW (R67), standalone: it reads the session itself and renders
+ * nothing without engagements.tax.reopen by name. The row grid uses it, and so does the client page
+ * beside the stepper (R50, when OPS_RETURN_STEPPER is on): the stepper's Close step is the other
+ * component's to draw, but the door is this one, and a completed return must offer it whichever
+ * rendering is on. `taxYear` and `returnType` come from the row the caller already has, so no read.
+ */
+export function ReopenReturnControl({ taxEngagementId, taxYear, returnType, onChanged }: {
+  taxEngagementId: string; taxYear: number; returnType: string; onChanged: () => Promise<void> | void;
+}): React.JSX.Element | null {
+  const ask = useAsk();
+  const [canReopen, setCanReopen] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    me().then((m) => { if (alive) setCanReopen(canReopenReturns(m.permissions)); }).catch(() => { if (alive) setCanReopen(false); });
+    return () => { alive = false; };
+  }, []);
+  if (!canReopen) return null;
+  return (
+    <div style={{ flex: '1 1 100%' }}>
+      <button
+        type="button"
+        className="btn small ghost"
+        data-testid="reopen-return"
+        onClick={() => void (async () => { if (await askReopen(ask, { taxEngagementId, taxYear, returnType })) await onChanged(); })()}
+      >
+        Reopen…
+      </button>
+      <p className="muted small">{CONTROL_SENTENCES.reopen}</p>
+    </div>
+  );
+}
+
+/** A reopened return says so, with the reason, until every jurisdiction has answered again (R67). */
+export function ReopenedNotice({ reason }: { reason: string | null | undefined }): React.JSX.Element {
+  return (
+    <p className="small" style={{ flex: '1 1 100%', gridColumn: '1 / -1', margin: 0 }} data-testid="reopened-notice">
+      <span className="badge warn">Reopened</span>{' '}
+      <span className="muted small">needs a new acceptance or mailing on every jurisdiction{reason ? `: ${reason}` : ''}</span>
+    </p>
+  );
 }
 
 export function ReturnControls({ taxEngagementId, contactId, stage, onChanged }: ReturnControlsProps): React.JSX.Element | null {
   const [canManage, setCanManage] = useState<boolean | null>(null);
+  const [canReopen, setCanReopen] = useState(false);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [err, setErr] = useState('');
   /*
-   * TWO SETS OF CONTROLS, TWO WINDOWS (2026-09-20, ruling 15). The pre-filing controls stop at
-   * filing, as they always have. The Record mailing control STARTS there: a jurisdiction is declared
-   * at filing, so a paper one can only be recorded as mailed afterwards. `applies` is either.
+   * THREE SETS OF CONTROLS, THREE WINDOWS. The pre-filing controls stop at filing, as they always
+   * have (2026-09-20, ruling 15). The Record mailing control STARTS there: a jurisdiction is declared
+   * at filing, so a paper one can only be recorded as mailed afterwards. And Reopen (R67) belongs to
+   * the COMPLETED row alone, for the session that holds engagements.tax.reopen by name. `applies` is any.
    */
   const preFiled = controlsApply(stage);
-  const applies = preFiled || mailingControlsApply(stage);
+  const applies = preFiled || mailingControlsApply(stage) || (canReopen && reopenApplies(stage));
 
   const load = useCallback(async () => {
     try {
@@ -473,8 +594,8 @@ export function ReturnControls({ taxEngagementId, contactId, stage, onChanged }:
   useEffect(() => {
     let alive = true;
     me()
-      .then((m) => { if (alive) setCanManage(canManageReturns(m.permissions)); })
-      .catch(() => { if (alive) setCanManage(false); });
+      .then((m) => { if (alive) { setCanManage(canManageReturns(m.permissions)); setCanReopen(canReopenReturns(m.permissions)); } })
+      .catch(() => { if (alive) { setCanManage(false); setCanReopen(false); } });
     return () => { alive = false; };
   }, []);
   useEffect(() => {
@@ -483,14 +604,14 @@ export function ReturnControls({ taxEngagementId, contactId, stage, onChanged }:
 
   if (!canManage || !applies) return null;
   if (!detail) return err ? <p className="field-error" role="alert">{err}</p> : null;
-  return <ReturnControlsRow taxEngagementId={taxEngagementId} contactId={contactId} stage={stage} detail={detail} preFiled={preFiled} err={err} after={async () => { await load(); await onChanged(); }} />;
+  return <ReturnControlsRow taxEngagementId={taxEngagementId} contactId={contactId} stage={stage} detail={detail} preFiled={preFiled} canReopen={canReopen} err={err} after={async () => { await load(); await onChanged(); }} />;
 }
 
 /** The row as production renders it: the grid of controls, from the shared actions. */
-function ReturnControlsRow({ taxEngagementId, contactId, stage, detail, preFiled, err, after }: {
-  taxEngagementId: string; contactId: string; stage: string; detail: Detail; preFiled: boolean; err: string; after: () => Promise<void>;
+function ReturnControlsRow({ taxEngagementId, contactId, stage, detail, preFiled, canReopen, err, after }: {
+  taxEngagementId: string; contactId: string; stage: string; detail: Detail; preFiled: boolean; canReopen: boolean; err: string; after: () => Promise<void>;
 }): React.JSX.Element {
-  const { lockEstimate, setFinalFee, assignPreparer, recordExtension, transition, correctFiling, recordMailing, record8879Sent, rangeText, te } =
+  const { lockEstimate, setFinalFee, assignPreparer, recordExtension, transition, correctFiling, recordMailing, record8879Sent, reopenReturn, rangeText, te } =
     useReturnActions({ taxEngagementId, contactId, stage, detail, after });
   return (
     <div style={{ flex: '1 1 100%', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 8 }}>
@@ -557,11 +678,14 @@ function ReturnControlsRow({ taxEngagementId, contactId, stage, detail, preFiled
           taxEngagementId={taxEngagementId}
           defaultPtin={te.preparer_ptin_holder_id ?? detail.assigned_preparer?.id ?? ''}
           options={detail.staff_options}
+          returnType={te.return_type}
           onUploaded={after}
         />
       )}
       </>
       ) : null}
+      {/* R67: a reopened return says so until every jurisdiction has answered again. */}
+      {te.reopened_at && stage === 'filed' ? <ReopenedNotice reason={te.reopen_reason} /> : null}
       {/*
         * WHERE THIS RETURN STANDS, JURISDICTION BY JURISDICTION (ruling 15). A paper one reads
         * "Mailed <date>" and never "Accepted": there is no acknowledgment coming for it. Each paper
@@ -601,6 +725,12 @@ function ReturnControlsRow({ taxEngagementId, contactId, stage, detail, preFiled
           <p className="muted small">{CONTROL_SENTENCES.correction}</p>
         </div>
       ) : null}
+      {canReopen && reopenApplies(stage) ? (
+        <div style={{ gridColumn: '1 / -1' }}>
+          <button type="button" className="btn small ghost" data-testid="reopen-return" onClick={() => void reopenReturn()}>Reopen…</button>
+          <p className="muted small">{CONTROL_SENTENCES.reopen}</p>
+        </div>
+      ) : null}
       {err ? <p className="field-error" role="alert" style={{ gridColumn: '1 / -1' }}>{err}</p> : null}
     </div>
   );
@@ -615,13 +745,30 @@ function ReturnControlsRow({ taxEngagementId, contactId, stage, detail, preFiled
  * holder — renders beside the date control in the server's words, and the fields keep what was
  * typed.
  */
-export function Upload8879({ contactId, taxEngagementId, defaultPtin, options, onUploaded }: {
+export function Upload8879({ contactId, taxEngagementId, defaultPtin, options, returnType, onUploaded }: {
   contactId: string; taxEngagementId: string; defaultPtin: string;
-  options: Array<{ id: string; name: string }>; onUploaded: () => Promise<void>;
+  options: Array<{ id: string; name: string }>;
+  /** R66: the return type the scan authorizes; the Form select opens on its default (8879-TE for a 990). */
+  returnType?: string | null;
+  onUploaded: () => Promise<void>;
 }): React.JSX.Element {
   const [file, setFile] = useState<File | null>(null);
   const [signedOn, setSignedOn] = useState('');
   const [ptin, setPtin] = useState(defaultPtin);
+  const [variant, setVariant] = useState<F8879Variant>(defaultF8879Variant(returnType));
+  /*
+   * A CALLER THAT DID NOT SAY THE RETURN TYPE (the stepper's call predates the prop): the form is read
+   * from the return once, so the select still opens on the right 8879 — a 990's is the 8879-TE — rather
+   * than on the individual form by silence. A caller that passes it costs nothing.
+   */
+  useEffect(() => {
+    if (returnType) return;
+    let alive = true;
+    api<{ taxEngagement: { return_type: string } }>(`/tax-engagements/${taxEngagementId}`)
+      .then((d) => { if (alive) setVariant(defaultF8879Variant(d.taxEngagement.return_type)); })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [returnType, taxEngagementId]);
   const [uploadErr, setUploadErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -638,6 +785,7 @@ export function Upload8879({ contactId, taxEngagementId, defaultPtin, options, o
       fd.append('taxEngagementId', taxEngagementId);
       fd.append('signedOn', signedOn);
       fd.append('preparerPtinHolderId', ptin);
+      fd.append('f8879Variant', variant);
       fd.append('file', file, file.name);
       await api<{ signed8879: boolean }>('/documents', { method: 'POST', formData: fd });
       await onUploaded();
@@ -665,6 +813,13 @@ export function Upload8879({ contactId, taxEngagementId, defaultPtin, options, o
         <select value={ptin} onChange={(e) => setPtin(e.target.value)}>
           <option value="">Choose…</option>
           {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+      </label>
+      {/* WHICH 8879 (R66): opens on the return type's default; the person can say the other one. */}
+      <label className="field" data-testid="f8879-variant">
+        Form
+        <select value={variant} onChange={(e) => setVariant(e.target.value as F8879Variant)}>
+          {F8879_VARIANTS.map((v) => <option key={v} value={v}>{F8879_VARIANT_LABEL[v]}</option>)}
         </select>
       </label>
     </div>
@@ -1040,7 +1195,7 @@ function JurisdictionList({ draft, defaultMethod }: {
  * moment the PTIN holder differs from the recorded one.
  */
 function CorrectionFields({ draft, current, options, assigned, signedOn, rows, defaultMethod }: {
-  draft: FilingAsRecorded & { alsoAssign: boolean };
+  draft: FilingAsRecorded & { alsoAssign: boolean; scan: File | null };
   current: FilingAsRecorded;
   options: Array<{ id: string; name: string }>;
   assigned: { id: string; name: string } | null;
@@ -1050,6 +1205,8 @@ function CorrectionFields({ draft, current, options, assigned, signedOn, rows, d
 }): React.JSX.Element {
   const [filedOn, setFiledOn] = useState(draft.filedOn);
   const [ptin, setPtin] = useState(draft.ptin);
+  const [f8879SignedOn, setF8879SignedOn] = useState(draft.f8879SignedOn ?? '');
+  const [f8879Variant, setF8879Variant] = useState(draft.f8879Variant ?? '');
   const [alsoAssign, setAlsoAssign] = useState(draft.alsoAssign);
   const [list, setList] = useState<string[]>(draft.jurisdictions);
   const [typed, setTyped] = useState('');
@@ -1076,6 +1233,28 @@ function CorrectionFields({ draft, current, options, assigned, signedOn, rows, d
       <p className="muted small">
         {signedOn ? `Never after today and never before the signed 8879 (${formatDate(signedOn)}).` : 'Never after today.'}
       </p>
+      {/*
+        * THE AUTHORIZATION (R69, R66). The day on the signed 8879 — the route refuses a day after today,
+        * before the tax year closed, or after the filed day, in the modal — which 8879 the paper is, and a
+        * replacement scan when the wrong file was uploaded (the old one is kept, marked superseded).
+        */}
+      <label className="field">
+        Signed on
+        <input type="date" value={f8879SignedOn} onChange={(e) => { setF8879SignedOn(e.target.value); draft.f8879SignedOn = e.target.value; }} />
+      </label>
+      <p className="muted small">The day on the signed 8879: never after today and never after the filed date; the filed date then keeps to it.</p>
+      <label className="field" data-testid="correction-f8879-variant">
+        Form
+        <select value={f8879Variant} onChange={(e) => { setF8879Variant(e.target.value); draft.f8879Variant = e.target.value; }}>
+          <option value="">{current.f8879Variant ? 'Choose…' : 'Not recorded — choose…'}</option>
+          {F8879_VARIANTS.map((v) => <option key={v} value={v}>{F8879_VARIANT_LABEL[v]}</option>)}
+        </select>
+      </label>
+      <label className="field">
+        Replace the scan
+        <input type="file" accept="application/pdf,image/*" data-testid="correction-f8879-scan" onChange={(e) => { draft.scan = e.target.files?.[0] ?? null; }} />
+      </label>
+      <p className="muted small">Only when the wrong file was uploaded: the new scan becomes the 8879 on file and the previous one is kept, marked superseded.</p>
       <label className="field">
         PTIN holder
         <select value={ptin} onChange={(e) => { setPtin(e.target.value); draft.ptin = e.target.value; }}>

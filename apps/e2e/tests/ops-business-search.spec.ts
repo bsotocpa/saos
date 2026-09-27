@@ -53,6 +53,23 @@ async function expectedLabel(page: Page, s: Scorp): Promise<string> {
   return `${s.entityName} — ${owner}`;
 }
 
+/*
+ * THE SEARCH IS TYPED AFTER THE PAGE HAS HYDRATED (2026-09-27, the U4 phone red in the restored run of
+ * sabotage 2026-09-27-c). A fill 157 ms after the load event landed on the server-rendered input before
+ * React attached its handlers; hydration reset the controlled input to '' and the only contacts request
+ * that ever left the page was the unfiltered first load (the trace: no `search=` request, "11 records
+ * match", the owner's plain name). The first list request fires from useEffect, so its response is the
+ * proof of hydration; the search request is then awaited so the assertion reads the filtered list.
+ */
+async function searchClients(page: Page, text: string): Promise<void> {
+  const firstLoad = page.waitForResponse((r) => r.url().includes('/api/contacts?') && !r.url().includes('search='));
+  await page.goto('/clients');
+  await firstLoad;
+  const searched = page.waitForResponse((r) => r.url().includes('/api/contacts?') && r.url().includes('search='));
+  await page.getByLabel('Search').fill(text);
+  await searched;
+}
+
 test.describe('Path H: the business in every Ops search, and the stage row that opens', () => {
   test('H1 Deliver Return: the search matches the business legal name and shows "Business — owner"', async ({ page }, testInfo) => {
     const viewport = testInfo.project.name;
@@ -111,17 +128,18 @@ test.describe('Path H: the business in every Ops search, and the stage row that 
     try {
       await signIn(page, fixtures.staff);
       const label = await expectedLabel(page, s);
-      await page.goto('/clients');
-      await page.getByLabel('Search').fill(s.markers.business);
+      await searchClients(page, s.markers.business);
       const link = page.getByRole('link', { name: label });
-      await expect(link.first(), 'the row reads the business, a dash, the owner, and opens the client').toBeVisible();
-      await expect(link.first()).toHaveAttribute('href', `/clients/${s.contactId}`);
+      await expect(link.first(), 'the row reads the business, a dash, the owner').toBeVisible();
+      // R40 (2026-09-26): with OPS_BUSINESS_PAGE on (the harness boots it on) a business match opens the
+      // business page; ops-business-page.spec.ts U4 reads the client href with the switch off.
+      await expect(link.first(), 'and opens the business page while the switch is on').toHaveAttribute('href', `/businesses/${s.businessId}`);
       await page.screenshot({ path: shot, fullPage: true });
       passed = true;
     } finally {
       if (!existsSync(shot)) await page.screenshot({ path: shot, fullPage: true }).catch(() => undefined);
       testInfo.annotations.push({ type: 'screenshot', description: keepScreenshot(`search-clients-${viewport}`, passed, shot) });
-      testInfo.annotations.push({ type: 'walk-step', description: `H3|/clients "Search", the business legal name; the row reads "Business — owner"|${ROLES}|tap` });
+      testInfo.annotations.push({ type: 'walk-step', description: `H3|/clients "Search", the business legal name; the row reads "Business — owner" and, with OPS_BUSINESS_PAGE on, opens /businesses/:id|${ROLES}|tap` });
     }
   });
 
