@@ -1144,11 +1144,9 @@ async function convertAcceptedQuote(
     );
     const r = rq.rows[0]!;
     if (!r.code || r.removed || r.rate === null || r.lines === null) return 0;
-    const prior = await app.db.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM engagements WHERE contact_id = $1 AND status <> 'withdrawn'`,
-      [row.contact_id]
-    );
-    if ((prior.rows[0]?.n ?? 0) > 0) {
+    // R78: the same test as at quote time: an engagement on a line the rule reaches, not withdrawn.
+    const { priorEligibleEngagement } = await import('./referral-discount.ts');
+    if (await priorEligibleEngagement(app, row.contact_id, r.lines)) {
       await app.db.query(
         `UPDATE quotes SET referral_discount_rule_code = NULL, referral_discount_label_en = NULL, referral_discount_label_es = NULL,
                            referral_discount_rate = NULL, referral_discount_service_lines = NULL, referral_discount_cents = 0

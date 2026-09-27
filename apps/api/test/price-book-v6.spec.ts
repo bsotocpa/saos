@@ -192,7 +192,8 @@ test('no discount for a client Hilo did not refer, nor on a referred client\'s s
   assert.deepEqual(why1.json(), { applies: false, why: 'not_referred_by_hilo' });
 
   const second = await referredClient();
-  await now.db.query(`INSERT INTO engagements (contact_id, service_line, title, status) VALUES ($1, 'bookkeeping', 'Existing work', 'active')`, [second]);
+  // R78: the earlier engagement is tax work (a line the rule reaches), so this one is not the first.
+  await now.db.query(`INSERT INTO engagements (contact_id, service_line, title, status, ended_on) VALUES ($1, 'tax', 'Earlier return', 'completed', CURRENT_DATE)`, [second]);
   const q2 = await createQuote(now, { contactId: second, lines: [{ itemCode: ind.code }] }, asActor(ceo));
   const r2 = await now.db.query<{ c: number }>(`SELECT referral_discount_cents AS c FROM quotes WHERE id = $1`, [q2.id]);
   assert.equal(r2.rows[0]!.c, 0, 'not the first engagement: full price');
@@ -203,6 +204,31 @@ test('no discount for a client Hilo did not refer, nor on a referred client\'s s
   const yes = await now.inject({ method: 'GET', url: `/quotes/referral-discount?contactId=${first}`, headers: auth(ceo) });
   assert.equal(yes.json().applies, true);
   assert.equal(yes.json().rule.rate, 50);
+});
+
+test('R78: a prior bookkeeping-only engagement does not consume the discount, and a withdrawn engagement never does', async () => {
+  const ind = await item('individual_tax', `AND pbi.item_code = 'IND_BASE_SINGLE'`);
+  const half = Math.round(ind.amount / 2);
+
+  // Bookkeeping only before: no eligible line, so the first tax engagement is still ahead.
+  const books = await referredClient();
+  await now.db.query(`INSERT INTO engagements (contact_id, service_line, title, status) VALUES ($1, 'bookkeeping', 'Monthly books', 'active')`, [books]);
+  const preview = await now.inject({ method: 'GET', url: `/quotes/referral-discount?contactId=${books}`, headers: auth(ceo) });
+  assert.equal(preview.json().applies, true, 'the builder offers it');
+  const q1 = await createQuote(now, { contactId: books, lines: [{ itemCode: ind.code }] }, asActor(ceo));
+  const r1 = await now.db.query<{ c: number }>(`SELECT referral_discount_cents AS c FROM quotes WHERE id = $1`, [q1.id]);
+  assert.equal(r1.rows[0]!.c, half, 'half off: bookkeeping did not consume the first engagement');
+  const s1 = await sendQuote(now, q1.id, asActor(ceo));
+  await acceptQuote(now, s1.url.split('/').pop()!, {});
+  const a1 = await now.db.query<{ c: number; code: string | null }>(`SELECT referral_discount_cents AS c, referral_discount_rule_code AS code FROM quotes WHERE id = $1`, [q1.id]);
+  assert.deepEqual(a1.rows[0], { c: half, code: 'HILO_REFERRAL' }, 'and it holds at acceptance, where the same test runs again');
+
+  // A withdrawn tax engagement before: it never happened, so it consumes nothing.
+  const withdrawn = await referredClient();
+  await now.db.query(`INSERT INTO engagements (contact_id, service_line, title, status, ended_on, close_reason) VALUES ($1, 'tax', 'Withdrawn return', 'withdrawn', CURRENT_DATE, 'Synthetic: withdrawn before any work')`, [withdrawn]);
+  const q2 = await createQuote(now, { contactId: withdrawn, lines: [{ itemCode: ind.code }] }, asActor(ceo));
+  const r2 = await now.db.query<{ c: number }>(`SELECT referral_discount_cents AS c FROM quotes WHERE id = $1`, [q2.id]);
+  assert.equal(r2.rows[0]!.c, half, 'half off: a withdrawn engagement never consumes it');
 });
 
 test('removal: the CEO alone, with a reason; the total and the deposit return to the book; nothing widens it', async () => {
