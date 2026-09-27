@@ -99,18 +99,17 @@ test.describe('the emailed link opens what it names', () => {
        * a 401 on a non-public path and clears the marker, which is the app being right. So the
        * marker is put back by hand here, the way a month of absence leaves it.
        */
+      // ORDER MATTERS (receipt run 11, 2026-09-26, desk): while the home page still held the marker and the
+      // session was already dead, its own session check answered 401 and sent itself to /login at the same
+      // moment this spec navigated there; one navigation aborted the other (net::ERR_ABORTED). So: the marker
+      // comes off FIRST, on the live session; the sign-in request page is opened with no marker, so it fetches
+      // nothing and redirects nowhere; only THEN does the session lapse; and the marker is planted last, the
+      // way a month of absence leaves it, immediately before the proposal link is followed.
+      await page.evaluate(() => localStorage.removeItem('saos_portal_authed'));
+      await page.goto('/login');
+      await page.waitForLoadState('networkidle');
       const lapsed = await harness<{ expired: number }>('/harness/portal-sessions/expire', { contactId: client.contactId });
       expect(lapsed.expired, 'the session the press created is the one that lapses').toBeGreaterThan(0);
-      // The home page's own next fetch meets the dead session and sends itself to /login (a non-public
-      // path: that is the app being right); a goto racing that redirect is aborted, so the arrival is waited for.
-      await page.goto('/login').catch(() => undefined);
-      await page.waitForURL((u) => new URL(u).pathname === '/login');
-      // The sign-in request page must have MOUNTED with no marker before one is planted: planted
-      // earlier, its own session check meets the dead session and its redirect collides with the
-      // proposal navigation below (the desk browser lost that race once). Settled, it fetches nothing more.
-      await page.waitForLoadState('networkidle');
-      await page.evaluate(() => localStorage.removeItem('saos_portal_authed'));
-      await page.waitForTimeout(500);
       const dead = await page.evaluate(async () => (await fetch('/api/portal/me')).status);
       expect(dead, 'the session behind the marker is dead').toBe(401);
       await page.evaluate(() => localStorage.setItem('saos_portal_authed', '1'));
