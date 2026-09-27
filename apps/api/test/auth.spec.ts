@@ -117,13 +117,16 @@ test('wrong password fails, wrong TOTP fails, correct pair logs in (all audited)
   });
   assert.equal(me.statusCode, 200);
   assert.equal(me.json().role, 'ceo');
+  // R64: the page this session lands on, decided on the API from what it holds. The CEO's is the Executive view.
+  assert.equal(me.json().home, '/');
   // '*' plus the explicit-only grants. `deposits.override` is listed by name on
   // purpose: the wildcard deliberately does NOT confer it, so that Brian can hold
   // it while Jackson — who also has '*' — does not. See EXPLICIT_ONLY_PERMISSIONS
   // in plugins/auth.ts and deposit-override.spec.ts.
   // pricing.packages.save joined the explicit-only list on 2026-09-20 (R41): saving a package is
   // Brian's alone, and the wildcard must not hand it to every '*' holder.
-  assert.deepEqual(me.json().permissions, ['*', 'deposits.override', 'pricing.packages.save']);
+  // staff.mfa.reset joined on 2026-09-26 (R65): resetting a staff member's MFA is the CEO's alone.
+  assert.deepEqual(me.json().permissions, ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset']);
 });
 
 test('failed-login lockout engages at the limit and blocks even correct credentials', async () => {
@@ -244,6 +247,9 @@ test('sessions expire and logout revokes immediately', async () => {
 test('RBAC: intern is refused staff management; CEO is allowed; role change audits permission.change', async () => {
   const internToken = await loginToken(intern);
   const ceoToken = await loginToken(ceo);
+  // R64: the intern holds tasks.read and no dashboard, so the home the API names is My Tasks.
+  const internMe = await app.inject({ method: 'GET', url: '/auth/me', headers: { authorization: `Bearer ${internToken}` } });
+  assert.equal(internMe.json().home, '/tasks');
 
   const refused = await app.inject({
     method: 'GET',

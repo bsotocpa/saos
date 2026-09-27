@@ -8,10 +8,16 @@
 //                                   (NO full session exists until MFA is on)
 //   password ok, MFA enrolled ..... TOTP required; wrong code counts as a
 //                                   failed attempt; right code → session
+//   recovery code instead of TOTP . accepted once and consumed in the same statement
+//                                   (R65, 2026-09-26); the CEO gets an alert task
 
+import { randomInt } from 'node:crypto';
 import * as OTPAuth from 'otpauth';
 import argon2 from 'argon2';
+import type { FastifyInstance } from 'fastify';
 import type { Db } from '../../db.ts';
+import { alertRecipientForRole, notifyOnce, ownerForRole } from '../../staffing.ts';
+import { createTask } from '../tasks/service.ts';
 import type { Config } from '../../config.ts';
 import { writeAudit } from '../../audit.ts';
 import {
@@ -33,7 +39,71 @@ export type LoginResult =
   | { status: 'totp_required' }
   | { status: 'temp_password_expired' }
   | { status: 'mfa_setup_required'; setupToken: string }
-  | { status: 'ok'; token: string; staffId: string; mustChangePassword: boolean };
+  | {
+      status: 'ok';
+      token: string;
+      staffId: string;
+      mustChangePassword: boolean;
+      /** Set when the second factor was a recovery code: the route raises the CEO's alert from it. */
+      recoveryCodeUsed?: { codeId: string; remaining: number };
+    };
+
+/*
+ * RECOVERY CODES (Brian, 2026-09-26, R65). Eight per set, minted at enrolment and shown once;
+ * argon2-hashed in staff_mfa_recovery_codes like a password; each signs in once. The alphabet
+ * leaves out 0/O, 1/I/L and U so a code read off paper cannot be mis-typed, and the shape
+ * (XXXX-XXXX, letters and digits) is what tells a recovery code apart from a six-digit TOTP.
+ */
+const RECOVERY_CODE_COUNT = 8;
+const RECOVERY_ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
+
+function mintOneRecoveryCode(): string {
+  let raw = '';
+  for (let i = 0; i < 8; i++) raw += RECOVERY_ALPHABET[randomInt(RECOVERY_ALPHABET.length)];
+  return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+}
+
+/** Upper-cased, spaces and hyphens removed: what a person typed, in the form that was hashed. */
+export function normalizeRecoveryCode(input: string): string {
+  return input.toUpperCase().replace(/[\s-]/g, '');
+}
+
+/** Replaces the whole set: the old codes, used or live, are gone the moment the new ones exist. */
+async function mintRecoveryCodeSet(db: Db, staffId: string): Promise<string[]> {
+  const codes: string[] = [];
+  while (codes.length < RECOVERY_CODE_COUNT) codes.push(mintOneRecoveryCode());
+  const hashes = await Promise.all(codes.map((c) => argon2.hash(normalizeRecoveryCode(c))));
+  await db.query(`DELETE FROM staff_mfa_recovery_codes WHERE staff_id = $1`, [staffId]);
+  for (const hash of hashes) {
+    await db.query(`INSERT INTO staff_mfa_recovery_codes (staff_id, code_hash) VALUES ($1, $2)`, [staffId, hash]);
+  }
+  return codes;
+}
+
+/**
+ * Finds the live code the person typed and consumes it in the same statement that accepts it:
+ * the UPDATE's `used_at IS NULL` guard means two sign-ins racing on one code get one session.
+ * Null when no live code matches.
+ */
+async function consumeRecoveryCode(db: Db, staffId: string, typed: string): Promise<{ codeId: string; remaining: number } | null> {
+  const wanted = normalizeRecoveryCode(typed);
+  if (!/^[A-Z2-9]{8}$/.test(wanted)) return null;
+  const { rows } = await db.query<{ id: string; code_hash: string }>(
+    `SELECT id, code_hash FROM staff_mfa_recovery_codes WHERE staff_id = $1 AND used_at IS NULL ORDER BY created_at, id`,
+    [staffId]
+  );
+  for (const row of rows) {
+    if (!(await argon2.verify(row.code_hash, wanted))) continue;
+    const consumed = await db.query<{ id: string }>(
+      `UPDATE staff_mfa_recovery_codes SET used_at = now() WHERE id = $1 AND used_at IS NULL RETURNING id`,
+      [row.id]
+    );
+    if (consumed.rowCount === 0) return null; // raced: the other sign-in has it
+    const left = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM staff_mfa_recovery_codes WHERE staff_id = $1 AND used_at IS NULL`, [staffId]);
+    return { codeId: row.id, remaining: Number(left.rows[0]?.n ?? 0) };
+  }
+  return null;
+}
 
 interface StaffAuthRow {
   id: string;
@@ -137,6 +207,7 @@ export async function login(
   email: string,
   password: string,
   totpCode: string | undefined,
+  recoveryCode: string | undefined,
   meta: RequestMeta
 ): Promise<LoginResult> {
   const { rows } = await db.query<StaffAuthRow>(
@@ -198,14 +269,28 @@ export async function login(
     };
   }
 
-  if (!totpCode) {
+  if (!totpCode && !recoveryCode) {
     return { status: 'totp_required' };
   }
 
-  const secret = decryptSecret(staff.totp_secret_enc!, config.APP_ENCRYPTION_KEY);
-  const delta = totpFor(secret, staff.email).validate({ token: totpCode, window: 1 });
-  if (delta === null) {
-    return recordFailure(db, config, staff, 'bad_totp', meta);
+  /*
+   * THE SECOND FACTOR: the authenticator code, or a recovery code in its place (R65). A recovery
+   * code is consumed by the statement that accepts it, so it never signs in twice; a wrong one
+   * counts as a failed attempt like a wrong TOTP, so guessing runs into the same lockout.
+   */
+  let recoveryCodeUsed: { codeId: string; remaining: number } | undefined;
+  if (totpCode) {
+    const secret = decryptSecret(staff.totp_secret_enc!, config.APP_ENCRYPTION_KEY);
+    const delta = totpFor(secret, staff.email).validate({ token: totpCode, window: 1 });
+    if (delta === null) {
+      return recordFailure(db, config, staff, 'bad_totp', meta);
+    }
+  } else {
+    const consumed = await consumeRecoveryCode(db, staff.id, recoveryCode!);
+    if (!consumed) {
+      return recordFailure(db, config, staff, 'bad_recovery_code', meta);
+    }
+    recoveryCodeUsed = consumed;
   }
 
   await db.query(
@@ -220,8 +305,65 @@ export async function login(
     action: 'auth.login_success',
     ip: meta.ip,
     userAgent: meta.userAgent,
+    details: recoveryCodeUsed ? { second_factor: 'recovery_code' } : { second_factor: 'totp' },
   });
-  return { status: 'ok', token, staffId: staff.id, mustChangePassword: Boolean(staff.must_change_password) };
+  if (recoveryCodeUsed) {
+    // The event, never the code: which set it came from and how many are left.
+    await writeAudit(db, {
+      actorType: 'staff',
+      actorId: staff.id,
+      actorLabel: staff.full_name,
+      action: 'auth.recovery_code_used',
+      objectType: 'staff',
+      objectId: staff.id,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+      details: { codes_remaining: recoveryCodeUsed.remaining },
+    });
+  }
+  return {
+    status: 'ok',
+    token,
+    staffId: staff.id,
+    mustChangePassword: Boolean(staff.must_change_password),
+    ...(recoveryCodeUsed ? { recoveryCodeUsed } : {}),
+  };
+}
+
+/**
+ * A RECOVERY CODE WAS USED, SO THE CEO IS TOLD (R65). Someone signed in without their
+ * authenticator: either the member lost the phone (Reset MFA and re-enrol) or the codes leaked.
+ * One task per use, owned by the CEO, plus the Ops alert. The task and the alert name the person
+ * and the count left; never the code.
+ */
+export async function raiseRecoveryCodeUsedAlert(
+  app: FastifyInstance,
+  used: { staffId: string; fullName: string; codeId: string; remaining: number }
+): Promise<void> {
+  const owner = await ownerForRole(app.db, 'ceo');
+  const task = await createTask(app, {
+    title: `${used.fullName} signed in with an MFA recovery code`,
+    description:
+      `${used.fullName} used one of their single-use MFA recovery codes instead of their authenticator; ` +
+      `${used.remaining} of the set remain. Ask them why. If the phone is gone, Reset MFA on their row in Staff so they enrol again ` +
+      `at next sign-in; if they did not do this, reset it now and issue a new password.`,
+    assignedStaffId: owner,
+    priority: 2,
+    source: 'system',
+    sourceType: 'mfa_recovery_used',
+    sourceId: used.codeId,
+  });
+  const recipient = await alertRecipientForRole(app.db, 'ceo', 'mfa_recovery_used');
+  if (recipient) {
+    await notifyOnce(app.db, {
+      staffId: recipient,
+      type: 'mfa_recovery_used',
+      severity: 'critical',
+      title: `${used.fullName} signed in with an MFA recovery code (${used.remaining} left)`,
+      relatedObjectType: 'task',
+      relatedObjectId: task.id,
+    });
+  }
 }
 
 /** Step 1 of enrollment: generate + store the (encrypted) secret, return provisioning info. */
@@ -252,7 +394,7 @@ export async function mfaVerify(
   setupToken: string,
   code: string,
   meta: RequestMeta
-): Promise<{ token: string; mustChangePassword: boolean }> {
+): Promise<{ token: string; mustChangePassword: boolean; recoveryCodes: string[] }> {
   const staffId = verifyScopedToken(config.APP_ENCRYPTION_KEY, setupToken, MFA_SETUP_PURPOSE);
   if (!staffId) throw new AppError(401, 'invalid_setup_token', 'MFA setup token is invalid or expired.');
 
@@ -284,9 +426,62 @@ export async function mfaVerify(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
+  // The recovery codes, minted with the enrolment and shown once on the enrolment screen (R65).
+  const recoveryCodes = await mintRecoveryCodeSet(db, staffId);
+  await writeAudit(db, {
+    actorType: 'staff',
+    actorId: staffId,
+    actorLabel: staff.full_name,
+    action: 'auth.recovery_codes_issued',
+    objectType: 'staff',
+    objectId: staffId,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+    details: { count: recoveryCodes.length, on: 'enrolment' },
+  });
   const owes = await db.query<{ must_change_password: boolean }>(`SELECT must_change_password FROM staff WHERE id = $1`, [staffId]);
   const token = await createSession(db, config, staffId, meta);
-  return { token, mustChangePassword: Boolean(owes.rows[0]?.must_change_password) };
+  return { token, mustChangePassword: Boolean(owes.rows[0]?.must_change_password), recoveryCodes };
+}
+
+/**
+ * A NEW SET FROM ACCOUNT (R65): the signed-in member proves the authenticator is in hand with a
+ * current code, and the old set, used or live, is replaced whole. Audited; the codes are returned
+ * once and never again.
+ */
+export async function reissueRecoveryCodes(
+  db: Db,
+  config: Config,
+  staffId: string,
+  actorLabel: string,
+  code: string,
+  meta: RequestMeta
+): Promise<string[]> {
+  const { rows } = await db.query<{ email: string; totp_secret_enc: Buffer | null; totp_enabled: boolean }>(
+    `SELECT email, totp_secret_enc, totp_enabled FROM staff WHERE id = $1 AND is_active`,
+    [staffId]
+  );
+  const staff = rows[0];
+  if (!staff || !staff.totp_enabled || !staff.totp_secret_enc) {
+    throw new AppError(409, 'mfa_not_enabled', 'Enrol MFA before issuing recovery codes.');
+  }
+  const secret = decryptSecret(staff.totp_secret_enc, config.APP_ENCRYPTION_KEY);
+  if (totpFor(secret, staff.email).validate({ token: code, window: 1 }) === null) {
+    throw new AppError(401, 'invalid_totp', 'Authenticator code did not match.');
+  }
+  const codes = await mintRecoveryCodeSet(db, staffId);
+  await writeAudit(db, {
+    actorType: 'staff',
+    actorId: staffId,
+    actorLabel,
+    action: 'auth.recovery_codes_issued',
+    objectType: 'staff',
+    objectId: staffId,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+    details: { count: codes.length, on: 'reissue' },
+  });
+  return codes;
 }
 
 export async function logout(db: Db, sessionId: string, staffId: string, actorLabel: string, meta: RequestMeta): Promise<void> {

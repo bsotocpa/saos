@@ -21,10 +21,27 @@ export default function AccountPage() {
   const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
   const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const [busy, setBusy] = useState(false);
+  // A new recovery-code set (R65): proven with a current authenticator code, shown once, then gone.
+  const [codesTotp, setCodesTotp] = useState('');
+  const [newCodes, setNewCodes] = useState<string[]>([]);
 
   useEffect(() => {
     if (!isAuthed()) router.replace('/login');
   }, [router]);
+
+  const issueCodes = async () => {
+    setInlineErr(null);
+    setBusy(true);
+    try {
+      const res = await api<{ recoveryCodes: string[] }>('/auth/mfa/recovery-codes', { method: 'POST', body: { code: codesTotp.trim() } });
+      setNewCodes(res.recoveryCodes);
+      setCodesTotp('');
+    } catch (err) {
+      setInlineErr({ key: 'codes', message: err instanceof Error && err.message ? err.message : 'The request was refused.' });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async () => {
     setInlineErr(null);
@@ -110,6 +127,39 @@ export default function AccountPage() {
         </button>
         {errAt('submit')}
       </form>
+
+      <h2 style={{ marginTop: 24 }}>Recovery codes</h2>
+      <p className="muted small">
+        Each recovery code signs you in once if your authenticator is not to hand. Issuing a new set replaces the old
+        one: the codes you had stop working. Enter a current authenticator code to prove the app is in hand.
+      </p>
+      {newCodes.length > 0 ? (
+        <div data-testid="new-recovery-codes">
+          <p className="alert info">Your new recovery codes, shown only now. Save them somewhere safe.</p>
+          <ul className="list" style={{ fontFamily: 'ui-monospace, monospace', fontSize: 16 }}>
+            {newCodes.map((c) => (
+              <li key={c}><code>{c}</code></li>
+            ))}
+          </ul>
+          <button className="btn" type="button" onClick={() => setNewCodes([])}>I saved these</button>
+        </div>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void issueCodes();
+          }}
+        >
+          <label className="field">
+            Code from your authenticator
+            <input value={codesTotp} onChange={(e) => setCodesTotp(e.target.value)} placeholder="123456" inputMode="numeric" autoComplete="one-time-code" />
+            {errAt('codes')}
+          </label>
+          <button className="btn ghost" type="submit" disabled={busy || codesTotp.trim().length !== 6}>
+            Issue new recovery codes
+          </button>
+        </form>
+      )}
     </div>
   );
 }

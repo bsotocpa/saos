@@ -7,7 +7,9 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../../audit.ts';
 import { requirePermission } from '../../plugins/auth.ts';
+import { reasonText } from '../../reasons.ts';
 import { AppError } from '../../types.ts';
+import { sendTemplatedEmail } from '../templates/service.ts';
 
 const CreateStaffBody = z.object({
   email: z.email(),
@@ -220,4 +222,65 @@ export function registerStaffRoutes(app: FastifyInstance): void {
     });
     return { id: targetId, tempPassword };
   });
+
+  /**
+   * RESET MFA (Brian, 2026-09-26, R65): the CEO's door, held by the explicit-only permission
+   * staff.mfa.reset (the wildcard does not reach it; comms_billing is refused). With a standalone
+   * reason: clears the authenticator and every recovery code, ends every live session, audits
+   * staff.mfa_reset with the reason and never the secret, emails the member that MFA was reset and
+   * to enrol again at next sign-in, which lands on mfa_setup_required. The password is untouched:
+   * losing the phone is not losing the password. Any row, the CEO's own included.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/staff/:id/mfa/reset',
+    { preHandler: [app.authenticate, requirePermission('staff.mfa.reset')] },
+    async (request) => {
+      const body = z.object({ reason: reasonText(10, 1000) }).parse(request.body);
+      const actor = request.staff!;
+      const targetId = z.uuid().parse(request.params.id);
+      const { rows } = await app.db.query<{ id: string; email: string; display_name: string; is_active: boolean; totp_enabled: boolean }>(
+        `SELECT id, email, display_name, is_active, totp_enabled FROM staff WHERE id = $1`, [targetId]
+      );
+      const target = rows[0];
+      if (!target) throw new AppError(404, 'not_found', 'Staff member not found.');
+      if (!target.is_active) throw new AppError(409, 'staff_inactive', 'Reactivate the account before resetting its MFA.');
+
+      await app.db.query(`UPDATE staff SET totp_enabled = false, totp_secret_enc = NULL WHERE id = $1`, [targetId]);
+      const codes = await app.db.query(`DELETE FROM staff_mfa_recovery_codes WHERE staff_id = $1`, [targetId]);
+      const revoked = await app.db.query(
+        `UPDATE staff_sessions SET revoked_at = now() WHERE staff_id = $1 AND revoked_at IS NULL`, [targetId]
+      );
+
+      // Staff mail (not client mail): the member learns their authenticator is gone before they meet the enrolment screen.
+      let emailed = false;
+      let emailRefused: string | null = null;
+      try {
+        await sendTemplatedEmail(app, {
+          to: target.email,
+          templateKey: 'staff_mfa_reset',
+          language: 'en',
+          vars: { display_name: target.display_name, reset_by: actor.fullName },
+        });
+        emailed = true;
+      } catch (err) {
+        // The reset stands whether or not the mail went; the answer says which.
+        emailRefused = err instanceof Error ? err.message : 'mail refused';
+        app.log.warn({ err, staffId: targetId }, 'staff_mfa_reset mail not sent');
+      }
+
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+        action: 'staff.mfa_reset', objectType: 'staff', objectId: targetId,
+        ...meta(request),
+        details: {
+          reason: body.reason,
+          was_enrolled: target.totp_enabled,
+          recovery_codes_cleared: codes.rowCount ?? 0,
+          sessions_revoked: revoked.rowCount ?? 0,
+          emailed,
+        },
+      });
+      return { status: 'ok', emailed, sessionsRevoked: revoked.rowCount ?? 0, ...(emailRefused ? { emailRefused } : {}) };
+    }
+  );
 }

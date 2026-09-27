@@ -2,15 +2,25 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { STAFF_SESSION_COOKIE, clearCookieOptions, staffCookieOptions } from '../../cookies.ts';
 import * as auth from './service.ts';
+import { holds } from '../../plugins/auth.ts';
+import { homeFor } from './home.ts';
 
 const LoginBody = z.object({
   email: z.email(),
   password: z.string().min(1),
   totp: z.string().regex(/^\d{6}$/).optional(),
-});
+  /**
+   * A recovery code in place of the authenticator code (R65). Its own field on the API: the sign-in
+   * page decides by shape (six digits is a TOTP; letters and digits with a hyphen is a recovery
+   * code) and sends one or the other, never both.
+   */
+  recoveryCode: z.string().trim().min(8).max(12).optional(),
+}).refine((b) => !(b.totp && b.recoveryCode), { message: 'Send the authenticator code or a recovery code, not both.' });
 
 const MfaSetupBody = z.object({ setupToken: z.string().min(1) });
 const MfaVerifyBody = z.object({ setupToken: z.string().min(1), code: z.string().regex(/^\d{6}$/) });
+/** A new recovery-code set needs the authenticator in hand: a current code, not just the session. */
+const RecoveryCodesBody = z.object({ code: z.string().regex(/^\d{6}$/) });
 const PasswordBody = z.object({
   currentPassword: z.string().min(1),
   // WISP: staff passwords are one factor of two — still keep them real.
@@ -30,10 +40,11 @@ export function registerAuthRoutes(app: FastifyInstance): void {
 
   app.post('/auth/login', async (request, reply) => {
     const body = LoginBody.parse(request.body);
-    const result = await auth.login(app.db, app.config, body.email, body.password, body.totp, meta(request));
+    const result = await auth.login(app.db, app.config, body.email, body.password, body.totp, body.recoveryCode, meta(request));
     switch (result.status) {
       case 'invalid':
-        return reply.code(401).send({ error: 'invalid_credentials' });
+        // One sentence for every wrong credential, so the screen has words and nothing is confirmed.
+        return reply.code(401).send({ error: 'invalid_credentials', message: 'The email, password or code did not match.' });
       case 'locked':
         return reply.code(423).send({ error: 'account_locked', until: result.until.toISOString() });
       case 'totp_required':
@@ -44,6 +55,11 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         return reply.code(200).send({ status: 'mfa_setup_required', setupToken: result.setupToken });
       case 'ok':
         setSessionCookie(reply, result.token);
+        if (result.recoveryCodeUsed) {
+          // The session is real; the CEO learns of it in the same request (R65).
+          const who = await app.db.query<{ display_name: string }>(`SELECT display_name FROM staff WHERE id = $1`, [result.staffId]);
+          await auth.raiseRecoveryCodeUsedAlert(app, { staffId: result.staffId, fullName: who.rows[0]?.display_name ?? body.email, ...result.recoveryCodeUsed });
+        }
         return reply.code(200).send({ status: 'ok', token: result.token, mustChangePassword: result.mustChangePassword });
     }
   });
@@ -55,9 +71,18 @@ export function registerAuthRoutes(app: FastifyInstance): void {
 
   app.post('/auth/mfa/verify', async (request, reply) => {
     const body = MfaVerifyBody.parse(request.body);
-    const { token, mustChangePassword } = await auth.mfaVerify(app.db, app.config, body.setupToken, body.code, meta(request));
+    const { token, mustChangePassword, recoveryCodes } = await auth.mfaVerify(app.db, app.config, body.setupToken, body.code, meta(request));
     setSessionCookie(reply, token);
-    return { status: 'ok', token, mustChangePassword };
+    // The recovery codes travel in this one response and nowhere else (R65).
+    return { status: 'ok', token, mustChangePassword, recoveryCodes };
+  });
+
+  // A new recovery-code set from Account (R65): the old set is gone the moment this answers.
+  app.post('/auth/mfa/recovery-codes', { preHandler: [app.authenticate] }, async (request) => {
+    const body = RecoveryCodesBody.parse(request.body);
+    const staff = request.staff!;
+    const recoveryCodes = await auth.reissueRecoveryCodes(app.db, app.config, staff.id, staff.fullName, body.code, meta(request));
+    return { status: 'ok', recoveryCodes };
   });
 
   app.post('/auth/logout', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -75,6 +100,8 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       fullName: staff.fullName,
       role: staff.roleKey,
       permissions: staff.permissions,
+      // R64: the page this session lands on, decided here from what it holds (home.ts).
+      home: homeFor((p) => holds(staff, p)),
       /*
        * The staff-control switches the page decides from (2026-09-20). The Ops client page already
        * decides who sees the Refund control from this session; whether the control is ON at all is

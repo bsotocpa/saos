@@ -41,6 +41,11 @@ export default function StaffAdminPage() {
   const [inlineErr, setInlineErr] = useState<{ key: string; message: string } | null>(null);
   const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const ask = useAsk();
+  /*
+   * RESET MFA IS THE CEO'S DOOR (R65, 2026-09-26): staff.mfa.reset is explicit-only, so the control
+   * renders for a session that holds it BY NAME; '*' alone does not reach it, and the route says so.
+   */
+  const [canResetMfa, setCanResetMfa] = useState(false);
 
   const roleName = (key: string) => roles.find((r) => r.key === key)?.name ?? key;
   /** Roles a person can hold. The two future roles exist for their permission levels only (2026-09-12). */
@@ -50,12 +55,14 @@ export default function StaffAdminPage() {
   const isLastActiveCeo = (s: Staff) => s.role === 'ceo' && s.is_active && activeCeos <= 1;
 
   const load = async () => {
-    const [s, r] = await Promise.all([
+    const [s, r, me] = await Promise.all([
       api<{ staff: Staff[] }>('/staff'),
       api<{ roles: Role[] }>('/admin/roles'),
+      api<{ permissions: string[] }>('/auth/me'),
     ]);
     setStaff(s.staff);
     setRoles(r.roles);
+    setCanResetMfa(me.permissions.includes('staff.mfa.reset'));
   };
   useEffect(() => {
     void load();
@@ -209,6 +216,45 @@ export default function StaffAdminPage() {
                         New temp password
                       </button>
                       {errAt(`pw:${s.id}`)}
+                      {canResetMfa ? (
+                        <>
+                          <button
+                            className="btn ghost"
+                            type="button"
+                            disabled={!s.is_active}
+                            onClick={() => act(`mfa:${s.id}`, async () => {
+                              // The modal does the reset itself: a refusal renders inside it, with the reason kept.
+                              const got: { res: { emailed: boolean } | null } = { res: null };
+                              const go = await ask({
+                                title: `Reset MFA for ${s.display_name}?`,
+                                body: (
+                                  <p>
+                                    Their authenticator and recovery codes stop working and every open session ends. Their password
+                                    is unchanged. They are emailed, and their next sign-in enrols a new authenticator. Audited with your reason.
+                                  </p>
+                                ),
+                                reason: { label: 'Why (the record)', required: true, placeholder: 'Phone replaced; the old authenticator is gone.' },
+                                choices: [{ key: 'go', label: 'Reset MFA', tone: 'danger' }],
+                                run: async (r) => {
+                                  got.res = await api<{ emailed: boolean }>(`/staff/${s.id}/mfa/reset`, { method: 'POST', body: { reason: r.reason } });
+                                },
+                              });
+                              if (!go || !got.res) return;
+                              // Each fact from the server's answer for that fact (R48): the reset, and whether the mail went.
+                              setMessage(
+                                `${s.display_name}: MFA reset (audited). ` +
+                                  (got.res.emailed
+                                    ? 'They were emailed; their next sign-in enrols a new authenticator.'
+                                    : 'The email was not sent; tell them their next sign-in enrols a new authenticator.')
+                              );
+                              await load();
+                            })}
+                          >
+                            Reset MFA…
+                          </button>
+                          {errAt(`mfa:${s.id}`)}
+                        </>
+                      ) : null}
                       {isLastActiveCeo(s) ? null : (
                         <>
                           <button
