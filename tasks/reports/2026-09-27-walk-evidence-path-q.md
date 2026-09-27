@@ -1,6 +1,6 @@
 # walk-evidence-path-q (2026-09-27)
 
-Generated 2026-09-27T11:55:37.976Z by scripts/report-table.mjs from the log walk-q.log; 16 row(s).
+Generated 2026-09-27T21:11:06.096Z by scripts/report-table.mjs from the log walk-q.log; 16 row(s).
 
 The Quotes card (R39): Q1 to Q4 are the CEO taps at 390 and 1280; the role proof is ed_coo, who reads the card and holds no quotes.manage.
 
