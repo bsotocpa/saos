@@ -171,7 +171,24 @@ test('full pipeline march with all three gates enforced', async () => {
   assert.equal(detail.json().taxEngagement.f8879_signature_method, 'in_person_wet', 'signature method recorded per 8879');
   assert.ok(detail.json().taxEngagement.filed_date, 'filed_date auto-stamped');
 
-  await move(id, 'completed');
+  // GATE 4 (R67, 2026-09-27): a return completes on a recorded acceptance or mailing for every
+  // jurisdiction it declares; the manual door holds the same rule as the acknowledgment path.
+  const early = await move(id, 'completed', 409);
+  assert.equal((early.body as { error: string }).error, 'jurisdictions_awaiting');
+  const declared = (await app.inject({ method: 'GET', url: `/tax-engagements/${id}`, headers: auth(preparer) })).json()
+    .jurisdictions as Array<{ jurisdiction: string; stateCode?: string | null }>;
+  assert.ok(declared.length > 0, 'the filing declared at least one jurisdiction');
+  for (const j of declared) {
+    const payload = j.jurisdiction === 'federal'
+      ? { result: 'accepted', asOf: '2026-09-19' }
+      : { result: 'accepted', jurisdiction: 'state', stateCode: j.stateCode ?? j.jurisdiction.toUpperCase(), asOf: '2026-09-19' };
+    const ack = await app.inject({ method: 'POST', url: `/tax-engagements/${id}/efile-result`, headers: auth(preparer), payload });
+    assert.ok(ack.statusCode < 300, `acceptance for ${j.jurisdiction}: ${ack.body}`);
+  }
+  const mid = await app.inject({ method: 'GET', url: `/tax-engagements/${id}`, headers: auth(preparer) });
+  if (mid.json().taxEngagement.stage !== 'completed') await move(id, 'completed');
+  const done = await app.inject({ method: 'GET', url: `/tax-engagements/${id}`, headers: auth(preparer) });
+  assert.equal(done.json().taxEngagement.stage, 'completed');
   const history = detail.json().stageHistory.map((h: { stage: string }) => h.stage);
   assert.deepEqual(
     history,
