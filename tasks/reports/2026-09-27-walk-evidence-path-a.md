@@ -1,21 +1,21 @@
 # walk-evidence-path-a (2026-09-27)
 
-Generated 2026-09-27T06:21:22.433Z by scripts/report-table.mjs from the log walk-a.log; 46 row(s).
+Generated 2026-09-27T08:29:32.563Z by scripts/report-table.mjs from the log walk-a.log; 46 row(s).
 
 Rows come from walk-step annotations the specs push while they run, on the migrated-client fixture (a portal account on one address, the contact record on another; the proposal and sign-in links followed from the emailed hrefs); A3b is the Ops packet step and A3c the consent screen (R27); how=api is the Stripe event beside a passing Pay tap.
 
 ```sql
-node scripts/walk-evidence.mjs A  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-27: 98 passed, 0 failed)
+node scripts/walk-evidence.mjs A  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-27: 115 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
 |---|---|---|---|---|---|---|---|---|---|
 | A1 | Add the business with its EIN, make it primary | laptop | /clients/:id Businesses card, button "Add a business", form#add-business-form, button "Add business" | ceo, comms_billing (contacts.write); va_entity (businesses.write) | apps/e2e/tests/ops-add-business.spec.ts:59 | phone | passed | tap | yes |
-| A1 | Add the business with its EIN, make it primary | laptop | /clients/:id Businesses card, button "Add a business", form#add-business-form, button "Add business" | ceo, comms_billing (contacts.write); va_entity (businesses.write) | apps/e2e/tests/ops-add-business.spec.ts:172 | phone | passed | tap | yes |
-| A1 | Add the business with its EIN, make it primary | laptop | role proof: bookkeeper sees no button, POST refused 403 | ceo, comms_billing (contacts.write); va_entity (businesses.write) | apps/e2e/tests/ops-add-business.spec.ts:212 | phone | passed | tap | yes |
+| A1 | Add the business with its EIN, make it primary | laptop | /clients/:id Businesses card, button "Add a business", form#add-business-form, button "Add business" | ceo, comms_billing (contacts.write); va_entity (businesses.write) | apps/e2e/tests/ops-add-business.spec.ts:176 | phone | passed | tap | yes |
+| A1 | Add the business with its EIN, make it primary | laptop | role proof: bookkeeper sees no button, POST refused 403 | ceo, comms_billing (contacts.write); va_entity (businesses.write) | apps/e2e/tests/ops-add-business.spec.ts:220 | phone | passed | tap | yes |
 | A1 | Add the business with its EIN, make it primary | laptop | /clients/:id Businesses card, button "Add a business", form#add-business-form, button "Add business" | ceo, comms_billing (contacts.write); va_entity (businesses.write) | apps/e2e/tests/ops-add-business.spec.ts:59 | desk | passed | tap | yes |
-| A1 | Add the business with its EIN, make it primary | laptop | /clients/:id Businesses card, button "Add a business", form#add-business-form, button "Add business" | ceo, comms_billing (contacts.write); va_entity (businesses.write) | apps/e2e/tests/ops-add-business.spec.ts:172 | desk | passed | tap | yes |
-| A1 | Add the business with its EIN, make it primary | laptop | role proof: bookkeeper sees no button, POST refused 403 | ceo, comms_billing (contacts.write); va_entity (businesses.write) | apps/e2e/tests/ops-add-business.spec.ts:212 | desk | passed | tap | yes |
+| A1 | Add the business with its EIN, make it primary | laptop | /clients/:id Businesses card, button "Add a business", form#add-business-form, button "Add business" | ceo, comms_billing (contacts.write); va_entity (businesses.write) | apps/e2e/tests/ops-add-business.spec.ts:176 | desk | passed | tap | yes |
+| A1 | Add the business with its EIN, make it primary | laptop | role proof: bookkeeper sees no button, POST refused 403 | ceo, comms_billing (contacts.write); va_entity (businesses.write) | apps/e2e/tests/ops-add-business.spec.ts:220 | desk | passed | tap | yes |
 | A2 | Business-tax quote against it, $0 deposit override with a reason, send | laptop | /pipeline button "New quote" → client search, "Business" select, price-book row BIZ_1120S "Add", "Save as draft", "Waive deposit…" (reason), "Waive deposit", "Send to client" | ceo (quotes.manage + deposits.override) | apps/e2e/tests/ops-scorp-dry-run.spec.ts:132 | phone | passed | tap | yes |
 | A2 | Business-tax quote against it, $0 deposit override with a reason, send | laptop | /pipeline button "New quote" → client search, "Business" select, price-book row BIZ_1120S "Add", "Save as draft", "Waive deposit…" (reason), "Waive deposit", "Send to client" | ceo (quotes.manage + deposits.override) | apps/e2e/tests/ops-scorp-dry-run.spec.ts:132 | desk | passed | tap | yes |
 | A3 | Accept the quote, sign Schedule B, business onboarding form, upload a document | phone | portal /quote/:token button "Accept and start the work"; /sign (two affirmations + "Type your full name to sign" + "Sign the agreement", Schedule B on the document — the signature stamps the engagement letter on the return, closing pipeline gate 1); /questionnaire "Continue"…"Send it"; /documents "Category" + input[type=file] | client (the emailed proposal link, then the emailed sign-in link) | apps/e2e/tests/ops-scorp-dry-run.spec.ts:132 | phone | passed | tap | yes |

@@ -1,11 +1,11 @@
 # walk-evidence-path-b (2026-09-27)
 
-Generated 2026-09-27T06:21:22.682Z by scripts/report-table.mjs from the log walk-b.log; 48 row(s).
+Generated 2026-09-27T08:29:32.738Z by scripts/report-table.mjs from the log walk-b.log; 48 row(s).
 
 The 1040 on extension with IL filed on paper, on the migrated-client fixture; B1 is the fixture person, whose Add a client tap is cleared in ops-add-client.spec.ts; how=api rows are the two Stripe events.
 
 ```sql
-node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-27: 98 passed, 0 failed)
+node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-27: 115 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |

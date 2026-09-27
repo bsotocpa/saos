@@ -111,8 +111,8 @@ test('the client page and the queue print the sentence for a refused card, never
   for (const card of ['returns', 'documents', 'quotes', 'engagements', 'invoices', 'nextSession', 'packets', 'meetings']) {
     assert.match(client, new RegExp(`refused\\('${card}'`), `${card} routes its 403 to the card`);
   }
-  assert.match(client, /<h2>Invoices\{unavailable\.invoices \? '' : ` \(\$\{invoices\.length\}\)`\}<\/h2>/, 'the Invoices heading drops its count when refused');
-  assert.match(client, /<h2>Documents\{unavailable\.documents \? '' : ` \(\$\{docs\.length\}\)`\}<\/h2>/);
+  assert.match(client, /<h2>Invoices\{unavailable\.invoices \|\| !settled\.invoices \? '' : ` \(\$\{invoices\.length\}\)`\}<\/h2>/, 'the Invoices heading drops its count when refused, and shows none until the read has answered');
+  assert.match(client, /<h2>Documents\{unavailable\.documents \|\| !settled\.documents \? '' : ` \(\$\{docs\.length\}\)`\}<\/h2>/);
   assert.doesNotMatch(client, /<h2>Invoices \(\{invoices\.length\}\)<\/h2>/, 'the old "(0)" heading is gone');
   const queue = readFileSync(new URL('../app/queue/page.tsx', import.meta.url), 'utf8');
   assert.match(queue, /status === 403\) \{ setUnavailable\(true\)/);
