@@ -25,6 +25,33 @@ export function taxYearEndedOn(taxYear: number, fiscalYearEndMonth: number | nul
   return `${taxYear}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 }
 
+/*
+ * WHICH 8879 THE PAPER IS (Brian, 2026-09-26, R66). One Form 8879 is four forms: 8879 for an
+ * individual return, 8879-CORP for a corporation, 8879-PE for a partnership, 8879-TE for an exempt
+ * organization. The upload says which, defaulted from the return type; the row prints it; the
+ * correction door moves it. Stored on the DOCUMENT row, because the document is the 8879. The
+ * ruling names these four and no other: a 1041 (whose paper is an 8879-F) defaults to '8879' here
+ * until Brian adds the variant.
+ */
+export const F8879_VARIANTS = ['8879', '8879-CORP', '8879-PE', '8879-TE'] as const;
+export type F8879Variant = (typeof F8879_VARIANTS)[number];
+
+export function f8879VariantFor(returnType: string): F8879Variant {
+  const t = returnType.toLowerCase();
+  if (t === '1065') return '8879-PE';
+  if (t.startsWith('1120')) return '8879-CORP';
+  if (t.startsWith('990')) return '8879-TE';
+  return '8879';
+}
+
+export function assertF8879Variant(raw: string): F8879Variant {
+  const v = raw.trim().toUpperCase();
+  if (!(F8879_VARIANTS as readonly string[]).includes(v)) {
+    throw new AppError(400, 'f8879_variant_invalid', `'${raw}' is not a Form 8879: say ${F8879_VARIANTS.join(', ')}.`);
+  }
+  return v as F8879Variant;
+}
+
 /**
  * THE SCAN THIS UPLOAD CARRIES, CHECKED ONCE (shared by the 8879 and the engagement letter).
  *
@@ -34,28 +61,43 @@ export function taxYearEndedOn(taxYear: number, fiscalYearEndMonth: number | nul
  * already happened and on which the year being authorized had actually closed. Answered here, in
  * one place, so the two doors cannot drift into refusing different things in different words.
  */
-async function checkedSignedScan(
+/**
+ * THE SCAN ITSELF, CHECKED (the first four of the five questions): does the document exist, is it
+ * filed under Signed Authorizations, does it belong to this client, is it linked to some other
+ * return. Exported for the correction door (R69), which replaces a scan and asks the same four.
+ */
+export async function checkedAuthorizationDocument(
   app: FastifyInstance,
-  row: { id: string; contact_id: string; tax_year: number; fiscal_year_end_month: number | null },
-  input: { documentId: string; signedOn: string },
+  row: { id: string; contact_id: string },
+  documentId: string,
   what: string
 ): Promise<{ id: string }> {
-  const doc = await app.db.query<{ id: string; category: string; tax_engagement_id: string | null; contact_id: string }>(
-    `SELECT id, category::text AS category, tax_engagement_id, contact_id FROM documents WHERE id = $1`,
-    [input.documentId]
+  const doc = await app.db.query<{ id: string; category: string; tax_engagement_id: string | null; contact_id: string; superseded_at: Date | null }>(
+    `SELECT id, category::text AS category, tax_engagement_id, contact_id, superseded_at FROM documents WHERE id = $1`,
+    [documentId]
   );
   const d = doc.rows[0];
   if (!d) throw new AppError(404, 'document_not_found', 'The signed authorization document was not found.');
   if (d.category !== 'signed_authorizations') throw new AppError(409, 'wrong_category', `A ${what} must be filed under Signed Authorizations, not '${d.category}'.`);
   if (d.contact_id !== row.contact_id) throw new AppError(409, 'wrong_client', 'That document belongs to a different client.');
   if (d.tax_engagement_id && d.tax_engagement_id !== row.id) throw new AppError(409, 'wrong_return', 'That document is linked to a different return.');
+  if (d.superseded_at) throw new AppError(409, 'document_superseded', 'That scan was already replaced; upload the current paper instead.');
+  return { id: d.id };
+}
 
+/**
+ * THE SIGNED DAY, CHECKED (the fifth question): a day that has already happened, and on which the
+ * year being authorized had actually closed. Exported for the correction door (R69): a corrected
+ * signed date keeps both rules the upload holds.
+ */
+export function assertSignedOn(signedOn: string, row: { tax_year: number; fiscal_year_end_month: number | null }, what: string): string {
   /*
    * THE SIGNED DATE IS A PAST FACT (Brian, 2026-09-19): a paper signed before the SAOS record
    * existed is the ordinary case for work done in ATX; a date after today is not a signature
    * anyone has seen. Today in Chicago is the latest a scan can be dated.
    */
-  if (calendarDay(input.signedOn, 'signedOn') > calendarDay(todayChicago(), 'today')) throw new AppError(409, 'signed_date_in_future', `The signed date ${input.signedOn} is after today; a signature is a thing that already happened.`);
+  const day = calendarDay(signedOn, 'signedOn');
+  if (day > calendarDay(todayChicago(), 'today')) throw new AppError(409, 'signed_date_in_future', `The signed date ${signedOn} is after today; a signature is a thing that already happened.`);
 
   /*
    * NO BACKFILL MODE (Brian, 2026-09-19 evening, ruling 5). The other end of the same window: a
@@ -66,13 +108,24 @@ async function checkedSignedScan(
    * year for a fiscal-year filer, December 31 of the tax year otherwise.
    */
   const yearEnd = taxYearEndedOn(row.tax_year, row.fiscal_year_end_month);
-  if (calendarDay(input.signedOn, 'signedOn') < calendarDay(yearEnd, 'taxYearEnd')) {
+  if (day < calendarDay(yearEnd, 'taxYearEnd')) {
     throw new AppError(
       409,
       'signed_before_year_end',
-      `The signed date ${input.signedOn} is before this return's tax year ended on ${yearEnd}; a ${what} cannot authorize a year that had not closed yet.`
+      `The signed date ${signedOn} is before this return's tax year ended on ${yearEnd}; a ${what} cannot authorize a year that had not closed yet.`
     );
   }
+  return day;
+}
+
+async function checkedSignedScan(
+  app: FastifyInstance,
+  row: { id: string; contact_id: string; tax_year: number; fiscal_year_end_month: number | null },
+  input: { documentId: string; signedOn: string },
+  what: string
+): Promise<{ id: string }> {
+  const d = await checkedAuthorizationDocument(app, row, input.documentId, what);
+  assertSignedOn(input.signedOn, row, what);
   return { id: d.id };
 }
 
@@ -84,18 +137,20 @@ export interface Signed8879Input {
   signedOn: string;
   /** Whose PTIN is on the 8879 — the paid preparer of record. */
   preparerPtinHolderId: string;
+  /** Which Form 8879 the paper is (R66); the return type's default when unsaid. */
+  variant?: F8879Variant | undefined;
 }
 
 export async function recordSigned8879(
   app: FastifyInstance,
   actor: { staffId: string; label: string; ip?: string | null; userAgent?: string | null },
   input: Signed8879Input
-): Promise<{ taxEngagementId: string; signedOn: string }> {
+): Promise<{ taxEngagementId: string; signedOn: string; variant: F8879Variant }> {
   const te = await app.db.query<{
     id: string; contact_id: string; f8879_document_id: string | null; preparer_ptin_holder_id: string | null;
-    tax_year: number; fiscal_year_end_month: number | null;
+    tax_year: number; return_type: string; fiscal_year_end_month: number | null;
   }>(
-    `SELECT te.id, e.contact_id, te.f8879_document_id, te.preparer_ptin_holder_id, te.tax_year, b.fiscal_year_end_month
+    `SELECT te.id, e.contact_id, te.f8879_document_id, te.preparer_ptin_holder_id, te.tax_year, te.return_type::text AS return_type, b.fiscal_year_end_month
        FROM tax_engagements te
        JOIN engagements e ON e.id = te.engagement_id
        LEFT JOIN businesses b ON b.id = e.business_id
@@ -105,6 +160,7 @@ export async function recordSigned8879(
   const row = te.rows[0];
   if (!row) throw new AppError(404, 'not_found', 'Tax engagement not found.');
   if (row.f8879_document_id) throw new AppError(409, 'f8879_already_on_file', 'A signed 8879 is already on file for this return.');
+  const variant: F8879Variant = input.variant ?? f8879VariantFor(row.return_type);
 
   const d = await checkedSignedScan(app, row, input, 'signed 8879');
 
@@ -120,7 +176,11 @@ export async function recordSigned8879(
       WHERE id = $1`,
     [row.id, input.signedOn, d.id, input.preparerPtinHolderId]
   );
-  await app.db.query(`UPDATE documents SET tax_engagement_id = COALESCE(tax_engagement_id, $2) WHERE id = $1`, [d.id, row.id]);
+  // The document IS the 8879, so the document row says which 8879 it is (R66).
+  await app.db.query(
+    `UPDATE documents SET tax_engagement_id = COALESCE(tax_engagement_id, $2), f8879_variant = $3 WHERE id = $1`,
+    [d.id, row.id, variant]
+  );
   // One queryable record of signature status, the same table the retired remote path used.
   await app.db.query(
     `INSERT INTO signature_envelopes
@@ -132,9 +192,9 @@ export async function recordSigned8879(
     actorType: 'staff', actorId: actor.staffId, actorLabel: actor.label,
     action: 'signature.recorded_wet', objectType: 'tax_engagement', objectId: row.id, contactId: row.contact_id,
     ip: actor.ip ?? null, userAgent: actor.userAgent ?? null,
-    details: { type: 'f8879', document_id: d.id, signed_on: input.signedOn, preparer_ptin_holder_id: input.preparerPtinHolderId },
+    details: { type: 'f8879', document_id: d.id, signed_on: input.signedOn, preparer_ptin_holder_id: input.preparerPtinHolderId, f8879_variant: variant },
   });
-  return { taxEngagementId: row.id, signedOn: input.signedOn };
+  return { taxEngagementId: row.id, signedOn: input.signedOn, variant };
 }
 
 /*

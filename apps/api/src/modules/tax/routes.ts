@@ -14,13 +14,13 @@ import { sendTemplatedEmail } from '../templates/service.ts';
 import { computeComplexityScore } from './complexity.ts';
 import {
   FILING_METHODS, MAILING_METHODS, PREPARER_ROLE_KEYS, TAX_STAGES, acceptanceStatus, applyNewReturnDefaults, assignPreparer,
-  correctFiling, legalNextStages, markDocumentsRequested, recordEfileResult, recordJurisdictionMailing, soleActiveTaxPreparerId,
+  correctFiling, legalNextStages, markDocumentsRequested, recordEfileResult, recordJurisdictionMailing, reopenCompletedReturn, soleActiveTaxPreparerId,
   transitionStage, type TaxStage,
 } from './pipeline.ts';
 import { preparerQueue } from './queue.ts';
 import { F8879_SENT_METHODS, f8879SentView, record8879Sent } from './f8879-sent.ts';
 import { todayChicago } from './deadlines.ts';
-import { returnTypeForItems } from './return-type.ts';
+import { itemPricesReturnType } from './return-type.ts';
 import { currentPriceBookVersion } from '../pricing/service.ts';
 import { formatUsd } from '../billing/service.ts';
 
@@ -30,8 +30,9 @@ const CreateBody = z.object({
   taxYear: z.number().int().min(2000).max(2100),
   // v4.3 authoritative table coverage (M24): estate/trust, both 1120-F
   // variants, expat 1040, and FBAR join the original set.
+  // R66 (2026-09-26): the Form 990 family is 990, 990-EZ, 990-PF and 990-T; all four extend on 8868.
   returnType: z.enum([
-    '1040', '1065', '1120s', '1120', '990', '990ez', '1120c', '1120f', '1120h', '1120pol', 'w7_itin',
+    '1040', '1065', '1120s', '1120', '990', '990ez', '990pf', '990t', '1120c', '1120f', '1120h', '1120pol', 'w7_itin',
     '1041', '1120f_foreign', '1040_expat', 'fbar',
   ]),
   clientType: z.enum(['individual', 'business', 'nonprofit']).optional(),
@@ -86,8 +87,20 @@ const FilingCorrectionBody = z.object({
   jurisdictions: z.array(z.string().min(1).max(20)).max(60).optional(),
   /** With a corrected PTIN holder: also make them the assigned preparer, through the assign door. */
   alsoAssignPreparer: z.boolean().optional(),
+  /**
+   * THE AUTHORIZATION (R69 / R66): the day on the signed 8879, a replacement scan (a document already
+   * uploaded through POST /documents under Signed Authorizations for this client), and which 8879 the
+   * paper is. The rules — after today, after the filed day, a scan from another client, a form name the
+   * ruling does not list — are held in correctFiling and read back in its words.
+   */
+  f8879SignedOn: z.iso.date().optional(),
+  f8879DocumentId: z.uuid().optional(),
+  f8879Variant: z.string().trim().min(1).max(12).optional(),
   reason: reasonText(10, 1000),
 });
+
+/** REOPEN (R67): one standalone reason; the CEO alone holds the door (engagements.tax.reopen, explicit-only). */
+const ReopenBody = z.object({ reason: reasonText(10, 1000) });
 
 const EstimateBody = z.object({
   minCents: z.number().int().nonnegative(),
@@ -176,7 +189,7 @@ const STEP_ACTIONS = [
   'signature.recorded_wet', 'tax_engagement.estimate_locked', 'tax_engagement.preparer_assigned',
   'tax_engagement.final_fee_set', 'tax_engagement.f8879_sent_recorded', 'tax_engagement.f8879_sent_declared_by_import',
   'tax_engagement.stage_changed', 'tax_engagement.filing_corrected', 'tax_engagement.paper_mailed',
-  'tax_engagement.imported_at_stage', 'tax_engagement.extension_filed',
+  'tax_engagement.imported_at_stage', 'tax_engagement.extension_filed', 'tax_engagement.reopened',
 ];
 
 function meta(request: FastifyRequest) {
@@ -245,7 +258,8 @@ export async function quotedRangeFor(
     `SELECT item_code FROM engagement_scope_items WHERE engagement_id = $1 ORDER BY sort_order`,
     [te.engagement_id]
   );
-  const base = scope.rows.map((r) => r.item_code).find((code) => returnTypeForItems([code])?.returnType === te.return_type);
+  // The base item that prices THIS return type — its own, or one it covers (R66: BIZ_990 prices the 990-EZ too).
+  const base = scope.rows.map((r) => r.item_code).find((code) => itemPricesReturnType(code, te.return_type));
   if (!base) return null;
   const item = await app.db.query<{ amount_cents: number | null; price_min_cents: number | null; price_max_cents: number | null }>(
     `SELECT amount_cents, price_min_cents, price_max_cents FROM price_book_items WHERE version_id = $1 AND item_code = $2 AND is_active`,
@@ -422,15 +436,16 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     const { rows } = await app.db.query(
       `SELECT te.id, te.tax_year, te.return_type, te.stage, te.preparer_id, te.reviewer_id,
               te.preparer_ptin_holder_id, ptin.display_name AS preparer_of_record,
-              te.f8879_document_id, te.f8879_signed_at::date::text AS f8879_signed_on,
+              te.f8879_document_id, te.f8879_signed_at::date::text AS f8879_signed_on, f8.f8879_variant,
               te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
               te.estimated_fee_min_cents, te.estimated_fee_max_cents, te.final_fee_cents,
-              te.scope_creep_flag, te.complexity_score, te.extension_filed, te.filed_date,
+              te.scope_creep_flag, te.complexity_score, te.extension_filed, te.filed_date, te.reopened_at, te.reopen_reason,
               e.contact_id, c.first_name, c.last_name
        FROM tax_engagements te
        JOIN engagements e ON e.id = te.engagement_id
        JOIN contacts c ON c.id = e.contact_id
        LEFT JOIN staff ptin ON ptin.id = te.preparer_ptin_holder_id
+       LEFT JOIN documents f8 ON f8.id = te.f8879_document_id
        WHERE ${clauses.join(' AND ')}
        ORDER BY te.created_at DESC LIMIT 200`,
       params
@@ -443,10 +458,12 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     const { rows } = await app.db.query(
       `SELECT te.*, te.f8879_signed_at::date::text AS f8879_signed_on, te.f8879_sent_on::text AS f8879_sent_on,
               te.engagement_letter_signed_at::date::text AS engagement_letter_signed_on,
+              f8.f8879_variant, f8.filename AS f8879_filename,
               e.contact_id, e.business_id, e.price_book_version_id, ptin.display_name AS preparer_of_record,
               sentby.display_name AS f8879_sent_recorded_by_name
        FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
        LEFT JOIN staff ptin ON ptin.id = te.preparer_ptin_holder_id
+       LEFT JOIN documents f8 ON f8.id = te.f8879_document_id
        LEFT JOIN staff sentby ON sentby.id = te.f8879_sent_recorded_by WHERE te.id = $1`,
       [id]
     );
@@ -574,9 +591,27 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     const out = await correctFiling(app, { ...actorOf(request), ...meta(request) }, id, {
       filedOn: b.filedOn, preparerPtinHolderId: b.preparerPtinHolderId, jurisdictions: b.jurisdictions,
       alsoAssignPreparer: b.alsoAssignPreparer, reason: b.reason,
+      f8879SignedOn: b.f8879SignedOn, f8879DocumentId: b.f8879DocumentId, f8879Variant: b.f8879Variant,
     });
     return reply.code(201).send({ status: 'ok', ...out });
   });
+
+  /**
+   * REOPEN A COMPLETED RETURN (Brian, 2026-09-26, R67). The CEO alone (engagements.tax.reopen is
+   * explicit-only: the wildcard does not reach it, and a preparer is refused 403 in the server's words).
+   * The rules and the writes live in reopenCompletedReturn (pipeline.ts): back to filed, the engagement
+   * active again, every jurisdiction needing a new acceptance or mailing before completion.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/tax-engagements/:id/reopen',
+    { preHandler: [app.authenticate, requirePermission('engagements.tax.reopen')] },
+    async (request) => {
+      const id = z.uuid().parse(request.params.id);
+      const b = ReopenBody.parse(request.body);
+      const out = await reopenCompletedReturn(app, { ...actorOf(request), ...meta(request) }, id, b.reason);
+      return { status: 'ok', ...out };
+    }
+  );
 
   /**
    * THE PAPER LANE'S ACCEPTANCE (Brian, 2026-09-20, ruling 15): the mailing of one declared paper

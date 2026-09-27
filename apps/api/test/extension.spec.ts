@@ -94,6 +94,11 @@ test('deadline derivation: table-driven, calendar AND fiscal year (no hardcoded 
     ['1120', 2025, 12, '2026-04-15', '2026-10-15'],
     ['990', 2025, 12, '2026-05-15', '2026-11-16'],
     ['990ez', 2025, 12, '2026-05-15', '2026-11-16'],
+    // R66 (2026-09-26): the rest of the 990 family sits on the same row — the fifth month, +6 on 8868.
+    ['990pf', 2025, 12, '2026-05-15', '2026-11-16'],
+    ['990t', 2025, 12, '2026-05-15', '2026-11-16'],
+    ['990pf', 2026, 9, '2027-02-16', '2027-08-16'],          // fiscal: month 5 after FYE, like the 990
+    ['990t', 2026, 9, '2027-02-16', '2027-08-16'],
     // v4.3 new rows (calendar year):
     ['1041', 2025, 12, '2026-04-15', '2026-09-30'],          // estate/trust — Sep 30, NOT +6
     ['1120f', 2025, 12, '2026-04-15', '2026-10-15'],         // foreign corp WITH US office

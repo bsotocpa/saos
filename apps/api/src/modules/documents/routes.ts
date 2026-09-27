@@ -37,6 +37,8 @@ const StaffUploadFields = z.object({
   /** A signed 8879 (category signed_authorizations + taxEngagementId): the date on the signature and whose PTIN is on it. */
   signedOn: z.iso.date().optional(),
   preparerPtinHolderId: z.uuid().optional(),
+  /** Which Form 8879 the scan is (R66: 8879, 8879-CORP, 8879-PE, 8879-TE); the return type's default when unsaid. */
+  f8879Variant: z.string().trim().min(1).max(12).optional(),
   /**
    * A signed engagement letter on paper (category signed_authorizations + taxEngagementId): the
    * date the CLIENT signed it. Its own field, not `signedOn`, because one upload is one document —
@@ -231,6 +233,9 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       if (!canReadCategory(staff, fields.category)) {
         throw new AppError(403, 'category_not_allowed', `Your role does not handle '${fields.category}' documents.`);
       }
+      // A bad form name is refused before any byte lands, so a refusal leaves no orphan scan.
+      const { assertF8879Variant } = await import('../tax/signed-8879.ts');
+      const f8879Variant = fields.f8879Variant ? assertF8879Variant(fields.f8879Variant) : undefined;
       const result = await uploadDocument(
         app,
         minio,
@@ -255,6 +260,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         const { recordSigned8879 } = await import('../tax/signed-8879.ts');
         await recordSigned8879(app, { staffId: staff.id, label: staff.fullName, ip: request.ip, userAgent: request.headers['user-agent'] ?? null }, {
           taxEngagementId: fields.taxEngagementId, documentId: result.id, signedOn: fields.signedOn, preparerPtinHolderId: fields.preparerPtinHolderId,
+          variant: f8879Variant,
         });
         signed8879 = true;
       }
@@ -320,7 +326,8 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       const { rows } = await app.db.query(
         `SELECT d.id, d.category::text AS category, d.filename AS original_filename,
                 d.mime_type, d.size_bytes, d.tax_year, d.status::text AS status,
-                d.uploaded_by_type, d.created_at
+                d.uploaded_by_type, d.created_at,
+                d.superseded_by, d.superseded_at, d.f8879_variant
          FROM documents d
          WHERE d.contact_id = $1 AND d.archived_at IS NULL${categoryClause}
          ORDER BY d.created_at DESC

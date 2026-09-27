@@ -23,7 +23,7 @@ import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { Mailer } from '../src/mailer.ts';
-import { createTestConfig, makeContact, makeStaff, signed8879OnFile, type TestStaff } from './helpers.ts';
+import { createTestConfig, makeContact, makeStaff, multipartBody, signed8879OnFile, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import { addDays, todayChicago } from '../src/modules/tax/deadlines.ts';
 import { filingLane } from '../src/modules/tax/resolution.ts';
@@ -336,4 +336,148 @@ test('role proof and the door\'s edges: a bookkeeper gets 403; a return not at f
   assert.equal(ceo.statusCode, 201, ceo.body);
   assert.equal((await corrections(te.id))[0]!.actor_label, brian.fullName);
   assert.equal((await state(te.id)).filed_date, SIGNED_ON);
+});
+
+/*
+ * ═══ R69 (Brian, 2026-09-26/27): THE SIGNED 8879, CORRECTED ═════════════════════════════════════
+ * The day lives on tax_engagements.f8879_signed_at (read everywhere as ::date); the scan is the
+ * document row f8879_document_id points at. Both move through the same door as the filed date.
+ */
+const PDF = Buffer.from('%PDF-1.4 synthetic test document - no real client data\n%%EOF');
+/** A scan into Signed Authorizations against the return with NO signed date: filed, not yet the 8879 on file. */
+async function uploadScan(te: { id: string; contactId: string }, filename: string, who: { token: string } = ana): Promise<string> {
+  const body = multipartBody(
+    { contactId: te.contactId, category: 'signed_authorizations', taxEngagementId: te.id },
+    { field: 'file', filename, contentType: 'application/pdf', data: PDF }
+  );
+  const res = await app.inject({ method: 'POST', url: '/documents', headers: { ...auth(who), ...body.headers }, payload: body.payload });
+  assert.equal(res.statusCode, 201, res.body);
+  return res.json().id as string;
+}
+async function authorization(id: string) {
+  const { rows } = await app.db.query<{ f8879_signed_on: string | null; f8879_document_id: string | null; envelope_on: string | null; envelope_doc: string | null }>(
+    `SELECT te.f8879_signed_at::date::text AS f8879_signed_on, te.f8879_document_id,
+            (SELECT se.completed_at::date::text FROM signature_envelopes se WHERE se.tax_engagement_id = te.id AND se.type = 'f8879' ORDER BY se.created_at DESC LIMIT 1) AS envelope_on,
+            (SELECT se.signed_document_id FROM signature_envelopes se WHERE se.tax_engagement_id = te.id AND se.type = 'f8879' ORDER BY se.created_at DESC LIMIT 1) AS envelope_doc
+       FROM tax_engagements te WHERE te.id = $1`,
+    [id]
+  );
+  return rows[0]!;
+}
+
+test('R69 the 8879 signed date correction: refused after today, after the filed date, before the year end and when unchanged; lands on the return and the envelope; the filed-date rule then reads the corrected day, inclusive', async () => {
+  const te = await filedReturn('Signedfix');
+  // Filed three days ago first, so "after today" and "after the filed date" are two different refusals.
+  const filedDay = addDays(today, -3);
+  assert.equal((await correct(te.id, { filedOn: filedDay })).statusCode, 201);
+
+  const future = await correct(te.id, { f8879SignedOn: addDays(today, 1) });
+  assert.equal(future.statusCode, 409, future.body);
+  assert.equal(future.json().error, 'signed_date_in_future');
+  const afterFiled = await correct(te.id, { f8879SignedOn: addDays(today, -1) });
+  assert.equal(afterFiled.statusCode, 409, afterFiled.body);
+  assert.equal(afterFiled.json().error, 'signed_after_filing');
+  assert.match(afterFiled.json().message, new RegExp(`after the filed date ${filedDay}`), 'names the filed day');
+  const early = await correct(te.id, { f8879SignedOn: '2025-12-30' });
+  assert.equal(early.statusCode, 409, early.body);
+  assert.equal(early.json().error, 'signed_before_year_end');
+  const same = await correct(te.id, { f8879SignedOn: SIGNED_ON });
+  assert.equal(same.statusCode, 409, same.body);
+  assert.equal(same.json().error, 'nothing_to_correct');
+  assert.equal((await corrections(te.id)).length, 1, 'four refusals appended nothing');
+  assert.equal((await authorization(te.id)).f8879_signed_on, SIGNED_ON, 'and moved nothing');
+
+  // The paper is dated twelve days ago; the upload recorded ten.
+  const paperDay = addDays(today, -12);
+  const ok = await correct(te.id, { f8879SignedOn: paperDay });
+  assert.equal(ok.statusCode, 201, ok.body);
+  assert.deepEqual(ok.json().fields, ['f8879_signed_on']);
+  const a = await authorization(te.id);
+  assert.equal(a.f8879_signed_on, paperDay, 'the return reads the corrected day where the gate and the filed-date rule read it');
+  assert.equal(a.envelope_on, paperDay, 'the envelope row reads it too');
+  const rows = await corrections(te.id);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows[1]!.fields, ['f8879_signed_on']);
+  assert.equal(rows[1]!.before['f8879_signed_on'], SIGNED_ON);
+  assert.equal(rows[1]!.after['f8879_signed_on'], paperDay);
+  const audit = await app.db.query<{ details: Record<string, unknown> }>(
+    `SELECT details FROM audit_log WHERE action = 'tax_engagement.filing_corrected' AND object_id = $1 ORDER BY occurred_at DESC LIMIT 1`, [te.id]);
+  assert.deepEqual(audit.rows[0]!.details['fields'], ['f8879_signed_on']);
+  assert.deepEqual(audit.rows[0]!.details['after'], { f8879_signed_on: paperDay }, 'dates only, nothing about the client');
+  const detail = (await app.inject({ method: 'GET', url: `/tax-engagements/${te.id}`, headers: auth(ana) })).json() as { taxEngagement: { f8879_signed_on: string } };
+  assert.equal(detail.taxEngagement.f8879_signed_on, paperDay, 'GET reads the corrected day');
+
+  // THE FILED-DATE RULE READS THE CORRECTED VALUE — and "not before" is inclusive.
+  const before = await correct(te.id, { filedOn: addDays(paperDay, -1) });
+  assert.equal(before.statusCode, 409, before.body);
+  assert.equal(before.json().error, 'filed_before_authorization');
+  assert.match(before.json().message, new RegExp(`dated ${paperDay}`), 'the refusal names the CORRECTED signed day');
+  const onTheDay = await correct(te.id, { filedOn: paperDay });
+  assert.equal(onTheDay.statusCode, 201, onTheDay.body);
+  assert.equal((await state(te.id)).filed_date, paperDay, 'filed on the signed day is allowed');
+  // Both in one correction, to the same earlier day: authorized and filed the same day, both moving together.
+  const together = await correct(te.id, { f8879SignedOn: addDays(today, -14), filedOn: addDays(today, -14) });
+  assert.equal(together.statusCode, 201, together.body);
+  assert.deepEqual(together.json().fields, ['f8879_signed_on', 'filed_date']);
+  // And a signed day after the filed day, sent together, is refused against the filed day AS IT WILL STAND.
+  const crossed = await correct(te.id, { f8879SignedOn: addDays(today, -13), filedOn: addDays(today, -15) });
+  assert.equal(crossed.statusCode, 409, crossed.body);
+  assert.equal(crossed.json().error, 'filed_before_authorization');
+});
+
+test('R69 the scan replaced: the previous row is kept and marked superseded, listed, still downloadable and audited; the return and the envelope point at the new scan; a scan from another client or one already replaced is refused', async () => {
+  const te = await filedReturn('Scanfix');
+  const first = (await authorization(te.id)).f8879_document_id!;
+  // The replacement goes in through the documents door with no signed date: a document, not yet the 8879.
+  const second = await uploadScan(te, 'synthetic-8879-replacement-one.pdf');
+  assert.equal((await authorization(te.id)).f8879_document_id, first, 'an upload alone moves nothing');
+
+  const ok = await correct(te.id, { f8879DocumentId: second });
+  assert.equal(ok.statusCode, 201, ok.body);
+  assert.deepEqual(ok.json().fields, ['f8879_document']);
+  assert.equal(ok.json().before.f8879_document, first);
+  assert.equal(ok.json().after.f8879_document, second);
+  const a = await authorization(te.id);
+  assert.equal(a.f8879_document_id, second, 'the return points at the new scan');
+  assert.equal(a.envelope_doc, second, 'so does the envelope');
+  const docs = await app.db.query<{ id: string; superseded_by: string | null; superseded_at: Date | null; archived_at: Date | null; f8879_variant: string | null }>(
+    `SELECT id, superseded_by, superseded_at, archived_at, f8879_variant FROM documents WHERE id = ANY($1::uuid[])`, [[first, second]]);
+  const oldRow = docs.rows.find((d) => d.id === first)!;
+  const newRow = docs.rows.find((d) => d.id === second)!;
+  assert.equal(oldRow.superseded_by, second, 'the old row is marked, never deleted');
+  assert.ok(oldRow.superseded_at, 'and says when');
+  assert.equal(oldRow.archived_at, null, 'not archived: it stays on the record');
+  assert.equal(newRow.f8879_variant, '8879-CORP', 'the new scan carries the form the old one had (a 1120S: 8879-CORP)');
+  const superseded = await app.db.query<{ details: Record<string, unknown> }>(
+    `SELECT details FROM audit_log WHERE action = 'document.superseded' AND object_id = $1`, [first]);
+  assert.equal(superseded.rows.length, 1, 'the supersession is audited on the document');
+  assert.equal(superseded.rows[0]!.details['superseded_by'], second);
+
+  // Listed with its mark; still downloadable (the second scan, once replaced by a third, has real bytes behind it).
+  const third = await uploadScan(te, 'synthetic-8879-replacement-two.pdf');
+  assert.equal((await correct(te.id, { f8879DocumentId: third })).statusCode, 201);
+  const listed = (await app.inject({ method: 'GET', url: `/documents?contactId=${te.contactId}`, headers: auth(brian) })).json() as {
+    documents: Array<{ id: string; superseded_by: string | null; superseded_at: string | null }>;
+  };
+  assert.equal(listed.documents.find((d) => d.id === second)!.superseded_by, third, 'the list says the row was replaced');
+  assert.equal(listed.documents.find((d) => d.id === third)!.superseded_at, null);
+  const download = await app.inject({ method: 'GET', url: `/documents/${second}/download`, headers: auth(brian) });
+  assert.equal(download.statusCode, 200, 'a superseded scan still downloads');
+  const downloaded = await app.db.query(`SELECT 1 FROM audit_log WHERE action = 'document.downloaded' AND object_id = $1`, [second]);
+  assert.equal(downloaded.rows.length, 1, 'and the download is audited like any other');
+
+  // Refused: the replaced scan again, another client's scan, the current scan (nothing to correct).
+  const again = await correct(te.id, { f8879DocumentId: second });
+  assert.equal(again.statusCode, 409, again.body);
+  assert.equal(again.json().error, 'document_superseded');
+  const other = await filedReturn('Scanother');
+  const theirs = await uploadScan(other, 'synthetic-8879-someone-else.pdf');
+  const wrongClient = await correct(te.id, { f8879DocumentId: theirs });
+  assert.equal(wrongClient.statusCode, 409, wrongClient.body);
+  assert.equal(wrongClient.json().error, 'wrong_client');
+  const current = await correct(te.id, { f8879DocumentId: third });
+  assert.equal(current.statusCode, 409, current.body);
+  assert.equal(current.json().error, 'nothing_to_correct');
+  assert.equal((await authorization(te.id)).f8879_document_id, third, 'three refusals moved nothing');
+  assert.equal((await corrections(te.id)).length, 2);
 });

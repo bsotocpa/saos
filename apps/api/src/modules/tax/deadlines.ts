@@ -14,7 +14,7 @@
 // deadlines) per the spec's "roll to next business day" rule.
 
 export type DeadlineReturnType =
-  | '1040' | '1065' | '1120s' | '1120' | '990' | '990ez'
+  | '1040' | '1065' | '1120s' | '1120' | '990' | '990ez' | '990pf' | '990t'
   | '1120c' | '1120f' | '1120f_foreign' | '1120h' | '1120pol'
   | '1041' | '1040_expat' | 'fbar' | 'w7_itin' | 'ag990il';
 
@@ -50,6 +50,11 @@ const THE_TABLE: Record<DeadlineReturnType, DeadlineRule> = {
   '1041':          { monthsAfterYearEnd: 4, calendarExtended: '09-30' },       // Apr 15 → Sep 30 (NOT +6)
   '990':           { monthsAfterYearEnd: 5 },                                  // May 15 → Nov 15 (v4.3 corrected)
   '990ez':         { monthsAfterYearEnd: 5 },                                  // May 15 → Nov 15
+  // R66 (2026-09-26): the rest of the 990 family, the 15th day of the fifth month after the year
+  // end, +6 months on Form 8868 — 990-PF (private foundation) and 990-T (an exempt organization's
+  // unrelated business income return, on the exempt-organization clock).
+  '990pf':         { monthsAfterYearEnd: 5 },                                  // May 15 → Nov 15
+  '990t':          { monthsAfterYearEnd: 5 },                                  // May 15 → Nov 15 (exempt org)
   '1120f':         { monthsAfterYearEnd: 4 },                                  // foreign corp WITH US office: Apr 15 → Oct 15
   '1120f_foreign': { monthsAfterYearEnd: 6, calendarOriginal: '06-15' },       // no US office: Jun 15 → Dec 15
   '1040_expat':    { monthsAfterYearEnd: 4, calendarOriginal: '06-15', calendarExtended: '10-15' }, // Jun 15 auto → Oct 15

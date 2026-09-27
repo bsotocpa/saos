@@ -12,7 +12,20 @@
  * price_book.mjs). An add-on (Schedule C, an extra state, a notice) names no return by itself;
  * a quote with only add-ons and no base return item creates no return record, and says so.
  */
-export type QuotedReturn = { returnType: string; clientType: 'individual' | 'business' | 'nonprofit' };
+export type QuotedReturn = {
+  returnType: string;
+  clientType: 'individual' | 'business' | 'nonprofit';
+  /**
+   * THE OTHER RETURN TYPES THE ITEM PRICES (Brian, 2026-09-26, R66). One price-book line can be the
+   * price of more than one form: BIZ_990 is "Form 990 / 990-EZ" in the book, so a 990-EZ return reads
+   * its quoted range from BIZ_990 too. `returnType` stays the return an accepted quote CREATES
+   * (the 990, never the EZ — the preparer decides the short form on the return); `covers` is every
+   * type the line answers for when a return asks which base item is its own (quotedRangeFor).
+   * 990-PF and 990-T are NOT here: they have no line in the book yet (docs/proposals/2026-09-27-
+   * price-book-v6-990.md proposes BIZ_990PF and BIZ_990T for Brian to price and publish).
+   */
+  covers?: readonly string[];
+};
 
 const BASE_ITEMS: Record<string, QuotedReturn> = {
   IND_BASE_SINGLE: { returnType: '1040', clientType: 'individual' },
@@ -27,8 +40,15 @@ const BASE_ITEMS: Record<string, QuotedReturn> = {
   BIZ_1120F: { returnType: '1120f', clientType: 'business' },
   BIZ_1120H: { returnType: '1120h', clientType: 'business' },
   BIZ_1120POL: { returnType: '1120pol', clientType: 'business' },
-  BIZ_990: { returnType: '990', clientType: 'nonprofit' },
+  BIZ_990: { returnType: '990', clientType: 'nonprofit', covers: ['990', '990ez'] },
 };
+
+/** Does this price-book item price a return of this type? The item's own return, or one it covers (BIZ_990 → 990-EZ). */
+export function itemPricesReturnType(itemCode: string, returnType: string): boolean {
+  const item = BASE_ITEMS[itemCode];
+  if (!item) return false;
+  return item.returnType === returnType || (item.covers ?? []).includes(returnType);
+}
 
 /** The return a set of quoted item codes names, or null when none of them is a base return. */
 export function returnTypeForItems(itemCodes: readonly string[]): QuotedReturn | null {

@@ -13,8 +13,17 @@
  *       the history line under the row says what was corrected, when, by whom and why.
  *   F3  Correct the filing → the PTIN holder becomes the CEO; the offer to move the assigned preparer
  *       appears CHECKED, because the holder and the assignee were the same person; both move.
- *   F4  Correct the filing → Filed on moved earlier: a day before the signed 8879 is refused in the
- *       modal and the typed day stays; the day on the 8879 itself lands, and the row reads it.
+ *   F5  Correct the filing → "Signed on" moved EARLIER (R69, 2026-09-27): the upload recorded the day
+ *       the paper was scanned; the paper is dated two days before. A day after today is refused in the
+ *       modal in the route's words and the typed day stays; the paper's day lands and the history line
+ *       reads the correction. This is Brian's own shape (his 8879-CORP recorded 2026-09-20, dated
+ *       2026-09-15), relative to the fixture's dates.
+ *   F6  Correct the filing → "Replace the scan" (R69, amended): a new file goes through /documents and
+ *       the correction makes it the 8879 on file; the previous document row is kept, marked
+ *       superseded (the Documents card says so), still listed and still downloadable.
+ *   F4  Correct the filing → Filed on moved earlier: a day before the CORRECTED signed 8879 is refused
+ *       in the modal NAMING THE CORRECTED DAY, and the typed day stays; the corrected signed day itself
+ *       lands (the rule is inclusive: filed on the signed day), and the row reads it.
  *
  * ROLE PROOF: the bookkeeper holds no engagements.tax.manage. No "Correct the filing" control renders
  * for her anywhere on the page, and POST /tax-engagements/:id/filing-corrections answers 403 from
@@ -137,7 +146,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 }
 
 test.describe('Ops → Filed on, and the filing corrected', () => {
-  test('F1–F4: filed on today, then IL removed, the PTIN holder moved with the preparer, the filed date moved earlier', async ({ page }, testInfo) => {
+  test('F1–F6: filed on today, then IL removed, the PTIN holder moved with the preparer, the 8879 signed date moved earlier, the scan replaced, the filed date moved to the corrected signed day', async ({ page }, testInfo) => {
     const viewport = testInfo.project.name;
     test.setTimeout(300_000);
     const shot = testInfo.outputPath(`filing-corrections-${viewport}.png`);
@@ -229,26 +238,75 @@ test.describe('Ops → Filed on, and the filing corrected', () => {
       expect(afterF3.assigned_preparer?.id, 'and the assigned preparer moved with it, through the assign door').toBe(me.id);
       steps.push(`F3|/clients/:id Returns card, filed row, button "Correct the filing" (modal: "PTIN holder" select → the CEO; checkbox "Also make … the assigned preparer" appears checked; required Reason); the row reads the new preparer of record and the assignee follows|${ROLES}|tap`);
 
-      // ── F4. MOVE THE FILED DATE EARLIER ────────────────────────────────────────────────
+      // ── F5. THE 8879 SIGNED DATE, MOVED EARLIER TO THE DAY ON THE PAPER (R69) ─────────
+      // The upload recorded the day the paper was scanned (ten days ago); the paper is dated twelve.
+      const paperSignedOn = addDays(today, -12);
+      const reasonF5 = `harness walk ${viewport}: the upload recorded the day the 8879 was scanned; the paper itself is dated ${paperSignedOn}`;
+      await returnRow.getByTestId('correct-filing').click();
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByLabel('Signed on'), 'opens on the signed day as recorded').toHaveValue(signedOn);
+      await expect(dialog.getByTestId('correction-f8879-variant').locator('select'), 'the form on file: an 1120S took 8879-CORP').toHaveValue('8879-CORP');
+      await dialog.getByLabel('Signed on').fill(tomorrow);
+      await dialog.locator('textarea').fill(reasonF5);
+      await dialog.getByRole('button', { name: 'Correct the filing' }).click();
+      await expect(dialog.locator('#ask-error'), 'a signed day after today is refused in the modal, in the route\'s words').toContainText('is after today');
+      await expect(dialog.getByLabel('Signed on'), 'the day stays for correction').toHaveValue(tomorrow);
+      await dialog.getByLabel('Signed on').fill(paperSignedOn);
+      await dialog.getByRole('button', { name: 'Correct the filing' }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(history.locator('li')).toHaveCount(3);
+      await expect(history.locator('li').nth(2)).toContainText(`Corrected the 8879 signed date on ${dayText(today)} by ${me.fullName}: ${reasonF5}`);
+      const afterF5 = (await read(page, `/tax-engagements/${te}`)).taxEngagement as Record<string, unknown>;
+      expect(afterF5.f8879_signed_on, 'the return reads the corrected signed day where the filed-date rule reads it').toBe(paperSignedOn);
+      steps.push(`F5|/clients/:id Returns card, filed row, button "Correct the filing" (modal: "Signed on" opening on the recorded day; ${tomorrow} refused "is after today" at #ask-error with the day kept; ${paperSignedOn} lands); the history line reads "Corrected the 8879 signed date on <day> by <who>: <reason>"|${ROLES}|tap`);
+
+      // ── F6. THE SCAN REPLACED; THE OLD ROW KEPT AND MARKED (R69, amended) ─────────────
+      const oldScan = String(afterF5.f8879_document_id);
+      const reasonF6 = `harness walk ${viewport}: the first upload was the unsigned copy; this is the signed 8879-CORP as it sits in the file`;
+      await returnRow.getByTestId('correct-filing').click();
+      await expect(dialog).toBeVisible();
+      await dialog.getByTestId('correction-f8879-scan').setInputFiles({ name: `HARNESS-CORRECTIONS-8879-REPLACEMENT-${viewport}.pdf`, ...PDF });
+      await dialog.locator('textarea').fill(reasonF6);
+      await dialog.getByRole('button', { name: 'Correct the filing' }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(history.locator('li')).toHaveCount(4);
+      await expect(history.locator('li').nth(3)).toContainText(`Corrected the 8879 scan on ${dayText(today)} by ${me.fullName}: ${reasonF6}`);
+      const afterF6 = (await read(page, `/tax-engagements/${te}`)).taxEngagement as Record<string, unknown>;
+      expect(afterF6.f8879_document_id, 'the return points at the new scan').not.toBe(oldScan);
+      expect(afterF6.f8879_signed_on, 'the corrected signed day stands on the new scan').toBe(paperSignedOn);
+      const docs = (await read(page, `/documents?contactId=${contactId}`)).documents as Array<Record<string, unknown>>;
+      const oldRow = docs.find((d) => d.id === oldScan);
+      expect(oldRow, 'the old row is still listed').toBeTruthy();
+      expect(oldRow!.superseded_by, 'and marked with what replaced it').toBe(afterF6.f8879_document_id);
+      expect(oldRow!.superseded_at, 'and when').toBeTruthy();
+      const download = await page.evaluate(async (id) => (await fetch(`/api/documents/${id}/download`)).status, oldScan);
+      expect(download, 'the superseded scan still downloads').toBe(200);
+      await page.goto(clientPage);
+      await expect(page.getByRole('heading', { name: 'Returns' })).toBeVisible();
+      await expect(page.getByTestId(`document-superseded-${oldScan}`), 'the Documents card reads the old row as superseded').toContainText('superseded');
+      steps.push(`F6|/clients/:id Returns card, filed row, button "Correct the filing" (modal: input[type=file] "Replace the scan", required Reason); the new scan is the 8879 on file, the Documents card row for the old scan reads "superseded", GET /documents lists it with superseded_by and it still downloads (200)|${ROLES}|tap`);
+
+      // ── F4. MOVE THE FILED DATE EARLIER — TO THE CORRECTED SIGNED DAY ─────────────────
       const reasonF4 = `harness walk ${viewport}: the transmission record shows the return went in the day the 8879 was signed, not the day it was marked here`;
       await returnRow.getByTestId('correct-filing').click();
       await expect(dialog).toBeVisible();
       await expect(dialog.getByLabel('Filed on'), 'opens on the day as recorded').toHaveValue(today);
-      await dialog.getByLabel('Filed on').fill(addDays(signedOn, -1));
+      await dialog.getByLabel('Filed on').fill(addDays(paperSignedOn, -1));
       await dialog.locator('textarea').fill(reasonF4);
       await dialog.getByRole('button', { name: 'Correct the filing' }).click();
-      await expect(dialog.locator('#ask-error'), 'a day before the signed 8879 is refused in the modal').toContainText(`before the signed 8879 dated ${signedOn}`);
-      await expect(dialog.getByLabel('Filed on'), 'the day stays for correction').toHaveValue(addDays(signedOn, -1));
+      await expect(dialog.locator('#ask-error'), 'a day before the CORRECTED signed 8879 is refused in the modal, naming the corrected day').toContainText(`before the signed 8879 dated ${paperSignedOn}`);
+      await expect(dialog.getByLabel('Filed on'), 'the day stays for correction').toHaveValue(addDays(paperSignedOn, -1));
       await expect(dialog.locator('textarea'), 'and so does the reason').toHaveValue(reasonF4);
-      await dialog.getByLabel('Filed on').fill(signedOn);
+      await dialog.getByLabel('Filed on').fill(paperSignedOn);
       await dialog.getByRole('button', { name: 'Correct the filing' }).click();
       await expect(dialog).toHaveCount(0);
-      await expect(returnRow.getByText(`filed ${dayText(signedOn)}`, { exact: false }), 'the row reads the corrected day').toBeVisible();
-      await expect(history.locator('li')).toHaveCount(3);
-      await expect(history.locator('li').nth(2)).toContainText(`Corrected the filed date on ${dayText(today)} by ${me.fullName}: ${reasonF4}`);
+      await expect(returnRow.getByText(`filed ${dayText(paperSignedOn)}`, { exact: false }), 'the row reads the corrected day: filed on the signed day is allowed').toBeVisible();
+      await expect(history.locator('li')).toHaveCount(5);
+      await expect(history.locator('li').nth(4)).toContainText(`Corrected the filed date on ${dayText(today)} by ${me.fullName}: ${reasonF4}`);
       const afterF4 = (await read(page, `/tax-engagements/${te}`)).taxEngagement as Record<string, unknown>;
-      expect(afterF4.filed_date, 'the return carries the corrected calendar day').toBe(signedOn);
-      steps.push(`F4|/clients/:id Returns card, filed row, button "Correct the filing" (modal: "Filed on" moved earlier; ${addDays(signedOn, -1)} refused "before the signed 8879" at #ask-error with the day and the reason kept; the 8879's day lands); the row reads "filed <day>" and the history line the correction|${ROLES}|tap`);
+      expect(afterF4.filed_date, 'the return carries the corrected calendar day').toBe(paperSignedOn);
+      expect(afterF4.filed_date, 'signed and filed on the same day, Brian\'s shape').toBe(afterF4.f8879_signed_on);
+      steps.push(`F4|/clients/:id Returns card, filed row, button "Correct the filing" (modal: "Filed on" moved earlier; ${addDays(paperSignedOn, -1)} refused "before the signed 8879 dated ${paperSignedOn}" — the CORRECTED day — at #ask-error with the day and the reason kept; the corrected signed day lands, inclusive); the row reads "filed <day>" and the history line the correction|${ROLES}|tap`);
 
       await page.screenshot({ path: shot, fullPage: true });
       passed = true;

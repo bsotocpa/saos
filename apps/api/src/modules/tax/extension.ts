@@ -34,10 +34,10 @@ import {
 export const EXTENSION_FORMS = ['4868', '7004', '8868'] as const;
 export type ExtensionForm = (typeof EXTENSION_FORMS)[number];
 
-/** The individual returns extend on 4868, the exempt organizations on 8868; every other return type extends on 7004. */
+/** The individual returns extend on 4868, the exempt organizations (the whole 990 family, R66) on 8868; every other return type extends on 7004. */
 export function defaultExtensionForm(returnType: string): ExtensionForm {
   if (returnType === '1040' || returnType === '1040_expat') return '4868';
-  if (returnType === '990' || returnType === '990ez') return '8868';
+  if (returnType.startsWith('990')) return '8868';
   return '7004';
 }
 

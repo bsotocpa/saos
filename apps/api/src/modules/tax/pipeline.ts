@@ -17,6 +17,7 @@ import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { addDays, daysBetween, todayChicago, calendarDay } from './deadlines.ts';
 import { certifiedMailFollowUp, filingLane } from './resolution.ts';
 import { invoiceForFiledEngagement } from '../billing/service.ts';
+import { assertF8879Variant, assertSignedOn, checkedAuthorizationDocument, type F8879Variant } from './signed-8879.ts';
 
 export const TAX_STAGES = [
   'intake_started', 'scheduled', 'documents_requested', 'pending_client_response',
@@ -275,6 +276,24 @@ export async function transitionStage(
       'Blocked: Form 8879 e-file authorization is not signed. No return is filed without it (MP compliance gate).'
     );
   }
+  /*
+   * Gate 4 — A RETURN COMPLETES WHEN EVERY JURISDICTION HAS ANSWERED (Brian, 2026-09-26, R67). The
+   * acceptance and mailing paths only call for 'completed' once nothing is awaited; this holds the
+   * same rule against any other caller. After a REOPEN the old answers no longer count
+   * (acceptanceStatus reads only an acceptance or mailing recorded after the reopen), so a reopened
+   * return cannot be re-completed on the acceptance that completed it the first time.
+   */
+  if (toStage === 'completed') {
+    const status = await acceptanceStatus(app, taxEngagementId);
+    if (status.awaiting.length > 0) {
+      throw new AppError(
+        409,
+        'jurisdictions_awaiting',
+        `Blocked: ${status.awaiting.map(jurisdictionName).join(', ')} ${status.awaiting.length === 1 ? 'has' : 'have'} not answered for this filing` +
+          `${status.stale.length > 0 ? ' since it was reopened' : ''}; a return completes on a recorded acceptance or mailing for every jurisdiction it declares.`
+      );
+    }
+  }
 
   /*
    * THE PREPARER OF RECORD (2026-09-12, Brian's correction). A return does not move to filed
@@ -400,6 +419,22 @@ export function assertFiledOn(filedOn: string, f8879SignedOn: string | null): st
 }
 
 /**
+ * THE THIRD RULE ON THE PAIR (R69): the signed day is never after the filed day. Only a CORRECTED
+ * signed day can break it (the upload happens before filing, and assertFiledOn holds the other
+ * direction), so this is checked where the signed day moves, against the filed day as it will stand.
+ */
+export function assertSignedNotAfterFiled(signedOn: string | null, filedOn: string | null): void {
+  if (!signedOn || !filedOn) return;
+  if (calendarDay(signedOn, 'f8879SignedOn') > calendarDay(filedOn, 'filedOn')) {
+    throw new AppError(
+      409,
+      'signed_after_filing',
+      `The signed date ${signedOn} is after the filed date ${filedOn}; a return is authorized first and filed after.`
+    );
+  }
+}
+
+/**
  * WHO PREPARES THIS RETURN (Brian, 2026-09-20) — the one door. A return assigned to nobody sits in
  * no queue, so the row names a preparer and preparation cannot start until it does (gate 2b).
  * Assignable: an ACTIVE staff member holding tax_preparer, or the CEO working a return himself —
@@ -481,9 +516,21 @@ export interface FilingCorrectionInput {
   preparerPtinHolderId?: string | undefined;
   jurisdictions?: readonly string[] | undefined;
   alsoAssignPreparer?: boolean | undefined;
+  /**
+   * THE AUTHORIZATION, CORRECTED (Brian, 2026-09-26/27, R69). The day on the signed 8879 — refused
+   * after today, before the tax year closed, or after the recorded filed day; the filed-date rule
+   * then reads the corrected value. And the scan itself: a replacement uploaded through the documents
+   * door under Signed Authorizations against this return; the previous row is kept and marked
+   * superseded, never deleted. And (R66) which Form 8879 the paper is.
+   */
+  f8879SignedOn?: string | undefined;
+  f8879DocumentId?: string | undefined;
+  f8879Variant?: string | undefined;
   reason: string;
 }
-export type FilingCorrectionField = 'filed_date' | 'preparer_ptin_holder_id' | 'jurisdictions';
+export type FilingCorrectionField =
+  | 'filed_date' | 'preparer_ptin_holder_id' | 'jurisdictions'
+  | 'f8879_signed_on' | 'f8879_document' | 'f8879_variant';
 
 export async function correctFiling(
   app: FastifyInstance,
@@ -493,11 +540,17 @@ export async function correctFiling(
 ): Promise<{ id: string; fields: FilingCorrectionField[]; before: Record<string, unknown>; after: Record<string, unknown>; preparer: { id: string; name: string } | null }> {
   const { rows } = await app.db.query<{
     id: string; stage: TaxStage; contact_id: string; filed_date: string | null; preparer_ptin_holder_id: string | null;
-    preparer_id: string | null; f8879_signed_on: string | null;
+    preparer_id: string | null; f8879_signed_on: string | null; f8879_document_id: string | null; f8879_variant: string | null;
+    tax_year: number; fiscal_year_end_month: number | null;
   }>(
     `SELECT te.id, te.stage, e.contact_id, te.filed_date::text AS filed_date, te.preparer_ptin_holder_id, te.preparer_id,
-            te.f8879_signed_at::date::text AS f8879_signed_on
-       FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`,
+            te.f8879_signed_at::date::text AS f8879_signed_on, te.f8879_document_id, d.f8879_variant,
+            te.tax_year, b.fiscal_year_end_month
+       FROM tax_engagements te
+       JOIN engagements e ON e.id = te.engagement_id
+       LEFT JOIN businesses b ON b.id = e.business_id
+       LEFT JOIN documents d ON d.id = te.f8879_document_id
+      WHERE te.id = $1`,
     [taxEngagementId]
   );
   const te = rows[0];
@@ -510,12 +563,56 @@ export async function correctFiling(
   const before: Record<string, unknown> = {};
   const after: Record<string, unknown> = {};
 
+  /*
+   * THE SIGNED DAY (R69). The same two rules the upload holds — not after today, not before the tax
+   * year closed — and a third the upload cannot know yet: never after the filed day, because a return
+   * is authorized first and filed after. The filed-date rule below reads THIS value when both move.
+   */
+  let signedOn: string | null = null;
+  if (input.f8879SignedOn !== undefined && calendarDay(input.f8879SignedOn, 'f8879SignedOn') !== te.f8879_signed_on) {
+    if (!te.f8879_signed_on) throw new AppError(409, 'f8879_required', 'No signed 8879 is on file for this return; upload the scan before correcting its date.');
+    signedOn = assertSignedOn(input.f8879SignedOn, te, 'signed 8879');
+    fields.push('f8879_signed_on');
+    before['f8879_signed_on'] = te.f8879_signed_on;
+    after['f8879_signed_on'] = signedOn;
+  }
+  const signedOnEffective = signedOn ?? te.f8879_signed_on;
+
   let filedOn: string | null = null;
   if (input.filedOn !== undefined && calendarDay(input.filedOn, 'filedOn') !== te.filed_date) {
-    filedOn = assertFiledOn(input.filedOn, te.f8879_signed_on);
+    filedOn = assertFiledOn(input.filedOn, signedOnEffective);
     fields.push('filed_date');
     before['filed_date'] = te.filed_date;
     after['filed_date'] = filedOn;
+  }
+  assertSignedNotAfterFiled(signedOn, filedOn ?? te.filed_date);
+
+  /*
+   * THE SCAN, REPLACED (R69, amended 2026-09-27). The replacement is a document already uploaded
+   * through the documents door under Signed Authorizations for this client, linked to this return
+   * or to none; the four questions the upload asks are asked here (checkedAuthorizationDocument).
+   * The previous row is not touched except to be marked superseded, inside the transaction below.
+   */
+  let replacement: { id: string } | null = null;
+  if (input.f8879DocumentId !== undefined && input.f8879DocumentId !== te.f8879_document_id) {
+    if (!te.f8879_document_id) throw new AppError(409, 'f8879_required', 'No signed 8879 is on file for this return; upload the scan through the return\'s row instead of replacing one.');
+    replacement = await checkedAuthorizationDocument(app, te, input.f8879DocumentId, 'signed 8879');
+    fields.push('f8879_document');
+    before['f8879_document'] = te.f8879_document_id;
+    after['f8879_document'] = replacement.id;
+  }
+
+  /* WHICH 8879 (R66): the form the paper is, written on the document row (the replacement's when one arrives with it). */
+  let variant: F8879Variant | null = null;
+  if (input.f8879Variant !== undefined) {
+    const v = assertF8879Variant(input.f8879Variant);
+    if (v !== te.f8879_variant) {
+      if (!te.f8879_document_id) throw new AppError(409, 'f8879_required', 'No signed 8879 is on file for this return; upload the scan before naming its form.');
+      variant = v;
+      fields.push('f8879_variant');
+      before['f8879_variant'] = te.f8879_variant;
+      after['f8879_variant'] = v;
+    }
   }
 
   let holder: { id: string; name: string } | null = null;
@@ -570,10 +667,42 @@ export async function correctFiling(
     await app.db.query(
       `UPDATE tax_engagements
           SET filed_date = COALESCE($2::date, filed_date),
-              preparer_ptin_holder_id = COALESCE($3::uuid, preparer_ptin_holder_id)
+              preparer_ptin_holder_id = COALESCE($3::uuid, preparer_ptin_holder_id),
+              f8879_signed_at = COALESCE($4::date::timestamptz, f8879_signed_at),
+              f8879_document_id = COALESCE($5::uuid, f8879_document_id)
         WHERE id = $1`,
-      [taxEngagementId, filedOn, holder?.id ?? null]
+      [taxEngagementId, filedOn, holder?.id ?? null, signedOn, replacement?.id ?? null]
     );
+    if (signedOn) {
+      // The envelope row is the queryable record of the signature; it reads the corrected day too.
+      await app.db.query(
+        `UPDATE signature_envelopes SET completed_at = $2::date::timestamptz WHERE tax_engagement_id = $1 AND type = 'f8879'`,
+        [taxEngagementId, signedOn]
+      );
+    }
+    if (replacement) {
+      // KEPT AND MARKED, NEVER DELETED: the old scan stays downloadable; the new one carries the form.
+      await app.db.query(
+        `UPDATE documents SET superseded_by = $2, superseded_at = now() WHERE id = $1`,
+        [te.f8879_document_id, replacement.id]
+      );
+      await app.db.query(
+        `UPDATE documents SET tax_engagement_id = COALESCE(tax_engagement_id, $2), f8879_variant = COALESCE($3, f8879_variant, $4) WHERE id = $1`,
+        [replacement.id, taxEngagementId, variant, te.f8879_variant]
+      );
+      await app.db.query(
+        `UPDATE signature_envelopes SET signed_document_id = $3 WHERE tax_engagement_id = $1 AND type = 'f8879' AND signed_document_id = $2`,
+        [taxEngagementId, te.f8879_document_id, replacement.id]
+      );
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.staffId, actorLabel: actor.label,
+        action: 'document.superseded', objectType: 'document', objectId: te.f8879_document_id!,
+        contactId: te.contact_id, ip: actor.ip ?? null, userAgent: actor.userAgent ?? null,
+        details: { superseded_by: replacement.id, correction_id: id, tax_engagement_id: taxEngagementId },
+      });
+    } else if (variant) {
+      await app.db.query(`UPDATE documents SET f8879_variant = $2 WHERE id = $1`, [te.f8879_document_id, variant]);
+    }
     for (const j of added) {
       await app.db.query(
         `INSERT INTO tax_engagement_jurisdictions (tax_engagement_id, jurisdiction, filing_method) VALUES ($1, $2, $3)
@@ -602,6 +731,116 @@ export async function correctFiling(
 /** 'federal' reads as Federal in a refusal; a state as its code. */
 function jurisdictionName(j: string): string {
   return j === 'federal' ? 'Federal' : j;
+}
+
+/*
+ * REOPEN A COMPLETED RETURN (Brian, 2026-09-26, R67).
+ *
+ * `completed` was terminal: TRANSITIONS.completed is [] and stays so, because a return does not
+ * DRIFT out of completed — it is taken out, by one person, for a reason written down. The CEO alone
+ * holds the door (engagements.tax.reopen, explicit-only: the wildcard does not reach it).
+ *
+ * WHAT IT DOES, in one transaction:
+ *   · the engagement holding the return returns to active (ended_on and close_reason cleared; the
+ *     lifecycle trigger moves a dormant contact back to onboarding);
+ *   · every declared jurisdiction row is stamped reopened_at, so the answer already on it — the
+ *     acceptance or the mailing that completed the return — no longer counts (answerIsFresh); a
+ *     return filed before the jurisdictions table existed gets its rows declared here first, from
+ *     what completion was measured against, so the rule has rows to sit on;
+ *   · the return goes back to FILED with reopened_at and the reason; efile_accepted_at and the
+ *     acceptance summary columns are cleared (the audit row keeps what they said), so the next
+ *     acceptance re-stamps them and nothing reads "the IRS said yes" about the filing in doubt;
+ *   · a stage-history line and two audit rows: tax_engagement.reopened and engagement.reopened.
+ *
+ * WHAT FOLLOWS: the return is open again on every count (the executive view, the queue, the
+ * engagement list), and it completes the way any filed return completes — a NEW acceptance or
+ * mailing on every jurisdiction, recorded after this instant. Gate 4 in transitionStage refuses
+ * anything else.
+ */
+export async function reopenCompletedReturn(
+  app: FastifyInstance,
+  actor: { staffId: string; label: string; ip?: string | null | undefined; userAgent?: string | null | undefined },
+  taxEngagementId: string,
+  reason: string
+): Promise<{ id: string; stage: TaxStage; engagementId: string; engagementStatus: string; jurisdictionsNeedingAnswer: string[] }> {
+  const { rows } = await app.db.query<{
+    id: string; stage: TaxStage; engagement_id: string; contact_id: string; engagement_status: string;
+    efile_accepted_at: Date | null; federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null;
+  }>(
+    `SELECT te.id, te.stage, te.engagement_id, e.contact_id, e.status::text AS engagement_status,
+            te.efile_accepted_at, te.federal_accepted_on::text AS federal_accepted_on,
+            te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code
+       FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`,
+    [taxEngagementId]
+  );
+  const te = rows[0];
+  if (!te) throw new AppError(404, 'not_found', 'Tax engagement not found.');
+  if (te.stage !== 'completed') {
+    throw new AppError(409, 'not_completed', `Only a completed return is reopened — this one is '${te.stage}'.`);
+  }
+  if (te.engagement_status === 'withdrawn') {
+    throw new AppError(409, 'engagement_withdrawn', 'The engagement holding this return was withdrawn; a withdrawn engagement is not reopened, a new one is quoted.');
+  }
+
+  return withTransaction(app.db, async () => {
+    const status = await acceptanceStatus(app, taxEngagementId);
+    // The engagement first: the return is open work again, and open work sits in an active engagement.
+    if (te.engagement_status === 'completed') {
+      await app.db.query(
+        `UPDATE engagements SET status = 'active', ended_on = NULL, close_reason = NULL WHERE id = $1`,
+        [te.engagement_id]
+      );
+    }
+    // Rows for the rule to sit on: a return completed before ruling 2 declared nothing.
+    if (status.declaredJurisdictions.length === 0) {
+      for (const j of status.expected) {
+        const acceptedOn = j === 'federal' ? te.federal_accepted_on : te.state_accepted_code === j ? te.state_accepted_on : null;
+        await app.db.query(
+          `INSERT INTO tax_engagement_jurisdictions (tax_engagement_id, jurisdiction, filing_method, accepted_on, answered_at)
+           VALUES ($1, $2, $3, $4::date, CASE WHEN $4::date IS NULL THEN NULL ELSE now() END)
+           ON CONFLICT (tax_engagement_id, jurisdiction) DO NOTHING`,
+          [taxEngagementId, j, status.defaultFilingMethod, acceptedOn]
+        );
+      }
+    }
+    await app.db.query(`UPDATE tax_engagement_jurisdictions SET reopened_at = now() WHERE tax_engagement_id = $1`, [taxEngagementId]);
+    await app.db.query(
+      `UPDATE tax_engagements
+          SET stage = 'filed', reopened_at = now(), reopen_reason = $2,
+              efile_accepted_at = NULL, federal_accepted_on = NULL, state_accepted_on = NULL, state_accepted_code = NULL
+        WHERE id = $1`,
+      [taxEngagementId, reason]
+    );
+    await app.db.query(
+      `INSERT INTO engagement_stage_history (tax_engagement_id, stage, changed_by_staff_id, waiting_on, note)
+       VALUES ($1, 'filed', $2, 'staff', $3)`,
+      [taxEngagementId, actor.staffId, `reopened: ${reason}`]
+    );
+    const after = await acceptanceStatus(app, taxEngagementId);
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.staffId, actorLabel: actor.label,
+      action: 'tax_engagement.reopened', objectType: 'tax_engagement', objectId: taxEngagementId,
+      contactId: te.contact_id, ip: actor.ip ?? null, userAgent: actor.userAgent ?? null,
+      details: {
+        from: 'completed', to: 'filed', reason, engagement_id: te.engagement_id,
+        jurisdictions_needing_answer: after.awaiting,
+        previous: {
+          efile_accepted_at: te.efile_accepted_at, federal_accepted_on: te.federal_accepted_on,
+          state_accepted_on: te.state_accepted_on, state_accepted_code: te.state_accepted_code,
+        },
+      },
+    });
+    if (te.engagement_status === 'completed') {
+      await writeAudit(app.db, {
+        actorType: 'staff', actorId: actor.staffId, actorLabel: actor.label,
+        action: 'engagement.reopened', objectType: 'engagement', objectId: te.engagement_id,
+        contactId: te.contact_id, ip: actor.ip ?? null, userAgent: actor.userAgent ?? null,
+        details: { reason, tax_engagement_id: taxEngagementId, from: 'completed', to: 'active' },
+      });
+    }
+    const eng = await app.db.query<{ status: string }>(`SELECT status::text AS status FROM engagements WHERE id = $1`, [te.engagement_id]);
+    return { id: taxEngagementId, stage: 'filed', engagementId: te.engagement_id, engagementStatus: eng.rows[0]!.status, jurisdictionsNeedingAnswer: after.awaiting };
+  });
 }
 
 // ── v4.3 flow 1: e-file acceptance / rejection ──────────────────────────────
@@ -710,6 +949,22 @@ export interface DeclaredJurisdiction {
   mailingMethod: MailingMethod | null;
   trackingNumber: string | null;
   receiptDocumentId: string | null;
+  /**
+   * R67: the return was reopened after this row's acceptance or mailing was recorded, so that answer
+   * no longer counts; the row needs a new one. False on a row that has never answered, or answered
+   * after the reopen.
+   */
+  answerStale: boolean;
+}
+
+/**
+ * THE ONE PLACE THAT DECIDES WHETHER AN ANSWER STILL COUNTS (R67). A row answered before the return
+ * was reopened is stale: the reopen was the firm saying that answer is in doubt. Fresh means never
+ * reopened while this row stood, or answered after the reopen instant.
+ */
+export function answerIsFresh(row: { answeredAt: Date | null; reopenedAt: Date | null }): boolean {
+  if (!row.reopenedAt) return true;
+  return row.answeredAt !== null && row.answeredAt.getTime() > row.reopenedAt.getTime();
 }
 
 export interface AcceptanceStatus {
@@ -730,6 +985,8 @@ export interface AcceptanceStatus {
   defaultFilingMethod: FilingMethod;
   /** Declared on paper with no mailing recorded — each one needs a Record mailing before completion. */
   paperAwaitingMailing: string[];
+  /** R67: declared rows whose recorded answer predates a reopen — each needs a new acceptance or mailing. */
+  stale: string[];
   /** Compatibility: the summary columns every other reader still uses. */
   federalAcceptedOn: string | null;
   stateAcceptedOn: string | null;
@@ -792,22 +1049,28 @@ export async function acceptanceStatus(
   const decl = await app.db.query<{
     jurisdiction: string; accepted_on: string | null; filing_method: string | null;
     mailed_on: string | null; mailing_method: string | null; tracking_number: string | null; receipt_document_id: string | null;
+    answered_at: Date | null; reopened_at: Date | null;
   }>(
     `SELECT jurisdiction, accepted_on::text AS accepted_on, filing_method,
-            mailed_on::text AS mailed_on, mailing_method, tracking_number, receipt_document_id
+            mailed_on::text AS mailed_on, mailing_method, tracking_number, receipt_document_id,
+            answered_at, reopened_at
        FROM tax_engagement_jurisdictions
       WHERE tax_engagement_id = $1 ORDER BY (jurisdiction <> 'federal'), jurisdiction`,
     [taxEngagementId]
   );
-  const declared: DeclaredJurisdiction[] = decl.rows.map((d) => ({
-    jurisdiction: d.jurisdiction,
-    filingMethod: (d.filing_method as FilingMethod | null) ?? defaultFilingMethod,
-    acceptedOn: d.accepted_on,
-    mailedOn: d.mailed_on,
-    mailingMethod: d.mailing_method as MailingMethod | null,
-    trackingNumber: d.tracking_number,
-    receiptDocumentId: d.receipt_document_id,
-  }));
+  const declared: DeclaredJurisdiction[] = decl.rows.map((d) => {
+    const answered = d.accepted_on !== null || d.mailed_on !== null;
+    return {
+      jurisdiction: d.jurisdiction,
+      filingMethod: (d.filing_method as FilingMethod | null) ?? defaultFilingMethod,
+      acceptedOn: d.accepted_on,
+      mailedOn: d.mailed_on,
+      mailingMethod: d.mailing_method as MailingMethod | null,
+      trackingNumber: d.tracking_number,
+      receiptDocumentId: d.receipt_document_id,
+      answerStale: answered && !answerIsFresh({ answeredAt: d.answered_at, reopenedAt: d.reopened_at }),
+    };
+  });
   const declaredJurisdictions = declared.map((d) => d.jurisdiction);
   const expected = declaredJurisdictions.length > 0 ? declaredJurisdictions : defaults;
   const stateCode = normaliseState(r.state_accepted_code);
@@ -815,12 +1078,13 @@ export async function acceptanceStatus(
     ...(r.federal_accepted_on ? ['federal'] : []),
     ...(r.state_accepted_on && stateCode && expected.includes(stateCode) ? [stateCode] : []),
   ];
+  // R67: an answer recorded before a reopen is not an answer to THIS filing; only fresh ones count.
   const accepted =
-    declaredJurisdictions.length > 0 ? declared.filter((d) => d.acceptedOn).map((d) => d.jurisdiction) : summaryAccepted;
+    declaredJurisdictions.length > 0 ? declared.filter((d) => !d.answerStale && d.acceptedOn !== null).map((d) => d.jurisdiction) : summaryAccepted;
   const satisfied =
     declaredJurisdictions.length > 0
       ? declared
-          .filter((d) => (d.filingMethod === 'paper' ? d.mailedOn !== null : d.acceptedOn !== null))
+          .filter((d) => !d.answerStale && (d.filingMethod === 'paper' ? d.mailedOn !== null : d.acceptedOn !== null))
           .map((d) => d.jurisdiction)
       : summaryAccepted;
   const awaiting = expected.filter((j) => !satisfied.includes(j));
@@ -833,7 +1097,8 @@ export async function acceptanceStatus(
     awaiting,
     rows: declared,
     defaultFilingMethod,
-    paperAwaitingMailing: declared.filter((d) => d.filingMethod === 'paper' && !d.mailedOn).map((d) => d.jurisdiction),
+    paperAwaitingMailing: declared.filter((d) => d.filingMethod === 'paper' && (!d.mailedOn || d.answerStale)).map((d) => d.jurisdiction),
+    stale: declared.filter((d) => d.answerStale).map((d) => d.jurisdiction),
     federalAcceptedOn: r.federal_accepted_on,
     stateAcceptedOn: r.state_accepted_on,
     stateAcceptedCode: r.state_accepted_code,
@@ -872,12 +1137,19 @@ export async function stampJurisdictionAccepted(
     return { ok: false, reason: 'paper' };
   }
   if (status.declaredJurisdictions.length > 0) {
+    /*
+     * R67: a row whose answer is STALE (recorded before the return was reopened) takes the new
+     * acceptance whole — the day, the submission, and the instant it was recorded — because that is
+     * the answer the reopen asked for. A fresh row keeps its first acceptance, as before.
+     */
+    const stale = status.rows.find((d) => d.jurisdiction === jurisdiction)?.answerStale === true;
     await app.db.query(
       `UPDATE tax_engagement_jurisdictions
-          SET accepted_on = COALESCE(accepted_on, $3::date, CURRENT_DATE),
-              submission_id = COALESCE(submission_id, $4)
+          SET accepted_on = CASE WHEN $5 THEN COALESCE($3::date, CURRENT_DATE) ELSE COALESCE(accepted_on, $3::date, CURRENT_DATE) END,
+              submission_id = CASE WHEN $5 THEN $4 ELSE COALESCE(submission_id, $4) END,
+              answered_at = CASE WHEN $5 THEN now() ELSE COALESCE(answered_at, now()) END
         WHERE tax_engagement_id = $1 AND jurisdiction = $2`,
-      [taxEngagementId, jurisdiction, acceptedOn, submissionId]
+      [taxEngagementId, jurisdiction, acceptedOn, submissionId, stale]
     );
   }
   if (jurisdiction === 'federal') {
@@ -1126,7 +1398,8 @@ export async function recordJurisdictionMailing(
       `${code} was e-filed on this return, so it is satisfied by an acknowledgment rather than a mailing. Change its filing method on the return if it actually went out on paper.`
     );
   }
-  if (row.mailedOn) {
+  // R67: a mailing recorded before the return was reopened is the one in doubt; a new one may be recorded.
+  if (row.mailedOn && !row.answerStale) {
     throw new AppError(
       409,
       'mailing_already_recorded',
@@ -1137,7 +1410,7 @@ export async function recordJurisdictionMailing(
   const tracking = input.trackingNumber?.trim() || null;
   await app.db.query(
     `UPDATE tax_engagement_jurisdictions
-        SET mailed_on = $3::date, mailing_method = $4, tracking_number = $5, receipt_document_id = $6
+        SET mailed_on = $3::date, mailing_method = $4, tracking_number = $5, receipt_document_id = $6, answered_at = now()
       WHERE tax_engagement_id = $1 AND jurisdiction = $2`,
     [taxEngagementId, code, input.mailedOn, input.method, tracking, input.receiptDocumentId ?? null]
   );

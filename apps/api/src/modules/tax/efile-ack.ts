@@ -175,7 +175,7 @@ function parseJurisdiction(raw: string): { jurisdiction: Jurisdiction; stateCode
 const RETURN_TYPE_FAMILY: Record<string, string> = {
   '1040': '1040', '1040_expat': '1040', '1041': '1041', '1065': '1065', '1120s': '1120s', '1120': '1120',
   '1120c': '1120c', '1120f': '1120f', '1120f_foreign': '1120f', '1120h': '1120h', '1120pol': '1120pol',
-  '990': '990', '990ez': '990ez',
+  '990': '990', '990ez': '990ez', '990pf': '990pf', '990t': '990t',
 };
 export function returnTypesForFamily(family: string): string[] {
   return Object.entries(RETURN_TYPE_FAMILY).filter(([, f]) => f === family).map(([t]) => t);
@@ -184,7 +184,7 @@ export function returnTypesForFamily(family: string): string[] {
 const EXTENSION_FAMILIES: Record<ExtensionForm, string[]> = {
   '4868': ['1040'],
   '7004': ['1065', '1120s', '1120', '1120c', '1120f', '1120h', '1120pol', '1041'],
-  '8868': ['990', '990ez'],
+  '8868': ['990', '990ez', '990pf', '990t'],
 };
 
 /*
@@ -196,7 +196,7 @@ const EXTENSION_FAMILIES: Record<ExtensionForm, string[]> = {
  */
 const FAMILY_RULES: Array<[RegExp, string]> = [
   [/^1120S/, '1120s'], [/^1120H/, '1120h'], [/^1120F/, '1120f'], [/^1120POL/, '1120pol'], [/^1120C/, '1120c'], [/^1120/, '1120'],
-  [/^1065/, '1065'], [/^990EZ/, '990ez'], [/^990/, '990'], [/^1041/, '1041'], [/^1040/, '1040'],
+  [/^1065/, '1065'], [/^990EZ/, '990ez'], [/^990PF/, '990pf'], [/^990T/, '990t'], [/^990/, '990'], [/^1041/, '1041'], [/^1040/, '1040'],
   // State entity forms seen on exports: California 100S/100/565/568, New York CT-3-S/CT-3/IT-204.
   [/^100S/, '1120s'], [/^100$/, '1120'], [/^(565|568)/, '1065'], [/^CT3S/, '1120s'], [/^CT3$/, '1120'], [/^IT204/, '1065'],
   // State individual forms: California, New York, Indiana, North Carolina, Wisconsin, Minnesota, Pennsylvania,

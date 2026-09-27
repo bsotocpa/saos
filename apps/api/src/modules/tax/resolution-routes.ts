@@ -16,7 +16,7 @@ import {
 import { composeBundle, composeYearGrid } from '../pricing/bundles.ts';
 
 const RETURN_TYPES = [
-  '1040', '1065', '1120s', '1120', '990', '990ez', '1120c', '1120f', '1120h', '1120pol',
+  '1040', '1065', '1120s', '1120', '990', '990ez', '990pf', '990t', '1120c', '1120f', '1120h', '1120pol',
   '1041', '1120f_foreign', '1040_expat', 'fbar', 'w7_itin', 'ag990il',
 ] as const;
 
