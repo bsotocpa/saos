@@ -320,8 +320,13 @@ export default function ClientPacketPage() {
    * count; any other failure keeps the empty state it had.
    */
   const [unavailable, setUnavailable] = useState<Record<string, boolean>>({});
+  // A CARD'S COUNT RENDERS ONLY ONCE ITS READ HAS ANSWERED (2026-09-27). Until then the heading is the
+  // name alone: a "(0)" that showed for the instant before a 403 arrived was a wrong number on the page.
+  const [settled, setSettled] = useState<Record<string, boolean>>({});
+  const settle = (card: string) => setSettled((c) => ({ ...c, [card]: true }));
   const refused = (card: string, empty: () => void) => (err: unknown) => {
     empty();
+    settle(card);
     if ((err as { status?: number }).status === 403) setUnavailable((u) => ({ ...u, [card]: true }));
   };
   const [addingBusiness, setAddingBusiness] = useState(false);
@@ -400,7 +405,7 @@ export default function ClientPacketPage() {
           })
           .catch(refused('returns', () => { setReturns([]); setJurisdictions({}); setCorrections({}); })),
         api<{ documents: Doc[] }>(`/documents?contactId=${params.id}`)
-          .then((r) => setDocs(r.documents ?? []))
+          .then((r) => { setDocs(r.documents ?? []); settle('documents'); })
           .catch(refused('documents', () => setDocs([]))),
         api<{ quotes: Quote[] }>(`/contacts/${params.id}/quotes`)
           .then((r) => setQuotes(r.quotes ?? []))
@@ -409,7 +414,7 @@ export default function ClientPacketPage() {
           .then((r) => setEngagements(r.engagements ?? []))
           .catch(refused('engagements', () => setEngagements([]))),
         api<{ invoices: Invoice[] }>(`/invoices?contactId=${params.id}`)
-          .then((r) => setInvoices(r.invoices ?? []))
+          .then((r) => { setInvoices(r.invoices ?? []); settle('invoices'); })
           .catch(refused('invoices', () => setInvoices([]))),
         api<{ session: NextSession | null }>(`/contacts/${params.id}/next-session`)
           .then((r) => setNextSession(r.session ?? null))
@@ -1066,7 +1071,7 @@ export default function ClientPacketPage() {
         </section>
 
         <section className="card">
-          <h2>Documents{unavailable.documents ? '' : ` (${docs.length})`}</h2>
+          <h2>Documents{unavailable.documents || !settled.documents ? '' : ` (${docs.length})`}</h2>
           {unavailable.documents ? (
             <RoleUnavailable card="documents" />
           ) : docs.length === 0 ? (
@@ -1693,7 +1698,7 @@ export default function ClientPacketPage() {
         a call.
       */}
       <section className="card" style={{ marginTop: 12 }}>
-        <h2>Invoices{unavailable.invoices ? '' : ` (${invoices.length})`}</h2>
+        <h2>Invoices{unavailable.invoices || !settled.invoices ? '' : ` (${invoices.length})`}</h2>
         {unavailable.invoices ? (
           <RoleUnavailable card="invoices" />
         ) : invoices.length === 0 ? (

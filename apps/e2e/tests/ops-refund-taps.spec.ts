@@ -332,7 +332,12 @@ test.describe('Ops → the refund door', () => {
 
     await signIn(page, fixtures.wall.bookkeeper);
     await page.goto(`/clients/${fixtures.contactId}`);
-    await expect(page.getByRole('heading', { name: /Invoices \(/ })).toBeVisible();
+    // R64 (2026-09-26): the bookkeeper holds no billing.manage, so her Invoices card carries no count and
+    // says so. (The old "(0)" heading only ever showed for the instant before the 403 arrived: runs 14
+    // and 15 caught that instant, run 16 did not. The assertion now reads the settled card.)
+    const invoicesCard = page.locator('section.card', { has: page.getByRole('heading', { name: /^Invoices/ }) });
+    await expect(invoicesCard.getByRole('heading', { name: /^Invoices$/ })).toBeVisible();
+    await expect(invoicesCard.getByText('Not available to your role')).toBeVisible();
     await expect(page.getByText(paid.invoiceNumber), 'the invoice is not on her page').toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Refund…' }), 'and no Refund control anywhere on it').toHaveCount(0);
 
