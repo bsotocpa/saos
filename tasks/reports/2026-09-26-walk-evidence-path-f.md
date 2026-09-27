@@ -1,11 +1,11 @@
 # walk-evidence-path-f (2026-09-26)
 
-Generated 2026-09-27T00:04:25.157Z by scripts/report-table.mjs from the log walk-f.log; 10 row(s).
+Generated 2026-09-27T00:21:42.539Z by scripts/report-table.mjs from the log walk-f.log; 10 row(s).
 
 Filed on and the filing corrected: F1 to F4 are the CEO taps at 390 and 1280 on a synthetic 1120S each viewport opens through the API doors and files from the row; the role proof is the bookkeeper, who has no Correct the filing control and is refused 403.
 
 ```sql
-node scripts/walk-evidence.mjs F  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-26: 93 passed, 1 failed)
+node scripts/walk-evidence.mjs F  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-26: 94 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
