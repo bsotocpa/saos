@@ -1,6 +1,6 @@
 # stripe-refund-test-mode (2026-09-20)
 
-Generated 2026-09-27T07:31:16.888Z by scripts/report-table.mjs from the log stripe-refund-test-mode.log; 16 row(s).
+Generated 2026-09-27T07:59:51.527Z by scripts/report-table.mjs from the log stripe-refund-test-mode.log; 16 row(s).
 
 The Ops refund door against Stripe's real test-mode API: two test-card payments, one full refund and one partial-then-remainder through the adapter, Stripe's own charge.refunded events signed and posted to the webhook, each reconciled to the door's row and counted once on the money line; a replay is a duplicate and a forgery is refused.
 
@@ -11,18 +11,18 @@ cd apps/api && node --test test/stripe-refund-live.spec.ts  (Stripe TEST mode; t
 | step | what | result |
 |---|---|---|
 | adapter | makeStripeAdapter with STRIPE_MODE=live and the key from STRIPE_TEST_SECRET_KEY | mode=live, keyMode=test |
-| payment | PaymentIntent pi_3UKCYCITVkZx9n3n2BP8nZQs for 2000 cents with pm_card_visa, linked to invoice ST-2026-A | succeeded |
-| payment | PaymentIntent pi_3UKCYDITVkZx9n3n114RBsQY for 2000 cents with pm_card_visa, linked to invoice ST-2026-B | succeeded |
-| refund | ST-2026-A: 2000 cents through POST /invoices/:id/refund → adapter createRefund → re_3UKCYCITVkZx9n3n2cD9lJIb | refunded; Stripe says succeeded for 2000 |
-| refund | ST-2026-B: 750 cents through POST /invoices/:id/refund → adapter createRefund → re_3UKCYDITVkZx9n3n1zMF3b9a | partially_refunded; Stripe says succeeded for 750 |
-| refund | ST-2026-B: 1250 cents through POST /invoices/:id/refund → adapter createRefund → re_3UKCYDITVkZx9n3n1rQ7MxrB | refunded; Stripe says succeeded for 1250 |
+| payment | PaymentIntent pi_3UKCzqITVkZx9n3n2m2q4Vgk for 2000 cents with pm_card_visa, linked to invoice ST-2026-A | succeeded |
+| payment | PaymentIntent pi_3UKCzrITVkZx9n3n1K5u1u8r for 2000 cents with pm_card_visa, linked to invoice ST-2026-B | succeeded |
+| refund | ST-2026-A: 2000 cents through POST /invoices/:id/refund → adapter createRefund → re_3UKCzqITVkZx9n3n2203GHvU | refunded; Stripe says succeeded for 2000 |
+| refund | ST-2026-B: 750 cents through POST /invoices/:id/refund → adapter createRefund → re_3UKCzrITVkZx9n3n1a0nI1Wa | partially_refunded; Stripe says succeeded for 750 |
+| refund | ST-2026-B: 1250 cents through POST /invoices/:id/refund → adapter createRefund → re_3UKCzrITVkZx9n3n1HaMgZ1x | refunded; Stripe says succeeded for 1250 |
 | charge | retrieveCharge for A and B after the refunds | A refunded=true 2000; B refunds=2 2000 |
-| events | Stripe Events API listed charge.refunded for the two payments | 3 event(s): evt_3UKCYCITVkZx9n3n28Rru4Oe, evt_3UKCYDITVkZx9n3n1EoyBLOL, evt_3UKCYDITVkZx9n3n1q7DNKn0 |
-| webhook | evt_3UKCYCITVkZx9n3n28Rru4Oe (ST-2026-A) signed with STRIPE_TEST_WEBHOOK_SECRET, POST /webhooks/stripe | refunded; recorded 0, reconciled 1, reconciledToTheDoor true |
-| webhook | evt_3UKCYDITVkZx9n3n1EoyBLOL (ST-2026-B) signed with STRIPE_TEST_WEBHOOK_SECRET, POST /webhooks/stripe | refunded; recorded 0, reconciled 1, reconciledToTheDoor true |
-| webhook | evt_3UKCYDITVkZx9n3n1q7DNKn0 (ST-2026-B) signed with STRIPE_TEST_WEBHOOK_SECRET, POST /webhooks/stripe | refunded; recorded 0, reconciled 2, reconciledToTheDoor true |
+| events | Stripe Events API listed charge.refunded for the two payments | 3 event(s): evt_3UKCzqITVkZx9n3n2vMC01Ne, evt_3UKCzrITVkZx9n3n1zKUvLVt, evt_3UKCzrITVkZx9n3n1kmcYlmy |
+| webhook | evt_3UKCzqITVkZx9n3n2vMC01Ne (ST-2026-A) signed with STRIPE_TEST_WEBHOOK_SECRET, POST /webhooks/stripe | refunded; recorded 0, reconciled 1, reconciledToTheDoor true |
+| webhook | evt_3UKCzrITVkZx9n3n1zKUvLVt (ST-2026-B) signed with STRIPE_TEST_WEBHOOK_SECRET, POST /webhooks/stripe | refunded; recorded 0, reconciled 1, reconciledToTheDoor true |
+| webhook | evt_3UKCzrITVkZx9n3n1kmcYlmy (ST-2026-B) signed with STRIPE_TEST_WEBHOOK_SECRET, POST /webhooks/stripe | refunded; recorded 0, reconciled 2, reconciledToTheDoor true |
 | row | ST-2026-A after the webhook | refunded, 2000 cents, 1 refund row(s) with actor and event, 1 receipt(s), audit invoice.refund_issued+invoice.refund_reconciled |
 | row | ST-2026-B after the webhook | refunded, 2000 cents, 2 refund row(s) with actor and event, 2 receipt(s), audit invoice.refund_issued+invoice.refund_issued+invoice.refund_reconciled+invoice.refund_reconciled |
 | money line | moneyLineToday after the webhook | byStaff A=1 B=2, outsideTheDoor 0 |
-| replay | evt_3UKCYDITVkZx9n3n1q7DNKn0 posted a second time | duplicate; rows, amount and receipts unchanged |
-| forgery | evt_3UKCYCITVkZx9n3n28Rru4Oe signed with a wrong secret | 401 Stripe signature verification failed: No signatures found matching the expected signature for payload. Are you passing the raw request body you received from Stripe? If a webhook request is being forwarded by a third-party tool, ensure that the exact request body, including JSON formatting and new line style, is preserved. Learn more about webhook signing and explore webhook integration examples for various frameworks at https://docs.stripe.com/webhooks/signature . |
+| replay | evt_3UKCzrITVkZx9n3n1kmcYlmy posted a second time | duplicate; rows, amount and receipts unchanged |
+| forgery | evt_3UKCzqITVkZx9n3n2vMC01Ne signed with a wrong secret | 401 Stripe signature verification failed: No signatures found matching the expected signature for payload. Are you passing the raw request body you received from Stripe? If a webhook request is being forwarded by a third-party tool, ensure that the exact request body, including JSON formatting and new line style, is preserved. Learn more about webhook signing and explore webhook integration examples for various frameworks at https://docs.stripe.com/webhooks/signature . |

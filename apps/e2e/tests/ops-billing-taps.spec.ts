@@ -228,9 +228,12 @@ test.describe('Ops → the void and test-client doors', () => {
 
     await signIn(page, fixtures.wall.bookkeeper);
 
-    // The money door: the Invoices card cannot even load for her, so there is no Void to tap.
+    // The money door: the Invoices card cannot even load for her, so there is no Void to tap. Since R64
+    // the card says so ("Not available to your role") and carries no count.
     await page.goto(`/clients/${fixtures.contactId}`);
-    await expect(page.getByRole('heading', { name: /Invoices \(/ })).toBeVisible();
+    const herInvoices = page.locator('section.card', { has: page.getByRole('heading', { name: /^Invoices/ }) });
+    await expect(herInvoices.getByRole('heading', { name: /^Invoices$/ })).toBeVisible();
+    await expect(herInvoices.getByText('Not available to your role')).toBeVisible();
     await expect(page.getByText(sent.invoiceNumber), 'the invoice is not on her page').toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Void…' }), 'and no Void control anywhere on it').toHaveCount(0);
 
