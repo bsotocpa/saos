@@ -1,6 +1,6 @@
 # edit-doors (2026-09-27)
 
-Generated 2026-09-27T08:29:36.755Z by scripts/report-table.mjs from the log edit-doors.log; 37 row(s).
+Generated 2026-09-27T08:51:58.656Z by scripts/report-table.mjs from the log edit-doors.log; 37 row(s).
 
 Every entity with a create control has an edit control tapped at both viewports, or an explicit "immutable because" entry (R38); the guard scripts/check-edit-doors.mjs fails the root chain when a create route has no update route with a UI caller and the entity is not marked immutable.
 

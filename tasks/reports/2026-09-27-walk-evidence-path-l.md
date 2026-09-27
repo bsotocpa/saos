@@ -1,6 +1,6 @@
 # walk-evidence-path-l (2026-09-27)
 
-Generated 2026-09-27T08:29:35.608Z by scripts/report-table.mjs from the log walk-l.log; 6 row(s).
+Generated 2026-09-27T08:51:57.447Z by scripts/report-table.mjs from the log walk-l.log; 6 row(s).
 
 The billing hold on an imported engagement (R68, 2026-09-26): ops-billing-hold.spec.ts at 390 and 1280, on a sales-tax engagement the Trello importer's own function (applyRecurringServiceFact) made at boot, one held client per viewport. L1 the CEO reads the badge "Billing on hold (imported)" with the importer's reason as its title, the status sentence "Active · billing on hold (imported)" and the Lift billing hold… control; L2 the lift with a reason (a chat-artifact reason refused under the field in the server's words, then the real one), the confirmation sentence and the badge gone from the re-read row; L3 the role proof: ed_coo reads the badge with no control, comms_billing has no control and POST /engagements/:id/billing-hold/lift answers 403 engagements.billing_hold.lift.
 
