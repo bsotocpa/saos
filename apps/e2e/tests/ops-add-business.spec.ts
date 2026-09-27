@@ -64,6 +64,10 @@ test.describe('Add a business on the client page', () => {
     try {
       await signIn(page, fixtures.staff);
       await page.goto(`/clients/${fixtures.contactId}`);
+      // The first tap of a run lands on a page the Ops server has only just built: the button is in
+      // the server HTML before React has bound its handler (receipt run 15, phone: the click did
+      // nothing and the form never opened). Wait for the page's own fetches to settle first.
+      await page.waitForLoadState('networkidle');
       await page.getByRole('button', { name: 'Add a business' }).click();
       const form = page.locator('#add-business-form');
       await expect(form).toBeVisible();
@@ -178,6 +182,10 @@ test.describe('Add a business on the client page', () => {
     try {
       await signIn(page, fixtures.wall.laura);
       await page.goto(`/clients/${fixtures.contactId}`);
+      // The first tap of a run lands on a page the Ops server has only just built: the button is in
+      // the server HTML before React has bound its handler (receipt run 15, phone: the click did
+      // nothing and the form never opened). Wait for the page's own fetches to settle first.
+      await page.waitForLoadState('networkidle');
       await page.getByRole('button', { name: 'Add a business' }).click();
       const form = page.locator('#add-business-form');
       await expect(form).toBeVisible();
