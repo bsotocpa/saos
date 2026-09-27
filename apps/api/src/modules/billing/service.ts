@@ -17,6 +17,7 @@ import { notifyOnce, ownerForRole } from '../../staffing.ts';
 import { closeTasksForSource, createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { payLinkFor } from './pay-link.ts';
+import { assertNotBillingHeld, billingHoldRefusal } from './billing-hold.ts';
 import { currentPriceBookVersion } from '../pricing/service.ts';
 
 export interface InvoiceLineInput {
@@ -72,6 +73,16 @@ export async function createInvoice(
   );
   const c = contact.rows[0];
   if (!c) throw new AppError(404, 'not_found', 'Contact not found.');
+
+  /*
+   * THE BILLING HOLD (R68, 2026-09-26) is read HERE, at the only INSERT INTO invoices, so no
+   * present or future caller can invoice an engagement the importer holds. 409 billing_hold, audited
+   * as invoice.refused_billing_hold. The job-shaped callers (the filed-return factory) read the
+   * hold first and count the refusal instead of reaching this throw.
+   */
+  if (input.engagementId) {
+    await assertNotBillingHeld(app, input.engagementId, actor, { via: 'createInvoice' });
+  }
 
   const version = await currentPriceBookVersion(app.db);
   const codes = input.lines.filter((l) => l.code).map((l) => l.code!);
@@ -319,7 +330,7 @@ export async function invoiceForFiledEngagement(
   app: FastifyInstance,
   actor: { staffId: string | null; label: string },
   taxEngagementId: string
-): Promise<{ invoiced: boolean }> {
+): Promise<{ invoiced: boolean; refused?: 'billing_hold' }> {
   const { rows } = await app.db.query<{
     id: string; engagement_id: string; contact_id: string; tax_year: number; return_type: string;
     final_fee_cents: number | null; discount_cents: number; invoice_number: string | null;
@@ -340,6 +351,29 @@ export async function invoiceForFiledEngagement(
 
   // Ruling 7 (2026-09-12): "set the final fee and invoice" is the preparer's, not billing's.
   const rene = await ownerForRole(app.db, 'tax_preparer');
+
+  /*
+   * THE BILLING HOLD, COUNTED NOT THROWN (R68, 2026-09-26). This factory runs inside a stage move;
+   * a 409 here would fail the filing for a rule about money. So a held engagement is a suppression:
+   * audited (invoice.refused_billing_hold), a task for the person who will lift it and invoice, and
+   * the filing goes through. createInvoice would refuse it anyway — this is the better answer.
+   */
+  const hold = await billingHoldRefusal(app, te.engagement_id, { type: 'system', label: actor.label }, { via: 'invoiceForFiledEngagement' });
+  if (hold.held) {
+    const billing = await ownerForRole(app.db, 'comms_billing');
+    await createTask(app, {
+      title: `Filed under a billing hold: ${te.first_name} ${te.last_name} (${te.tax_year} ${te.return_type.toUpperCase()}) — lift the hold, then invoice`,
+      description: hold.message,
+      assignedStaffId: billing,
+      contactId: te.contact_id,
+      engagementId: te.engagement_id,
+      priority: 1,
+      source: 'automation',
+      sourceType: 'invoice_billing_hold',
+      sourceId: te.id,
+    });
+    return { invoiced: false, refused: 'billing_hold' };
+  }
 
   if (te.final_fee_cents === null) {
     /*

@@ -7,6 +7,7 @@ import { configureRecurringEngagement, configuratorOptions, enterMaintenanceMode
 import { scopeForEngagements, scopeName, scopeSummary } from './scope.ts';
 import { closeEngagement } from './close.ts';
 import { pauseEngagement, resumeEngagement } from './pause.ts';
+import { liftBillingHold } from '../billing/billing-hold.ts';
 
 const PREP = ['weekly', 'monthly', 'quarterly', 'semi_annual'] as const;
 const SESSION = ['weekly', 'biweekly', 'monthly', 'quarterly', 'semi_annual', 'annual'] as const;
@@ -86,6 +87,8 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
                 e.ended_on, e.close_reason,
                 -- R52 (2026-09-26): the client page says "On hold since <day>" from this.
                 e.work_paused_at,
+                -- R68 (2026-09-26): the billing hold the importer placed; the row reads it and offers the lift.
+                e.billing_hold, e.billing_hold_reason,
                 e.independence_override_at IS NOT NULL AS independence_overridden,
                 e.created_at,
                 -- 2026-09-19 (item 4): what the client still owes on this engagement. A completed
@@ -255,4 +258,24 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
       type: 'staff', id: request.staff!.id, label: request.staff!.fullName,
     });
   });
+
+  /*
+   * LIFTING THE BILLING HOLD (R68, 2026-09-26): engagements.billing_hold.lift, EXPLICIT-ONLY.
+   *
+   * Brian said "until Brian lifts the hold". engagements.write is held today only through the
+   * wildcard, and the wildcard is not one person: a future '*' holder would inherit the power to
+   * start billing an imported client. So the lift has its own permission, on the explicit-only
+   * list beside deposits.override and staff.mfa.reset, seeded to the CEO role and to no other.
+   * comms_billing holds neither engagements.write nor this; the route refuses them 403 in the
+   * server's words. The reason is reasonText(10, 1000): the record of why billing began.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/engagements/:id/billing-hold/lift',
+    { preHandler: [app.authenticate, requirePermission('engagements.billing_hold.lift')] },
+    async (request) => {
+      const id = z.uuid().parse(request.params.id);
+      const b = z.object({ reason: reasonText(10, 1000) }).parse(request.body);
+      return liftBillingHold(app, id, { reason: b.reason }, { id: request.staff!.id, label: request.staff!.fullName });
+    }
+  );
 }

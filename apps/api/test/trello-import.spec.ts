@@ -35,6 +35,8 @@ import { declareImported8879Sent } from '../src/modules/tax/f8879-sent.ts';
 import { stageFor } from '../scripts/trello-normalize.ts';
 import { applyNewReturnDefaults } from '../src/modules/tax/pipeline.ts';
 import { applyRecurringServiceFact, isLiveServiceFact, normalizeFilingFrequency } from '../src/modules/engagements/import-facts.ts';
+import { isCopyDatabaseName, runImportModeProbe } from '../scripts/trello-probe.ts';
+import { runInImportContext } from '../src/outbox.ts';
 
 let app: FastifyInstance;
 let config: Config;
@@ -528,4 +530,70 @@ test('R33: a sole proprietor’s fact hangs on the CONTACT with no entity, and t
   assert.equal(rows[0]!.freq, 'quarterly');
   const led = await ledgerRow('st-sole', 'sales_tax');
   assert.ok(led && led.business_id === null);
+});
+
+// ── R68: THE SABOTAGE PROBE RUNS ON A _copy DATABASE ONLY ──────────────────
+
+/** Everything the probe would write, counted, so "refused before writing" is a number and not a claim. */
+async function probeFootprint(tag: string): Promise<{ contacts: number; engagements: number; returns: number; invoices: number; notifications: number }> {
+  const one = async (sql: string): Promise<number> => (await app.db.query<{ n: number }>(sql, [`Probe ${tag}`])).rows[0]!.n;
+  return {
+    contacts: await one(`SELECT count(*)::int AS n FROM contacts WHERE last_name = $1`),
+    engagements: await one(`SELECT count(*)::int AS n FROM engagements e JOIN contacts c ON c.id = e.contact_id WHERE c.last_name = $1`),
+    returns: await one(`SELECT count(*)::int AS n FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id JOIN contacts c ON c.id = e.contact_id WHERE c.last_name = $1`),
+    invoices: await one(`SELECT count(*)::int AS n FROM invoices i JOIN contacts c ON c.id = i.contact_id WHERE c.last_name = $1`),
+    notifications: await one(`SELECT count(*)::int AS n FROM notifications n JOIN contacts c ON c.id = n.contact_id WHERE c.last_name = $1`),
+  };
+}
+async function probeDeps(): Promise<Parameters<typeof runImportModeProbe>[2]> {
+  const actorStaff = await importer();
+  return { ceoId, actorStaff, actorLabel: { staffId: ceoId, label: actorStaff.fullName }, importLabel: IMPORT_LABEL, sourceTag: 'trello_2026-09-19', appliedBy: FACT_ACTOR_LABEL };
+}
+
+test('R68: the predicate — a copy is a name ending in _copy, and this spec database is not one', () => {
+  assert.equal(isCopyDatabaseName('saos_trello_copy'), true);
+  assert.equal(isCopyDatabaseName('saos_r58_copy'), true);
+  assert.equal(isCopyDatabaseName('saos'), false, 'production');
+  assert.equal(isCopyDatabaseName('saos_copy_2'), false, 'a suffix after _copy is not a copy');
+  assert.equal(isCopyDatabaseName(''), false);
+  assert.equal(isCopyDatabaseName(new URL(config.DATABASE_URL).pathname.slice(1)), false, 'saos_api_test_<suffix> is not a copy');
+});
+
+test('R68: on a database whose name does not end in _copy the probe REFUSES before writing, with one line in the run log', async () => {
+  const lines: string[] = [];
+  const totals = await app.db.query<{ contacts: number; invoices: number; audit: number }>(
+    `SELECT (SELECT count(*) FROM contacts)::int AS contacts, (SELECT count(*) FROM invoices)::int AS invoices, (SELECT count(*) FROM audit_log)::int AS audit`);
+  const before = totals.rows[0]!;
+
+  const result = await runInImportContext(IMPORT_LABEL, async () => runImportModeProbe(app, 'spec-refused', await probeDeps(), { log: (l) => lines.push(l) }));
+  assert.equal(result.refused, true, 'refused');
+  if (!result.refused) return;
+  assert.equal(result.databaseName, 'saos_api_test_trello_import', 'the CONNECTION named the database, not the URL the script was handed');
+  assert.match(result.reason, /^the connection is on 'saos_api_test_trello_import', which does not end in _copy$/);
+  assert.equal(lines.length, 1, 'one line in the run log');
+  assert.match(lines[0]!, /probe spec-refused REFUSED before writing: the connection is on 'saos_api_test_trello_import', which does not end in _copy\./);
+
+  // NOTHING WRITTEN: not the probe's own rows, and not a single row anywhere.
+  assert.deepEqual(await probeFootprint('spec-refused'), { contacts: 0, engagements: 0, returns: 0, invoices: 0, notifications: 0 });
+  const after = (await app.db.query<{ contacts: number; invoices: number; audit: number }>(
+    `SELECT (SELECT count(*) FROM contacts)::int AS contacts, (SELECT count(*) FROM invoices)::int AS invoices, (SELECT count(*) FROM audit_log)::int AS audit`)).rows[0]!;
+  assert.deepEqual(after, before, 'contacts, invoices and the audit log are exactly as they were');
+});
+
+test('R68: the same body, with the name judged a copy through the spec-only override, files a synthetic return and raises its invoice — so the guard sits before the first write', async () => {
+  const lines: string[] = [];
+  const result = await runInImportContext(IMPORT_LABEL, async () =>
+    runImportModeProbe(app, 'spec-copy', await probeDeps(), { databaseNameForSpec: 'saos_api_test_trello_import_copy', log: (l) => lines.push(l) }));
+  assert.equal(result.refused, false, `not refused: ${JSON.stringify(result)}`);
+  if (result.refused) return;
+  assert.equal(result.reached, 'filed', `the probe walked to filed; log: ${lines.join(' / ')}`);
+  assert.equal(result.delta, 0, 'under the import context the invoice email is refused, not enqueued');
+  assert.ok(result.refusalDelta >= 1, 'and the refusal is on the record');
+  const footprint = await probeFootprint('spec-copy');
+  assert.equal(footprint.contacts, 1, 'the synthetic contact');
+  assert.equal(footprint.engagements, 1);
+  assert.equal(footprint.returns, 1);
+  assert.equal(footprint.invoices, 1, 'the filed-return factory raised the invoice: this is the write the guard stands in front of');
+  const flagged = await app.db.query<{ is_test: boolean }>(`SELECT is_test FROM contacts WHERE last_name = 'Probe spec-copy'`);
+  assert.equal(flagged.rows[0]!.is_test, true, 'the probe’s contact says it is synthetic');
 });

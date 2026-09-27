@@ -48,6 +48,7 @@ import { AppError } from '../../types.ts';
 import type { AuthedStaff } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
 import { createEngagement } from './service.ts';
+import { IMPORT_BILLING_HOLD_REASON, placeBillingHold } from '../billing/billing-hold.ts';
 
 export type RecurringFactType = 'sales_tax' | 'payroll';
 
@@ -213,6 +214,12 @@ export async function applyRecurringServiceFact(
       engagementId = made.id;
       created = true;
       await app.db.query(`UPDATE engagements SET source = 'trello', trello_card_id = $2 WHERE id = $1`, [engagementId, input.sourceId]);
+      /*
+       * THE BILLING HOLD (R68, 2026-09-26): every ongoing engagement the import creates is held until
+       * the CEO lifts it, per engagement, with a reason. Placed here, on the row this call made, and
+       * never on an engagement a person opened in SAOS (the found-not-created branch above).
+       */
+      await placeBillingHold(app, engagementId, IMPORT_BILLING_HOLD_REASON, { type: 'staff', id: actor.id, label: actor.fullName });
     } catch (err) {
       // Two rows for one client racing the unique index: the first one won, and this one uses it.
       const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';

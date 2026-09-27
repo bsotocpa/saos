@@ -38,7 +38,7 @@ export type ServiceLine =
  * the schedule text, not an admin preference, so it lives in code.
  */
 export const BUSINESS_RETURN_TYPES = new Set([
-  '1065', '1120s', '1120', '990', '990ez', '1120c', '1120f', '1120h', '1120pol',
+  '1065', '1120s', '1120', '990', '990ez', '990pf', '990t', '1120c', '1120f', '1120h', '1120pol',
   '1041', '1120f_foreign', 'ag990il',
 ]);
 

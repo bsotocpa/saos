@@ -47,7 +47,7 @@
  *   createEngagement    (modules/engagements/service.ts)  the parent engagement
  *   setImportedStage    (modules/tax/import.ts)           the stage, by attestation
  *   transitionStage     (modules/tax/pipeline.ts)         the probes only, gates and all
- *   recordSigned8879    (modules/tax/signed-8879.ts)      the probes only
+ *   runImportModeProbe  (scripts/trello-probe.ts)          the probes only; refuses before writing off a _copy (R68)
  *   createTask          (modules/tasks/service.ts)        every task, never a raw INSERT
  *   runInImportContext  (src/outbox.ts)                   the refusal
  *
@@ -81,7 +81,7 @@ import { isOneActivePerPeriodViolation } from '../src/modules/engagements/period
 import { assertImportPreconditions, declareImportedJurisdictions, setImportedStage } from '../src/modules/tax/import.ts';
 import { declareImported8879Sent } from '../src/modules/tax/f8879-sent.ts';
 import { applyRecurringServiceFact, isLiveServiceFact, type RecurringFactType } from '../src/modules/engagements/import-facts.ts';
-import { recordSigned8879 } from '../src/modules/tax/signed-8879.ts';
+import { runImportModeProbe, type ProbeResult } from './trello-probe.ts';
 import { createTask } from '../src/modules/tasks/service.ts';
 import { createSession } from '../src/modules/auth/service.ts';
 import { runInImportContext } from '../src/outbox.ts';
@@ -406,98 +406,22 @@ console.log(`  armed automations on the copy (${armed.rows.length}): ${armed.row
 
 // ── A: THE IMPORT-MODE SABOTAGE PROBE ──────────────────────────────────────
 
-/**
- * The fee the probe carries, READ FROM THE PRICE BOOK.
- *
- * CLAUDE.md: "A price appearing as a literal in application code is a build failure." A rehearsal
- * script is application code. The probe needs a fee because invoiceForFiledEngagement only enqueues
- * 'invoice.send' when final_fee_cents is set — a return with no fee raises a task for the preparer
- * instead, which is an internal effect and would measure nothing.
+/*
+ * THE PROBE LIVES IN scripts/trello-probe.ts (R68, 2026-09-26) and asks the CONNECTION which database
+ * it is on before its first write. A name that does not end in _copy is a refusal: one line here,
+ * nothing written, and the table below says the measurement was not taken. This script's own copy
+ * guard (assertCopyDatabase, above) stops the whole run on production today; the probe's guard is
+ * the one that survives the cutover run, where this script's guard is the thing that gets relaxed.
  */
-async function probeFeeCents(): Promise<{ cents: number; itemCode: string }> {
-  const { rows } = await app.db.query<{ item_code: string; amount_cents: number }>(
-    `SELECT pbi.item_code, pbi.amount_cents
-       FROM price_book_items pbi JOIN price_book_versions v ON v.id = pbi.version_id
-      WHERE pbi.is_active AND pbi.amount_cents IS NOT NULL
-        AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
-        AND pbi.item_code = 'IND_BASE_SINGLE'
-      LIMIT 1`
-  );
-  if (!rows[0]) throw new Error('refusing: no IND_BASE_SINGLE in the book in force — the probe fee has to come from the price book, never from a literal here.');
-  return { cents: rows[0].amount_cents, itemCode: rows[0].item_code };
-}
-
-/**
- * One probe: a synthetic client, a return carrying a fee, walked to 'filed' through the real
- * pipeline with the real gates satisfied. Returns the outbox delta.
- *
- * EVERY STAMP IN HERE IS ON A RECORD THIS FUNCTION CREATED, flagged is_test with a test_note. That
- * is what makes it legitimate under R16 and it is the only place in this script that stamps anything.
- */
-async function probe(tag: string): Promise<{ delta: number; refusalDelta: number; reached: string }> {
-  const fee = await probeFeeCents();
-  const contact = await app.db.query<{ id: string }>(
-    `INSERT INTO contacts (first_name, last_name, email, language, is_test, test_note, source)
-     VALUES ($1, $2, $3, 'en', true, $4, 'trello') RETURNING id`,
-    [
-      'Rehearsal', `Probe ${tag}`, `rehearsal.probe.${tag}@example.invalid`,
-      `Import-mode probe, ${IMPORT_LABEL}. Synthetic: the gates below are stamped on THIS record and never on a matched client (R16). The copy is dropped at the end.`,
-    ]
-  );
-  const contactId = contact.rows[0]!.id;
-  const parent = await createEngagement(app, actorStaff, {
-    contactId, serviceLine: 'tax', title: `2025 1040 (import-mode probe ${tag})`, status: 'active',
-    periodKey: '2025',
-    origin: { via: 'staff', reason: `import-mode probe ${tag} (${SOURCE_TAG})` },
-  }, { ip: null, userAgent: `script: ${APPLIED_BY}` });
-  const te = await app.db.query<{ id: string }>(
-    /*
-     * preparer_id IS SET HERE and nowhere else in this script. The pipeline gained a fourth gate
-     * (no return enters in_preparation unassigned), and the probe has to pass it to reach 'filed'
-     * where the enqueue lives. An imported return does NOT get one: who prepared a Trello return is
-     * not a thing the bundle knows, and naming the CEO would be the same fabrication as a signature.
-     * See the report — imported returns at in_preparation or later sit in nobody's queue, which is a
-     * finding for Brian, not something this script decides.
-     */
-    `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, client_type, final_fee_cents,
-                                  preparer_id, engagement_letter_signed_at, estimate_locked_at,
-                                  estimated_fee_min_cents, estimated_fee_max_cents)
-     VALUES ($1, 2025, '1040', 'individual', $2, $3, now(), now(), $2, $2) RETURNING id`,
-    [parent.id, fee.cents, ceo.id]
-  );
-  const teId = te.rows[0]!.id;
-  const doc = await app.db.query<{ id: string }>(
-    `INSERT INTO documents (contact_id, tax_engagement_id, tax_year, category, filename, minio_bucket, minio_key, uploaded_by_type, uploaded_by_id, scan_status)
-     VALUES ($1, $2, 2025, 'signed_authorizations', $3, 'rehearsal', $4, 'staff', $5, 'clean') RETURNING id`,
-    [contactId, teId, `8879-probe-${tag}.pdf`, `rehearsal/probe-${tag}`, ceo.id]
-  );
-  await recordSigned8879(app, actorLabel, {
-    taxEngagementId: teId, documentId: doc.rows[0]!.id, signedOn: '2026-04-01', preparerPtinHolderId: ceo.id,
-  });
-
-  const walk: TaxStage[] = ['scheduled', 'documents_requested', 'in_preparation', 'internal_review', 'client_review', 'ready_to_file', 'filed'];
-  const s0 = await snapshot();
-  let reached = 'intake_started';
-  for (const to of walk) {
-    try {
-      await transitionStage(app, actorLabel, teId, to, { note: `import-mode probe ${tag} (${SOURCE_TAG})`, preparerPtinHolderId: ceo.id });
-      reached = to;
-    } catch (err) {
-      console.log(`  probe ${tag} blocked entering ${to}: ${err instanceof Error ? err.message.slice(0, 120) : String(err)}`);
-      break;
-    }
-  }
-  const s1 = await snapshot();
-  console.log(`  probe ${tag}: fee ${fee.itemCode} (${fee.cents} cents from the book), reached ${reached}, outbox ${s0.outbox} -> ${s1.outbox}, refusals ${s0.refusals} -> ${s1.refusals}`);
-  return { delta: s1.outbox - s0.outbox, refusalDelta: s1.refusals - s0.refusals, reached };
-}
-
 console.log(`\nA — THE IMPORT-MODE SABOTAGE. One probe under the mode, one with it off.`);
-const probeOn = await runInImportContext(IMPORT_LABEL, () => probe('mode-on'));
-const probeOff = UNSAFE ? await probe('mode-off') : null;
+const probeDeps = { ceoId: ceo.id, actorStaff, actorLabel, importLabel: IMPORT_LABEL, sourceTag: SOURCE_TAG, appliedBy: APPLIED_BY };
+const probeOn = await runInImportContext(IMPORT_LABEL, () => runImportModeProbe(app, 'mode-on', probeDeps));
+const probeOff = UNSAFE ? await runImportModeProbe(app, 'mode-off', probeDeps) : null;
 if (!UNSAFE) {
   console.log(`  probe mode-off SKIPPED: rerun with --unsafe-no-import-mode to take the counter-measurement.`);
 }
+/** A refused probe wrote nothing, so it moved no outbox row. */
+const probeDelta = (p: ProbeResult | null): number => (p && !p.refused ? p.delta : 0);
 
 // ── B: THE REAL IMPORT ─────────────────────────────────────────────────────
 
@@ -1129,7 +1053,7 @@ const rehearsal = [
   `R23 AT OR PAST FILED | ${sumOf('declaredByDefault') + sumOf('notifyTasks') + sumOf('completedSilently')} return(s) | - | - | - | - | - | - | - | - | filed-awaiting-ack ${sumOf('declaredByDefault')} (jurisdictions by address default, method by the year's lane, flagged, + a confirm task); accepted-not-notified ${sumOf('notifyTasks')} (completed, no acceptance row, + a notify task); paper-filed ${sumOf('completedSilently')} (completed, no acceptance and no mailing invented)`,
   `R31 FILED-AWAITING-ACK IN THE PAPER LANE | ${sumOf('declaredPaper')} return(s) | - | - | - | - | - | - | 0 refused for being old | - | of ${sumOf('declaredByDefault')} filed-awaiting-ack card(s), ${sumOf('declaredPaper')} carried a tax year older than current + 2 prior and were declared PAPER by the year's lane, flagged declared_by_import_default, with the confirm task and NO mailing written (mailed_on null); every imported return here is tax year 2025, so the paper shape is asserted in test/trello-import.spec.ts rather than exercised by this bundle`,
   `R33 SALES-TAX AND PAYROLL FACTS | ${f04b.filter((r) => RECURRING_FACT.has((r.fact_type ?? '').trim())).length} row(s) | ${sumOf('serviceEngagements')} engagement(s) created | - | - | - | ${factsByType.filter((r) => RECURRING_FACT.has(r.fact_type)).reduce((n, r) => n + Number(r.wrote), 0)} | ${sumOf('noContact')} deferred: live service on a business with no member to bill | - | - | ${factsByType.filter((r) => RECURRING_FACT.has(r.fact_type)).map((r) => `${r.fact_type}: ${r.applied} applied, ${r.wrote} row(s) written`).join('; ') || 'none applied'}; ${sumOf('closedServices')} row(s) named a closed service and created nothing (ledger row, 0 written); engagements on the copy: ${recurringEngagements.map((r) => `${r.service_line} ${r.n} (${r.with_value} carrying ${r.service_line === 'sales_tax' ? 'a filing_frequency' : 'a payroll_provider'})`).join(', ') || 'none'}`,
-  `REFUSED CLIENT SENDS (audited, both passes) | - | - | - | - | - | - | - | ${afterRerun.refusals - before.refusals} | - | outbox rows the import itself added: ${afterRerun.outbox - before.outbox - probeOn.delta - (probeOff ? probeOff.delta : 0)}`,
+  `REFUSED CLIENT SENDS (audited, both passes) | - | - | - | - | - | - | - | ${afterRerun.refusals - before.refusals} | - | outbox rows the import itself added: ${afterRerun.outbox - before.outbox - probeDelta(probeOn) - probeDelta(probeOff)}`,
   `THE 8879 GATE ON AN IMPORTED ready_to_file RETURN | - | - | - | - | - | - | - | - | - | ${proof}`,
   `TASKS BY TYPE (on the copy, from the tasks table) | ${tasksByType.reduce((n, r) => n + Number(r.n), 0)} | - | - | - | - | - | - | - | - | ${tasksByType.map((r) => `${r.source_type} ${r.n}`).join(', ')}`,
   `04b SERVICE FACTS BY TYPE (from the ledger) | ${factsByType.reduce((n, r) => n + Number(r.applied), 0)} source row(s) applied | - | - | - | - | ${factsByType.reduce((n, r) => n + Number(r.wrote), 0)} | - | - | - | ${factsByType.map((r) => `${r.fact_type}: ${r.applied} applied, ${r.wrote} row(s) written`).join('; ')}`,
@@ -1140,9 +1064,13 @@ console.log('\n' + rehearsal.join('\n'));
 
 const sabotage = [
   'measurement | import mode | outbox rows added | refusals audited | stage reached | what it means',
-  `one imported return carrying a fee, walked to filed | ON | ${probeOn.delta} | ${probeOn.refusalDelta} | ${probeOn.reached} | the client is told nothing, and the refusal is on the record`,
+  probeOn.refused
+    ? `one imported return carrying a fee, walked to filed | ON | not measured | — | REFUSED before writing | ${probeOn.reason}; the probe runs on a _copy database only (R68)`
+    : `one imported return carrying a fee, walked to filed | ON | ${probeOn.delta} | ${probeOn.refusalDelta} | ${probeOn.reached} | the client is told nothing, and the refusal is on the record`,
   probeOff
-    ? `the same return, the same walk | OFF (--unsafe-no-import-mode) | ${probeOff.delta} | ${probeOff.refusalDelta} | ${probeOff.reached} | without the mode the invoice email is queued for real — which is what the zero above prevents`
+    ? probeOff.refused
+      ? `the same return, the same walk | OFF (--unsafe-no-import-mode) | not measured | — | REFUSED before writing | ${probeOff.reason}; the probe runs on a _copy database only (R68)`
+      : `the same return, the same walk | OFF (--unsafe-no-import-mode) | ${probeOff.delta} | ${probeOff.refusalDelta} | ${probeOff.reached} | without the mode the invoice email is queued for real — which is what the zero above prevents`
     : `the same return, the same walk | OFF | not measured in this run | — | — | rerun with --unsafe-no-import-mode on the copy to take it`,
 ];
 writeFileSync(resolve(LOGS, 'import-mode-sabotage.log'), sabotage.join('\n') + '\n');
