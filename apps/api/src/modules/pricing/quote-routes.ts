@@ -108,6 +108,20 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
    * quote should not require the Admin → Pricing permission that can CHANGE
    * prices.
    */
+  /**
+   * R75: whether a quote for this contact, written now, takes the Hilo referral discount — the rule (its
+   * label, rate and the price lines it reaches) or why not. The builder mirrors its totals from this;
+   * createQuote applies the same rule on the server, and nothing the builder sends can change it.
+   */
+  app.get('/quotes/referral-discount', read, async (request) => {
+    const { contactId } = z.object({ contactId: z.uuid() }).parse(request.query);
+    const { currentPriceBookVersion } = await import('./service.ts');
+    const version = await currentPriceBookVersion(app.db);
+    const { referralRuleFor } = await import('./referral-discount.ts');
+    const verdict = await referralRuleFor(app, contactId, version.id);
+    return verdict.applies ? { applies: true, rule: verdict.rule } : { applies: false, why: verdict.why };
+  });
+
   app.get('/quotes/catalog', read, async () => {
     const version = await app.db.query<{ id: string; version_number: number }>(
       `SELECT id, version_number FROM price_book_versions
@@ -205,6 +219,22 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
         })
         .parse(request.body);
       return overrideQuoteDeposit(app, id, b, request.staff!);
+    }
+  );
+
+  /**
+   * R75: remove the Hilo referral discount from a draft or sent quote. The explicit-only
+   * `quotes.referral_discount.remove` (the CEO alone), with a standalone reason. There is no door that
+   * sets or raises the discount: the server applies the book's rule and nothing else.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/quotes/:id/referral-discount/remove',
+    { preHandler: [app.authenticate, requirePermission('quotes.referral_discount.remove')] },
+    async (request) => {
+      const id = z.uuid().parse(request.params.id);
+      const b = z.object({ reason: reasonText(10, 1000) }).strict().parse(request.body);
+      const { removeReferralDiscount } = await import('./quotes.ts');
+      return removeReferralDiscount(app, id, b.reason, request.staff!);
     }
   );
 

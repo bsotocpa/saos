@@ -53,6 +53,12 @@ export const MONEY_ACTIONS = [
   // one reason for the whole quote and each changed line listed (2026-09-20). Staff class when a
   // member of staff built it, neither line when the CEO did: the ordinary classes.
   'quote.prices_changed',
+  /*
+   * R75 (2026-09-27): the Hilo referral discount taken off an invoice, its own line on the invoice.
+   * Counted on the money line as a DISCOUNT (MoneyLine.discounts), whoever raised the invoice: the rule
+   * applied it, not a person's hand, so it is never a staff money action.
+   */
+  'invoice.referral_discount',
 ] as const;
 
 export type MoneyActorClass = 'ceo' | 'staff' | 'system';
@@ -76,6 +82,8 @@ export interface MoneyLine {
   byStaff: MoneyActionRow[];
   /** Stripe webhook refunds with no SAOS initiator: money that moved outside the door. */
   outsideTheDoor: MoneyActionRow[];
+  /** R75: discounts taken off invoices by a price-book rule (the Hilo referral discount), any class. */
+  discounts: MoneyActionRow[];
 }
 
 const LABEL: Record<string, string> = {
@@ -89,6 +97,7 @@ const LABEL: Record<string, string> = {
   'invoice.written_off': 'Write-off',
   'tax_engagement.final_fee_outside_quote': 'Final fee outside the quoted range',
   'quote.prices_changed': 'Quote priced off the book',
+  'invoice.referral_discount': 'Referral discount',
 };
 
 /**
@@ -166,10 +175,12 @@ export async function moneyActionsBetween(app: FastifyInstance, from: Date, to: 
 /** The money line for [from, to): by human staff, and outside the door. */
 export async function moneyLineBetween(app: FastifyInstance, from: Date, to: Date): Promise<MoneyLine> {
   const all = await moneyActionsBetween(app, from, to);
+  const isDiscount = (a: MoneyActionRow) => a.action === LABEL['invoice.referral_discount'];
   return {
-    byStaff: all.filter((a) => a.actorClass === 'staff'),
+    byStaff: all.filter((a) => a.actorClass === 'staff' && !isDiscount(a)),
     // Only the webhook's own refund rows reach here as 'system': every SAOS-initiated one was folded.
     outsideTheDoor: all.filter((a) => a.actorClass === 'system' && a.action === 'Refund'),
+    discounts: all.filter(isDiscount),
   };
 }
 

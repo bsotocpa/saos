@@ -17,6 +17,12 @@ import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { registerOpsRoutes } from './ops.ts';
 
+/** The price_service_line enum, as the database holds it. */
+const PRICE_SERVICE_LINES = [
+  'individual_tax', 'business_tax', 'recurring_accounting', 'scope_ladder', 'setup_conversion', 'software_passthrough',
+  'filings_1099_w2', 'entity_services', 'attest', 'specialized_cpa', 'coo', 'deposit',
+] as const;
+
 const NewVersionBody = z.object({
   effectiveFrom: z.iso.date(),
   note: z.string().min(3),
@@ -42,10 +48,60 @@ const NewVersionBody = z.object({
         metadata: z.record(z.string(), z.unknown()).optional(),
       })
     )
-    .min(1),
+    .default([]),
+  /*
+   * NEW LINES (R75, 2026-09-27): a version may add items the book has never held (BIZ_990PF, BIZ_990T).
+   * Every column a line needs is said here; nothing is inferred. A code already in the book is refused
+   * (change it through `changes` instead), and the R55 deposit check reads these rows too.
+   */
+  additions: z
+    .array(
+      z.object({
+        itemCode: z.string().regex(/^[A-Z0-9_]+$/, 'Item codes are capitals, digits and underscores.'),
+        serviceLine: z.enum(PRICE_SERVICE_LINES),
+        nameEn: z.string().min(1),
+        nameEs: z.string().min(1),
+        descriptionEn: z.string().min(1).nullable().optional(),
+        descriptionEs: z.string().min(1).nullable().optional(),
+        pricingMode: z.enum(['flat', 'range', 'hourly', 'percent']),
+        unit: z.string().min(1).default('flat'),
+        amountCents: z.number().int().nonnegative().nullable().optional(),
+        priceMinCents: z.number().int().nonnegative().nullable().optional(),
+        priceMaxCents: z.number().int().nonnegative().nullable().optional(),
+        depositCents: z.number().int().nonnegative().nullable().optional(),
+        groupKey: z.string().min(1).nullable().optional(),
+        sortOrder: z.number().int(),
+        displayOnQuote: z.boolean().default(true),
+      })
+    )
+    .default([]),
+  /*
+   * DISCOUNT RULES (R75): added to, or changed in, the new version only (matched by rule code). The
+   * rate and the lines reached are the book's; the condition and the scope are the kinds the code
+   * knows how to apply (migration 0128's CHECKs name them).
+   */
+  discountRules: z
+    .array(
+      z.object({
+        ruleCode: z.string().regex(/^[A-Z0-9_]+$/),
+        nameEn: z.string().min(1),
+        nameEs: z.string().min(1),
+        descriptionEn: z.string().min(1).nullable().optional(),
+        descriptionEs: z.string().min(1).nullable().optional(),
+        percentRate: z.number().positive().max(100),
+        appliesToServiceLines: z.array(z.enum(PRICE_SERVICE_LINES)).min(1),
+        condition: z.enum(['referred_by_hilo']),
+        scope: z.enum(['first_engagement']),
+        isActive: z.boolean().default(true),
+      })
+    )
+    .default([]),
+}).refine((b) => b.changes.length + b.additions.length + b.discountRules.length > 0, {
+  message: 'A new version needs at least one change, new line or discount rule.',
 });
 
 type VersionChange = z.infer<typeof NewVersionBody>['changes'][number];
+type VersionAddition = z.infer<typeof NewVersionBody>['additions'][number];
 
 /**
  * The item codes whose deposit would exceed their flat price once `changes` are laid over the rows
@@ -56,7 +112,8 @@ type VersionChange = z.infer<typeof NewVersionBody>['changes'][number];
 export async function depositOverPrice(
   db: { query: <R extends Record<string, unknown>>(text: string, params?: unknown[]) => Promise<{ rows: R[] }> },
   sourceVersionId: string,
-  changes: readonly VersionChange[]
+  changes: readonly VersionChange[],
+  additions: readonly VersionAddition[] = []
 ): Promise<string[]> {
   const { rows } = await db.query<{ item_code: string; unit: string; amount_cents: number | null; deposit_cents: number | null }>(
     `SELECT item_code, unit::text AS unit, amount_cents, deposit_cents FROM price_book_items WHERE version_id = $1 ORDER BY item_code`,
@@ -70,6 +127,13 @@ export async function depositOverPrice(
     const deposit = c?.depositCents !== undefined ? c.depositCents : r.deposit_cents;
     if (deposit === null || r.unit !== 'flat' || amount === null || deposit <= amount) continue;
     over.push(r.item_code);
+  }
+  // R75: a new line is held to the same predicate as a copied one.
+  for (const a of additions) {
+    const deposit = a.depositCents ?? null;
+    const amount = a.amountCents ?? null;
+    if (deposit === null || a.unit !== 'flat' || amount === null || deposit <= amount) continue;
+    over.push(a.itemCode);
   }
   return over;
 }
@@ -165,7 +229,13 @@ export function registerAdminRoutes(app: FastifyInstance): void {
        FROM bundle_rules WHERE version_id = $1`,
       [v.id]
     );
-    return { version: version.rows[0], items: items.rows, bundleRules: rules.rows };
+    const discountRules = await app.db.query(
+      `SELECT rule_code, name_en, name_es, description_en, percent_rate::float AS percent_rate,
+              applies_to_service_lines::text[] AS applies_to_service_lines, condition, scope, is_active
+         FROM price_book_discount_rules WHERE version_id = $1 ORDER BY sort_order, rule_code`,
+      [v.id]
+    );
+    return { version: version.rows[0], items: items.rows, bundleRules: rules.rows, discountRules: discountRules.rows };
   });
 
   /**
@@ -198,7 +268,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       // more up front than one hour costs). The constraint was added NOT VALID over four version-4
       // rows and stays as the backstop; this refusal names the lines so the publisher can fix them in
       // the same sitting instead of reading a constraint name.
-      const overPrice = await depositOverPrice(client, cur.id, b.changes);
+      const overPrice = await depositOverPrice(client, cur.id, b.changes, b.additions);
       if (overPrice.length > 0) {
         throw new AppError(409, 'deposit_over_price',
           `A deposit cannot exceed the price it is taken against. Fix ${overPrice.length === 1 ? 'this line' : 'these lines'} before publishing: ${overPrice.join(', ')}.`);
@@ -216,17 +286,19 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         // Every column is listed explicitly, so anything added to price_book_items and
         // NOT added here is silently reset to its default in the new version — a price
         // book that quietly loses a field one version after it was set.
+        // group_key (0116) joined the list 2026-09-27 (R75): the copy had been dropping every line's
+        // catalog group, so the first version published after 0116 would have lost them all.
         `INSERT INTO price_book_items
            (version_id, item_code, service_line, name_en, name_es, description_en, description_es,
             amount_cents, price_min_cents, price_max_cents, unit, is_pass_through, display_on_quote,
             needs_confirmation, confirmation_note, is_active, sort_order, metadata,
             pricing_mode, deposit_cents, structure_needs_confirmation, structure_confirmation_note,
-            percent_rate)
+            percent_rate, group_key)
          SELECT $1, item_code, service_line, name_en, name_es, description_en, description_es,
                 amount_cents, price_min_cents, price_max_cents, unit, is_pass_through, display_on_quote,
                 needs_confirmation, confirmation_note, is_active, sort_order, metadata,
                 pricing_mode, deposit_cents, structure_needs_confirmation, structure_confirmation_note,
-                percent_rate
+                percent_rate, group_key
          FROM price_book_items WHERE version_id = $2`,
         [newId, cur.id]
       );
@@ -239,6 +311,78 @@ export function registerAdminRoutes(app: FastifyInstance): void {
          FROM bundle_rules WHERE version_id = $2`,
         [newId, cur.id]
       );
+
+      /*
+       * THE PACKAGES (R75, 2026-09-27). bundles and bundle_components are version-scoped and every
+       * reader (composeBundle, the catalog, the builder) reads the version in force, but the copy never
+       * carried them: a publish would have left the new version with no packages. Copied whole, each
+       * package with its components, the new rows under new ids.
+       */
+      const bundles = await client.query<{ id: string }>(`SELECT id FROM bundles WHERE version_id = $1 ORDER BY slug`, [cur.id]);
+      for (const bundle of bundles.rows) {
+        const copied = await client.query<{ id: string }>(
+          `INSERT INTO bundles (version_id, slug, name_en, name_es, description_en, description_es,
+                                discount_percent, discount_cents, override_cents, is_active, published_at, campaign_code)
+           SELECT $1, slug, name_en, name_es, description_en, description_es,
+                  discount_percent, discount_cents, override_cents, is_active, published_at, campaign_code
+             FROM bundles WHERE id = $2
+           RETURNING id`,
+          [newId, bundle.id]
+        );
+        await client.query(
+          `INSERT INTO bundle_components (bundle_id, item_code, quantity, is_optional, sort_order, note_en, note_es)
+           SELECT $1, item_code, quantity, is_optional, sort_order, note_en, note_es
+             FROM bundle_components WHERE bundle_id = $2`,
+          [copied.rows[0]!.id, bundle.id]
+        );
+      }
+
+      // R75: the discount rules are the book's too; a version copies them whole.
+      await client.query(
+        `INSERT INTO price_book_discount_rules
+           (version_id, rule_code, name_en, name_es, description_en, description_es, percent_rate,
+            applies_to_service_lines, condition, scope, is_active, sort_order)
+         SELECT $1, rule_code, name_en, name_es, description_en, description_es, percent_rate,
+                applies_to_service_lines, condition, scope, is_active, sort_order
+         FROM price_book_discount_rules WHERE version_id = $2`,
+        [newId, cur.id]
+      );
+
+      // R75: new lines, into the NEW version only. A code the book already holds is a change, not a line.
+      for (const a of b.additions) {
+        const exists = await client.query(`SELECT 1 FROM price_book_items WHERE version_id = $1 AND item_code = $2`, [newId, a.itemCode]);
+        if (exists.rowCount) {
+          throw new AppError(409, 'price_item_exists', `${a.itemCode} is already in the book; change it instead of adding it.`);
+        }
+        await client.query(
+          `INSERT INTO price_book_items
+             (version_id, item_code, service_line, name_en, name_es, description_en, description_es,
+              pricing_mode, unit, amount_cents, price_min_cents, price_max_cents, deposit_cents,
+              group_key, sort_order, display_on_quote, is_active, needs_confirmation)
+           VALUES ($1, $2, $3::price_service_line, $4, $5, $6, $7, $8::price_pricing_mode, $9::price_unit, $10, $11, $12, $13,
+                   $14, $15, $16, true, false)`,
+          [newId, a.itemCode, a.serviceLine, a.nameEn, a.nameEs, a.descriptionEn ?? null, a.descriptionEs ?? null,
+           a.pricingMode, a.unit, a.amountCents ?? null, a.priceMinCents ?? null, a.priceMaxCents ?? null, a.depositCents ?? null,
+           a.groupKey ?? null, a.sortOrder, a.displayOnQuote]
+        );
+      }
+
+      // R75: discount rules, added or changed in the NEW version only.
+      for (const r of b.discountRules) {
+        await client.query(
+          `INSERT INTO price_book_discount_rules
+             (version_id, rule_code, name_en, name_es, description_en, description_es, percent_rate,
+              applies_to_service_lines, condition, scope, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::price_service_line[], $9, $10, $11)
+           ON CONFLICT (version_id, rule_code) DO UPDATE SET
+             name_en = EXCLUDED.name_en, name_es = EXCLUDED.name_es,
+             description_en = EXCLUDED.description_en, description_es = EXCLUDED.description_es,
+             percent_rate = EXCLUDED.percent_rate, applies_to_service_lines = EXCLUDED.applies_to_service_lines,
+             condition = EXCLUDED.condition, scope = EXCLUDED.scope, is_active = EXCLUDED.is_active`,
+          [newId, r.ruleCode, r.nameEn, r.nameEs, r.descriptionEn ?? null, r.descriptionEs ?? null, r.percentRate,
+           r.appliesToServiceLines, r.condition, r.scope, r.isActive]
+        );
+      }
 
       // Apply the changes to the NEW version only.
       for (const change of b.changes) {
@@ -274,6 +418,8 @@ export function registerAdminRoutes(app: FastifyInstance): void {
           version_number: cur.version_number + 1,
           effective_from: b.effectiveFrom,
           changes: b.changes.map((c) => c.itemCode),
+          additions: b.additions.map((a) => a.itemCode),
+          discount_rules: b.discountRules.map((r) => ({ code: r.ruleCode, percent_rate: r.percentRate, lines: r.appliesToServiceLines })),
         },
       });
       return reply.code(201).send({ id: newId, versionNumber: cur.version_number + 1 });

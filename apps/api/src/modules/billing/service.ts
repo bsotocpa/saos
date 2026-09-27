@@ -26,6 +26,11 @@ export interface InvoiceLineInput {
   description?: string | undefined;
   qty?: number | undefined;
   unitCents?: number | undefined;
+  /**
+   * R75: a custom line that is tax-return or entity-services work, so the engagement's referral
+   * discount reaches it (the final-fee line of a return). A book line answers by its own service line.
+   */
+  referralEligible?: boolean | undefined;
 }
 
 export function formatUsd(cents: number): string {
@@ -89,9 +94,9 @@ export async function createInvoice(
   const items = codes.length
     ? await app.db.query<{
         item_code: string; name_en: string; name_es: string;
-        amount_cents: number | null; is_pass_through: boolean; display_on_quote: boolean;
+        amount_cents: number | null; is_pass_through: boolean; display_on_quote: boolean; service_line: string;
       }>(
-        `SELECT item_code, name_en, name_es, amount_cents, is_pass_through, display_on_quote
+        `SELECT item_code, name_en, name_es, amount_cents, is_pass_through, display_on_quote, service_line::text AS service_line
          FROM price_book_items WHERE version_id = $1 AND item_code = ANY($2) AND is_active`,
         [version.id, codes]
       )
@@ -154,6 +159,49 @@ export async function createInvoice(
    * available for the next invoice rather than producing a negative total. Master §2
    * says overpayments are credited to the account, not refunded on the spot.
    */
+  /*
+   * THE HILO REFERRAL DISCOUNT, ITS OWN LINE (R75). An engagement whose accepted quote carried the
+   * discount holds the rule (snapshotted at acceptance); every invoice raised on it, other than the
+   * deposit invoice (whose amount was already computed on the discounted total), shows the discount as
+   * a line of its own, on the lines it reaches, before the deposit is credited. Recorded in
+   * invoice_discount_lines and audited below as invoice.referral_discount (the money line's discounts).
+   */
+  let referralLine: { ruleCode: string; labelEn: string; labelEs: string; rate: number; cents: number } | null = null;
+  if (input.engagementId && !input.isDepositInvoice) {
+    const eng = await app.db.query<{ code: string | null; label_en: string | null; label_es: string | null; rate: string | null; lines: string[] | null }>(
+      `SELECT referral_discount_rule_code AS code, referral_discount_label_en AS label_en, referral_discount_label_es AS label_es,
+              referral_discount_rate::text AS rate, referral_discount_service_lines AS lines
+         FROM engagements WHERE id = $1`,
+      [input.engagementId]
+    );
+    const r = eng.rows[0];
+    if (r?.code && r.rate !== null && r.lines) {
+      const { referralDiscountCents } = await import('../pricing/referral-discount.ts');
+      const cents = referralDiscountCents(
+        resolved.map((l, i) => {
+          const src = input.lines[i];
+          const bookLine = l.code ? byCode.get(l.code)?.service_line ?? null : null;
+          // A custom line the caller marked as return or entity work reads as the first line the rule reaches.
+          const serviceLine = bookLine ?? (src?.referralEligible ? r.lines![0]! : null);
+          return { cents: Math.max(0, l.totalCents), serviceLine };
+        }),
+        { rate: Number(r.rate), serviceLines: r.lines }
+      );
+      if (cents > 0) {
+        referralLine = { ruleCode: r.code, labelEn: r.label_en ?? r.code, labelEs: r.label_es ?? r.label_en ?? r.code, rate: Number(r.rate), cents };
+        const rateText = `${Number(r.rate)}%`;
+        resolved.push({
+          code: null,
+          description: `${c.language === 'es' ? referralLine.labelEs : referralLine.labelEn} (${rateText})`,
+          qty: 1,
+          unitCents: -cents,
+          totalCents: -cents,
+          sort: resolved.length,
+        });
+      }
+    }
+  }
+
   let depositCreditCents = 0;
   let depositCreditFromInvoiceId: string | null = null;
   const subtotal = resolved.reduce((sum, l) => sum + l.totalCents, 0);
@@ -222,6 +270,19 @@ export async function createInvoice(
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [id, line.code, line.description, line.qty, line.unitCents, line.totalCents, line.sort]
     );
+  }
+  if (referralLine) {
+    await app.db.query(
+      `INSERT INTO invoice_discount_lines (invoice_id, rule_code, label_en, label_es, percent_rate, amount_cents, engagement_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, referralLine.ruleCode, referralLine.labelEn, referralLine.labelEs, referralLine.rate, referralLine.cents, input.engagementId ?? null]
+    );
+    // The money line counts this as a discount (money-digest.ts): the amount the client was not charged.
+    await writeAudit(app.db, {
+      actorType: actor.type, actorId: actor.id ?? null, actorLabel: actor.label ?? null,
+      action: 'invoice.referral_discount', objectType: 'invoice', objectId: id, contactId: input.contactId,
+      details: { amount_cents: referralLine.cents, rule_code: referralLine.ruleCode, percent_rate: referralLine.rate, invoice_number: invoiceNumber, engagement_id: input.engagementId ?? null },
+    });
   }
 
   if (input.taxEngagementId) {
@@ -409,7 +470,8 @@ export async function invoiceForFiledEngagement(
   const labelEn = `${te.tax_year} ${te.return_type.toUpperCase()} tax return preparation`;
   const labelEs = `Preparación de la declaración ${te.return_type.toUpperCase()} ${te.tax_year}`;
   const lines: InvoiceLineInput[] = [
-    { description: te.language === 'es' ? labelEs : labelEn, unitCents: te.final_fee_cents, qty: 1 },
+    // R75: the return's fee is tax-return work, so an engagement's referral discount reaches it.
+    { description: te.language === 'es' ? labelEs : labelEn, unitCents: te.final_fee_cents, qty: 1, referralEligible: true },
   ];
   if (te.discount_cents > 0) {
     lines.push({

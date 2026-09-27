@@ -137,6 +137,8 @@ export async function executiveDashboard(app: FastifyInstance) {
     // than the CEO, live; and the Stripe refunds that moved with no SAOS initiator, on their own.
     moneyActionsToday: money.byStaff,
     moneyOutsideTheDoor: money.outsideTheDoor,
+    // R75: discounts a price-book rule took off invoices today (the Hilo referral discount).
+    moneyDiscounts: money.discounts,
     mrr: { note: 'Stripe Billing subscriptions land in Phase 3', cents: 0 },
     arAging: ar.rows,
     // Item 4 (2026-09-19): done but not paid — count and what is owed, across completed engagements.

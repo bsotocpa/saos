@@ -31,6 +31,7 @@ import type { CustomLineServiceLine } from './groups.ts';
 import {
   assertEveryLineCreatesWork,
   engagementLinesForQuote,
+  engagementLineFor,
   engagementTitle,
 } from './engagement-lines.ts';
 import { setLeadStage } from './pipeline.ts';
@@ -287,7 +288,23 @@ export async function createQuote(
     (sum, l) => sum + (l.unitCents === null ? 0 : Math.round(l.unitCents * l.quantity)),
     0
   );
-  const totalCents = Math.max(0, subtotalCents - discountCents);
+  /*
+   * THE HILO REFERRAL DISCOUNT (R75): a rule of the version this quote is written under, applied by the
+   * server alone (no input reaches it, so nothing can widen it), on the chosen lines it reaches. Its own
+   * figure beside the package discount; the total is net of both.
+   */
+  const { referralRuleFor, referralDiscountCents } = await import('./referral-discount.ts');
+  const referral = await referralRuleFor(app, input.contactId, version.id);
+  const referralCents = referral.applies
+    ? referralDiscountCents(
+        counted.map((l) => ({
+          cents: l.unitCents === null ? 0 : Math.round(l.unitCents * l.quantity),
+          serviceLine: lineOf.get(l.itemCode) ?? l.serviceLine,
+        })),
+        referral.rule
+      )
+    : 0;
+  const totalCents = Math.max(0, subtotalCents - discountCents - referralCents);
 
   // RANGE for one-time work: the top widens by the band; the bottom is the
   // composed price. Recurring quotes stay exact (asRange false).
@@ -331,8 +348,10 @@ export async function createQuote(
          (contact_id, business_id, language, bundle_slug, price_book_version_id,
           subtotal_cents, discount_cents, total_cents, range_min_cents, range_max_cents,
           deposit_item_code, expires_at, created_by_staff_id, notes,
-          interview_answers, range_basis)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16)
+          interview_answers, range_basis,
+          referral_discount_rule_code, referral_discount_label_en, referral_discount_label_es,
+          referral_discount_rate, referral_discount_service_lines, referral_discount_cents)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,$18,$19,$20,$21::text[],$22)
        RETURNING id`,
       [
         input.contactId, input.businessId ?? null, input.language ?? 'en', input.bundleSlug ?? null, version.id,
@@ -342,6 +361,12 @@ export async function createQuote(
         actor.id, input.notes ?? null,
         input.interviewAnswers ? JSON.stringify(input.interviewAnswers) : null,
         input.asRange ? (input.rangeBasis ?? 'total') : null,
+        referral.applies ? referral.rule.ruleCode : null,
+        referral.applies ? referral.rule.labelEn : null,
+        referral.applies ? referral.rule.labelEs : null,
+        referral.applies ? referral.rule.rate : null,
+        referral.applies ? referral.rule.serviceLines : null,
+        referralCents,
       ]
     );
     const quoteId = rows[0]!.id;
@@ -623,10 +648,15 @@ export async function quoteByToken(app: FastifyInstance, token: string) {
     expires_at: Date | null; bundle_slug: string | null; notes: string | null;
     first_name: string; last_name: string;
     deposit_item_code: string | null; deposit_override_cents: number | null;
+    referral_discount_cents: number; referral_discount_label_en: string | null; referral_discount_label_es: string | null;
+    referral_discount_rate: string | null; referral_discount_removed: boolean;
   }>(
     `SELECT q.id, q.status::text, q.language, q.contact_id, q.subtotal_cents, q.discount_cents, q.total_cents,
             q.range_min_cents, q.range_max_cents, q.expires_at, q.bundle_slug, q.notes,
             q.deposit_item_code, q.deposit_override_cents,
+            q.referral_discount_cents, q.referral_discount_label_en, q.referral_discount_label_es,
+            q.referral_discount_rate::text AS referral_discount_rate,
+            q.referral_discount_removed_at IS NOT NULL AS referral_discount_removed,
             c.first_name, c.last_name
      FROM quotes q JOIN contacts c ON c.id = q.contact_id
      WHERE q.public_token_hash = $1`,
@@ -634,10 +664,17 @@ export async function quoteByToken(app: FastifyInstance, token: string) {
   );
   const quote = rows[0];
   if (!quote) throw new AppError(404, 'not_found', 'Quote not found.');
+  // R75: each line says whether the quote's referral discount reaches it, so an optional add-on the client
+  // ticks shows its discounted figure before acceptance applies it.
   const lines = await app.db.query(
-    `SELECT item_code, description_en, description_es, quantity, unit_cents, line_cents,
-            min_cents, max_cents, is_optional, chosen, is_pass_through
-     FROM quote_line_items WHERE quote_id = $1 ORDER BY sort_order`,
+    `SELECT qli.item_code, qli.description_en, qli.description_es, qli.quantity, qli.unit_cents, qli.line_cents,
+            qli.min_cents, qli.max_cents, qli.is_optional, qli.chosen, qli.is_pass_through,
+            (q.referral_discount_rule_code IS NOT NULL AND q.referral_discount_removed_at IS NULL
+             AND COALESCE(pbi.service_line::text, qli.service_line::text) = ANY(q.referral_discount_service_lines)) AS referral_reached
+       FROM quote_line_items qli
+       JOIN quotes q ON q.id = qli.quote_id
+       LEFT JOIN price_book_items pbi ON pbi.version_id = q.price_book_version_id AND pbi.item_code = qli.item_code
+      WHERE qli.quote_id = $1 ORDER BY qli.sort_order`,
     [quote.id]
   );
   const expired = quote.expires_at !== null && quote.expires_at.getTime() < Date.now();
@@ -647,9 +684,14 @@ export async function quoteByToken(app: FastifyInstance, token: string) {
   // Decision 2 (2026-09-09): the client reads which tax year the proposal is for. The year
   // comes from the interview when it says; otherwise the prior calendar year (defaultTaxYear).
   const { periodsForQuote } = await import('../engagements/change-order.ts');
+  const { referral_discount_label_en: labelEn, referral_discount_label_es: labelEs, referral_discount_rate: rate, referral_discount_removed: removed, ...shown } = quote;
   return {
-    quote: { ...quote, expired },
+    quote: { ...shown, expired },
     lines: lines.rows,
+    // R75: the discount's own line, in the client's words from the book; null when the quote has none (or it was removed).
+    referralDiscount: labelEn && rate !== null && !removed
+      ? { labelEn, labelEs: labelEs ?? labelEn, rate: Number(rate), cents: quote.referral_discount_cents }
+      : null,
     periods: await periodsForQuote(app, quote.id),
     deposit: {
       standardCents: deposit.standardCents,
@@ -693,8 +735,16 @@ export interface ResolvedDeposit {
  * written under v4 keeps quoting v4 deposits after v5 ships.
  */
 async function summedLineDeposits(app: FastifyInstance, quoteId: string): Promise<number | null> {
+  /*
+   * R75: while the quote carries the Hilo referral discount, a line it reaches asks for its deposit at the
+   * discounted rate — the deposit is computed on the discounted total. A removed discount asks the full one.
+   */
   const { rows } = await app.db.query<{ total: string | null; n: number }>(
-    `SELECT SUM(pbi.deposit_cents)::text AS total, count(pbi.deposit_cents)::int AS n
+    `SELECT SUM(round(pbi.deposit_cents * CASE
+                 WHEN q.referral_discount_rule_code IS NOT NULL AND q.referral_discount_removed_at IS NULL
+                      AND pbi.service_line::text = ANY(q.referral_discount_service_lines)
+                 THEN (100 - q.referral_discount_rate) / 100.0 ELSE 1 END))::text AS total,
+            count(pbi.deposit_cents)::int AS n
        FROM quote_line_items qli
        JOIN quotes q ON q.id = qli.quote_id
        JOIN price_book_items pbi
@@ -784,6 +834,59 @@ export async function resolveDeposit(
  * and silently changing the figure behind an issued invoice would put the books
  * and the client's copy out of step. Adjust the invoice instead.
  */
+/**
+ * R75: THE CEO REMOVES THE HILO REFERRAL DISCOUNT FROM A QUOTE, with a reason. Before acceptance only
+ * (after it, the engagement and its deposit invoice carry the discount). The total and the range rise
+ * by the discount, the deposit returns to the book's, the removal is kept on the quote (who, when, why)
+ * and audited. It never raises a discount: there is no amount in the request.
+ */
+export async function removeReferralDiscount(
+  app: FastifyInstance,
+  quoteId: string,
+  reason: string,
+  actor: AuthedStaff
+): Promise<{ quoteId: string; removedCents: number; totalCents: number; deposit: ResolvedDeposit }> {
+  const { rows } = await app.db.query<{
+    status: string; contact_id: string; deposit_item_code: string | null; deposit_override_cents: number | null;
+    code: string | null; cents: number; removed: boolean;
+  }>(
+    `SELECT status::text, contact_id, deposit_item_code, deposit_override_cents,
+            referral_discount_rule_code AS code, referral_discount_cents AS cents,
+            referral_discount_removed_at IS NOT NULL AS removed
+       FROM quotes WHERE id = $1`,
+    [quoteId]
+  );
+  const q = rows[0];
+  if (!q) throw new AppError(404, 'not_found', 'Quote not found.');
+  if (!['draft', 'sent'].includes(q.status)) {
+    throw new AppError(409, 'quote_closed', `This quote is '${q.status}'. The referral discount can only be removed before the quote is accepted.`);
+  }
+  if (!q.code) throw new AppError(409, 'no_referral_discount', 'This quote carries no referral discount to remove.');
+  if (q.removed) throw new AppError(409, 'referral_discount_already_removed', 'The referral discount was already removed from this quote.');
+  // The range's top widens by the band from the total, as createQuote built it: the discount given back
+  // raises the top by the discount widened the same way, not by the bare amount.
+  const band = await estimateBandPercent(app);
+  const updated = await app.db.query<{ total_cents: number }>(
+    `UPDATE quotes
+        SET total_cents = total_cents + referral_discount_cents,
+            range_min_cents = CASE WHEN range_min_cents IS NULL THEN NULL ELSE range_min_cents + referral_discount_cents END,
+            range_max_cents = CASE WHEN range_max_cents IS NULL THEN NULL
+                                   ELSE range_max_cents + round(referral_discount_cents * (1 + $4::numeric / 100))::int END,
+            referral_discount_cents = 0,
+            referral_discount_removed_at = now(), referral_discount_removed_by = $2, referral_discount_removed_reason = $3
+      WHERE id = $1
+      RETURNING total_cents`,
+    [quoteId, actor.id, reason.trim(), band]
+  );
+  const deposit = await resolveDeposit(app, q.deposit_item_code, q.deposit_override_cents, quoteId);
+  await writeAudit(app.db, {
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+    action: 'quote.referral_discount_removed', objectType: 'quote', objectId: quoteId, contactId: q.contact_id,
+    details: { rule_code: q.code, amount_cents: q.cents, reason: reason.trim(), deposit_standard_cents: deposit.standardCents },
+  });
+  return { quoteId, removedCents: q.cents, totalCents: updated.rows[0]!.total_cents, deposit };
+}
+
 export async function overrideQuoteDeposit(
   app: FastifyInstance,
   quoteId: string,
@@ -1026,7 +1129,55 @@ async function convertAcceptedQuote(
     [quote.id]
   );
   const row = q.rows[0]!;
-  const totalCents = Math.max(0, recount.rows[0]!.subtotal - row.discount_cents);
+  /*
+   * R75: THE REFERRAL DISCOUNT AT ACCEPTANCE. Recomputed over the lines the client actually chose (an
+   * optional add-on it reaches takes it too) at the rate the quote was written with — never a rate read
+   * again, so nothing widens it. The scope is checked again: if another engagement began since the quote
+   * was sent, this is no longer the first, the discount lapses (audited with why) and the deposit is full.
+   */
+  const referralCents = await (async (): Promise<number> => {
+    const rq = await app.db.query<{ code: string | null; rate: string | null; lines: string[] | null; removed: boolean }>(
+      `SELECT referral_discount_rule_code AS code, referral_discount_rate::text AS rate,
+              referral_discount_service_lines AS lines, referral_discount_removed_at IS NOT NULL AS removed
+         FROM quotes WHERE id = $1`,
+      [quote.id]
+    );
+    const r = rq.rows[0]!;
+    if (!r.code || r.removed || r.rate === null || r.lines === null) return 0;
+    const prior = await app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM engagements WHERE contact_id = $1 AND status <> 'withdrawn'`,
+      [row.contact_id]
+    );
+    if ((prior.rows[0]?.n ?? 0) > 0) {
+      await app.db.query(
+        `UPDATE quotes SET referral_discount_rule_code = NULL, referral_discount_label_en = NULL, referral_discount_label_es = NULL,
+                           referral_discount_rate = NULL, referral_discount_service_lines = NULL, referral_discount_cents = 0
+          WHERE id = $1`,
+        [quote.id]
+      );
+      await writeAudit(app.db, {
+        actorType: 'system', actorLabel: 'quote acceptance',
+        action: 'quote.referral_discount_lapsed', objectType: 'quote', objectId: quote.id, contactId: row.contact_id,
+        details: { rule_code: r.code, why: 'not_first_engagement' },
+      });
+      return 0;
+    }
+    const chosen = await app.db.query<{ cents: number; service_line: string | null }>(
+      `SELECT COALESCE(qli.line_cents, 0)::int AS cents, COALESCE(pbi.service_line::text, qli.service_line::text) AS service_line
+         FROM quote_line_items qli
+         LEFT JOIN price_book_items pbi ON pbi.version_id = $2 AND pbi.item_code = qli.item_code
+        WHERE qli.quote_id = $1 AND qli.chosen AND NOT qli.is_pass_through`,
+      [quote.id, row.price_book_version_id]
+    );
+    const { referralDiscountCents } = await import('./referral-discount.ts');
+    const cents = referralDiscountCents(
+      chosen.rows.map((c) => ({ cents: c.cents, serviceLine: c.service_line })),
+      { rate: Number(r.rate), serviceLines: r.lines }
+    );
+    await app.db.query(`UPDATE quotes SET referral_discount_cents = $2 WHERE id = $1`, [quote.id, cents]);
+    return cents;
+  })();
+  const totalCents = Math.max(0, recount.rows[0]!.subtotal - row.discount_cents - referralCents);
 
   // The engagement inherits the quote's numbers — zero re-entry.
   const system: AuthedStaff = {
@@ -1109,6 +1260,29 @@ async function convertAcceptedQuote(
       app, created.id, quote.id, row.price_book_version_id, line.scope
     );
     warnIfScopeless(app.log, created.id, captured);
+
+    /*
+     * R75: an engagement the quote's referral discount reaches carries the rule, so every invoice
+     * raised on it shows the discount as its own line. Reached means its engagement line is one the
+     * rule's price lines produce (individual_tax and business_tax make 'tax'; entity_services makes
+     * 'entity'); a bookkeeping engagement from the same quote carries nothing.
+     */
+    await app.db.query(
+      `UPDATE engagements e
+          SET referral_discount_rule_code = q.referral_discount_rule_code,
+              referral_discount_label_en = q.referral_discount_label_en,
+              referral_discount_label_es = q.referral_discount_label_es,
+              referral_discount_rate = q.referral_discount_rate,
+              referral_discount_service_lines = q.referral_discount_service_lines,
+              referral_discount_quote_id = q.id
+         FROM quotes q
+        WHERE e.id = $1 AND q.id = $2
+          AND q.referral_discount_rule_code IS NOT NULL AND q.referral_discount_removed_at IS NULL
+          AND $3 = ANY($4::text[])`,
+      [created.id, quote.id, line.serviceLine,
+       (await app.db.query<{ lines: string[] | null }>(`SELECT referral_discount_service_lines AS lines FROM quotes WHERE id = $1`, [quote.id]))
+         .rows[0]?.lines?.map((pl) => engagementLineFor(pl, '')).filter((l): l is NonNullable<typeof l> => l !== null) ?? []]
+    );
 
     /*
      * THE RETURN RECORD (2026-09-12, the first 1120S). A tax line's base item says which return
@@ -1273,6 +1447,7 @@ async function convertAcceptedQuote(
     `UPDATE quotes
      SET total_cents = $2, converted_engagement_id = $3, deposit_invoice_id = $4
      WHERE id = $1`,
+    // (referral_discount_cents was set above, over the chosen lines, before the deposit was resolved.)
     [quote.id, totalCents, engagement.id, depositInvoiceId]
   );
 

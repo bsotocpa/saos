@@ -24,7 +24,9 @@ export const roles = [
     // engagement is the CEO's alone, the same mechanism — "until Brian lifts the hold".
     // 'engagements.tax.reopen' (2026-09-26, R67): reopening a completed return is the CEO's alone, the same
     // explicit-only mechanism; a preparer is refused 403 in the server's words.
-    permissions: ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset', 'engagements.billing_hold.lift', 'engagements.tax.reopen'], // '*' includes referrals.approve (Jackson too)
+    // 'quotes.referral_discount.remove' (2026-09-27, R75): removing the Hilo referral discount from a quote
+    // is the CEO's alone, with a reason; nothing widens it.
+    permissions: ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset', 'engagements.billing_hold.lift', 'engagements.tax.reopen', 'quotes.referral_discount.remove'], // '*' includes referrals.approve (Jackson too)
   },
   {
     key: 'ed_coo',

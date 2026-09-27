@@ -128,10 +128,11 @@ test('wrong password fails, wrong TOTP fails, correct pair logs in (all audited)
   // staff.mfa.reset joined on 2026-09-26 (R65): resetting a staff member's MFA is the CEO's alone.
   // engagements.billing_hold.lift joined on 2026-09-26 (R68): lifting an imported engagement's billing hold is the CEO's alone.
   // engagements.tax.reopen joined on 2026-09-26 (R67): reopening a completed return is the CEO's alone.
+  // quotes.referral_discount.remove joined on 2026-09-27 (R75): removing the Hilo referral discount is the CEO's alone.
   // The list is compared as a SET: array_agg returns the grants in index order, not seed order.
   assert.deepEqual(
     [...(me.json().permissions as string[])].sort(),
-    ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset', 'engagements.billing_hold.lift', 'engagements.tax.reopen'].sort()
+    ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset', 'engagements.billing_hold.lift', 'engagements.tax.reopen', 'quotes.referral_discount.remove'].sort()
   );
 });
 

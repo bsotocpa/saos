@@ -21,8 +21,8 @@ export type QuotedReturn = {
    * its quoted range from BIZ_990 too. `returnType` stays the return an accepted quote CREATES
    * (the 990, never the EZ — the preparer decides the short form on the return); `covers` is every
    * type the line answers for when a return asks which base item is its own (quotedRangeFor).
-   * 990-PF and 990-T are NOT here: they have no line in the book yet (docs/proposals/2026-09-27-
-   * price-book-v6-990.md proposes BIZ_990PF and BIZ_990T for Brian to price and publish).
+   * 990-PF and 990-T have their own lines from price book v6 (R75): BIZ_990PF and BIZ_990T. Until v6
+   * is in force the book holds no such line and quotedRangeFor reads none, as for any unpriced return.
    */
   covers?: readonly string[];
 };
@@ -41,6 +41,9 @@ const BASE_ITEMS: Record<string, QuotedReturn> = {
   BIZ_1120H: { returnType: '1120h', clientType: 'business' },
   BIZ_1120POL: { returnType: '1120pol', clientType: 'business' },
   BIZ_990: { returnType: '990', clientType: 'nonprofit', covers: ['990', '990ez'] },
+  // R75 (price book v6, effective 2026-10-01): the 990-PF and the 990-T each have their own line.
+  BIZ_990PF: { returnType: '990pf', clientType: 'nonprofit' },
+  BIZ_990T: { returnType: '990t', clientType: 'nonprofit' },
 };
 
 /** Does this price-book item price a return of this type? The item's own return, or one it covers (BIZ_990 → 990-EZ). */
