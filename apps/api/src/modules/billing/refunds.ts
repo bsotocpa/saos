@@ -209,7 +209,15 @@ async function applyRefundedAmount(
   inv: InvoiceRow,
   amountRefundedCents: number
 ): Promise<'refunded' | 'partially_refunded'> {
-  const capped = Math.min(amountRefundedCents, inv.amount_paid_cents);
+  /*
+   * MONOTONIC (the live proof against Stripe's test API, 2026-09-27). Stripe delivers the
+   * charge.refunded events of one charge in no promised order: the event carrying the later, larger
+   * cumulative figure arrived before the one carrying the earlier, smaller one, and the smaller
+   * figure then asked the invoice to move from refunded back to partially_refunded, which the state
+   * machine refuses. The refunded total never goes down: a stale event confirms its own refund row
+   * (recordRefunds above) and leaves the figure and the status where the newer truth put them.
+   */
+  const capped = Math.min(Math.max(amountRefundedCents, inv.amount_refunded_cents ?? 0), inv.amount_paid_cents);
   const full = capped >= inv.amount_paid_cents;
   const status = full ? 'refunded' : 'partially_refunded';
   await app.db.query(

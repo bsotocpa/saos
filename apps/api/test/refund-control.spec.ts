@@ -457,6 +457,25 @@ test('the switch off: 409 with the sentence before the body is read, the session
   assert.equal((await invoiceState(inv.id)).amount_refunded_cents, 10000);
 });
 
+test('two door refunds, their charge.refunded events out of order: the later total first, the earlier one never regresses the status', async () => {
+  const inv = await paidInvoice(2000);
+  const first = (await refund(rene, inv.id, { amountCents: 750, reason: 'The first month was billed twice and the client paid both.' }).then((r) => r.json())) as { stripeRefundId: string };
+  const second = (await refund(rene, inv.id, { amountCents: 1250, reason: 'The rest of the payment is returned; the engagement was withdrawn.' }).then((r) => r.json())) as { stripeRefundId: string };
+  assert.equal((await invoiceState(inv.id)).status, 'refunded');
+
+  // Stripe's event for the SECOND refund arrives first (cumulative 2000), then the FIRST refund's event (cumulative 750).
+  const late = await webhookRefund(inv, { id: second.stripeRefundId, cents: 1250 }, 2000, `evt_refundctl_order_b_${seq}`);
+  assert.equal(late.status, 'refunded');
+  assert.equal(late.reconciled, 1);
+  const early = await webhookRefund(inv, { id: first.stripeRefundId, cents: 750 }, 750, `evt_refundctl_order_a_${seq}`);
+  assert.equal(early.reconciled, 1, 'the earlier event confirms its own row');
+  assert.equal(early.status, 'refunded', 'and does not move the invoice backwards');
+  const state = await invoiceState(inv.id);
+  assert.equal(state.status, 'refunded');
+  assert.equal(state.amount_refunded_cents, 2000, 'the refunded total never goes down');
+  assert.equal((await refundRows(inv.id)).length, 2, 'two refunds, two rows, no duplicates');
+});
+
 test('the flip lives in the harness boot alone: nothing under src registers a /harness route', () => {
   const src = resolve(here, '..', 'src');
   const offenders: string[] = [];
