@@ -2132,3 +2132,7 @@ Receipt run 20 (tree 5d56f78) lost one API test that passes alone: a paper juris
 ## Two checkouts never share a test database (2026-09-27)
 While receipt run 22 ran in the worktree, a batch of API specs was running in the main checkout against the same Postgres: every spec recreates its database with DROP ... WITH (FORCE), so the same spec in the other checkout could lose its database mid-run. (Run 22's one red was not one of the overlapping specs; the overlap was caught before it cost a receipt.)
 **Rule:** the test database name carries a tag of the checkout's path (testDatabaseName); and while a receipt runs, nothing else runs the harness (ports) — the lock covers that.
+
+## A rule's scope is read in the terms the ruling uses, and asked about when two readings differ (Brian, 2026-09-27, R78)
+R75 said "the referred client's first engagement only"; I built it as "no engagement other than withdrawn ones", so a client with bookkeeping alone lost the discount on their first tax work. Brian ruled the meaning: the first engagement that carries a line the rule reaches; withdrawn never counts.
+**Rule:** when a ruling's scope word ("first", "only", "any") can be read against the whole record or against the ruling's own subject, build it against the subject and name the reading in the report's first paragraph for that item, so a wrong reading is caught at the report, not after a client is quoted.

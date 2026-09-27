@@ -1,6 +1,6 @@
 # open-rulings (2026-09-27)
 
-Generated 2026-09-27T11:19:52.784Z by scripts/report-table.mjs from the log open.log; 163 row(s).
+Generated 2026-09-27T20:49:49.691Z by scripts/report-table.mjs from the log open.log; 171 row(s).
 
 ```sql
 node scripts/open-rulings.mjs
@@ -158,16 +158,24 @@ node scripts/open-rulings.mjs
 | R-148 | 2026-09-27 | RULED 2026-09-27 (batch 7), R74 (report-only): handover packet for Ana-Maria, one page at docs/handover/2026-10-19-ana-maria.md, plain Engli | closed | closed |
 | R-149 | 2026-09-27 | RULED 2026-09-27 (batch 7), R48 confirm: state that the return-delivered notice went live with "We'll be in touch about signing next." and t | closed | closed |
 | R-150 | 2026-09-27 | RULED 2026-09-27 (batch 7), R41, R50, R40: all three stay off until Brian's approval message; each flipped on its own, each with a receipt r | OPEN |  |
-| R-151 | 2026-09-27 | RULED 2026-09-27 (batch 7), TRELLO CUTOVER PREPARATION (report-only, build nothing until Brian rules): about 30 of the 55 sales-tax cards ar | OPEN |  |
+| R-151 | 2026-09-27 | RULED 2026-09-27 (batch 7), TRELLO CUTOVER PREPARATION (report-only, build nothing until Brian rules): about 30 of the 55 sales-tax cards ar | closed | closed |
 | R-152 | 2026-09-27 | RULED 2026-09-27 (batch 7), R75: price book v6 | closed | BUILT 2026-09-27: the door takes new lines and rules and now copies catalog groups and packages; migration 0129; the discount through quote, |
 | R-153 | 2026-09-27 | RULED 2026-09-27 (batch 7, BUILD ORDER): 1 R73 first, as a message. 2 R71 and R72 (and R75), taps and one logged sabotage each; deploy. 3 R7 | closed | closed |
 | R-154 | 2026-09-27 | RULED 2026-09-27 (batch 7, REPORT; open with OPEN RULINGS; tables are files written by scripts; counts only): the R73 answers, the R48 confi | OPEN |  |
-| R-155 | 2026-09-27 | RULING NEEDED (batch 7, 2026-09-27): the temporary-password notice and the recovery-code alert did not exist as mail before R71; they were a | OPEN |  |
-| R-156 | 2026-09-27 | KNOWN RISK (batch 7, 2026-09-27, the clock-step audit): orderings by created_at between back-to-back requests remain in the config history r | OPEN |  |
-| R-157 |  | Then the Monday walk as written. | OPEN |  |
-| R-158 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
-| R-159 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |
-| R-160 | 2026-09-12 | RULED 2026-09-12 | OPEN |  |
-| R-161 | 2026-09-12 | RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks th | OPEN |  |
-| R-162 | 2026-09-12 | Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12). | closed | closed |
-| R-163 | 2026-09-12 | FIRST REAL-DATA RUN (Brian, 2026-09-12) | OPEN |  |
+| R-155 | 2026-09-27 | RULING NEEDED (batch 7, 2026-09-27): the temporary-password notice and the recovery-code alert did not exist as mail before R71; they were a | closed | closed |
+| R-156 | 2026-09-27 | KNOWN RISK (batch 7, 2026-09-27, the clock-step audit; ruled for build as R77, built in batch 8): orderings by created_at between back-to-ba | closed | closed |
+| R-157 | 2026-09-27 | RULED 2026-09-27 (batch 8), R76 | OPEN |  |
+| R-158 | 2026-09-27 | RULED 2026-09-27 (batch 8), R77: the configurator history and the event waitlist promotion read in write order, by sequence, never by clock | closed | BUILT 2026-09-27: migration 0130 (seq on both tables), configHistory, the waitlist position and promotion by seq, deterministic clock-step t |
+| R-159 | 2026-09-27 | RULED 2026-09-27 (batch 8), R78: "first engagement" for the Hilo discount means the referred client's first engagement that carries an eligi | closed | ANSWERED AND BUILT 2026-09-27: the code counted any engagement not withdrawn, so a bookkeeping-only engagement consumed it; now priorEligibl |
+| R-160 | 2026-09-27 | RULED 2026-09-27 (batch 8), R71: the temporary-password notice and the recovery-code alert stay as built. | closed | closed |
+| R-161 | 2026-09-27 | RULED 2026-09-27 (batch 8), TRELLO CUTOVER FACTS: `client_self_files` and the unconfirmed flag are approved as proposed (docs/proposals/2026 | OPEN |  |
+| R-162 | 2026-09-27 | RULED 2026-09-27 (batch 8), R41, R50, R40: unchanged, off until Brian's approval message. | OPEN |  |
+| R-163 | 2026-09-27 | RULED 2026-09-27 (batch 8, BUILD ORDER): 1 R76 and R78, deploy. 2 R77, deploy with whatever else is ready. | OPEN |  |
+| R-164 | 2026-09-27 | RULED 2026-09-27 (batch 8, REPORT; open with OPEN RULINGS including the four cutover questions verbatim; tables are files written by scripts | OPEN |  |
+| R-165 |  | Then the Monday walk as written. | OPEN |  |
+| R-166 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
+| R-167 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |
+| R-168 | 2026-09-12 | RULED 2026-09-12 | OPEN |  |
+| R-169 | 2026-09-12 | RULED 2026-09-12: 8821 and 2848 take the 8879 shape (wet-signed in office, scanned, uploaded under signed_authorizations; the gate checks th | OPEN |  |
+| R-170 | 2026-09-12 | Waive Stripe check renders only on an invoice with an open drift finding; the route refuses otherwise (2026-09-12). | closed | closed |
+| R-171 | 2026-09-12 | FIRST REAL-DATA RUN (Brian, 2026-09-12) | OPEN |  |
