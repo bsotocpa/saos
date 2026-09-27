@@ -19,6 +19,7 @@ import { createTestConfig, makeContact, makeStaff, type TestStaff, businessFor }
 import type { Config } from '../src/config.ts';
 import { createInvoice } from '../src/modules/billing/service.ts';
 import { runReport } from '../src/modules/reports/service.ts';
+import { configHistory } from '../src/modules/engagements/configurator.ts';
 
 let app: FastifyInstance;
 let config: Config;
@@ -210,12 +211,9 @@ test('RULING 4: maintenance mode derives monthly prep + semi-annual sessions', a
   assert.equal(cfg.lines, undefined, 'no quote-shaped line array is returned at all');
 
   // The history row carries the derived monthly figure, not a prep-only number.
-  const history = await app.db.query<{ monthly_equivalent_cents: number }>(
-    `SELECT monthly_equivalent_cents FROM engagement_config_history
-     WHERE engagement_id = $1 ORDER BY created_at DESC LIMIT 1`,
-    [engId]
-  );
-  assert.equal(history.rows[0]!.monthly_equivalent_cents, Math.round(200000 / 12));
+  // R77: the latest row by write order (configHistory reads by seq), never by clock.
+  const history = await configHistory(app, engId);
+  assert.equal(history[history.length - 1]!.monthly_equivalent_cents, Math.round(200000 / 12));
 });
 
 test('RULING 3: a component can never reach a quote, an invoice, or the builder', async () => {

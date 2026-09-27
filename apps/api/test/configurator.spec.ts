@@ -21,7 +21,7 @@ import type { Mailer } from '../src/mailer.ts';
 import { createTestConfig, makeContact, makeStaff, type TestStaff } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 import {
-  PREP_ITEM, SESSIONS_PER_YEAR, S_CORP_SESSION_FLOOR, sElectionEvidence,
+  PREP_ITEM, SESSIONS_PER_YEAR, S_CORP_SESSION_FLOOR, sElectionEvidence, configHistory,
 } from '../src/modules/engagements/configurator.ts';
 
 let app: FastifyInstance;
@@ -210,13 +210,16 @@ test('maintenance mode works for a client the floor does not bind, and holds pre
   assert.equal(up.json().error, 'not_a_reduction');
 
   // Every change is in the history, so a later downgrade is answerable.
-  const history = await app.db.query<{ session_cadence: string; maintenance_mode: boolean }>(
-    `SELECT session_cadence::text, maintenance_mode FROM engagement_config_history
-     WHERE engagement_id = $1 ORDER BY created_at`,
-    [engId]
-  );
-  assert.deepEqual(history.rows.map((h) => h.session_cadence), ['monthly', 'quarterly']);
-  assert.deepEqual(history.rows.map((h) => h.maintenance_mode), [false, true]);
+  const history = await configHistory(app, engId);
+  assert.deepEqual(history.map((h) => h.session_cadence), ['monthly', 'quarterly']);
+  assert.deepEqual(history.map((h) => h.maintenance_mode), [false, true]);
+
+  // R77: the clock step, reproduced: the maintenance row's instant set 2 ms BEFORE the configuration's,
+  // as the Docker VM's clock correction can make it. The history still reads in the order written.
+  await app.db.query(
+    `UPDATE engagement_config_history SET created_at = (SELECT min(created_at) FROM engagement_config_history WHERE engagement_id = $1) - interval '2 milliseconds'
+      WHERE engagement_id = $1 AND maintenance_mode`, [engId]);
+  assert.deepEqual((await configHistory(app, engId)).map((h) => h.session_cadence), ['monthly', 'quarterly'], 'R77: written order, not clock order');
 });
 
 test('the S election is detected from a 1120-S filing too, not just entity_type', async () => {

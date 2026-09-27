@@ -201,6 +201,11 @@ test('a cancelled seat is actually given to the next person on the waitlist', as
   await register('promote-workshop', 2);
   await register('promote-workshop', 3); // waitlisted
   await register('promote-workshop', 4); // waitlisted
+  // R77: the clock step, reproduced: attendee 4's instant set 2 ms BEFORE attendee 3's, as the Docker
+  // VM's clock correction can make it. Attendee 3 joined the waitlist first, and keeps first place.
+  await app.db.query(
+    `UPDATE event_registrations SET created_at = (SELECT created_at FROM event_registrations WHERE email = 'attendee3-promote-workshop@example.test') - interval '2 milliseconds'
+      WHERE email = 'attendee4-promote-workshop@example.test'`);
 
   const mark = sent.length;
   const cancelled = await app.inject({

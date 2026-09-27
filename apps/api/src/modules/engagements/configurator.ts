@@ -461,3 +461,20 @@ export async function configuratorOptions(
   });
   return { sElection, sessionFloor: S_CORP_SESSION_FLOOR, prepCadences, sessionCadences };
 }
+
+/**
+ * THE CONFIGURATOR'S HISTORY, IN THE ORDER IT WAS WRITTEN (R77, 2026-09-27). Every configuration and
+ * every maintenance-mode change appends a row; the history is read by seq (migration 0130), never by
+ * created_at, because the clock can step backward between two changes made moments apart.
+ */
+export async function configHistory(
+  app: FastifyInstance,
+  engagementId: string
+): Promise<Array<{ session_cadence: string | null; maintenance_mode: boolean; monthly_equivalent_cents: number | null; created_at: Date }>> {
+  const { rows } = await app.db.query<{ session_cadence: string | null; maintenance_mode: boolean; monthly_equivalent_cents: number | null; created_at: Date }>(
+    `SELECT session_cadence::text AS session_cadence, maintenance_mode, monthly_equivalent_cents, created_at
+       FROM engagement_config_history WHERE engagement_id = $1 ORDER BY seq`,
+    [engagementId]
+  );
+  return rows;
+}

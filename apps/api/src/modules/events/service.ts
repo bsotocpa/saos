@@ -193,9 +193,9 @@ export async function registerForEvent(
       ? (
           await app.db.query<{ n: number }>(
             `SELECT count(*)::int AS n FROM event_registrations
-             WHERE event_id = $1 AND status = 'waitlisted' AND created_at <= (
-               SELECT created_at FROM event_registrations WHERE event_id = $1 AND email = $2
-             )`,
+             WHERE event_id = $1 AND status = 'waitlisted' AND seq <= (
+               SELECT seq FROM event_registrations WHERE event_id = $1 AND email = $2
+             )`, // R77: the order people registered (0130), never the clock's
             [e.id, input.email]
           )
         ).rows[0]!.n
@@ -272,7 +272,7 @@ export async function cancelRegistration(
        WHERE id = (
          SELECT id FROM event_registrations
          WHERE event_id = $1 AND status = 'waitlisted'
-         ORDER BY created_at LIMIT 1
+         ORDER BY seq LIMIT 1 -- R77: the first to join the waitlist, by write order (0130), never by clock
        )
        RETURNING email, first_name, language`,
       [e.id, seat]
