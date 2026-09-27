@@ -32,8 +32,8 @@ mkdirSync(logDir, { recursive: true });
 const logFile = resolve(logDir, `${date}.log`);
 if (!existsSync(logFile)) writeFileSync(logFile, 'date | item | file | change | test | on the harness | red | restored green\n');
 
-function runApi(spec) {
-  const r = spawnSync('node', ['--test', '--test-timeout=300000', '--test-force-exit', spec], { cwd: resolve(root, 'apps', 'api'), encoding: 'utf8', shell: true });
+function runApi(spec, app = 'api') {
+  const r = spawnSync('node', ['--test', '--test-timeout=300000', '--test-force-exit', spec], { cwd: resolve(root, 'apps', app), encoding: 'utf8', shell: true });
   const out = (r.stdout ?? '') + (r.stderr ?? '');
   const failed = [...out.matchAll(/^✖ (.+?) \(/gm)].map((m) => m[1]).filter((n) => !n.startsWith('C:'));
   return { pass: /ℹ pass (\d+)/.exec(out)?.[1] ?? '?', fail: /ℹ fail (\d+)/.exec(out)?.[1] ?? '?', failed: [...new Set(failed)] };
@@ -58,7 +58,8 @@ function runGuard(script) {
   const failed = [...out.matchAll(/^RED\s+(.+)$/gm)].map((m) => m[1].trim());
   return { pass: r.status === 0 ? '1' : '0', fail: r.status === 0 ? '0' : String(Math.max(1, failed.length)), failed };
 }
-const run = (t) => (t.kind === 'harness' ? runHarness(t.spec) : t.kind === 'guard' ? runGuard(t.spec) : runApi(t.spec));
+// 'internal' (2026-09-27): an Ops unit test, run the way the API's are, from apps/internal.
+const run = (t) => (t.kind === 'harness' ? runHarness(t.spec) : t.kind === 'guard' ? runGuard(t.spec) : t.kind === 'internal' ? runApi(t.spec, 'internal') : runApi(t.spec));
 const cell = (s) => String(s ?? '').replace(/\|/g, '/').replace(/\s+/g, ' ').trim();
 const log = (cols) => { const line = [date, ...cols].map(cell).join(' | '); appendFileSync(logFile, line + '\n'); console.log(line); };
 

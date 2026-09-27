@@ -64,6 +64,8 @@ test.describe('Ops → edit after create: task and staff member', () => {
       const form = page.locator('[role=dialog]', { has: page.getByRole('heading', { name: 'Create Task' }) });
       await expect(form).toBeVisible();
       await form.getByLabel(/^Subject/).fill(title);
+      // Read back before Save (receipt run 21): a fill the form wiped reads here, not as a refused Save.
+      await expect(form.getByLabel(/^Subject/)).toHaveValue(title);
       await form.getByRole('button', { name: 'Save', exact: true }).click();
       await expect(form).toHaveCount(0);
       const row = page.getByText(title, { exact: true }).first();

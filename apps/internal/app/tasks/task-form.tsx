@@ -245,7 +245,16 @@ export function TaskFormModal(props: {
   const errAt = (key: string) => (inlineErr?.key === key ? <p className="field-error" role="alert">{inlineErr.message}</p> : null);
   const [busy, setBusy] = useState(false);
 
+  /*
+   * RECEIPT RUN 21 (2026-09-27): the form is filled by the useState initializer above; this effect
+   * refills it only when the record or the person actually CHANGES. It used to run on mount too, after
+   * paint, so on a slow phone a subject typed in that gap was wiped and Save refused "Subject is
+   * required." — the harness's phone walk caught it.
+   */
+  const shownFor = useRef({ task: props.task, meId: props.meId });
   useEffect(() => {
+    if (shownFor.current.task === props.task && shownFor.current.meId === props.meId) return;
+    shownFor.current = { task: props.task, meId: props.meId };
     setForm(fromTask(props.task, props.meId));
   }, [props.task, props.meId]);
 
