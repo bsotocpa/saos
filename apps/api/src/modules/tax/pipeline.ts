@@ -803,7 +803,12 @@ export async function reopenCompletedReturn(
         );
       }
     }
-    await app.db.query(`UPDATE tax_engagement_jurisdictions SET reopened_at = now() WHERE tax_engagement_id = $1`, [taxEngagementId]);
+    // Every row's answer is in doubt from here until a new one is recorded on it (0128: a flag, never
+    // a comparison of instants; the wall clock can step backward between the reopen and the answer).
+    await app.db.query(
+      `UPDATE tax_engagement_jurisdictions SET reopened_at = now(), answer_stale = true WHERE tax_engagement_id = $1`,
+      [taxEngagementId]
+    );
     await app.db.query(
       `UPDATE tax_engagements
           SET stage = 'filed', reopened_at = now(), reopen_reason = $2,
@@ -959,12 +964,13 @@ export interface DeclaredJurisdiction {
 
 /**
  * THE ONE PLACE THAT DECIDES WHETHER AN ANSWER STILL COUNTS (R67). A row answered before the return
- * was reopened is stale: the reopen was the firm saying that answer is in doubt. Fresh means never
- * reopened while this row stood, or answered after the reopen instant.
+ * was reopened is stale: the reopen was the firm saying that answer is in doubt. The reopen sets the
+ * row's answer_stale flag and the next acceptance or mailing on the row clears it (0128). It used to
+ * compare answered_at with reopened_at; receipt run 20 showed the database clock stepping back 1 to
+ * 2 ms every 30 seconds under load, which made a mailing recorded after the reopen read as before it.
  */
-export function answerIsFresh(row: { answeredAt: Date | null; reopenedAt: Date | null }): boolean {
-  if (!row.reopenedAt) return true;
-  return row.answeredAt !== null && row.answeredAt.getTime() > row.reopenedAt.getTime();
+export function answerIsFresh(row: { answerStale: boolean }): boolean {
+  return !row.answerStale;
 }
 
 export interface AcceptanceStatus {
@@ -1049,11 +1055,11 @@ export async function acceptanceStatus(
   const decl = await app.db.query<{
     jurisdiction: string; accepted_on: string | null; filing_method: string | null;
     mailed_on: string | null; mailing_method: string | null; tracking_number: string | null; receipt_document_id: string | null;
-    answered_at: Date | null; reopened_at: Date | null;
+    answer_stale: boolean;
   }>(
     `SELECT jurisdiction, accepted_on::text AS accepted_on, filing_method,
             mailed_on::text AS mailed_on, mailing_method, tracking_number, receipt_document_id,
-            answered_at, reopened_at
+            answer_stale
        FROM tax_engagement_jurisdictions
       WHERE tax_engagement_id = $1 ORDER BY (jurisdiction <> 'federal'), jurisdiction`,
     [taxEngagementId]
@@ -1068,7 +1074,7 @@ export async function acceptanceStatus(
       mailingMethod: d.mailing_method as MailingMethod | null,
       trackingNumber: d.tracking_number,
       receiptDocumentId: d.receipt_document_id,
-      answerStale: answered && !answerIsFresh({ answeredAt: d.answered_at, reopenedAt: d.reopened_at }),
+      answerStale: answered && !answerIsFresh({ answerStale: d.answer_stale }),
     };
   });
   const declaredJurisdictions = declared.map((d) => d.jurisdiction);
@@ -1147,7 +1153,8 @@ export async function stampJurisdictionAccepted(
       `UPDATE tax_engagement_jurisdictions
           SET accepted_on = CASE WHEN $5 THEN COALESCE($3::date, CURRENT_DATE) ELSE COALESCE(accepted_on, $3::date, CURRENT_DATE) END,
               submission_id = CASE WHEN $5 THEN $4 ELSE COALESCE(submission_id, $4) END,
-              answered_at = CASE WHEN $5 THEN now() ELSE COALESCE(answered_at, now()) END
+              answered_at = CASE WHEN $5 THEN now() ELSE COALESCE(answered_at, now()) END,
+              answer_stale = false
         WHERE tax_engagement_id = $1 AND jurisdiction = $2`,
       [taxEngagementId, jurisdiction, acceptedOn, submissionId, stale]
     );
@@ -1410,7 +1417,8 @@ export async function recordJurisdictionMailing(
   const tracking = input.trackingNumber?.trim() || null;
   await app.db.query(
     `UPDATE tax_engagement_jurisdictions
-        SET mailed_on = $3::date, mailing_method = $4, tracking_number = $5, receipt_document_id = $6, answered_at = now()
+        SET mailed_on = $3::date, mailing_method = $4, tracking_number = $5, receipt_document_id = $6, answered_at = now(),
+            answer_stale = false
       WHERE tax_engagement_id = $1 AND jurisdiction = $2`,
     [taxEngagementId, code, input.mailedOn, input.method, tracking, input.receiptDocumentId ?? null]
   );

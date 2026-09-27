@@ -226,3 +226,25 @@ test('a paper jurisdiction reopened takes a NEW mailing: the first mailing no lo
   assert.equal(fresh.json().stage, 'completed', 'the last fresh answer completes it');
   assert.equal((await state(te.id)).engagement_status, 'completed');
 });
+
+test('RECEIPT RUN 20: an answer recorded after the reopen counts even when the database clock stepped back between them (the VM clock is corrected every 30 seconds)', async () => {
+  const te = await readyReturn('Clockstep');
+  assert.equal((await file(te.id, { jurisdictions: ['federal', 'WI'], filingMethods: { WI: 'paper' } })).statusCode, 200);
+  const mail = (payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/jurisdictions/WI/mailing`, headers: auth(ana), payload: { mailedOn: today, method: 'first_class', ...payload } });
+  assert.equal((await mail({})).statusCode, 200);
+  assert.equal((await accept(te.id)).json().stage, 'completed');
+  assert.equal((await reopen(te.id)).statusCode, 200);
+  assert.equal((await mail({ method: 'certified', trackingNumber: '9400SYNTHETIC0002' })).statusCode, 200);
+  // The clock step, reproduced: the new mailing's instant lands 2 ms BEFORE the reopen's, as the
+  // Docker VM's clock correction made it in run 20. The answer was still recorded after the reopen.
+  await app.db.query(
+    `UPDATE tax_engagement_jurisdictions SET answered_at = reopened_at - interval '2 milliseconds'
+      WHERE tax_engagement_id = $1 AND jurisdiction = 'WI'`, [te.id]);
+  const detail = (await app.inject({ method: 'GET', url: `/tax-engagements/${te.id}`, headers: auth(brian) })).json() as {
+    jurisdictions_awaiting: string[]; paper_awaiting_mailing: string[];
+  };
+  assert.deepEqual(detail.jurisdictions_awaiting, ['federal'], 'WI answered after the reopen, whatever the clock says');
+  assert.deepEqual(detail.paper_awaiting_mailing, []);
+  assert.equal((await accept(te.id)).json().stage, 'completed', 'and the new federal acceptance completes it');
+});
