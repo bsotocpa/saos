@@ -191,7 +191,7 @@ function StepperBody({ taxEngagementId, contactId, stage, detail, canManage, err
       {open?.key !== 'file' && (detail.jurisdictions ?? []).length > 0 ? (
         <div className="step-record" data-testid="jurisdiction-record">{jurisdictionBlock}</div>
       ) : null}
-      {canManage && (preFiled || mailable) ? (
+      {canManage && (preFiled || mailable || correctionsApply(stage)) ? (
         <div className="step-details" data-testid="return-details">
           <p className="muted small" style={{ gridColumn: '1 / -1', margin: 0 }}>Details</p>
           {preFiled && current?.key !== 'preparer' ? (

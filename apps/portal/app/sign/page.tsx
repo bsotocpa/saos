@@ -14,7 +14,8 @@ import { api, ApiError } from '../../lib/api';
 import { useRouter } from 'next/navigation';
 import { useSession } from '../../lib/session';
 import { envelopeLabel, envelopeRows, type DictKey, type Envelope } from '../../lib/i18n';
-import { dayOf } from '../../lib/dates';
+import Link from 'next/link';
+import { dayOf, formatDate } from '../../lib/dates';
 
 interface PendingSchedule {
   schedule_code: string;
@@ -247,15 +248,24 @@ export default function SignPage() {
       ) : null}
 
       <section className="card">
-        {loaded && envelopes.length === 0 ? <p className="muted">{t('sign_empty')}</p> : null}
+        {loaded && envelopes.length === 0 && offers.length === 0 ? <p className="muted">{t('sign_empty')}</p> : null}
         <ul className="list">
+          {/* R87: one state per document. A §7216 consent is read from its own state (the offer), never
+              from the intake envelope that once stood for it; it is answered on /consent. */}
+          {offers.filter((o) => o.kind === '7216_use').map((o) => (
+            <li key={`consent-${o.kind}`} data-testid="envelope-row" data-status="consent-waiting">
+              <span className="grow">{t('env_consent_7216')}{(o as { engagementLabel?: string | null }).engagementLabel ? ` · ${(o as { engagementLabel?: string | null }).engagementLabel}` : ''}</span>
+              <span className="badge warn">{t('env_status_consent_waiting')}</span>
+              <Link className="btn accent small" href="/consent" data-testid="consent-answer">{t('consent_answer')}</Link>
+            </li>
+          ))}
           {envelopes.map((e) => (
             <li key={e.id} data-testid="envelope-row" data-status={e.status}>
               <span className="grow">{envelopeLabel(t, e)}</span>
               {/* A signed document reads the day it was signed (R46); nothing signed ever reads "Being prepared". */}
               <span className={`badge ${e.status === 'completed' ? 'ok' : e.status === 'draft' ? '' : 'warn'}`}>
                 {e.status === 'completed' && e.completed_at
-                  ? t('env_status_signed_on').replace('{date}', dayOf(e.completed_at, lang))
+                  ? t('env_status_signed_on').replace('{date}', e.signed_on ? formatDate(e.signed_on, lang) : dayOf(e.completed_at, lang))
                   : t(statusKey(e.status))}
               </span>
             </li>

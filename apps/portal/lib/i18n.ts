@@ -305,6 +305,9 @@ const dict = {
   sign_empty: ['Nothing waiting for your signature.', 'Nada pendiente de firma.'],
   env_engagement_letter: ['Engagement letter', 'Carta de compromiso'],
   env_consent_7216: ['Tax information consent (§7216)', 'Consentimiento de información fiscal (§7216)'],
+  // R87 (2026-09-27): a consent is an answer, not a signature on an envelope; it reads its own state.
+  env_status_consent_waiting: ['Waiting for your answer', 'Esperando su respuesta'],
+  consent_answer: ['Answer', 'Responder'],
   env_f8879: ['E-file authorization (Form 8879)', 'Autorización de presentación electrónica (8879)'],
   env_status_draft: ['Being prepared', 'En preparación'],
   env_status_sent: ['Ready to sign — check your email', 'Lista para firmar — revise su correo'],
@@ -854,6 +857,8 @@ export interface Envelope {
   status: string;
   sent_at?: string | null;
   completed_at?: string | null;
+  /** R88: the calendar day a wet-signed 8879 was signed (YYYY-MM-DD), never zone-shifted. */
+  signed_on?: string | null;
   engagement_id?: string | null;
   service_line?: string | null;
   tax_year?: number | null;

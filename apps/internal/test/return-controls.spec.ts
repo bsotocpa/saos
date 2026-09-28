@@ -351,7 +351,7 @@ test('the Record mailing modal: the day, the method, optional tracking, optional
   // Two windows, one gate: the pre-filing controls are hidden after filing, the mailing control is not.
   assert.match(component, /const preFiled = controlsApply\(stage\);/);
   // Three windows since R67: the completed row renders for the reopen alone, and only for the session that holds it.
-  assert.match(component, /const applies = preFiled \|\| mailingControlsApply\(stage\) \|\| \(canReopen && reopenApplies\(stage\)\);/);
+  assert.match(component, /const applies = preFiled \|\| mailingControlsApply\(stage\) \|\| correctionsApply\(stage\) \|\| \(canReopen && reopenApplies\(stage\)\);/);
   assert.match(component, /if \(!canManage \|\| !applies\) return null;/, 'nothing, not disabled buttons');
 });
 
@@ -359,8 +359,9 @@ test('the Record mailing modal: the day, the method, optional tracking, optional
  * ═══ 2026-09-26: FILED ON, AND THE FILING CORRECTED ════════════════════════════════════════════
  */
 test('the correction control belongs to the filed row alone, and the Mark filed modal takes "Filed on" opening on today', () => {
-  for (const s of ['intake_started', 'ready_to_file', 'rejected', 'completed', 'withdrawn']) assert.equal(correctionsApply(s), false, s);
+  for (const s of ['intake_started', 'ready_to_file', 'rejected', 'withdrawn']) assert.equal(correctionsApply(s), false, s);
   assert.equal(correctionsApply('filed'), true);
+  assert.equal(correctionsApply('completed'), true, 'R86: a completed return is correctable too');
   assert.match(component, /filedOn: te\.filed_date \?\? todayChicago\(\)/, 'the day opens on today in Chicago, or the day a re-file keeps');
   assert.match(component, /\n\s*Filed on\n/, 'the label the walk taps');
   assert.match(component, /filedOn: draft\.filedOn,\n/, 'and the filing sends it');
@@ -455,7 +456,7 @@ test('R67: Reopen belongs to the completed row and to the named permission alone
   assert.equal(canReopenReturns(null), false);
   for (const s of ['intake_started', 'ready_to_file', 'filed', 'rejected', 'withdrawn']) assert.equal(reopenApplies(s), false, s);
   assert.equal(reopenApplies('completed'), true);
-  assert.match(component, /const applies = preFiled \|\| mailingControlsApply\(stage\) \|\| \(canReopen && reopenApplies\(stage\)\);/, 'the completed row renders for the reopen alone');
+  assert.match(component, /const applies = preFiled \|\| mailingControlsApply\(stage\) \|\| correctionsApply\(stage\) \|\| \(canReopen && reopenApplies\(stage\)\);/, 'the completed row renders for the reopen, and (R86) for the correction to anyone who manages returns');
   assert.match(component, /data-testid="reopen-return"/);
   assert.match(component, /\/reopen`, \{ method: 'POST', body: \{ reason: r\.reason \} \}/, 'the route the modal posts to, with the reason');
   assert.match(component, /label: 'Reopen the return', tone: 'primary'/);

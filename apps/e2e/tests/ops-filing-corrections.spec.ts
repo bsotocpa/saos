@@ -46,8 +46,10 @@ const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixt
   staff: Persona;
   scorp: { taxYear: number; preparer: { id: string; name: string } };
   wall: { bookkeeper: Persona };
+  portalPort?: number;
 };
 const API = `http://127.0.0.1:${fixtures.port}`;
+const PORTAL = `http://localhost:${fixtures.portalPort ?? 3106}`;
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
 const ROLES = 'tax_preparer, ceo (engagements.tax.manage)';
 const PDF = { mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 synthetic harness document — no real client data\n%%EOF') };
@@ -345,5 +347,98 @@ test.describe('Ops → Filed on, and the filing corrected', () => {
     const after = await asStaff<{ declared_jurisdictions: string[] }>(token, `/tax-engagements/${te}`);
     expect(after.declared_jurisdictions, 'nothing moved').toEqual(['federal', 'IL']);
     testInfo.annotations.push({ type: 'walk-step', description: `F2|role proof: bookkeeper sees no "Correct the filing" control on /clients/:id, POST /tax-engagements/:id/filing-corrections refused 403|${ROLES}|tap` });
+  });
+
+  /*
+   * R86 (Brian, 2026-09-27): Brian's two pending corrections, on a COMPLETED return — his 1120S was
+   * completed before they could run. F7 the signed day moved to the day on the paper with the real scan
+   * beside it; F8 the filed day moved to that same day; a jurisdiction that answered is refused in the
+   * modal. F9 (R88) the client reads the corrected day on the portal as that calendar day, in Chicago:
+   * the day stored as midnight UTC once read a day early there.
+   */
+  test.describe('on a completed return (R86, R88)', () => {
+    test.use({ timezoneId: 'America/Chicago' });
+    test('F7–F9: the signed day with its scan and the filed day corrected on a completed return; an answered jurisdiction refused; the portal reads the corrected day', async ({ page }, testInfo) => {
+      const viewport = testInfo.project.name;
+      test.setTimeout(300_000);
+      const shot = testInfo.outputPath(`filing-corrections-completed-${viewport}.png`);
+      const steps: string[] = [];
+      let passed = false;
+      try {
+        const token = await staffToken();
+        const me = await asStaff<{ id: string; fullName: string }>(token, '/auth/me');
+        const { contactId, te, signedOn } = await readyToFileReturn(token, viewport, 'done');
+        // Filed federal and IL, both accepted: the return completes, as Brian's did.
+        await asStaff(token, `/tax-engagements/${te}/transition`, { method: 'POST', body: JSON.stringify({ toStage: 'filed', preparerPtinHolderId: fixtures.scorp.preparer.id, jurisdictions: ['federal', 'IL'] }) });
+        await asStaff(token, `/tax-engagements/${te}/efile-result`, { method: 'POST', body: JSON.stringify({ result: 'accepted' }) });
+        await asStaff(token, `/tax-engagements/${te}/efile-result`, { method: 'POST', body: JSON.stringify({ result: 'accepted', jurisdiction: 'state', stateCode: 'IL' }) });
+        const done = (await asStaff<{ taxEngagement: { stage: string } }>(token, `/tax-engagements/${te}`)).taxEngagement;
+        expect(done.stage, 'the fixture is completed').toBe('completed');
+
+        const dialog = page.locator('[role=dialog]');
+        const returnRow = page.locator('.quote-line', { has: page.getByTestId('correct-filing') });
+        await signIn(page, fixtures.staff);
+        await page.goto(`/clients/${contactId}`);
+        await page.waitForLoadState('networkidle');
+        await expect(returnRow, 'the completed row offers Correct the filing').toBeVisible();
+
+        // ── F7. SIGNED ON, TO THE DAY ON THE PAPER, WITH THE REAL SCAN ──────────────────
+        const paperDay = addDays(today, -12);
+        const reasonF7 = `harness walk ${viewport}: the 8879 was recorded on the day it was scanned; the paper is dated ${paperDay}, and this is the signed scan`;
+        await returnRow.getByTestId('correct-filing').click();
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByLabel('Signed on'), 'opens on the day as recorded').toHaveValue(signedOn);
+        await dialog.getByLabel('Signed on').fill(paperDay);
+        await dialog.getByTestId('correction-f8879-scan').setInputFiles({ name: `HARNESS-COMPLETED-8879-REAL-${viewport}.pdf`, ...PDF });
+        await dialog.locator('textarea').fill(reasonF7);
+        await dialog.getByRole('button', { name: 'Correct the filing' }).click();
+        await expect(dialog).toHaveCount(0);
+        const afterF7 = (await asStaff<{ taxEngagement: Record<string, unknown> }>(token, `/tax-engagements/${te}`)).taxEngagement;
+        expect(afterF7.f8879_signed_on).toBe(paperDay);
+        expect(afterF7.stage, 'correcting the record is not reopening the return').toBe('completed');
+        steps.push(`F7|/clients/:id Returns card, COMPLETED row, button "Correct the filing" (modal: "Signed on" moved to the day on the paper + input[type=file] "Replace the scan", required Reason); the return stays completed|${ROLES}|tap`);
+
+        // ── F8. FILED ON, TO THE SAME DAY; A JURISDICTION THAT ANSWERED IS REFUSED ─────────
+        const reasonF8 = `harness walk ${viewport}: the return went in on the day the 8879 was signed`;
+        await returnRow.getByTestId('correct-filing').click();
+        await expect(dialog).toBeVisible();
+        // IL answered this return: the modal offers no Remove for it, and says it stays (the route refuses it too).
+        await expect(dialog.getByRole('button', { name: 'Remove IL' }), 'no Remove for a jurisdiction that answered').toHaveCount(0);
+        await expect(dialog.getByText(/stays on the filing/).first(), 'it says the answered jurisdiction stays').toBeVisible();
+        await dialog.getByLabel('Filed on').fill(paperDay);
+        await dialog.locator('textarea').fill(reasonF8);
+        await dialog.getByRole('button', { name: 'Correct the filing' }).click();
+        await expect(dialog).toHaveCount(0);
+        const afterF8 = (await asStaff<{ taxEngagement: Record<string, unknown> }>(token, `/tax-engagements/${te}`)).taxEngagement;
+        expect(afterF8.filed_date, 'filed on the signed day, Brian\'s shape').toBe(paperDay);
+        expect(afterF8.stage).toBe('completed');
+        steps.push(`F8|/clients/:id Returns card, COMPLETED row, button "Correct the filing" (modal: IL, which answered, reads "… stays on the filing" with no Remove chip; "Filed on" moved to the corrected signed day, required Reason); the return stays completed|${ROLES}|tap`);
+
+        // ── F9 (R88). THE CLIENT READS THE CORRECTED DAY, AS THAT DAY, IN CHICAGO ─────────
+        const before = ((await (await fetch(`${API}/harness/mail-links`)).json()) as { magicTokens: string[] }).magicTokens.length;
+        await asStaff(token, '/portal-users', { method: 'POST', body: JSON.stringify({ contactId }) });
+        await expect.poll(async () => ((await (await fetch(`${API}/harness/mail-links`)).json()) as { magicTokens: string[] }).magicTokens.length).toBeGreaterThan(before);
+        const tokens = ((await (await fetch(`${API}/harness/mail-links`)).json()) as { magicTokens: string[] }).magicTokens;
+        await page.goto(`${PORTAL}/login`);
+        const status = await page.evaluate(async (t) => {
+          const r = await fetch('/api/portal/auth/magic/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: t }) });
+          localStorage.setItem('saos_portal_authed', '1');
+          return r.status;
+        }, tokens[tokens.length - 1]!);
+        expect(status).toBe(200);
+        await page.goto(`${PORTAL}/sign`);
+        await page.waitForLoadState('networkidle');
+        const signedRow = page.getByTestId('envelope-row').filter({ hasText: /Signed on/ }).first();
+        await expect(signedRow, 'the 8879 reads the corrected calendar day, not the day before').toContainText(`Signed on ${dayText(paperDay)}`);
+        await page.screenshot({ path: shot, fullPage: true });
+        steps.push(`F9|portal /sign (the client, signed in by the link they were emailed; browser zone America/Chicago): the 8879 row reads "Signed on ${dayText(paperDay)}", the corrected calendar day (R88)|the client|tap`);
+        void me;
+        passed = true;
+      } finally {
+        if (!existsSync(shot)) await page.screenshot({ path: shot, fullPage: true }).catch(() => undefined);
+        testInfo.annotations.push({ type: passed ? 'artifact' : 'failure-screenshot', description: keepScreenshot(`filing-corrections-completed-${viewport}`, passed, shot) });
+        for (const st of steps) testInfo.annotations.push({ type: 'walk-step', description: st });
+      }
+    });
   });
 });

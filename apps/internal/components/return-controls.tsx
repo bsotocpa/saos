@@ -580,7 +580,8 @@ export function ReturnControls({ taxEngagementId, contactId, stage, onChanged }:
    * the COMPLETED row alone, for the session that holds engagements.tax.reopen by name. `applies` is any.
    */
   const preFiled = controlsApply(stage);
-  const applies = preFiled || mailingControlsApply(stage) || (canReopen && reopenApplies(stage));
+  // R86: a completed return is correctable too, for any session that manages returns.
+  const applies = preFiled || mailingControlsApply(stage) || correctionsApply(stage) || (canReopen && reopenApplies(stage));
 
   const load = useCallback(async () => {
     try {

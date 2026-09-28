@@ -85,7 +85,14 @@ export function registerSignatureRoutes(app: FastifyInstance): void {
   app.get('/portal/signature-envelopes', { preHandler: [app.authenticateClient] }, async (request) => {
     const client = request.client!;
     const { rows } = await app.db.query(
+      /*
+       * R88 (2026-09-27): a wet-signed 8879 is signed on a CALENDAR DAY. The upload stores that day as
+       * midnight UTC in completed_at, and the portal formatted the instant in the reader's zone, so
+       * Chicago read "Sep 19" for a day recorded as 2026-09-20. signed_on carries the day itself.
+       */
       `SELECT se.id, se.type, se.status, se.sent_at, se.completed_at, se.signed_document_id,
+              CASE WHEN se.type = 'f8879' AND se.completed_at IS NOT NULL
+                   THEN to_char(se.completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') END AS signed_on,
               se.engagement_id, e.service_line::text AS service_line,
               te.tax_year, te.return_type::text AS return_type, b.name AS business_name
          FROM signature_envelopes se
@@ -93,6 +100,9 @@ export function registerSignatureRoutes(app: FastifyInstance): void {
          LEFT JOIN tax_engagements te ON te.id = COALESCE(se.tax_engagement_id, (SELECT t2.id FROM tax_engagements t2 WHERE t2.engagement_id = e.id LIMIT 1))
          LEFT JOIN businesses b ON b.id = e.business_id
         WHERE se.contact_id = $1 AND se.status NOT IN ('voided', 'declined')
+          -- R87: a §7216 consent is answered on /consent and read from its own state (GET /portal/consents);
+          -- the intake envelope that once stood for it is not a second, disagreeing row.
+          AND se.type <> 'consent_7216'
           AND (e.id IS NULL OR e.status <> 'withdrawn')
           AND (te.id IS NULL OR te.stage <> 'withdrawn')
         ORDER BY se.created_at DESC`,

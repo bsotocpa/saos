@@ -312,7 +312,9 @@ export function extensionBadgeText(form: string | null | undefined, extendedDead
  * correct, and after completion the acknowledgments have answered for what was declared.
  */
 export function correctionsApply(stage: string): boolean {
-  return stage === 'filed';
+  // R86 (2026-09-27): at completed too; the signed day, the scan, the filed day and the PTIN holder
+  // stay correctable, and the route refuses removing a jurisdiction that answered.
+  return stage === 'filed' || stage === 'completed';
 }
 
 /** One correction as GET /tax-engagements/:id reports it. `created_at` is an INSTANT: the row formats it with dayOf. */

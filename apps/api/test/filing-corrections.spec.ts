@@ -481,3 +481,42 @@ test('R69 the scan replaced: the previous row is kept and marked superseded, lis
   assert.equal((await authorization(te.id)).f8879_document_id, third, 'three refusals moved nothing');
   assert.equal((await corrections(te.id)).length, 2);
 });
+
+/*
+ * ═══ R86 (Brian, 2026-09-27): THE FILING, CORRECTED ON A COMPLETED RETURN ═══════════════════════
+ * Brian's 1120S was completed before his corrections could run. Offered at completed too: the signed
+ * day, the scan, the filed day and the PTIN holder correct; the return stays completed; a satisfied
+ * jurisdiction still cannot be removed, and a completed return takes no new one (that is a reopen).
+ */
+test('R86: a completed return takes the signed-day, scan, filed-day and PTIN-holder corrections and stays completed; a satisfied jurisdiction cannot be removed and none can be added', async () => {
+  const te = await filedReturn('Completedfix');
+  const fed = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/efile-result`, headers: auth(ana), payload: { result: 'accepted' } });
+  assert.ok(fed.statusCode < 300, fed.body);
+  const il = await app.inject({ method: 'POST', url: `/tax-engagements/${te.id}/efile-result`, headers: auth(ana), payload: { result: 'accepted', jurisdiction: 'state', stateCode: 'IL' } });
+  assert.ok(il.statusCode < 300, il.body);
+  assert.equal((await state(te.id)).stage, 'completed', 'the fixture is completed');
+
+  const paperDay = addDays(today, -12);
+  const signed = await correct(te.id, { f8879SignedOn: paperDay });
+  assert.equal(signed.statusCode, 201, signed.body);
+  const filedFix = await correct(te.id, { filedOn: paperDay });
+  assert.equal(filedFix.statusCode, 201, filedFix.body);
+  const scan = await uploadScan(te, 'synthetic-8879-real-scan.pdf');
+  const scanFix = await correct(te.id, { f8879DocumentId: scan });
+  assert.equal(scanFix.statusCode, 201, scanFix.body);
+  const ptin = await correct(te.id, { preparerPtinHolderId: brian.id });
+  assert.equal(ptin.statusCode, 201, ptin.body);
+  const after = await state(te.id);
+  assert.equal(after.stage, 'completed', 'correcting the record is not reopening the return');
+  assert.equal(after.filed_date, paperDay);
+  assert.equal(after.preparer_ptin_holder_id, brian.id);
+  assert.equal((await authorization(te.id)).f8879_document_id, scan);
+
+  const removeIl = await correct(te.id, { jurisdictions: ['federal'] });
+  assert.equal(removeIl.statusCode, 409, removeIl.body);
+  assert.equal(removeIl.json().error, 'jurisdiction_satisfied');
+  const addWi = await correct(te.id, { jurisdictions: ['federal', 'IL', 'WI'] });
+  assert.equal(addWi.statusCode, 409, addWi.body);
+  assert.equal(addWi.json().error, 'completed_takes_no_jurisdiction');
+  assert.equal((await corrections(te.id)).length, 4, 'four corrections appended, the refusals none');
+});

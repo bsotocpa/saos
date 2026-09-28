@@ -555,8 +555,14 @@ export async function correctFiling(
   );
   const te = rows[0];
   if (!te) throw new AppError(404, 'not_found', 'Tax engagement not found.');
-  if (te.stage !== 'filed') {
-    throw new AppError(409, 'not_filed', `A filing correction applies to a return at filed — this one is '${te.stage}'.`);
+  /*
+   * R86 (Brian, 2026-09-27): offered at filed AND at completed. A completed return's filing can still
+   * be recorded wrongly (Brian's own 1120S: the signed day, the scan, the filed day), and correcting a
+   * record is not reopening the return: its stage stays completed. A satisfied jurisdiction still
+   * cannot be removed (below), and a completed return takes no new jurisdiction: that is a reopen.
+   */
+  if (te.stage !== 'filed' && te.stage !== 'completed') {
+    throw new AppError(409, 'not_filed', `A filing correction applies to a return at filed or completed — this one is '${te.stage}'.`);
   }
 
   const fields: FilingCorrectionField[] = [];
@@ -636,6 +642,10 @@ export async function correctFiling(
     const current = status.declaredJurisdictions;
     added = list.filter((j) => !current.includes(j));
     removed = current.filter((j) => !list.includes(j));
+    if (te.stage === 'completed' && added.length > 0) {
+      throw new AppError(409, 'completed_takes_no_jurisdiction',
+        `This return is completed: every jurisdiction it declared has answered. Adding ${added.map(jurisdictionName).join(', ')} is a new filing; reopen the return first.`);
+    }
     for (const j of removed) {
       const row = status.rows.find((r) => r.jurisdiction === j);
       if (row?.acceptedOn) {
