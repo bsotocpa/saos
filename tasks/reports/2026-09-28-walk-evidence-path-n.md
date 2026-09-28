@@ -1,6 +1,6 @@
 # walk-evidence-path-n (2026-09-28)
 
-Generated 2026-09-28T08:49:16.081Z by scripts/report-table.mjs from the log walk-n.log; 8 row(s).
+Generated 2026-09-28T09:11:52.582Z by scripts/report-table.mjs from the log walk-n.log; 8 row(s).
 
 The Form 990 on extension (R66, ops-path-b-990.spec.ts): one synthetic Illinois nonprofit per viewport with a 990 at ready to file from the fixture (apps/api/scripts/e2e-fixtures/path-b-990.ts; the estimate and fee are the book's BIZ_990 amount, read, never typed); N1 Record extension opening on Form 8868 and the derived extended deadline on the badge; N2 the signed 8879 upload with the Form select opening on 8879-TE; N3 Mark filed federal alone (IL removed in the modal); N4 the ATX export (the committed fixture plus the organization's 990 Federal Accepted row, matched on the EIN's last four and the folded name) uploaded and released, the return completed and the engagement closed.
 
