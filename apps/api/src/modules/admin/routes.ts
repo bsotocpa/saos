@@ -302,17 +302,18 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         // book that quietly loses a field one version after it was set.
         // group_key (0116) joined the list 2026-09-27 (R75): the copy had been dropping every line's
         // catalog group, so the first version published after 0116 would have lost them all.
+        // display_name_en/_es (0133, R81) joined it the day they were added.
         `INSERT INTO price_book_items
            (version_id, item_code, service_line, name_en, name_es, description_en, description_es,
             amount_cents, price_min_cents, price_max_cents, unit, is_pass_through, display_on_quote,
             needs_confirmation, confirmation_note, is_active, sort_order, metadata,
             pricing_mode, deposit_cents, structure_needs_confirmation, structure_confirmation_note,
-            percent_rate, group_key)
+            percent_rate, group_key, display_name_en, display_name_es)
          SELECT $1, item_code, service_line, name_en, name_es, description_en, description_es,
                 amount_cents, price_min_cents, price_max_cents, unit, is_pass_through, display_on_quote,
                 needs_confirmation, confirmation_note, is_active, sort_order, metadata,
                 pricing_mode, deposit_cents, structure_needs_confirmation, structure_confirmation_note,
-                percent_rate, group_key
+                percent_rate, group_key, display_name_en, display_name_es
          FROM price_book_items WHERE version_id = $2`,
         [newId, cur.id]
       );

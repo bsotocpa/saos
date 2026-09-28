@@ -11,6 +11,7 @@
         { "id": "A3c", "text": "Section 7216 consent answered", "device": "phone" },
         { "id": "A4", "text": "Lock the estimate, walk the stages to internal review, deliver the return PDF to the portal", "device": "laptop" },
         { "id": "A5", "text": "My Returns shows it", "device": "phone" },
+        { "id": "A5b", "text": "Home's services card reads a completed return as filed with each answer, no deadline, no Extended badge, and the five phases done (R84)", "device": "phone + laptop" },
         { "id": "A6", "text": "Upload the signed 8879-CORP scan with its signed date and the PTIN holder", "device": "laptop" },
         { "id": "A7", "text": "Set the final fee, ready to file, filed with the PTIN holder", "device": "laptop" },
         { "id": "A8", "text": "Upload the ATX ack report, review the rows, release", "device": "laptop" },
@@ -24,6 +25,8 @@
       "steps": [
         { "id": "B1", "text": "Contact created", "device": "laptop" },
         { "id": "B2", "text": "Quote built and sent", "device": "laptop" },
+        { "id": "B2b", "text": "The builder filter finds the 1040 lines by the form number their display names carry: \"Form 1040 — …\", \"Schedule … (1040)\" (R81)", "device": "phone + laptop" },
+        { "id": "B2c", "text": "The client-search chip carries a type and, for a person with no business, the masked email domain (R80)", "device": "phone + laptop" },
         { "id": "B3", "text": "Accepted with the deposit paid", "device": "phone" },
         { "id": "B3c", "text": "A returning client (Master signed, consent answered for an earlier engagement) is quoted a 1040 for another year: the builder asks adding or replacing and focuses Adds (R79); the client accepts in the portal", "device": "phone + laptop" },
         { "id": "B3d", "text": "Right after acceptance the consent for the new engagement is on Home; its Sign opens /consent; answered, nothing waits on /sign or Home (R87)", "device": "phone + laptop" },

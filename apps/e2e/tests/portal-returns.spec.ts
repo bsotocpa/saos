@@ -59,10 +59,25 @@ test('the delivered 1120S is under My Returns for the owner', async ({ page }, t
     expect(text, 'and a way to take a copy').toContain('Download');
     expect(text, 'nothing on the page is a raw ISO timestamp').not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
     await page.screenshot({ path: shot, fullPage: true });
+    // R84 (2026-09-27): Home's services card reads the completed return's answers, never "Completed · Deadline";
+    // no Extended badge once filed; the bar is the five phases, every one done.
+    await page.goto('/');
+    const services = page.locator('section#services');
+    await expect(services).toBeVisible();
+    const filedLine = services.getByTestId('service-filed-status').first();
+    await expect(filedLine).toHaveText(/^Filed\. Accepted by the IRS on [A-Z][a-z]{2} \d{1,2}, \d{4}\./);
+    await expect(services, 'no deadline once filed').not.toContainText('Deadline');
+    await expect(services, 'no Extended badge once filed').not.toContainText('Extended');
+    await expect(services.getByTestId('service-phases').first()).toHaveAttribute('data-current', 'done');
+    await expect(services.locator('[data-testid=service-phases] .seg.done').first()).toBeVisible();
+    await expect(services.locator('[data-testid=service-phases]').first().locator('.seg')).toHaveCount(5);
+    await expect(services.getByText('All five steps done').first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`portal-home-status-${viewport}.png`), fullPage: true });
     passed = true;
   } finally {
     if (!existsSync(shot)) await page.screenshot({ path: shot, fullPage: true }).catch(() => undefined);
     testInfo.annotations.push({ type: 'screenshot', description: keepScreenshot(`portal-returns-${viewport}`, passed, shot) });
     testInfo.annotations.push({ type: 'walk-step', description: `A5|portal /returns (My Returns) at ${viewport}, the delivered return listed with its file name and year|client (portal sign-in link)|tap` });
+    if (passed) testInfo.annotations.push({ type: 'walk-step', description: `A5b|portal / (Home) services card at ${viewport}: the completed 1120S reads "Filed. Accepted by the IRS on <date>." with no Deadline and no Extended badge; the bar's five segments all done, "All five steps done"|client (portal sign-in link)|tap` });
   }
 });

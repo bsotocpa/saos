@@ -41,7 +41,7 @@ export async function buildConsentFixture(
   const out: Partial<ConsentFixture> = {};
   // The 1040 base line the walk quotes, named from the book in force (never priced here).
   const { rows: items } = await app.db.query<{ item_code: string; name_en: string }>(
-    `SELECT pbi.item_code, pbi.name_en FROM price_book_items pbi JOIN price_book_versions v ON v.id = pbi.version_id
+    `SELECT pbi.item_code, COALESCE(pbi.display_name_en, pbi.name_en) AS name_en FROM price_book_items pbi JOIN price_book_versions v ON v.id = pbi.version_id
       WHERE pbi.item_code = 'IND_BASE_SINGLE' AND pbi.is_active
         AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)`);
   if (!items[0]) throw new Error('consent fixture: the book in force has no IND_BASE_SINGLE');

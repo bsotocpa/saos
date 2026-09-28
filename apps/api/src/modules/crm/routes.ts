@@ -325,7 +325,11 @@ export function registerCrmRoutes(app: FastifyInstance): void {
                  SELECT 1 FROM business_members bm JOIN businesses b ON b.id = bm.business_id
                  WHERE bm.contact_id = c.id AND NOT b.is_archived AND b.name ILIKE $1)) AS business_matched,
               (SELECT count(*)::int FROM engagements e
-               WHERE e.contact_id = c.id AND e.status IN ('active', 'on_hold')) AS active_engagements
+               WHERE e.contact_id = c.id AND e.status IN ('active', 'on_hold')) AS active_engagements,
+              -- R80 (2026-09-27): the person's primary business, by the flag alone, for the search chip.
+              (SELECT b.name FROM business_members bm JOIN businesses b ON b.id = bm.business_id
+               WHERE bm.contact_id = c.id AND bm.is_primary AND NOT b.is_archived
+               ORDER BY b.name LIMIT 1) AS primary_business_name
        FROM contacts c
        WHERE ${clauses.join(' AND ')}
        ORDER BY c.last_name, c.first_name

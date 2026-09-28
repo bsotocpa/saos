@@ -121,6 +121,14 @@ test('v6 on its date: the prior version closes 2026-10-01 (in force through 2026
        FROM price_book_items o JOIN price_book_items n ON n.item_code = o.item_code AND n.version_id = $2
       WHERE o.version_id = $1`, [prior.rows[0]!.id, v6.id]);
   assert.equal(groups.rows[0]!.same, true, 'every copied line keeps its catalog group');
+  // R81 (0133): the display names are presentation metadata too, and ride every copy.
+  const names = await dated.db.query<{ same: boolean; single: string | null }>(
+    `SELECT bool_and(n.display_name_en IS NOT DISTINCT FROM o.display_name_en AND n.display_name_es IS NOT DISTINCT FROM o.display_name_es) AS same,
+            max(n.display_name_en) FILTER (WHERE n.item_code = 'IND_BASE_SINGLE') AS single
+       FROM price_book_items o JOIN price_book_items n ON n.item_code = o.item_code AND n.version_id = $2
+      WHERE o.version_id = $1`, [prior.rows[0]!.id, v6.id]);
+  assert.equal(names.rows[0]!.same, true, 'every copied line keeps its display name');
+  assert.equal(names.rows[0]!.single, 'Form 1040 — Single');
   const packages = await dated.db.query<{ version_id: string; bundles: number; components: number }>(
     `SELECT b.version_id, count(DISTINCT b.id)::int AS bundles, count(c.id)::int AS components
        FROM bundles b LEFT JOIN bundle_components c ON c.bundle_id = b.id

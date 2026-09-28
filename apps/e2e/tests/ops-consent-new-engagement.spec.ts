@@ -72,7 +72,7 @@ test.describe('the §7216 consent for a new engagement (R87, R79)', () => {
       await page.waitForLoadState('networkidle');
       await page.getByRole('button', { name: 'New quote' }).click();
       await page.getByPlaceholder('Search by name, email, or phone').fill(who.lastName);
-      const chip = page.getByRole('button', { name: who.fullName, exact: true });
+      const chip = page.getByTestId('client-chip').filter({ hasText: who.fullName });
       await expect(chip).toBeVisible();
       await chip.click();
       await page.getByPlaceholder('Filter by name, form number or group').fill(fixtures.consentNew.item.name);

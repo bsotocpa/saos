@@ -11,8 +11,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, formatMoney, isAuthed } from '../../lib/api';
+import { clientChipType } from '../../lib/labels';
+import { ClientChipBody } from '../../components/client-chip';
 
-interface Contact { id: string; first_name: string; last_name: string; email: string | null }
+interface Contact { id: string; first_name: string; last_name: string; email: string | null; soto_status?: string | null; is_test?: boolean; business_name?: string | null; business_matched?: boolean; primary_business_name?: string | null }
 interface Engagement { id: string; service_line: string; status: string; title: string | null }
 
 interface Options {
@@ -172,8 +174,8 @@ export default function ConfiguratorPage() {
         {!contact && matches.length > 0 ? (
           <div className="chipbar">
             {matches.map((m) => (
-              <button key={m.id} type="button" className="chip" onClick={() => void pick(m)}>
-                {m.first_name} {m.last_name}
+              <button key={m.id} type="button" className="chip" data-testid="client-chip" data-type={clientChipType(m)} onClick={() => void pick(m)}>
+                <ClientChipBody r={m} />
               </button>
             ))}
           </div>

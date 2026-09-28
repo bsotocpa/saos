@@ -245,9 +245,20 @@ test.describe('Path B', () => {
       await page.goto('/pipeline');
       await page.getByRole('button', { name: 'New quote' }).click();
       await page.getByPlaceholder('Search by name, email, or phone').fill(who.lastName);
-      const chip = page.getByRole('button', { name: fullName, exact: true });
-      await expect(chip).toBeVisible();
+      // R80 (2026-09-27): the chip says what the record is (this fixture is a test record, and "Test" ranks first) and,
+      // with no business on file, the masked email domain.
+      const chip = page.getByTestId('client-chip').filter({ hasText: fullName });
+      await expect(chip).toHaveCount(1);
+      await expect(chip.locator('.chip-type')).toHaveText('Test');
+      await expect(chip, 'no business on file: the email domain, masked').toContainText(`${fullName} · @e•••.test`);
+      await expect(chip, 'never the address itself').not.toContainText('example.test');
+      steps.push(`B2c|/pipeline "Client or lead" search chip [data-testid=client-chip]: the type "Test" (the fixture is a test record), the name, and "@e•••.test" for a person with no business (R80)|${ROLES.quote}|tap`);
       await chip.click();
+      // R81 (2026-09-27): display names carry the form number, so "1040" finds the base return and its schedules.
+      await page.getByPlaceholder('Filter by name, form number or group').fill('1040');
+      await expect(page.locator('.qb-row .qb-name', { hasText: /^Form 1040 — / }).first(), 'R81: "1040" finds "Form 1040 — …"').toBeVisible();
+      await expect(page.locator('.qb-row .qb-name', { hasText: /\(1040\)/ }).first(), 'R81: and the 1040 schedules, "Schedule … (1040)"').toBeVisible();
+      steps.push(`B2b|/pipeline builder filter "Filter by name, form number or group" typed "1040" → the rows "Form 1040 — …" and "Schedule … (1040) — …" (R81 display names)|${ROLES.quote}|tap`);
       // The catalog is grouped rows (2026-09-20): the filter finds the line, the row's Add puts it on the quote.
       for (const line of [pathB!.item.name, pathB!.addOn.name]) {
         await page.getByPlaceholder('Filter by name, form number or group').fill(line);

@@ -81,3 +81,26 @@ test('the helpers never crash a page on an unknown value', () => {
   assert.equal(taxStageLabel('pending_client_response'), 'Waiting on client');
   assert.equal(invoiceStatusLabel('something_new'), 'something new');
 });
+
+// R80 (Brian, 2026-09-27): every client-search chip carries a type and, for a person, the primary business or the masked email domain.
+import { clientChipDetail, clientChipType, maskedEmailDomain } from '../lib/labels.ts';
+
+test('R80: the chip type — test first, then a business hit, then a lead, else a person', () => {
+  const base = { first_name: 'Synthetic', last_name: 'Owner', email: 'owner@example.test' };
+  assert.equal(clientChipType({ ...base, is_test: true, business_matched: true, business_name: 'Synthetic LLC' }), 'test');
+  assert.equal(clientChipType({ ...base, business_matched: true, business_name: 'Synthetic LLC', soto_status: 'lead' }), 'business');
+  assert.equal(clientChipType({ ...base, business_matched: true, business_name: null }), 'person', 'a business hit with no name is the person');
+  assert.equal(clientChipType({ ...base, soto_status: 'lead' }), 'lead');
+  assert.equal(clientChipType({ ...base, soto_status: 'active' }), 'person');
+});
+
+test('R80: the detail — the primary business, else the masked email domain; a business chip names its owner already', () => {
+  const base = { first_name: 'Synthetic', last_name: 'Owner', email: 'someone@gmail.com' };
+  assert.equal(clientChipDetail({ ...base, primary_business_name: 'Synthetic Widgets LLC' }), 'Synthetic Widgets LLC');
+  assert.equal(clientChipDetail(base), '@g•••.com');
+  assert.equal(clientChipDetail({ ...base, business_matched: true, business_name: 'Synthetic LLC' }), null);
+  assert.equal(clientChipDetail({ ...base, email: null }), null);
+  assert.equal(maskedEmailDomain('a@sotoaccounting.com'), '@s•••.com');
+  assert.equal(maskedEmailDomain('a@mail.example.co.uk'), '@m•••.uk', 'the middle of a domain never shows');
+  assert.equal(maskedEmailDomain('not-an-email'), null);
+});

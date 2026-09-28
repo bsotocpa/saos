@@ -11,6 +11,7 @@ import { seedRoles } from './seeds/data/roles.mjs';
 import { seedSettings } from './seeds/data/settings.mjs';
 import { seedTemplates } from './seeds/data/templates.mjs';
 import { seedPriceBook } from './seeds/data/price_book.mjs';
+import { seedPriceBookDisplayNames } from './seeds/data/price_book_display_names.mjs';
 import { seedForms } from './seeds/data/forms.mjs';
 import { seedAutomations } from './seeds/data/automations.mjs';
 import { seedBundles } from './seeds/data/bundles.mjs';
@@ -58,6 +59,7 @@ export const SEEDS = [
   ['settings', seedSettings],
   ['templates', seedTemplates],
   ['price_book', seedPriceBook],
+  ['price_book_display_names', seedPriceBookDisplayNames],
   ['forms', seedForms],
   ['automations', seedAutomations],
   ['bundles', seedBundles],

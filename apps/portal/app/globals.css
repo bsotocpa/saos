@@ -248,6 +248,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--electric); 
 .step-dot.done { background: var(--electric); color: var(--forest-deep); }
 .progress { height: 8px; background: var(--electric-soft); border-radius: 999px; overflow: hidden; margin: 8px 0 4px; }
 .progress > div { height: 100%; background: var(--electric); transition: width 0.3s; }
+/* R84: the five phases, one segment each: done, the current one, and what is ahead. */
+.phasebar { display: block; margin-top: 6px; }
+.phasebar-segs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin-bottom: 2px; }
+.phasebar .seg { height: 6px; border-radius: 3px; background: var(--line); }
+.phasebar .seg.done { background: var(--ok); }
+.phasebar .seg.current { background: var(--electric); }
 
 .range-figure { font-size: 28px; font-weight: 800; color: var(--forest); }
 

@@ -9,7 +9,8 @@
 
 import { ModalShell } from '../../components/modal-shell';
 import { dayOf, formatDate, formatDateTime, formatTime } from '../../lib/dates';
-import { clientSearchLabel } from '../../lib/labels';
+import { clientChipType } from '../../lib/labels';
+import { ClientChipBody } from '../../components/client-chip';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -45,7 +46,7 @@ interface ComposedPackage {
   lines: Array<{ itemCode: string; quantity: number; isOptional: boolean }>;
   discount: { kind: 'percent' | 'fixed' | 'override' | 'none'; value: number | null; amountCents: number };
 }
-interface Contact { id: string; first_name: string; last_name: string; email: string | null; business_name?: string | null; business_matched?: boolean }
+interface Contact { id: string; first_name: string; last_name: string; email: string | null; business_name?: string | null; business_matched?: boolean; soto_status?: string | null; is_test?: boolean; primary_business_name?: string | null }
 interface ContactBusiness { id: string; name: string; is_primary: boolean; status?: string | null; entity_type?: string | null; unverified_import_source?: string | null }
 /** Lines that are business work (mirrors BUSINESS_LINES in pricing/quotes.ts; the API is the gate). */
 const BUSINESS_LINES = new Set(['business_tax', 'recurring_accounting', 'attest', 'setup_conversion', 'entity_services', 'software_passthrough', 'coo']);
@@ -915,8 +916,8 @@ export default function PipelinePage() {
               {!contact && matches.length > 0 ? (
                 <div className="chipbar">
                   {matches.map((m) => (
-                    <button key={m.id} type="button" className="chip" onClick={() => { setContact(m); setMatches([]); void loadOpenQuotes(m.id); }}>
-                      {clientSearchLabel(m)}
+                    <button key={m.id} type="button" className="chip" data-testid="client-chip" data-type={clientChipType(m)} onClick={() => { setContact(m); setMatches([]); void loadOpenQuotes(m.id); }}>
+                      <ClientChipBody r={m} />
                     </button>
                   ))}
                 </div>

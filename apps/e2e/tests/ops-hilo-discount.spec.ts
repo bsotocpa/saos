@@ -89,7 +89,7 @@ test.describe('Ops → the Hilo referral discount on a quote (R75)', () => {
       await page.waitForLoadState('networkidle');
       await page.getByRole('button', { name: 'New quote' }).click();
       await page.getByPlaceholder('Search by name, email, or phone').fill(who.lastName);
-      const chip = page.getByRole('button', { name: who.fullName, exact: true });
+      const chip = page.getByTestId('client-chip').filter({ hasText: who.fullName });
       await expect(chip).toBeVisible();
       await chip.click();
       // The recurring line is business work: the quote names the client's business.

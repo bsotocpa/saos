@@ -171,8 +171,9 @@ export async function createQuote(
       price_min_cents: number | null; price_max_cents: number | null; is_pass_through: boolean;
       display_on_quote: boolean;
     }>(
-      `SELECT item_code, name_en, name_es, amount_cents, price_min_cents, price_max_cents,
-              is_pass_through, display_on_quote
+      // R81: the line the client reads snapshots the display name (with the form number) when the item has one.
+      `SELECT item_code, COALESCE(display_name_en, name_en) AS name_en, COALESCE(display_name_es, name_es) AS name_es,
+              amount_cents, price_min_cents, price_max_cents, is_pass_through, display_on_quote
        FROM price_book_items WHERE version_id = $1 AND item_code = ANY($2) AND is_active`,
       [version.id, codes]
     );

@@ -182,6 +182,10 @@ main:has(.task-layout) { max-width: 1500px; }
 .chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink); }
 .chip.active { background: var(--forest); color: #fff; border-color: var(--forest); }
 .chip .x { margin-left: 6px; opacity: 0.6; }
+/* R80: the search chip's type, before the name. */
+.chip-type { display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; padding: 1px 6px; margin-right: 6px; border-radius: 999px; background: var(--electric-soft); color: var(--forest); }
+.chip-type[data-type=test] { background: var(--warn-soft); color: var(--warn); }
+.chip-type[data-type=lead] { background: var(--line); color: var(--ink); }
 /* Audit item 12 (2026-09-09): the TEST badge in the client header carries the note on hover. */
 .test-client-badge { cursor: help; }
 /* Item 13b (2026-09-09): the builder's summary bar — inline on a desk, pinned to the bottom of

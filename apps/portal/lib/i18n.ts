@@ -307,6 +307,16 @@ const dict = {
   returns_next_accepted_by: ['Accepted by {{where}} on {{date}}.', 'Aceptada por {{where}} el {{date}}.'],
   returns_next_mailed_to: ['Mailed to {{where}} on {{date}}.', 'Enviada por correo a {{where}} el {{date}}.'],
   jurisdiction_irs: ['the IRS', 'el IRS'],
+  // R84 (2026-09-27): a filed return's status, and the five phases of the progress bar.
+  status_filed_line: ['Filed.', 'Presentada.'],
+  status_filed_waiting: ['Filed. Waiting for the acceptance.', 'Presentada. En espera de la aceptación.'],
+  phase_engage: ['Engage', 'Contratación'],
+  phase_prepare: ['Prepare', 'Preparación'],
+  phase_sign: ['Sign', 'Firma'],
+  phase_file: ['File', 'Presentación'],
+  phase_close: ['Close', 'Cierre'],
+  phase_caption: ['Step {{n}} of 5: {{phase}}', 'Paso {{n}} de 5: {{phase}}'],
+  phase_caption_done: ['All five steps done', 'Los cinco pasos completos'],
 
   // Sign
   sign_title: ['Sign Documents', 'Firmar documentos'],

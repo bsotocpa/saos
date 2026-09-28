@@ -5,7 +5,9 @@
 // optional SMS opt-in last. Reordered by Brian after running the journey himself.
 
 import Link from 'next/link';
-import { formatDateTime } from '../lib/dates';
+import { formatDate, formatDateTime } from '../lib/dates';
+import { stateName } from '../lib/states';
+import { filedStatus, isFiled, phaseStates, type AnswerLine, type Phase } from '../lib/return-status';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError, formatMoney, isAuthed } from '../lib/api';
@@ -41,6 +43,8 @@ interface Engagement {
   stage: string | null;
   extension_filed: boolean;
   deadline: string | null;
+  /** R84: a filed or completed return's answers per jurisdiction (the server sends no deadline for it). */
+  answer_lines?: AnswerLine[];
   /** #47 — what this engagement covers, snapshotted at acceptance, already in this language. */
   scopeName: string | null;
   scope: Array<{ itemCode: string; description: string; quantity: string; isPassThrough: boolean }>;
@@ -95,23 +99,10 @@ const STEPS = [
   { key: 'step_book_consult_at', label: 'checklist_book', href: '', step: null, waiting: 'checklist_book_waiting', optional: true },
 ] as const;
 
-/*
- * The tax pipeline, in the order work actually moves through it. Used for the progress
- * bar, so a client can see that "in preparation" is further along than "documents
- * requested" without being told. Terminal-but-not-finished states (on_hold, rejected) are
- * absent on purpose: they are not positions on the road, and the stage label already says
- * what is happening.
- */
-const STAGE_ORDER = [
-  'intake_started', 'scheduled', 'documents_requested', 'pending_client_response',
-  'in_preparation', 'internal_review', 'client_review', 'ready_to_file', 'filed', 'completed',
-] as const;
-
-function stagePercent(stage: string): number {
-  const i = STAGE_ORDER.indexOf(stage as (typeof STAGE_ORDER)[number]);
-  if (i < 0) return 0;
-  return Math.round(((i + 1) / STAGE_ORDER.length) * 100);
-}
+/** R84: the five phases' names, as the dictionary spells them (the bar reads the Ops rail's phases). */
+const PHASE_WORD: Record<Phase, DictKey> = {
+  engage: 'phase_engage', prepare: 'phase_prepare', sign: 'phase_sign', file: 'phase_file', close: 'phase_close',
+};
 
 /**
  * What the client calls this piece of work. Tax work is named by year and form, because
@@ -154,6 +145,11 @@ function projectName(e: Engagement, t: (k: DictKey) => string): string {
 
 export default function Dashboard() {
   const { t, me, nextEstimate, ready, lang, refresh } = useSession();
+  /** R84: one jurisdiction's answer, in the reader's language: "Accepted by the IRS on Sep 27, 2026." */
+  const answerSentence = (l: AnswerLine): string =>
+    t(l.kind === 'mailed' ? 'returns_next_mailed_to' : 'returns_next_accepted_by')
+      .replace('{{where}}', l.jurisdiction === 'federal' ? t('jurisdiction_irs') : stateName(l.jurisdiction, lang))
+      .replace('{{date}}', formatDate(l.answered_on, lang));
   const router = useRouter();
   const [onboarding, setOnboarding] = useState<Onboarding | null>(null);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
@@ -373,21 +369,39 @@ export default function Dashboard() {
                   <strong>{projectName(e, t)}</strong>
                   <br />
                   <span className="muted small">
-                    {e.kind === 'pipeline' && e.stage
-                      ? t(`stage_${e.stage}` as DictKey)
-                      : t(`estatus_${e.status}` as DictKey)}
-                    {e.deadline ? ` · ${t('status_deadline')}: ${e.deadline}` : ''}
+                    {/* R84: a filed return reads what each jurisdiction answered; never "Completed · Deadline". */}
+                    {e.kind === 'pipeline' && e.stage && isFiled(e.stage) ? (
+                      <span data-testid="service-filed-status">{filedStatus(e.answer_lines ?? [], { filed: t('status_filed_line'), waiting: t('status_filed_waiting') }, answerSentence)}</span>
+                    ) : (
+                      <>
+                        {e.kind === 'pipeline' && e.stage
+                          ? t(`stage_${e.stage}` as DictKey)
+                          : t(`estatus_${e.status}` as DictKey)}
+                        {e.deadline ? ` · ${t('status_deadline')}: ${formatDate(e.deadline, lang)}` : ''}
+                      </>
+                    )}
                   </span>
                   {/*
                     Progress is drawn ONLY for pipeline work. Bookkeeping and payroll are
                     ongoing — there is no finish line, and a bar creeping toward one would
                     promise a completion that is never coming.
                   */}
-                  {e.kind === 'pipeline' && e.stage ? (
-                    <span className="progress" style={{ display: 'block', marginTop: 6 }}>
-                      <span style={{ display: 'block', width: `${stagePercent(e.stage)}%` }} />
-                    </span>
-                  ) : null}
+                  {/* R84: the bar is the five phases the firm works in (the Ops rail's), one segment each. */}
+                  {e.kind === 'pipeline' && e.stage ? (() => {
+                    const phases = phaseStates(e.stage);
+                    if (!phases) return null;
+                    const at = phases.findIndex((p) => p.state === 'current');
+                    return (
+                      <span className="phasebar" data-testid="service-phases" data-current={at < 0 ? 'done' : phases[at]!.phase}>
+                        <span className="phasebar-segs" role="img" aria-label={at < 0 ? t('phase_caption_done') : t('phase_caption').replace('{{n}}', String(at + 1)).replace('{{phase}}', t(PHASE_WORD[phases[at]!.phase]))}>
+                          {phases.map((p) => <span key={p.phase} className={`seg ${p.state}`} />)}
+                        </span>
+                        <span className="muted small">
+                          {at < 0 ? t('phase_caption_done') : t('phase_caption').replace('{{n}}', String(at + 1)).replace('{{phase}}', t(PHASE_WORD[phases[at]!.phase]))}
+                        </span>
+                      </span>
+                    );
+                  })() : null}
                   {/*
                     #47 — "what am I paying for", answerable at last. These are the quote
                     lines as the client read them at acceptance, so this is the agreement
@@ -410,7 +424,8 @@ export default function Dashboard() {
                     </span>
                   ) : null}
                 </span>
-                {e.extension_filed ? <span className="badge warn">{t('status_extended')}</span> : null}
+                {/* R84: the Extended badge answers a deadline question a filed return no longer has. */}
+                {e.extension_filed && !isFiled(e.stage) ? <span className="badge warn">{t('status_extended')}</span> : null}
               </li>
             ))}
           </ul>

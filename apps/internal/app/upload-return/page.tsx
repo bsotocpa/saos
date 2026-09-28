@@ -7,7 +7,8 @@
 
 import { useState } from 'react';
 import { api } from '../../lib/api';
-import { clientSearchLabel } from '../../lib/labels';
+import { clientChipType } from '../../lib/labels';
+import { ClientChipBody } from '../../components/client-chip';
 
 interface Contact { id: string; first_name: string; last_name: string; email: string | null; business_name?: string | null; business_matched?: boolean }
 interface TaxEngagement { id: string; tax_year: number; return_type: string; stage: string }
@@ -108,8 +109,8 @@ export default function UploadReturnPage() {
         </label>
         {contacts.map((c) => (
           <div key={c.id} style={{ margin: '8px 0' }}>
-            <button className="btn ghost" type="button" onClick={() => void pickContact(c)}>
-              {clientSearchLabel(c)} <span className="muted small">{c.email}</span>
+            <button className="btn ghost" type="button" data-testid="client-chip" data-type={clientChipType(c)} onClick={() => void pickContact(c)}>
+              <ClientChipBody r={c} /> <span className="muted small">{c.email}</span>
             </button>
             {errAt(`pick:${c.id}`)}
           </div>

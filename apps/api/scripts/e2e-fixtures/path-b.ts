@@ -104,7 +104,7 @@ export async function buildPathB(app: FastifyInstance, deps: PathBDeps): Promise
    * written here; the amount never leaves the price book.
    */
   const { rows: priced } = await app.db.query<{ item_code: string; name_en: string }>(
-    `SELECT pbi.item_code, pbi.name_en
+    `SELECT pbi.item_code, COALESCE(pbi.display_name_en, pbi.name_en) AS name_en
        FROM price_book_items pbi JOIN price_book_versions v ON v.id = pbi.version_id
       WHERE pbi.service_line = 'individual_tax' AND pbi.is_active AND pbi.display_on_quote
         AND pbi.amount_cents IS NOT NULL AND COALESCE(pbi.deposit_cents, 0) > 0
@@ -115,7 +115,7 @@ export async function buildPathB(app: FastifyInstance, deps: PathBDeps): Promise
   if (!item) throw new Error('Path B needs an individual-tax base return with a deposit in the price book in force');
 
   const { rows: addOns } = await app.db.query<{ item_code: string; name_en: string }>(
-    `SELECT pbi.item_code, pbi.name_en
+    `SELECT pbi.item_code, COALESCE(pbi.display_name_en, pbi.name_en) AS name_en
        FROM price_book_items pbi JOIN price_book_versions v ON v.id = pbi.version_id
       WHERE pbi.service_line = 'individual_tax' AND pbi.is_active AND pbi.display_on_quote
         AND pbi.amount_cents IS NOT NULL AND pbi.amount_cents > 0 AND COALESCE(pbi.deposit_cents, 0) = 0

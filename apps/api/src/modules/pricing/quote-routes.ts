@@ -141,7 +141,9 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
       // did was told there was no deposit while the client would have been asked for one.
       // group_key, sort_order and description_en (2026-09-20): the builder lays the book out as
       // grouped rows, each with its one-line description. The groups' own order is CATALOG_GROUPS.
-      `SELECT item_code, service_line::text AS service_line, name_en, name_es, amount_cents,
+      // R81: the display name (with the form number) when the item has one; the filter reads it too.
+      `SELECT item_code, service_line::text AS service_line,
+              COALESCE(display_name_en, name_en) AS name_en, COALESCE(display_name_es, name_es) AS name_es, amount_cents,
               price_min_cents, price_max_cents, unit, is_pass_through, needs_confirmation,
               deposit_cents, description_en, group_key, sort_order, pricing_mode::text AS pricing_mode
        FROM price_book_items

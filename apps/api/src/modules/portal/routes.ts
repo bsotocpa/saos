@@ -13,6 +13,45 @@ import { cascadeUnblock, createTask } from '../tasks/service.ts';
 import { computeQuote } from '../pricing/service.ts';
 import { addDays, todayChicago, upcomingEstimateDates } from '../tax/deadlines.ts';
 
+/**
+ * A FILED RETURN'S ANSWERS, PER JURISDICTION (R48, 2026-09-26; R84, 2026-09-27): one line per row the
+ * return declared (tax_engagement_jurisdictions) that has answered, an e-file row by its acceptance
+ * day and a paper row by its mailing day, federal first. A return filed before the jurisdictions table
+ * existed (migration 0104) has no declared rows and reads its lines from the summary columns. Both
+ * My Returns and the Home services card read these, so the two never say different things.
+ */
+export type AnswerLine = { jurisdiction: string; kind: 'accepted' | 'mailed'; answered_on: string };
+export async function answerLinesFor(
+  app: FastifyInstance,
+  returns: ReadonlyArray<{ id: string; federal_accepted_on: string | null; state_accepted_on: string | null; state_accepted_code: string | null }>
+): Promise<Map<string, AnswerLine[]>> {
+  const out = new Map<string, AnswerLine[]>();
+  if (returns.length === 0) return out;
+  const declared = (await app.db.query<{ tax_engagement_id: string; jurisdiction: string; accepted_on: string | null; mailed_on: string | null }>(
+    `SELECT tax_engagement_id, jurisdiction, accepted_on::text AS accepted_on, mailed_on::text AS mailed_on
+       FROM tax_engagement_jurisdictions
+      WHERE tax_engagement_id = ANY($1::uuid[])
+      ORDER BY (jurisdiction <> 'federal'), jurisdiction`,
+    [returns.map((r) => r.id)]
+  )).rows;
+  for (const r of returns) {
+    const mine = declared.filter((d) => d.tax_engagement_id === r.id);
+    if (mine.length > 0) {
+      out.set(r.id, mine.flatMap((d): AnswerLine[] => {
+        if (d.mailed_on) return [{ jurisdiction: d.jurisdiction, kind: 'mailed', answered_on: d.mailed_on }];
+        if (d.accepted_on) return [{ jurisdiction: d.jurisdiction, kind: 'accepted', answered_on: d.accepted_on }];
+        return [];
+      }));
+      continue;
+    }
+    const summary: AnswerLine[] = [];
+    if (r.federal_accepted_on) summary.push({ jurisdiction: 'federal', kind: 'accepted', answered_on: r.federal_accepted_on });
+    if (r.state_accepted_on && r.state_accepted_code) summary.push({ jurisdiction: r.state_accepted_code.toUpperCase(), kind: 'accepted', answered_on: r.state_accepted_on });
+    out.set(r.id, summary);
+  }
+  return out;
+}
+
 const ProfileBody = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
@@ -427,32 +466,10 @@ export function registerPortalRoutes(app: FastifyInstance): void {
         ORDER BY d.tax_year DESC NULLS LAST, d.uploaded_at DESC`,
       [client.contactId]
     );
-    type CompletedLine = { jurisdiction: string; kind: 'accepted' | 'mailed'; answered_on: string };
-    const completedIds = [...new Set(rows.filter((r) => r.stage === 'completed' && r.tax_engagement_id).map((r) => r.tax_engagement_id!))];
-    const declared = completedIds.length === 0 ? [] : (await app.db.query<{
-      tax_engagement_id: string; jurisdiction: string; accepted_on: string | null; mailed_on: string | null;
-    }>(
-      `SELECT tax_engagement_id, jurisdiction, accepted_on::text AS accepted_on, mailed_on::text AS mailed_on
-         FROM tax_engagement_jurisdictions
-        WHERE tax_engagement_id = ANY($1::uuid[])
-        ORDER BY (jurisdiction <> 'federal'), jurisdiction`,
-      [completedIds]
-    )).rows;
-    const completedLinesFor = (r: typeof rows[number]): CompletedLine[] => {
-      if (r.stage !== 'completed') return [];
-      const mine = declared.filter((d) => d.tax_engagement_id === r.tax_engagement_id);
-      if (mine.length > 0) {
-        return mine.flatMap((d): CompletedLine[] => {
-          if (d.mailed_on) return [{ jurisdiction: d.jurisdiction, kind: 'mailed', answered_on: d.mailed_on }];
-          if (d.accepted_on) return [{ jurisdiction: d.jurisdiction, kind: 'accepted', answered_on: d.accepted_on }];
-          return [];
-        });
-      }
-      const summary: CompletedLine[] = [];
-      if (r.federal_accepted_on) summary.push({ jurisdiction: 'federal', kind: 'accepted', answered_on: r.federal_accepted_on });
-      if (r.state_accepted_on && r.state_accepted_code) summary.push({ jurisdiction: r.state_accepted_code.toUpperCase(), kind: 'accepted', answered_on: r.state_accepted_on });
-      return summary;
-    };
+    const completedRows = rows.filter((r) => r.stage === 'completed' && r.tax_engagement_id);
+    const answers = await answerLinesFor(app, [...new Map(completedRows.map((r) => [r.tax_engagement_id!, { ...r, id: r.tax_engagement_id! }])).values()]);
+    const completedLinesFor = (r: typeof rows[number]): AnswerLine[] =>
+      r.stage === 'completed' && r.tax_engagement_id ? (answers.get(r.tax_engagement_id) ?? []) : [];
     const nextStepFor = (r: typeof rows[number]): string | null => {
       if (!r.stage || r.stage === 'withdrawn') return null;
       if (r.stage === 'completed') return 'accepted';
@@ -509,7 +526,11 @@ export function registerPortalRoutes(app: FastifyInstance): void {
               CASE WHEN te.id IS NOT NULL THEN 'pipeline' ELSE 'ongoing' END AS kind,
               te.f8879_sent_method::text AS f8879_sent_method,
               te.f8879_sent_on::text     AS f8879_sent_on,
-              (te.f8879_document_id IS NOT NULL) AS f8879_on_file
+              (te.f8879_document_id IS NOT NULL) AS f8879_on_file,
+              te.id AS tax_engagement_id,
+              te.federal_accepted_on::text AS federal_accepted_on,
+              te.state_accepted_on::text AS state_accepted_on,
+              te.state_accepted_code
          FROM engagements e
          LEFT JOIN tax_engagements te ON te.engagement_id = e.id
         WHERE e.contact_id = $1
@@ -533,11 +554,20 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     const ids = rows.map((r) => String(r.id));
     const scopes = await scopeForEngagements(app, ids);
     const lang = client.language;
+    // R84: a filed or completed return says what the IRS and each state answered, never a deadline.
+    const filed = rows.filter((r) => r.tax_engagement_id && (r.stage === 'filed' || r.stage === 'completed'));
+    const answers = await answerLinesFor(app, filed.map((r) => ({
+      id: String(r.tax_engagement_id), federal_accepted_on: r.federal_accepted_on ?? null,
+      state_accepted_on: r.state_accepted_on ?? null, state_accepted_code: r.state_accepted_code ?? null,
+    })));
     return {
       engagements: rows.map((r) => {
         const items = scopes.get(String(r.id)) ?? [];
+        const isFiled = r.stage === 'filed' || r.stage === 'completed';
         return {
           ...r,
+          deadline: isFiled ? null : r.deadline,
+          answer_lines: isFiled ? (answers.get(String(r.tax_engagement_id)) ?? []) : [],
           scopeName: scopeName(items, lang),
           scope: items.map((i) => ({
             itemCode: i.itemCode,

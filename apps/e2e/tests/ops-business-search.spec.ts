@@ -85,12 +85,14 @@ test.describe('Path H: the business in every Ops search, and the stage row that 
       await box.press('Enter');
       const row = page.locator('button.btn.ghost', { hasText: label }).first();
       await expect(row, 'the row reads the business, a dash, the owner').toBeVisible();
+      // R80: the chip's type; the harness fixture is a test record, and "Test" ranks first (the business still reads in the name).
+      await expect(row.locator('.chip-type'), 'R80: the chip says what the record is').toHaveText('Test');
       await page.screenshot({ path: shot, fullPage: true });
       passed = true;
     } finally {
       if (!existsSync(shot)) await page.screenshot({ path: shot, fullPage: true }).catch(() => undefined);
       testInfo.annotations.push({ type: 'screenshot', description: keepScreenshot(`search-deliver-${viewport}`, passed, shot) });
-      testInfo.annotations.push({ type: 'walk-step', description: `H1|/upload-return "Find the client", the business legal name, Enter; the match reads "Business — owner"|${ROLES}|tap` });
+      testInfo.annotations.push({ type: 'walk-step', description: `H1|/upload-return "Find the client", the business legal name, Enter; the match reads "Business — owner" under the type "Test", the fixture being a test record (R80)|${ROLES}|tap` });
     }
   });
 
@@ -108,6 +110,7 @@ test.describe('Path H: the business in every Ops search, and the stage row that 
       await builder.getByPlaceholder('Search by name, email, or phone').fill(s.markers.business);
       const chip = builder.locator('button.chip', { hasText: label });
       await expect(chip, 'the chip reads the business, a dash, the owner').toBeVisible();
+      await expect(chip.locator('.chip-type'), 'R80: the chip says what the record is (a test record ranks first)').toHaveText('Test');
       await chip.click();
       // The picked client is the active chip carrying the person's name; the group chips beside it are active too.
       await expect(builder.locator('.chip.active', { hasText: label.split(' — ')[1]! }), 'picked: the person is the client on the quote').toBeVisible();
@@ -116,7 +119,7 @@ test.describe('Path H: the business in every Ops search, and the stage row that 
     } finally {
       if (!existsSync(shot)) await page.screenshot({ path: shot, fullPage: true }).catch(() => undefined);
       testInfo.annotations.push({ type: 'screenshot', description: keepScreenshot(`search-quote-${viewport}`, passed, shot) });
-      testInfo.annotations.push({ type: 'walk-step', description: `H2|/pipeline "New quote", "Client or lead" search, the business legal name; the chip reads "Business — owner"|${ROLES}|tap` });
+      testInfo.annotations.push({ type: 'walk-step', description: `H2|/pipeline "New quote", "Client or lead" search, the business legal name; the chip reads "Business — owner" under the type "Test", the fixture being a test record (R80)|${ROLES}|tap` });
     }
   });
 

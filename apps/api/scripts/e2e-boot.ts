@@ -400,7 +400,7 @@ async function buildHiloClient(viewport: 'phone' | 'desk') {
   return { contactId: c.id, fullName: `Synthetic ${last}`, lastName: last, businessName };
 }
 const hiloLines = await app.db.query<{ item_code: string; name_en: string; service_line: string }>(
-  `SELECT DISTINCT ON (pbi.service_line) pbi.item_code, pbi.name_en, pbi.service_line::text AS service_line
+  `SELECT DISTINCT ON (pbi.service_line) pbi.item_code, COALESCE(pbi.display_name_en, pbi.name_en) AS name_en, pbi.service_line::text AS service_line
      FROM price_book_items pbi JOIN price_book_versions v ON v.id = pbi.version_id
     WHERE v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
       AND pbi.is_active AND pbi.display_on_quote AND pbi.pricing_mode = 'flat' AND pbi.amount_cents > 0

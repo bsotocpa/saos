@@ -129,6 +129,42 @@ export function clientSearchLabel(r: { first_name: string; last_name: string; bu
   return r.business_matched && r.business_name ? `${r.business_name} — ${person}` : person;
 }
 
+/*
+ * THE SEARCH CHIP SAYS WHAT IT IS (Brian, 2026-09-27, R80). Every client-search chip carries a type:
+ * a test record reads "Test"; a hit on a business's legal name reads "Business" with its owner; a lead
+ * "Lead"; anyone else "Person". A person's (or a lead's, or a test record's) chip adds the primary
+ * business or, without one, the email's domain masked (@g•••.com), so two people of one name can be
+ * told apart without the address on the screen.
+ */
+export type ClientChipType = 'person' | 'business' | 'lead' | 'test';
+export const CLIENT_CHIP_TYPE_LABEL: Record<ClientChipType, string> = { person: 'Person', business: 'Business', lead: 'Lead', test: 'Test' };
+export interface ChipRow {
+  first_name: string; last_name: string; email?: string | null; soto_status?: string | null; is_test?: boolean | null;
+  business_name?: string | null; business_matched?: boolean | null; primary_business_name?: string | null;
+}
+export function clientChipType(r: ChipRow): ClientChipType {
+  if (r.is_test) return 'test';
+  if (r.business_matched && r.business_name) return 'business';
+  if (r.soto_status === 'lead') return 'lead';
+  return 'person';
+}
+/** "@g•••.com": the domain's first letter and its last label; never the mailbox, never the rest of the domain. */
+export function maskedEmailDomain(email: string | null | undefined): string | null {
+  const at = (email ?? '').lastIndexOf('@');
+  if (at < 0) return null;
+  const domain = email!.slice(at + 1).trim().toLowerCase();
+  if (!domain) return null;
+  // The first letter and the last label only: "mail.example.co.uk" reads "@m•••.uk", never its middle.
+  const dot = domain.lastIndexOf('.');
+  const tail = dot <= 0 ? '' : domain.slice(dot);
+  return `@${domain.slice(0, 1)}•••${tail}`;
+}
+/** The chip's second part: the primary business, else the masked email domain; a business chip names its owner already. */
+export function clientChipDetail(r: ChipRow): string | null {
+  if (clientChipType(r) === 'business') return null;
+  return r.primary_business_name || maskedEmailDomain(r.email) || null;
+}
+
 /**
  * The engagement's status in plain words (R52, 2026-09-26): the state, and for one that is paused or
  * over, the day that happened. The caller formats the days (dayOf for the pause instant, formatDate
