@@ -1,17 +1,18 @@
 # edit-doors (2026-09-28)
 
-Generated 2026-09-28T06:47:42.472Z by scripts/report-table.mjs from the log edit-doors.log; 37 row(s).
+Generated 2026-09-28T08:07:37.840Z by scripts/report-table.mjs from the log edit-doors.log; 38 row(s).
 
 Every entity with a create control has an edit control tapped at both viewports, or an explicit "immutable because" entry (R38); the guard scripts/check-edit-doors.mjs fails the root chain when a create route has no update route with a UI caller and the entity is not marked immutable.
 
 ```sql
-node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/modules joined with scripts/edit-doors.json; tapped columns from apps/e2e/.artifacts/last-run.json, the full harness run of 2026-09-28: 121 passed, 0 failed)
+node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/modules joined with scripts/edit-doors.json; tapped columns from apps/e2e/.artifacts/last-run.json, the full harness run of 2026-09-28: 123 passed, 0 failed)
 ```
 
 | entity | create route | update route | UI caller (file) | tapped phone | tapped desk | immutable because |
 |---|---|---|---|---|---|---|
 | contact | POST /contacts (apps/api/src/modules/crm/routes.ts:384) | PATCH /contacts/:id (apps/api/src/modules/crm/routes.ts:544) | apps/internal/app/clients/[id]/page.tsx | yes (apps/e2e/tests/ops-path-b.spec.ts:173) | yes (apps/e2e/tests/ops-path-b.spec.ts:173) |  |
 | business | POST /contacts/:id/businesses (apps/api/src/modules/crm/routes.ts:609) | PATCH /businesses/:id (apps/api/src/modules/crm/routes.ts:952) | apps/internal/components/edit-business.tsx (rendered by apps/internal/app/clients/[id]/page.tsx, apps/internal/app/businesses/[id]/page.tsx) | yes (apps/e2e/tests/ops-scorp-dry-run.spec.ts:132) | yes (apps/e2e/tests/ops-scorp-dry-run.spec.ts:132) |  |
+| document checklist row | POST /admin/document-checklist (apps/api/src/modules/admin/routes.ts:637) | PATCH /admin/document-checklist/:id (apps/api/src/modules/admin/routes.ts:610) | apps/internal/app/admin/document-checklist/page.tsx | yes (apps/e2e/tests/ops-document-checklist-admin.spec.ts:33) | yes (apps/e2e/tests/ops-document-checklist-admin.spec.ts:33) |  |
 | staff member | POST /staff (apps/api/src/modules/staff/routes.ts:86) | PATCH /staff/:id (apps/api/src/modules/staff/routes.ts:121) | apps/internal/app/admin/staff/page.tsx | yes (apps/e2e/tests/ops-edit-doors.spec.ts:98) | yes (apps/e2e/tests/ops-edit-doors.spec.ts:98) |  |
 | task | POST /tasks (apps/api/src/modules/tasks/routes.ts:265) | PATCH /tasks/:id (apps/api/src/modules/tasks/routes.ts:291) | apps/internal/app/tasks/task-form.tsx | yes (apps/e2e/tests/ops-edit-doors.spec.ts:53) | yes (apps/e2e/tests/ops-edit-doors.spec.ts:53) |  |
 | quote | POST /quotes (apps/api/src/modules/pricing/quote-routes.ts:176) | — | create only: apps/internal/app/pipeline/page.tsx | — | — | immutable because edited by superseding: a draft is withdrawn with a reason and rebuilt; a sent quote pins its price-book version and is the client's to answer; a change to accepted work is a change-order quote |
@@ -36,14 +37,14 @@ node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/mod
 | entity compliance item | POST /entity-compliance (apps/api/src/modules/entity/routes.ts:57) | — | — | — | — | immutable because a derived obligation, marked filed through its own door |
 | close cycle | POST /close-cycles (apps/api/src/modules/bookkeeping/routes.ts:60) | — | — | — | — | immutable because a ledger of steps for one period; steps are recorded, the period never changes |
 | client session | POST /client-sessions (apps/api/src/modules/bookkeeping/routes.ts:107) | — | — | — | — | immutable because a scheduled occurrence; rescheduling is a new session |
-| document request | POST /document-requests (apps/api/src/modules/tax/routes.ts:863) | — | — | — | — | immutable because a request as made; fulfilment and chasing are the record |
+| document request | POST /document-requests (apps/api/src/modules/tax/routes.ts:884) | — | — | — | — | immutable because a request as made; fulfilment and chasing are the record |
 | tax engagement (return) | POST /tax-engagements (apps/api/src/modules/tax/routes.ts:334) | — | — | — | — | immutable because no free-form edit by design: each field has its own audited door in return-controls.tsx (estimate, final fee, preparer, extension, transition, signatures, paper mailing) |
 | resolution case | POST /resolution/cases (apps/api/src/modules/tax/resolution-routes.ts:74) | — | — | — | — | immutable because a case as opened; representation and forms are its own doors |
 | signature envelope | POST /signature-envelopes (apps/api/src/modules/signatures/routes.ts:19) | — | — | — | — | immutable because an issued envelope |
 | e-file acknowledgment report | POST /efile-acks (apps/api/src/modules/tax/efile-ack-routes.ts:21) | — | create only: apps/internal/app/efile-acks/page.tsx | — | — | immutable because an uploaded report; its rows are held, unheld and released through their own doors |
 | recording | POST /meetings/upload (apps/api/src/modules/meetings/routes.ts:65) | — | create only: apps/internal/app/recorder/page.tsx | — | — | immutable because an uploaded recording; its recap is drafted and edited through PATCH /meetings/:id/recap |
-| price book version | POST /admin/price-book/versions (apps/api/src/modules/admin/routes.ts:247) | — | create only: apps/internal/app/admin/pricing/page.tsx | — | — | immutable because effective-dated and versioned: a price change is a new version, never an edit of one in force |
+| price book version | POST /admin/price-book/versions (apps/api/src/modules/admin/routes.ts:261) | — | create only: apps/internal/app/admin/pricing/page.tsx | — | — | immutable because effective-dated and versioned: a price change is a new version, never an edit of one in force |
 | referral | POST /referrals (apps/api/src/modules/referrals/routes.ts:48) | — | — | — | — | immutable because approved, declined or sent as suggested |
-| document | POST /documents (apps/api/src/modules/documents/routes.ts:224) | — | create only: apps/internal/app/upload-return/page.tsx | — | — | immutable because an uploaded file, scanned and filed as uploaded; withdrawn or superseded by another upload, never edited, every access audited |
+| document | POST /documents (apps/api/src/modules/documents/routes.ts:248) | — | create only: apps/internal/app/upload-return/page.tsx | — | — | immutable because an uploaded file, scanned and filed as uploaded; withdrawn or superseded by another upload, never edited, every access audited |
 | engagement | POST /engagements (apps/api/src/modules/engagements/routes.ts:59) | — | — | — | — | immutable because no free-form edit by design: each change is its own audited door (configure, maintenance mode, pause, resume, close, period, deposit transfer) |
 | quote package | POST /quotes/packages (apps/api/src/modules/pricing/quote-routes.ts:189) | — | create only: apps/internal/app/pipeline/page.tsx | — | — | immutable because composed from the price book only and saved by the CEO alone; a change is a new package, and the discount is admin-set at publish |

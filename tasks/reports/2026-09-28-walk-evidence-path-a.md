@@ -1,11 +1,11 @@
 # walk-evidence-path-a (2026-09-28)
 
-Generated 2026-09-28T06:47:36.903Z by scripts/report-table.mjs from the log walk-a.log; 46 row(s).
+Generated 2026-09-28T08:07:33.841Z by scripts/report-table.mjs from the log walk-a.log; 46 row(s).
 
 Rows come from walk-step annotations the specs push while they run, on the migrated-client fixture (a portal account on one address, the contact record on another; the proposal and sign-in links followed from the emailed hrefs); A3b is the Ops packet step and A3c the consent screen (R27); how=api is the Stripe event beside a passing Pay tap.
 
 ```sql
-node scripts/walk-evidence.mjs A  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-28: 121 passed, 0 failed)
+node scripts/walk-evidence.mjs A  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-28: 123 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
@@ -53,6 +53,6 @@ node scripts/walk-evidence.mjs A  (reads apps/e2e/.artifacts/last-run.json from 
 | A10 | Pay the final-fee invoice | phone | portal /invoices, the final-fee row, button "Pay now" → navigates to the Stripe Checkout session the API minted for that invoice | client (portal session) | apps/e2e/tests/ops-scorp-dry-run.spec.ts:132 | desk | passed | tap | yes |
 | A10 | Pay the final-fee invoice | phone | the checkout.session.completed event posted to /webhooks/stripe (Stripe's call, not a tap) | Stripe | apps/e2e/tests/ops-scorp-dry-run.spec.ts:132 | desk | passed | api | NO |
 | A11 | Receipt, the money line, the completed engagement | laptop | / (executive view) money line, outside-the-door line, completed-unpaid tile; /clients/:id engagement row without an open balance | ceo | apps/e2e/tests/ops-scorp-dry-run.spec.ts:132 | phone | passed | tap | yes |
-| A11 | Receipt, the money line, the completed engagement | laptop | /clients/:id read at phone: return completed, invoice paid, engagement completed, no open balance | ceo | apps/e2e/tests/ops-scorp-dry-run.spec.ts:630 | phone | passed | tap | yes |
+| A11 | Receipt, the money line, the completed engagement | laptop | /clients/:id read at phone: return completed, invoice paid, engagement completed, no open balance | ceo | apps/e2e/tests/ops-scorp-dry-run.spec.ts:636 | phone | passed | tap | yes |
 | A11 | Receipt, the money line, the completed engagement | laptop | / (executive view) money line, outside-the-door line, completed-unpaid tile; /clients/:id engagement row without an open balance | ceo | apps/e2e/tests/ops-scorp-dry-run.spec.ts:132 | desk | passed | tap | yes |
-| A11 | Receipt, the money line, the completed engagement | laptop | /clients/:id read at desk: return completed, invoice paid, engagement completed, no open balance | ceo | apps/e2e/tests/ops-scorp-dry-run.spec.ts:630 | desk | passed | tap | yes |
+| A11 | Receipt, the money line, the completed engagement | laptop | /clients/:id read at desk: return completed, invoice paid, engagement completed, no open balance | ceo | apps/e2e/tests/ops-scorp-dry-run.spec.ts:636 | desk | passed | tap | yes |
