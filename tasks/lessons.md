@@ -2136,3 +2136,7 @@ While receipt run 22 ran in the worktree, a batch of API specs was running in th
 ## A rule's scope is read in the terms the ruling uses, and asked about when two readings differ (Brian, 2026-09-27, R78)
 R75 said "the referred client's first engagement only"; I built it as "no engagement other than withdrawn ones", so a client with bookkeeping alone lost the discount on their first tax work. Brian ruled the meaning: the first engagement that carries a line the rule reaches; withdrawn never counts.
 **Rule:** when a ruling's scope word ("first", "only", "any") can be read against the whole record or against the ruling's own subject, build it against the subject and name the reading in the report's first paragraph for that item, so a wrong reading is caught at the report, not after a client is quoted.
+
+## A fix to how rows are closed also closes the rows already stuck (2026-09-27, R87)
+R46 (2026-09-26) made answering the §7216 consent close the intake consent envelopes, but only for answers given after it shipped; Brian had answered on 2026-09-20, so his two 2026-08-13 envelopes stayed draft and the portal read three different states for one document. Migration 0131 closed them.
+**Rule:** a change to when a row is closed, completed or voided ships with a migration that applies it once to the rows already in the stuck state, with the count printed; and a document's state is read from one source (the consent from consents), never from a second row that stood for it.
