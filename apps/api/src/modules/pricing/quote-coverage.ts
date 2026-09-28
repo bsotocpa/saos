@@ -98,7 +98,46 @@ export async function coveredSchedules(
       WHERE contact_id = $1 ORDER BY schedule_code`,
     [contactId]
   );
-  return rows.map((r) => r.schedule_code);
+  const accepted = rows.map((r) => r.schedule_code);
+  if (accepted.length === 0) return [];
+  /*
+   * R79 (Brian, 2026-09-27): "active" means a LIVE engagement sits under the schedule. A schedule the
+   * client signed once, with no live engagement under it now (Brian's Schedule A after his two 1040
+   * engagements were withdrawn), is not a trigger. The live schedules are the packet resolver's own
+   * answer (engagements draft, active or on hold); if it cannot answer, every accepted schedule counts,
+   * so the prompt errs toward asking.
+   */
+  let live: string[];
+  try {
+    const { resolveSchedules } = await import('../engagements/packet.ts');
+    live = (await resolveSchedules(app, contactId)).codes;
+  } catch {
+    live = accepted;
+  }
+  return accepted.filter((code) => live.includes(code));
+}
+
+/**
+ * R79: when the prompt fires, is this quote for a tax year no live tax engagement covers? Then it adds to
+ * the agreement rather than replacing it, and the builder offers "Adds to the existing agreement" as the
+ * default. Null when the quote names no tax year.
+ */
+export async function differentTaxYear(
+  app: FastifyInstance,
+  quoteId: string,
+  contactId: string
+): Promise<{ differs: boolean; quoteYear: string; liveYears: string[] } | null> {
+  const { periodsForQuote } = await import('../engagements/change-order.ts');
+  const tax = (await periodsForQuote(app, quoteId)).find((p) => p.serviceLine === 'tax' && p.periodKey !== null);
+  if (!tax) return null;
+  const { rows } = await app.db.query<{ period_key: string }>(
+    `SELECT DISTINCT period_key FROM engagements
+      WHERE contact_id = $1 AND service_line = 'tax' AND status IN ('draft', 'active', 'on_hold') AND period_key IS NOT NULL
+      ORDER BY period_key`,
+    [contactId]
+  );
+  const liveYears = rows.map((r) => r.period_key);
+  return { differs: !liveYears.includes(tax.periodKey!), quoteYear: tax.periodKey!, liveYears };
 }
 
 export interface CoverageOverlap {
@@ -190,12 +229,17 @@ export async function assertSendableOverCoverage(
     .map((code) => `Schedule ${code}${titles[code] ? ` (${titles[code]})` : ''}`)
     .join(' and ');
   const { AppError } = await import('../../types.ts');
-  throw new AppError(
-    409,
-    'schedule_already_covered',
-    `This client already has an active ${named}. Adding work, or duplicating? ` +
-      'Send again with intent "additional_work" to add scope under the existing ' +
-      'agreement, or "replaces_existing" if this supersedes it. ' +
-      'The answer is recorded on the quote.'
+  const year = await differentTaxYear(app, quoteId, contactId);
+  throw Object.assign(
+    new AppError(
+      409,
+      'schedule_already_covered',
+      `This client already has an active ${named}. Adding work, or duplicating? ` +
+        'Send again with intent "additional_work" to add scope under the existing ' +
+        'agreement, or "replaces_existing" if this supersedes it. ' +
+        'The answer is recorded on the quote.'
+    ),
+    // R79: a different tax year adds to the agreement; the builder opens on that answer.
+    { issues: { suggestedIntent: year?.differs ? 'additional_work' : null, quoteYear: year?.quoteYear ?? null, liveYears: year?.liveYears ?? [] } }
   );
 }

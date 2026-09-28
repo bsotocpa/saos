@@ -138,7 +138,7 @@ export default function PipelinePage() {
    * So a 409 `schedule_already_covered` lands HERE, holding the quote it refused, and renders
    * as the two choices the API is actually asking for.
    */
-  const [coverageBlock, setCoverageBlock] = useState<{ quoteId: string; message: string } | null>(null);
+  const [coverageBlock, setCoverageBlock] = useState<{ quoteId: string; message: string; addsByDefault?: boolean; quoteYear?: string | null; liveYears?: string[] } | null>(null);
   /*
    * ONE ACTIVE ENGAGEMENT PER LINE AND PERIOD (2026-09-09). A 409 change_order_required lands
    * here with the engagements the quote could replace, and renders one button each.
@@ -558,7 +558,13 @@ export default function PipelinePage() {
       setDraftQuoteId(quoteId);
       void refreshDraftDeposit(quoteId);
     } else if (e.code === 'schedule_already_covered') {
-      setCoverageBlock({ quoteId, message: e.message });
+      // R79: the API says whether this quote is for a tax year no live engagement covers.
+      const issues = (e as { payload?: { issues?: { suggestedIntent?: string | null; quoteYear?: string | null; liveYears?: string[] } } }).payload?.issues;
+      setCoverageBlock({
+        quoteId, message: e.message,
+        addsByDefault: issues?.suggestedIntent === 'additional_work',
+        quoteYear: issues?.quoteYear ?? null, liveYears: issues?.liveYears ?? [],
+      });
       // The refused quote is a real draft. Keep hold of it so the decision below — or a later
       // "send draft" — acts on THIS quote instead of leaving it orphaned in the pipeline.
       setDraftQuoteId(quoteId);
@@ -746,8 +752,13 @@ export default function PipelinePage() {
             Is this quote adding work under that agreement, or replacing it? Your answer is recorded
             on the quote, so it can be read back later with the reason that justified it.
           </p>
+          {coverageBlock.addsByDefault ? (
+            <p className="small" data-testid="coverage-different-year">
+              This quote is for {coverageBlock.quoteYear}; the live engagement covers {(coverageBlock.liveYears ?? []).join(', ') || 'another year'}. A different tax year adds to the agreement.
+            </p>
+          ) : null}
           <p>
-            <button type="button" className="btn" disabled={busy} onClick={() => void sendWithIntent('additional_work')}>
+            <button type="button" className="btn" disabled={busy} autoFocus={coverageBlock.addsByDefault} data-testid="coverage-adds" onClick={() => void sendWithIntent('additional_work')}>
               Adds to the existing agreement
             </button>{' '}
             <button type="button" className="btn ghost" disabled={busy} onClick={() => void sendWithIntent('replaces_existing')}>

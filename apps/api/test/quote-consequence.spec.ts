@@ -172,6 +172,46 @@ test('the acceptance task names the schedule the quote covers', async () => {
   );
 });
 
+/** R79: a live personal tax engagement (no business, so Schedule A) for the given tax year. */
+async function liveTaxEngagement(contactId: string, year: string): Promise<string> {
+  await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [contactId]);
+  const { rows } = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, title, status, period_key) VALUES ($1, 'tax', 'Synthetic live return', 'active', $2) RETURNING id`,
+    [contactId, year]);
+  return rows[0]!.id;
+}
+
+test('R79: a schedule signed once, with no live engagement under it, is not a trigger: the quote sends with no intent', async () => {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'SignedOnce', email: 'signedonce@example.test' });
+  await app.db.query(
+    `INSERT INTO schedule_acceptances (contact_id, schedule_code, via, template_version) VALUES ($1, 'A', 'portal_acceptance', 3)`, [c.id]);
+  assert.deepEqual(await coveredSchedules(app, c.id), [], 'accepted, but nothing live under it');
+  const quote = await createQuote(
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }] }, staffActor(await ceoId()));
+  const sent = await sendQuote(app, quote.id, staffActor(await ceoId()));
+  assert.ok(sent.url, 'sent with no prompt');
+  const row = await app.db.query<{ intent: string | null }>(`SELECT duplicate_intent::text AS intent FROM quotes WHERE id = $1`, [quote.id]);
+  assert.equal(row.rows[0]!.intent, null, 'and no intent recorded');
+});
+
+test('R79: when it fires for a different tax year, the refusal names "adds to the existing agreement" as the answer', async () => {
+  const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'OtherYear', email: 'otheryear@example.test' });
+  await app.db.query(
+    `INSERT INTO schedule_acceptances (contact_id, schedule_code, via, template_version) VALUES ($1, 'A', 'portal_acceptance', 3)`, [c.id]);
+  await liveTaxEngagement(c.id, '2024');
+  const quote = await createQuote(
+    app, { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }], interviewAnswers: { tax_year: 2025 } }, staffActor(await ceoId()));
+  await assert.rejects(
+    async () => sendQuote(app, quote.id, staffActor(await ceoId())),
+    (err: unknown) => {
+      assert.ok(err instanceof AppError);
+      assert.equal(err.code, 'schedule_already_covered');
+      const issues = (err as unknown as { issues: { suggestedIntent: string | null; quoteYear: string; liveYears: string[] } }).issues;
+      assert.deepEqual(issues, { suggestedIntent: 'additional_work', quoteYear: '2025', liveYears: ['2024'] });
+      return true;
+    });
+});
+
 test('SEND is blocked when the client already accepted that schedule', async () => {
   const c = await makeContact(app.db, {
     firstName: 'Synthetic',
@@ -185,6 +225,8 @@ test('SEND is blocked when the client already accepted that schedule', async () 
      VALUES ($1, 'A', 'portal_acceptance', 3)`,
     [c.id]
   );
+  // R79: the schedule is "active" because a live engagement sits under it (a personal tax engagement, 2024).
+  await liveTaxEngagement(c.id, '2024');
   assert.deepEqual(await coveredSchedules(app, c.id), ['A']);
 
   const quote = await createQuote(
@@ -227,6 +269,8 @@ test('declaring the intent lets it through, and the answer is RECORDED', async (
      VALUES ($1, 'A', 'portal_acceptance', 3)`,
     [c.id]
   );
+  // R79: the schedule is "active" because a live engagement sits under it (a personal tax engagement, 2024).
+  await liveTaxEngagement(c.id, '2024');
   const quote = await createQuote(
     app,
     { contactId: c.id, businessId: await businessFor(app.db, c.id), lines: [{ itemCode: await taxItemCode() }] },
