@@ -11,7 +11,8 @@
  *                        the fee, ready to file and filed done and the jurisdiction step current, waiting
  *                        on the acknowledgments for federal and IL; Close its greyed name
  *   completed            both jurisdictions accepted, the return completed and the invoice paid: five
- *                        done lines, nothing open, the jurisdiction record under the rail
+ *                        done lines, nothing open, the jurisdiction record under the rail, and the
+ *                        details area with "Correct the filing" alone (R86)
  *
  * FULL RESOLUTION: this file runs its browser at deviceScaleFactor 2 (test.use below, over the desk
  * project's default of 1) and screenshots with scale 'device', so a 390-wide page is a 780-pixel PNG,
@@ -238,7 +239,8 @@ test('the three rail states at 390, 768 and 1280, at full resolution', async ({ 
         await expect(record.getByTestId('jurisdiction-line-IL')).toContainText(`Accepted ${dayText(today)}`);
         await expect(card.getByTestId('jurisdiction-line-federal'), 'printed once').toHaveCount(1);
         await expect(card.getByTestId('jurisdiction-status'), 'no mailing block once nothing is awaited').toHaveCount(0);
-        await expect(card.getByTestId('return-details'), 'nothing secondary is left to do').toHaveCount(0);
+        // R86 (2026-09-27): the one secondary thing left on a completed return is correcting its filing.
+        await expect(card.getByTestId('return-details').getByTestId('correct-filing'), 'Correct the filing is there').toHaveCount(1);
       }
       const path = resolve(SHOTS, `${state}-${size.width}.png`);
       await page.screenshot({ path, fullPage: true, scale: 'device' });

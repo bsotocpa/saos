@@ -45,7 +45,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
   return target;
 }
 
-test('P2: one row before signing, none of the withdrawn 1040, and nothing waiting after the signature', async ({ page }, testInfo) => {
+test('P2: one row before signing, none of the withdrawn 1040, and only the §7216 consent waiting after the signature', async ({ page }, testInfo) => {
   const viewport = testInfo.project.name;
   const person = personFor(viewport);
   const shot = testInfo.outputPath(`portal-signing-home-${viewport}.png`);
