@@ -49,6 +49,7 @@ export const NAV: readonly NavItem[] = [
   { href: '/admin/automations', label: 'Automations', needs: ['admin.settings'], door: 'GET /admin/automations' },
   { href: '/admin/pricing', label: 'Pricing', needs: ['pricing.edit'], door: 'GET /admin/price-book' },
   { href: '/admin/templates', label: 'Templates', needs: ['admin.settings'], door: 'GET /admin/templates' },
+  { href: '/admin/document-checklist', label: 'Document checklist', needs: ['admin.settings'], door: 'GET /admin/document-checklist' },
   { href: '/admin/staff', label: 'Staff', needs: ['staff.manage'], door: 'GET /staff' },
   { href: '/admin/settings', label: 'Settings', needs: ['admin.settings'], door: 'GET /admin/settings' },
   { href: '/admin/wisp', label: 'WISP', needs: ['admin.settings'], door: 'GET /admin/wisp/security-summary' },

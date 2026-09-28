@@ -209,7 +209,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       `SELECT dr.id, dr.status, dr.title_en, dr.title_es, dr.note_en, dr.note_es, dr.due_date,
               COALESCE(json_agg(json_build_object(
                 'id', i.id, 'labelEn', i.label_en, 'labelEs', i.label_es, 'status', i.status
-              ) ORDER BY i.created_at) FILTER (WHERE i.id IS NOT NULL), '[]') AS items
+              ) ORDER BY i.seq) FILTER (WHERE i.id IS NOT NULL), '[]') AS items
        FROM document_requests dr
        LEFT JOIN document_request_items i ON i.request_id = dr.id
        WHERE dr.contact_id = $1 AND dr.status IN ('open', 'partially_received')
@@ -218,6 +218,30 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       [client.contactId]
     );
     return { requests: rows };
+  });
+
+  /*
+   * THE RETURN'S DOCUMENT CHECKLIST (R83, 2026-09-27): per open return that has one, its items in
+   * the order they were written, with their status, received ones included, so the portal can show a
+   * slot per item and what happens next. A return that is completed or withdrawn drops off.
+   */
+  app.get('/portal/checklists', { preHandler: [app.authenticateClient] }, async (request) => {
+    const client = request.client!;
+    const { rows } = await app.db.query(
+      `SELECT dr.id, dr.tax_engagement_id, te.tax_year, te.return_type::text AS return_type, dr.title_en, dr.title_es,
+              COALESCE(json_agg(json_build_object(
+                'id', i.id, 'docKey', i.checklist_doc_key, 'labelEn', i.label_en, 'labelEs', i.label_es, 'status', i.status
+              ) ORDER BY i.seq) FILTER (WHERE i.id IS NOT NULL), '[]') AS items
+         FROM document_requests dr
+         JOIN tax_engagements te ON te.id = dr.tax_engagement_id
+         LEFT JOIN document_request_items i ON i.request_id = dr.id
+        WHERE dr.contact_id = $1 AND dr.source = 'checklist' AND dr.status <> 'cancelled'
+          AND te.stage NOT IN ('completed', 'withdrawn')
+        GROUP BY dr.id, te.tax_year, te.return_type
+        ORDER BY te.tax_year DESC, dr.created_at DESC`,
+      [client.contactId]
+    );
+    return { checklists: rows };
   });
 
   // ── Staff ─────────────────────────────────────────────────────────────────

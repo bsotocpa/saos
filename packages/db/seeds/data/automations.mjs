@@ -130,6 +130,12 @@ export const ITEM_9_2026_09_09 = [
     description:
       'When the tax preparer uploads the ATX acknowledgment report and releases it, each client whose return was accepted is emailed, in their language, once per jurisdiction (federal, then each state). Rejections and anything SAOS could not match never email a client; they become tasks. OFF: the release is recorded and every confirmation is held by the automation, nothing goes out.',
   },
+  {
+    key: 'document_checklist_request',
+    name: 'Request documents (the missing items on the return\u2019s checklist)',
+    description:
+      'R83 (2026-09-27): when staff press "Request documents" on a return, the client is emailed the items still missing from the checklist the accepted quote built, with the portal link. OFF: the return still moves to Documents requested, the portal still shows the checklist with an upload slot per item, and the held email is counted here. The recurring reminders after it are document_chase.',
+  },
 ];
 automations.push(...ITEM_9_2026_09_09);
 

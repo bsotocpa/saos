@@ -392,11 +392,29 @@ test.describe('Path B', () => {
       await expect(page.getByTestId('docs-empty')).toBeVisible();
       await page.getByLabel(COPY.docsCategory).selectOption('tax_documents');
       await expect(page.getByLabel(COPY.docsCategory)).toHaveValue('tax_documents');
-      await page.locator('input[type=file]').setInputFiles({ name: clientDoc, ...PDF });
+      // The general upload (R83: the checklist's own slots are the other file inputs on the page).
+      await page.locator('input[type=file]:not([data-testid=checklist-upload])').setInputFiles({ name: clientDoc, ...PDF });
       await expect(page.getByText(COPY.docsUploaded)).toBeVisible();
       // The page prints the name twice on purpose (R47/R49): the upload confirmation line and the document row; the row is the record.
       await expect(page.locator('[data-testid="document-row"]').getByText(clientDoc)).toBeVisible();
       steps.push(`B7|portal /documents (Document Center), the "${COPY.docsCategory}" select + input[type=file]|${ROLES.client}|tap`);
+
+      // ── B7b. THE CHECKLIST THE ACCEPTED QUOTE BUILT (R83): a slot per item, what happens next ──────
+      const checklist = page.getByTestId('checklist');
+      await expect(checklist, 'acceptance opened the return\'s checklist').toHaveCount(1);
+      await expect(checklist.getByRole('heading', { level: 2 })).toHaveText(`Documents for your ${taxYear} Form 1040`);
+      const clItems = checklist.getByTestId('checklist-item');
+      const clTotal = await clItems.count();
+      expect(clTotal, 'the base 1040 asks for its four at least (ID, prior return, W-2s, 1099s)').toBeGreaterThanOrEqual(4);
+      await expect(checklist.locator('[data-testid=checklist-item][data-status=pending]'), 'every item needed at first').toHaveCount(clTotal);
+      await expect(checklist.getByTestId('checklist-next')).toHaveAttribute('data-missing', String(clTotal));
+      await expect(checklist.getByTestId('checklist-next')).toContainText('When every item is in, your preparer starts on your return.');
+      const idSlot = checklist.locator('[data-testid=checklist-item][data-doc=photo_id]');
+      await idSlot.getByTestId('checklist-upload').setInputFiles({ name: `HARNESS-PATHB-ID-${viewport}.pdf`, ...PDF });
+      await expect(idSlot, 'the slot\'s upload answers its item').toHaveAttribute('data-status', 'received');
+      await expect(checklist.getByTestId('checklist-progress')).toHaveText(`1 of ${clTotal} received`);
+      await expect(checklist.getByTestId('checklist-next')).toHaveAttribute('data-missing', String(clTotal - 1));
+      steps.push(`B7b|portal /documents card "Documents for your ${taxYear} Form 1040": one row per checklist item with its status, the "photo_id" row's "Upload" slot (input[type=file]) → the row reads Received, "1 of ${clTotal} received", and "What happens next" counts what is missing|${ROLES.client}|tap`);
 
       // ── THE RETURN WALKS TO INTERNAL REVIEW, from its own row ───────────────────────────
       /*
@@ -435,7 +453,21 @@ test.describe('Path B', () => {
       await dialog.getByRole('button', { name: 'Lock estimate' }).click();
       await expect(dialog).toHaveCount(0);
       await expect(page.getByText(/Estimate locked/), 'locked at the numbers the modal offered, under the version that priced them').toContainText(/price book v\d+/);
-      for (const stage of ['Schedule', 'Request documents', 'Start preparation', 'Internal review']) {
+      // R83: the row reads the checklist as counts.
+      await expect(card.getByTestId(`return-docs-${te}`)).toHaveText(`Documents: 1 received · ${clTotal - 1} missing`);
+      await confirm(page, 'Schedule');
+      // R83: "Request documents" says it emails the missing items, then says what it did. The harness arms every
+      // automation (createTestConfig), so here it is sent; the held arm (seeded off, as on the box) is document-checklist.spec.ts.
+      await page.getByRole('button', { name: 'Request documents', exact: true }).first().click();
+      await expect(dialog).toContainText('emails the client the items still missing');
+      await dialog.getByRole('button', { name: 'Request documents', exact: true }).click();
+      await expect(dialog.getByTestId('documents-request-outcome')).toHaveText(
+        `Emailed the client the ${clTotal - 1} missing items on the checklist, with the portal link.`
+      );
+      await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      steps.push(`B7c|/clients/:id Returns card: the row reads "Documents: 1 received · ${clTotal - 1} missing"; button "Request documents" (modal: it emails the missing checklist items) → the outcome modal "Emailed the client the ${clTotal - 1} missing items on the checklist, with the portal link." (the harness arms its automations; the held arm is the API spec), button "OK"|${ROLES.returnControls}|tap`);
+      for (const stage of ['Start preparation', 'Internal review']) {
         await confirm(page, stage);
       }
       const prepared = (await read(page, `/tax-engagements/${te}`)).taxEngagement as Record<string, unknown>;

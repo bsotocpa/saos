@@ -136,6 +136,13 @@
       "updateUiRenderedBy": ["apps/internal/app/clients/[id]/page.tsx", "apps/internal/app/businesses/[id]/page.tsx"]
     },
     {
+      "entity": "document checklist row",
+      "create": "POST /admin/document-checklist",
+      "createUi": "apps/internal/app/admin/document-checklist/page.tsx",
+      "update": "PATCH /admin/document-checklist/:id",
+      "updateUi": "apps/internal/app/admin/document-checklist/page.tsx"
+    },
+    {
       "entity": "staff member",
       "create": "POST /staff",
       "createUi": "apps/internal/app/admin/staff/page.tsx",

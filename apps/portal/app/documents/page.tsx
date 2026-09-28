@@ -24,12 +24,109 @@ interface UploadResult { name: string; ok: boolean; message: string }
 
 const CATEGORIES = ['tax_documents', 'business_records', 'id_verification', 'irs_notices', 'other'] as const;
 
+/** R83: the return's document checklist, as GET /portal/checklists returns it. */
+interface ChecklistItem { id: string; docKey: string | null; labelEn: string; labelEs: string | null; status: 'pending' | 'received' | 'waived' }
+interface Checklist { id: string; tax_year: number; return_type: string; items: ChecklistItem[] }
+
+/** "1120s" → "1120-S", "990ez" → "990-EZ": the form number as the client reads it. */
+function formNumber(returnType: string): string {
+  if (returnType === 'w7_itin') return 'W-7';
+  const m = /^([a-z]*)(\d+)([a-z]*)/.exec(returnType);
+  if (!m) return returnType.toUpperCase();
+  return `${m[1]!.toUpperCase()}${m[2]}${m[3] ? `-${m[3].toUpperCase()}` : ''}`;
+}
+
+/*
+ * THE CHECKLIST CARD (Brian, 2026-09-27, R83). One card per open return with a checklist: each item
+ * with its status and, while it is needed, its own upload slot. A slot's first file answers the item
+ * (one answer per item, as the request rows hold); any further file in the same pick is filed beside
+ * it. What happens next reads from the list: the count still missing, or that everything is in.
+ */
+function ChecklistCard({ c, onChanged }: { c: Checklist; onChanged: () => Promise<void> }) {
+  const { t, lang } = useSession();
+  const [busyItem, setBusyItem] = useState('');
+  const [itemResults, setItemResults] = useState<Record<string, UploadResult[]>>({});
+  const received = c.items.filter((i) => i.status !== 'pending').length;
+  const missing = c.items.length - received;
+  const upload = async (item: ChecklistItem, files: File[]) => {
+    setBusyItem(item.id);
+    const lines: UploadResult[] = [];
+    let answer: string = item.id;
+    try {
+      for (const file of files) {
+        try {
+          const fd = new FormData();
+          fd.append('category', 'tax_documents');
+          if (answer) fd.append('documentRequestItemId', answer);
+          fd.append('file', file, file.name);
+          await api('/portal/documents', { method: 'POST', formData: fd });
+          lines.push({ name: file.name, ok: true, message: t('docs_file_uploaded') });
+          answer = '';
+        } catch (err) {
+          lines.push({ name: file.name, ok: false, message: err instanceof ApiError ? err.message : t('error_generic') });
+        }
+      }
+      setItemResults((r) => ({ ...r, [item.id]: lines }));
+      await onChanged();
+    } finally {
+      setBusyItem('');
+    }
+  };
+  return (
+    <section className="card" data-testid="checklist" data-return={`${c.tax_year}-${c.return_type}`}>
+      <h2>{t('cl_title').replace('{{year}}', String(c.tax_year)).replace('{{form}}', formNumber(c.return_type))}</h2>
+      <p className="small" data-testid="checklist-next" data-missing={missing}>
+        <strong>{t('returns_next_title')}:</strong>{' '}
+        <span data-testid="checklist-progress">{t('cl_progress').replace('{{received}}', String(received)).replace('{{total}}', String(c.items.length))}</span>.{' '}
+        {missing > 0 ? t('cl_next_missing') : t('cl_next_done')}
+      </p>
+      <ul className="list">
+        {c.items.map((i) => (
+          <li key={i.id} data-testid="checklist-item" data-doc={i.docKey ?? ''} data-status={i.status}>
+            <span className="grow">
+              <span className="small">{lang === 'es' ? (i.labelEs ?? i.labelEn) : i.labelEn}</span>
+              {(itemResults[i.id] ?? []).map((r) => (
+                <span key={r.name} className={`small ${r.ok ? 'muted' : 'field-error'}`} style={{ display: 'block' }} data-testid="checklist-result" data-ok={r.ok ? 'true' : 'false'}>
+                  {r.name}: {r.message}
+                </span>
+              ))}
+            </span>
+            <span className={`badge ${i.status === 'pending' ? 'warn' : 'ok'}`}>
+              {t(i.status === 'pending' ? 'cl_needed' : i.status === 'received' ? 'cl_received' : 'cl_waived')}
+            </span>
+            {i.status === 'pending' ? (
+              <label className="btn ghost" style={{ cursor: 'pointer' }}>
+                {t('cl_upload')}
+                {/* No `capture` (R47): iOS offers Photo Library, Take Photo and Files. */}
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  multiple
+                  hidden
+                  data-testid="checklist-upload"
+                  disabled={busyItem !== ''}
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    e.target.value = '';
+                    if (files.length > 0) void upload(i, files);
+                  }}
+                />
+              </label>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default function DocumentsPage() {
   const { t, lang } = useSession();
   const ask = useAsk();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [requests, setRequests] = useState<DocRequest[]>([]);
+  const [checklists, setChecklists] = useState<Checklist[]>([]);
   // R47: the category starts UNSELECTED. A file chosen before one is picked is refused here, inline.
   const [category, setCategory] = useState<string>('');
   const [itemId, setItemId] = useState<string>('');
@@ -42,12 +139,14 @@ export default function DocumentsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
-    const [d, r] = await Promise.all([
+    const [d, r, cl] = await Promise.all([
       api<{ documents: Doc[] }>('/portal/documents'),
       api<{ requests: DocRequest[] }>('/portal/document-requests'),
+      api<{ checklists: Checklist[] }>('/portal/checklists').catch(() => ({ checklists: [] as Checklist[] })),
     ]);
     setDocs(d.documents);
     setRequests(r.requests);
+    setChecklists(cl.checklists);
     setLoaded(true);
   };
   useEffect(() => {
@@ -131,6 +230,7 @@ export default function DocumentsPage() {
     <>
       <h1>{t('docs_title')}</h1>
       <p className="alert info">{t('docs_policy')}</p>
+      {checklists.map((c) => <ChecklistCard key={c.id} c={c} onChanged={load} />)}
 
       <section className="card">
         <h2>{t('docs_upload')}</h2>

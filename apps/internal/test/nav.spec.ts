@@ -26,7 +26,7 @@ test('the table names every Ops page once, each with the door its permission was
   const hrefs = NAV.map((i) => i.href);
   assert.equal(new Set(hrefs).size, hrefs.length, 'no href twice');
   for (const item of NAV) assert.ok(item.door.length > 0, `${item.label} names its door`);
-  assert.equal(NAV.length, 25, 'the 25 items the shell had before the filter');
+  assert.equal(NAV.length, 26, 'the 25 items the shell had before the filter, and Document checklist (R83, 2026-09-27)');
 });
 
 test('no navigation permission is explicit-only, so the wildcard opens every item', () => {
@@ -36,7 +36,7 @@ test('no navigation permission is explicit-only, so the wildcard opens every ite
   const explicitOnly = [...block![1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
   assert.ok(explicitOnly.length >= 2, 'the set has entries');
   for (const item of NAV) for (const p of item.needs) assert.ok(!explicitOnly.includes(p), `${item.label} does not need ${p}`);
-  assert.equal(labels(['*']).length, NAV.length, 'the wildcard sees all 25');
+  assert.equal(labels(['*']).length, NAV.length, 'the wildcard sees all 26');
 });
 
 test('the filter: a preparer sees her pages and none of the CEO-only ones; a session with nothing sees the three open pages', () => {

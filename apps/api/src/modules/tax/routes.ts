@@ -440,12 +440,22 @@ export function registerTaxRoutes(app: FastifyInstance): void {
               te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
               te.estimated_fee_min_cents, te.estimated_fee_max_cents, te.final_fee_cents,
               te.scope_creep_flag, te.complexity_score, te.extension_filed, te.filed_date, te.reopened_at, te.reopen_reason,
-              e.contact_id, c.first_name, c.last_name
+              e.contact_id, c.first_name, c.last_name,
+              -- R83: the return's checklist, as the Ops row reads it (null: no checklist).
+              ck.docs_received, ck.docs_missing, ck.docs_total
        FROM tax_engagements te
        JOIN engagements e ON e.id = te.engagement_id
        JOIN contacts c ON c.id = e.contact_id
        LEFT JOIN staff ptin ON ptin.id = te.preparer_ptin_holder_id
        LEFT JOIN documents f8 ON f8.id = te.f8879_document_id
+       LEFT JOIN LATERAL (
+         SELECT count(*) FILTER (WHERE i.status = 'received')::int AS docs_received,
+                count(*) FILTER (WHERE i.status = 'pending')::int AS docs_missing,
+                count(*)::int AS docs_total
+           FROM document_requests dr JOIN document_request_items i ON i.request_id = dr.id
+          WHERE dr.tax_engagement_id = te.id AND dr.source = 'checklist' AND dr.status <> 'cancelled'
+         HAVING count(*) > 0
+       ) ck ON true
        WHERE ${clauses.join(' AND ')}
        ORDER BY te.created_at DESC LIMIT 200`,
       params
@@ -576,6 +586,17 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       note: b.note, preparerPtinHolderId: b.preparerPtinHolderId, jurisdictions: b.jurisdictions,
       filingMethods: b.filingMethods, filedOn: b.filedOn, ...meta(request),
     });
+    /*
+     * "REQUEST DOCUMENTS" (R83): the press records that documents were asked for and sends the
+     * missing items on the return's checklist, through its automation (seeded off). The answer says
+     * which happened, so the Ops line never claims an email that was held.
+     */
+    if (b.toStage === 'documents_requested') {
+      await app.db.query(`UPDATE tax_engagements SET docs_requested_at = COALESCE(docs_requested_at, now()) WHERE id = $1`, [id]);
+      const { sendChecklistRequest } = await import('../documents/checklist.ts');
+      const documentRequest = await sendChecklistRequest(app, { staffId: request.staff!.id }, id);
+      return { status: 'ok', ...result, documentRequest };
+    }
     return { status: 'ok', ...result };
   });
 

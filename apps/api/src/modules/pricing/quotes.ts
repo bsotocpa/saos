@@ -1321,6 +1321,12 @@ async function convertAcceptedQuote(
          */
         const { applyNewReturnDefaults } = await import('../tax/pipeline.ts');
         await applyNewReturnDefaults(app, te.rows[0]!.id, row.contact_id);
+        // R83: the documents this return needs, from its own lines (Admin -> Document checklist). No email.
+        const { openChecklistRequest } = await import('../documents/checklist.ts');
+        await openChecklistRequest(app, {
+          taxEngagementId: te.rows[0]!.id, engagementId: created.id, contactId: row.contact_id,
+          itemCodes: line.scope.map((i) => i.itemCode), taxYear: taxYear ?? defaultTaxYear(todayIso), returnType: quoted.returnType,
+        });
       } else {
         app.log.warn({ engagementId: created.id, quoteId: quote.id }, 'tax line accepted with no base return item; no return record created');
       }

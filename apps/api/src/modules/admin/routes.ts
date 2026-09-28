@@ -151,6 +151,20 @@ const TemplateBody = z
   })
   .refine((b) => Object.keys(b).length > 0, { message: 'Nothing to update.' });
 
+/** R83: the Admin -> Document checklist edits. Both labels are required words, never blanked. */
+const ChecklistRowPatch = z.object({
+  labelEn: z.string().trim().min(1).max(300).optional(),
+  labelEs: z.string().trim().min(1).max(300).optional(),
+  sortOrder: z.number().int().min(0).max(10000).optional(),
+  active: z.boolean().optional(),
+}).refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'Nothing to change.' });
+const ChecklistRowCreate = z.object({
+  itemCode: z.string().trim().regex(/^[A-Z0-9_]+$/, 'An item code from the price book, e.g. IND_BASE_SINGLE.'),
+  docKey: z.string().trim().regex(/^[a-z0-9_]+$/, 'Lower-case letters, digits and underscores, e.g. brokerage_statements.'),
+  labelEn: z.string().trim().min(1).max(300),
+  labelEs: z.string().trim().min(1).max(300),
+  sortOrder: z.number().int().min(0).max(10000).optional(),
+});
 const SettingBody = z.object({ value: z.unknown() });
 
 export function registerAdminRoutes(app: FastifyInstance): void {
@@ -573,6 +587,71 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       details: { from: existing.rows[0].value, to: b.value },
     });
     return { status: 'ok' };
+  });
+
+  // ── The document checklist (R83, 2026-09-27) ──────────────────────────────
+  // Per price-book item, the documents a client owes for it; acceptance builds a return's checklist
+  // from its lines. Edited here: the two labels, the order, on/off, and a new row. A row is never
+  // deleted (a request already opened keeps its own copy of the words); switching it off stops it
+  // reaching the next checklist. Each change is audited with from/to.
+  app.get('/admin/document-checklist', admin, async () => {
+    const { rows } = await app.db.query(
+      `SELECT d.id, d.item_code, d.doc_key, d.label_en, d.label_es, d.sort_order, d.active, d.updated_at,
+              st.full_name AS updated_by,
+              (SELECT i.name_en FROM price_book_items i JOIN price_book_versions v ON v.id = i.version_id
+                WHERE i.item_code = d.item_code ORDER BY v.effective_from DESC LIMIT 1) AS item_name
+         FROM document_checklist_items d
+         LEFT JOIN staff st ON st.id = d.updated_by_staff_id
+        ORDER BY d.item_code, d.sort_order, d.doc_key`
+    );
+    return { items: rows };
+  });
+
+  app.patch<{ Params: { id: string } }>('/admin/document-checklist/:id', admin, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = ChecklistRowPatch.parse(request.body);
+    const actor = request.staff!;
+    const existing = await app.db.query<{ label_en: string; label_es: string; sort_order: number; active: boolean; item_code: string; doc_key: string }>(
+      `SELECT label_en, label_es, sort_order, active, item_code, doc_key FROM document_checklist_items WHERE id = $1`,
+      [id]
+    );
+    const from = existing.rows[0];
+    if (!from) throw new AppError(404, 'not_found', 'Unknown checklist row.');
+    const to = {
+      label_en: b.labelEn ?? from.label_en, label_es: b.labelEs ?? from.label_es,
+      sort_order: b.sortOrder ?? from.sort_order, active: b.active ?? from.active,
+    };
+    await app.db.query(
+      `UPDATE document_checklist_items SET label_en = $2, label_es = $3, sort_order = $4, active = $5,
+              updated_by_staff_id = $6, updated_at = now() WHERE id = $1`,
+      [id, to.label_en, to.label_es, to.sort_order, to.active, actor.id]
+    );
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+      action: 'document_checklist.updated', objectType: 'document_checklist_item', objectId: id,
+      details: { item_code: from.item_code, doc_key: from.doc_key, from: { label_en: from.label_en, label_es: from.label_es, sort_order: from.sort_order, active: from.active }, to },
+    });
+    return { status: 'ok' };
+  });
+
+  app.post('/admin/document-checklist', admin, async (request, reply) => {
+    const b = ChecklistRowCreate.parse(request.body);
+    const actor = request.staff!;
+    const known = await app.db.query(`SELECT 1 FROM price_book_items WHERE item_code = $1 LIMIT 1`, [b.itemCode]);
+    if (known.rows.length === 0) throw new AppError(422, 'unknown_item', `No price-book item has the code ${b.itemCode}.`);
+    const { rows } = await app.db.query<{ id: string }>(
+      `INSERT INTO document_checklist_items (item_code, doc_key, label_en, label_es, sort_order, updated_by_staff_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (item_code, doc_key) DO NOTHING RETURNING id`,
+      [b.itemCode, b.docKey, b.labelEn, b.labelEs, b.sortOrder ?? 100, actor.id]
+    );
+    if (!rows[0]) throw new AppError(409, 'duplicate_doc_key', `${b.itemCode} already asks for ${b.docKey}; edit that row instead.`);
+    await writeAudit(app.db, {
+      actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+      action: 'document_checklist.created', objectType: 'document_checklist_item', objectId: rows[0].id,
+      details: { item_code: b.itemCode, doc_key: b.docKey, label_en: b.labelEn, label_es: b.labelEs },
+    });
+    return reply.code(201).send({ id: rows[0].id });
   });
 
   // ── Client-acting automation kill switches (Brian's directive) ─────────────

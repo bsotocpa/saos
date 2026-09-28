@@ -24,7 +24,7 @@ import { ReturnStepper } from '../../../components/return-stepper';
 import { amountLabel, showExtendedBadge } from '../../../lib/return-stepper';
 import { consent7216Label, engagementStatusSentence, invoiceStatusLabel, letterStatusLabel, quoteStatusLabel } from '../../../lib/labels';
 import {
-  correctionLine, dollarsToCents, f8879OnFileText, jurisdictionLabel, jurisdictionStatusText, MAILING_METHOD_LABEL,
+  checklistCountLine, correctionLine, dollarsToCents, f8879OnFileText, jurisdictionLabel, jurisdictionStatusText, MAILING_METHOD_LABEL,
   type FilingCorrectionView, type JurisdictionView,
 } from '../../../lib/return-controls';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
@@ -73,6 +73,8 @@ interface TaxEngagement {
   f8879_document_id?: string | null; f8879_signed_on?: string | null;
   /** R66: which Form 8879 the scan on file is; R67: set while a reopened return awaits new answers. */
   f8879_variant?: string | null; reopened_at?: string | null; reopen_reason?: string | null;
+  /** R83: the return's document checklist (null: it has none). */
+  docs_received?: number | null; docs_missing?: number | null; docs_total?: number | null;
 }
 interface Doc {
   id: string; category: string; original_filename: string; created_at: string;
@@ -1635,6 +1637,12 @@ export default function ClientPacketPage() {
               )}
               {/* R50 fix 3: the amount says what it is — a final fee, an estimate's top, or nothing yet. */}
               <span className="amt" data-testid={`return-amount-${t.id}`}>{amountLabel(t, formatMoney)}</span>
+              {/* R83: the checklist the accepted quote built, as counts; the portal holds the items. Either rendering. */}
+              {t.docs_total ? (
+                <span className="muted small" style={{ flex: '1 1 100%' }} data-testid={`return-docs-${t.id}`}>
+                  {checklistCountLine(t.docs_received ?? 0, t.docs_missing ?? 0)}
+                </span>
+              ) : null}
               {returnStepper === 'on' ? (
                 /* R50: the stepper prints the jurisdictions, the corrections and the controls itself, once. */
                 <>

@@ -77,7 +77,7 @@ import {
   defaultExtensionForm, defaultF8879Variant, defaultPreparerId, dollarsToCents, extensionBadgeText, f8879OnFileText, filingMethodsFor, jurisdictionLabel,
   jurisdictionSatisfiedText, jurisdictionStatusText, jurisdictionsSentence, mailingControlsApply, mailingsNeeded,
   normaliseJurisdictions, outsideRange, preparerLine, preparerOfferDefault, removeState, reopenApplies, stageActionLabel,
-  startingFilingMethods, startingJurisdictions,
+  startingFilingMethods, startingJurisdictions, documentRequestSentence, type DocumentRequestOutcome,
   EXTENSION_FORMS, EXTENSION_FORM_LABEL, F8879_VARIANTS, F8879_VARIANT_LABEL, FEDERAL, FILING_METHODS, FILING_METHOD_LABEL,
   MAILING_METHODS, MAILING_METHOD_LABEL, SCOPE_CREEP_CATEGORIES, SCOPE_CREEP_LABEL,
   type ExtensionForm, type F8879Variant, type FilingAsRecorded, type FilingCorrectionView, type FilingMethod, type JurisdictionView, type MailingMethod, type QuotedRange,
@@ -287,14 +287,32 @@ export function useReturnActions({ taxEngagementId, contactId, stage, detail, af
   const transition = async (toStage: string) => {
     const label = stageActionLabel(toStage);
     if (toStage !== 'filed') {
+      let outcome: DocumentRequestOutcome | undefined;
       const a = await ask({
         title: `${label}?`,
-        body: <p>Moves this return from {stageLabel(stage)} to {stageLabel(toStage)}.</p>,
+        body: toStage === 'documents_requested' ? (
+          <p>
+            Moves this return from {stageLabel(stage)} to {stageLabel(toStage)}, and emails the client the items still missing
+            from the return&apos;s document checklist (held while the &quot;Request documents&quot; automation is off).
+          </p>
+        ) : <p>Moves this return from {stageLabel(stage)} to {stageLabel(toStage)}.</p>,
         choices: [{ key: 'go', label, tone: 'primary' }],
-        run: async () => { await api(`/tax-engagements/${taxEngagementId}/transition`, { method: 'POST', body: { toStage } }); },
+        run: async () => {
+          const r = await api<{ documentRequest?: DocumentRequestOutcome }>(`/tax-engagements/${taxEngagementId}/transition`, { method: 'POST', body: { toStage } });
+          outcome = r.documentRequest;
+        },
       });
       if (!a) return;
       await after();
+      // R83: say what the press did with the email, sent or held, once. A return with no checklist (opened by
+      // hand, not from a quote) has nothing to send and nothing to report: the stage move is the whole answer.
+      if (outcome && !(!outcome.emailed && outcome.reason === 'no_checklist')) {
+        await ask({
+          title: 'Documents requested',
+          body: <p data-testid="documents-request-outcome">{documentRequestSentence(outcome)}</p>,
+          choices: [{ key: 'ok', label: 'OK', tone: 'primary' }],
+        });
+      }
       return;
     }
     // The PTIN holder: set once at filing; the default is the assigned preparer. The jurisdictions:

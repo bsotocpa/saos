@@ -45,6 +45,8 @@ export const AUTOMATION_KEYS = [
   // R48 (2026-09-26): the email that tells a client their return is on the portal under My Returns.
   // The delivery itself is never gated; only this notice is, and the Ops confirmation says which happened.
   'return_delivered',
+  // R83 (2026-09-27): "Request documents" on a return emails the missing items on its checklist.
+  'document_checklist_request',
 ] as const;
 
 export type AutomationKey = (typeof AUTOMATION_KEYS)[number];

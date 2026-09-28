@@ -690,6 +690,26 @@ export const templates = [
       '¿Algo se le complica? Responda aquí y lo resolvemos juntos.\n\n— Soto Accounting',
   },
   {
+    // R83 (2026-09-27): "Request documents" on a return, gated as document_checklist_request.
+    key: 'doc_checklist_request',
+    name: 'Request documents (the missing checklist items)',
+    channel: 'email',
+    isPlaceholder: false,
+    variables: ['first_name', 'tax_year', 'return_name', 'items_list', 'portal_link'],
+    subjectEn: 'Documents for your {{tax_year}} {{return_name}}',
+    subjectEs: 'Documentos para su {{return_name}} de {{tax_year}}',
+    bodyEn:
+      'Hi {{first_name}},\n\n' +
+      'To prepare your {{tax_year}} {{return_name}}, we still need:\n\n{{items_list}}\n\n' +
+      'Each item has its own upload slot in your portal, under Documents:\n\n{{portal_link}}\n\n' +
+      'If something on the list does not apply to you, reply and tell us.\n\n— Soto Accounting',
+    bodyEs:
+      'Hola {{first_name}}:\n\n' +
+      'Para preparar su {{return_name}} de {{tax_year}}, aún necesitamos:\n\n{{items_list}}\n\n' +
+      'Cada documento tiene su propio espacio para subirlo en su portal, en Documentos:\n\n{{portal_link}}\n\n' +
+      'Si algo de la lista no le corresponde, responda y díganos.\n\n— Soto Accounting',
+  },
+  {
     key: 'return_delivered',
     name: 'Tax return delivered to portal',
     channel: 'email',

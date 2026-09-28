@@ -31,6 +31,28 @@ const STAGE_ACTION: Record<string, string> = {
   filed: 'Mark filed',
   completed: 'Complete',
 };
+/** R83: what "Request documents" did with the checklist's missing items, as the API reports it. */
+export type DocumentRequestOutcome =
+  | { emailed: true; missing: number }
+  | { emailed: false; reason: 'automation_off' | 'no_email' | 'nothing_missing' | 'no_checklist'; missing: number };
+
+/** R83: one sentence for the press, so Ops never claims an email that was held. */
+export function documentRequestSentence(o: DocumentRequestOutcome): string {
+  const items = `${o.missing} missing item${o.missing === 1 ? '' : 's'}`;
+  if (o.emailed) return `Emailed the client the ${items} on the checklist, with the portal link.`;
+  switch (o.reason) {
+    case 'automation_off': return `Not emailed: the "Request documents" automation is off (Admin → Automations). The client sees the ${items} in the portal.`;
+    case 'no_email': return `Not emailed: this client has no email on file. The client sees the ${items} in the portal.`;
+    case 'nothing_missing': return 'Nothing to send: every item on the checklist is in.';
+    case 'no_checklist': return 'Nothing to send: this return has no checklist (it was not opened from an accepted quote).';
+  }
+}
+
+/** R83: the return row's line, when the return has a checklist. */
+export function checklistCountLine(received: number, missing: number): string {
+  return `Documents: ${received} received · ${missing} missing`;
+}
+
 export function stageActionLabel(stage: string): string {
   return STAGE_ACTION[stage] ?? stage.replaceAll('_', ' ');
 }

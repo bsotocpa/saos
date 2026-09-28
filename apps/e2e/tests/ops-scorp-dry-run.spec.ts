@@ -305,7 +305,8 @@ test.describe('The 1120S dry run', () => {
       await expect(page.getByTestId('docs-empty')).toBeVisible();
       await page.getByLabel('Category').selectOption('business_records');
       await expect(page.getByLabel('Category')).toHaveValue('business_records');
-      await page.locator('input[type=file]').setInputFiles({ name: scorp.markers.document, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 synthetic bank statement\n%%EOF') });
+      // The general upload; the checklist's own slots (R83) are the other file inputs on the page.
+      await page.locator('input[type=file]:not([data-testid=checklist-upload])').setInputFiles({ name: scorp.markers.document, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 synthetic bank statement\n%%EOF') });
       await expect(page.getByText('Uploaded — thank you!')).toBeVisible();
       // The page prints the name twice on purpose (R47/R49): the upload confirmation line and the document row; the row is the record.
       await expect(page.locator('[data-testid="document-row"]').getByText(scorp.markers.document), 'the document is in their Document Center').toBeVisible();
@@ -369,6 +370,11 @@ test.describe('The 1120S dry run', () => {
       for (const label of ['Schedule', 'Request documents', 'Start preparation', 'Internal review']) {
         await card.getByRole('button', { name: label, exact: true }).click();
         await dialog.getByRole('button', { name: label, exact: true }).click();
+        if (label === 'Request documents') {
+          // R83: the accepted 1120-S carries its checklist, so the press says what it did with the missing items.
+          await expect(dialog.getByTestId('documents-request-outcome')).toHaveText(/^Emailed the client the \d+ missing items on the checklist, with the portal link\.$/);
+          await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+        }
         await expect(dialog, `${label} is confirmed in its own modal`).toHaveCount(0);
         await page.waitForTimeout(400);
       }

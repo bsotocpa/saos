@@ -626,7 +626,10 @@ export async function runDocumentChaseJob(
     `SELECT dr.id, c.id AS contact_id, c.first_name, c.email, c.language, dr.title_en, dr.title_es
      FROM document_requests dr
      JOIN contacts c ON c.id = dr.contact_id
+     LEFT JOIN tax_engagements te ON te.id = dr.tax_engagement_id
      WHERE dr.status IN ('open', 'partially_received')
+       -- R83: a checklist request (opened at acceptance) is chased only after "Request documents".
+       AND (dr.source <> 'checklist' OR te.docs_requested_at IS NOT NULL)
        AND COALESCE(dr.last_reminder_at, dr.created_at) < ($1::date - make_interval(days => $2))`,
     [today, reminderDays]
   );
