@@ -157,8 +157,9 @@ test('the three rail states at 390, 768 and 1280, at full resolution', async ({ 
       await expect(stepper.locator('li.phase'), 'five phases').toHaveCount(5);
       await expect(stepper.locator('li.phase.current'), 'at most one open phase').toHaveCount(state === 'completed' ? 0 : 1);
       await expect(stepper.getByTestId('current-step-control'), 'at most one control in the rail').toHaveCount(state === 'completed' ? 0 : 1);
-      // The details area belongs to a return with something secondary left to do: before filing and while filed; not once completed.
-      await expect(card.getByTestId('return-details')).toHaveCount(state === 'completed' ? 0 : 1);
+      // The details area belongs to a return with something secondary left to do: before filing, while filed, and
+      // (R86, 2026-09-27) once completed, where "Correct the filing" lives.
+      await expect(card.getByTestId('return-details')).toHaveCount(1);
       const width = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
       expect(width.scroll, `no page-level horizontal scroll at ${size.width} (${state})`).toBeLessThanOrEqual(width.client);
       /** A done phase: one line, check, name, date; a future phase: its name; neither draws a step. */
