@@ -1,6 +1,6 @@
 # open-rulings (2026-09-28)
 
-Generated 2026-09-28T05:32:35.283Z by scripts/report-table.mjs from the log open.log; 188 row(s).
+Generated 2026-09-28T08:32:45.182Z by scripts/report-table.mjs from the log open.log; 188 row(s).
 
 ```sql
 node scripts/open-rulings.mjs
@@ -172,23 +172,23 @@ node scripts/open-rulings.mjs
 | R-162 | 2026-09-27 | RULED 2026-09-27 (batch 8), R41, R50, R40: unchanged, off until Brian's approval message. | OPEN |  |
 | R-163 | 2026-09-27 | RULED 2026-09-27 (batch 8, BUILD ORDER): 1 R76 and R78, deploy. 2 R77, deploy with whatever else is ready. | OPEN |  |
 | R-164 | 2026-09-27 | RULED 2026-09-27 (batch 8, REPORT; open with OPEN RULINGS including the four cutover questions verbatim; tables are files written by scripts | OPEN |  |
-| R-165 | 2026-09-27 | RULED 2026-09-27 (batch 9), R76 approved: download qrcode-generator 2.0.4 and jsqr 1.4.0, pinned, lockfile hashes committed | OPEN |  |
-| R-166 | 2026-09-27 | RULED 2026-09-27 (batch 9), TRELLO CUTOVER, the four answers: (1) the conflict task goes to Rene, with the SOP; the escalation ladder applie | OPEN |  |
+| R-165 | 2026-09-27 | RULED 2026-09-27 (batch 9), R76 approved: download qrcode-generator 2.0.4 and jsqr 1.4.0, pinned, lockfile hashes committed | closed | BUILT AND DEPLOYED 2026-09-28 (e5f3158, receipt run 29): qrcode-generator 2.0.4 and jsqr 1.4.0 pinned with lockfile hashes; the canvas QR ab |
+| R-166 | 2026-09-27 | RULED 2026-09-27 (batch 9), TRELLO CUTOVER, the four answers: (1) the conflict task goes to Rene, with the SOP; the escalation ladder applie | OPEN | BUILT 2026-09-28, two questions to Brian in Report Part 2: (a) the only bundle on disk is 2026-09-19/20 and carries neither the self-filer a |
 | R-167 | 2026-09-27 | RULED 2026-09-27 (batch 9), R86: "Correct the filing" on completed returns | closed | BUILT 2026-09-27: offered at filed and completed (API and both Ops renderings); a completed return takes no new jurisdiction; path F7-F8 at |
 | R-168 | 2026-09-27 | RULED 2026-09-27 (batch 9), R87: the §7216 consent on a new engagement | closed | BUILT 2026-09-27: the USE consent was keyed per contact forever (his 2026-09-20 answer covered the 1040 opened 2026-09-27, so nothing was of |
 | R-169 | 2026-09-27 | RULED 2026-09-27 (batch 9), R88: two audit diagnoses on Brian's records, counts and dates only. (a) The portal shows his 1120S 8879 "Signed | closed | closed |
 | R-170 | 2026-09-27 | RULED 2026-09-27 (batch 9), R79: the "already has an active Schedule" prompt fires only on a live engagement under that schedule; a signed s | closed | BUILT 2026-09-27: the trigger is an accepted schedule with a live engagement under it; a different tax year makes "Adds" the focused default |
-| R-171 | 2026-09-27 | RULED 2026-09-27 (batch 9), R80: every client-search chip shows a type: person, business (with owner), lead, "test" for a test client; a per | OPEN |  |
-| R-172 | 2026-09-27 | RULED 2026-09-27 (batch 9), R81: display names carry the form number: presentation metadata, no version change: "Form 1040 — Single" and so | OPEN |  |
+| R-171 | 2026-09-27 | RULED 2026-09-27 (batch 9), R80: every client-search chip shows a type: person, business (with owner), lead, "test" for a test client; a per | closed | BUILT 2026-09-28 (a08fe6e): the chip type (Test, Business, Lead, Person) and the primary business or masked email domain on New quote, the c |
+| R-172 | 2026-09-27 | RULED 2026-09-27 (batch 9), R81: display names carry the form number: presentation metadata, no version change: "Form 1040 — Single" and so | closed | BUILT 2026-09-28 (a08fe6e): display names with the form number (0133 columns, the seed writes them, the version copy carries them); the cata |
 | R-173 | 2026-09-27 | RULED 2026-09-27 (batch 9), R82: multi-year quotes | OPEN |  |
-| R-174 | 2026-09-27 | RULED 2026-09-27 (batch 9), R83: document checklist from the quoted lines | OPEN |  |
-| R-175 | 2026-09-27 | RULED 2026-09-27 (batch 9), R84: portal return status: a completed return reads "Filed | OPEN |  |
+| R-174 | 2026-09-27 | RULED 2026-09-27 (batch 9), R83: document checklist from the quoted lines | closed | BUILT AND DEPLOYED 2026-09-28 (1f56d14, receipt run 30, migration 0132: 46 checklist rows on 25 items; document_checklist_request registered |
+| R-175 | 2026-09-27 | RULED 2026-09-27 (batch 9), R84: portal return status: a completed return reads "Filed | closed | BUILT 2026-09-28 (a08fe6e): Home reads a filed return as "Filed. Accepted by the IRS on <date>. ..." with no deadline and no Extended badge; |
 | R-176 | 2026-09-27 | RULED 2026-09-27 (batch 9), R85: diagnose "Final fee $40.00 · current $40.00" and "Estimate locked $440.00" on Brian's 1040 at intake, from | closed | closed |
 | R-177 | 2026-09-27 | RULED 2026-09-27 (batch 9, BUILD ORDER): 1 R86, R87, R88, R85, R79; deploy; Report Part 1 (OPEN RULINGS, the four diagnoses, the R86 and R87 | OPEN |  |
 | R-178 | 2026-09-27 | RULED 2026-09-27 (batch 9, REPORT PART 2; tables are files written by scripts, counts only): the R83 checklist table as seeded and the remin | OPEN |  |
-| R-179 | 2026-09-27 | RULED 2026-09-27 (batch 9, mid-turn), R40 approved: flip OPS_BUSINESS_PAGE on | OPEN |  |
-| R-180 | 2026-09-27 | RULED 2026-09-27 (batch 9, mid-turn), R41 approved: flip OPS_QUOTE_BUILDER to v2 | OPEN |  |
-| R-181 | 2026-09-27 | RULED 2026-09-27 (batch 9, mid-turn), R50 v2 sent back: the 390 screenshots (mid-preparation, filed-awaiting-acks, completed) show all sixte | OPEN |  |
+| R-179 | 2026-09-27 | RULED 2026-09-27 (batch 9, mid-turn), R40 approved: flip OPS_BUSINESS_PAGE on | closed | DONE 2026-09-28: the three wordings (business-page-shots asserts them); OPS_BUSINESS_PAGE=on on the box from the R76 deploy. |
+| R-180 | 2026-09-27 | RULED 2026-09-27 (batch 9, mid-turn), R41 approved: flip OPS_QUOTE_BUILDER to v2 | closed | DONE 2026-09-28: at 390 only the first fitting group opens (groupsOpenByDefault; the switch walk taps it at both widths); OPS_QUOTE_BUILDER= |
+| R-181 | 2026-09-27 | RULED 2026-09-27 (batch 9, mid-turn), R50 v2 sent back: the 390 screenshots (mid-preparation, filed-awaiting-acks, completed) show all sixte | OPEN | BUILT 2026-09-28 (still off): at 390 the five phases stack (a done phase one line, a future one its greyed name, the current one open); at 7 |
 | R-182 |  | Then the Monday walk as written. | OPEN |  |
 | R-183 | 2026-09-12 | RULED 2026-09-12 (evening), 4 (note, no build): the winner's portal sign-in is brian3712@gmail.com while the contact email is brian@sotoacco | closed | ANSWERED in the evening report: the badge states access, not the address; the sign-in address is not shown anywhere on the page. |
 | R-184 | 2026-09-12 | Brian withdrew the 2025 intake engagement himself through Ops (2026-09-12); its orphaned return withdrawn through the route the same evening | closed | closed |

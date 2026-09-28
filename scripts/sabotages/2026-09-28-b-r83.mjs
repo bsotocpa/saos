@@ -22,7 +22,7 @@ export const items = [
       must(t, a);
       return t.replace(a, 'void openChecklistRequest; void (async (..._a: unknown[]) => undefined)(app, {');
     },
-    expectRed: /Path B/,
+    expectRed: /1040 on extension/,
   },
   {
     item: 'R83 "Request documents" emails through document_checklist_request, seeded off: the gate read as armed',

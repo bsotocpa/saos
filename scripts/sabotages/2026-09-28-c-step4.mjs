@@ -36,7 +36,7 @@ export const items = [
       must(t, a);
       return t.replace(a, 'name_en, name_es, amount_cents,');
     },
-    expectRed: /Path B/,
+    expectRed: /1040 on extension/,
   },
   {
     item: 'R84 a filed return reads its answers on Home, never a deadline: isFiled answers false',
