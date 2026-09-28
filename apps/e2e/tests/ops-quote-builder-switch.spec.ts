@@ -6,6 +6,10 @@
  * and 1280 — v1's chip catalog and its "Quote as a range" checkbox; v2's grouped rows and
  * "This quote". The switch is put back to v2 whatever happens, so the specs after this one tap
  * the redesign.
+ *
+ * R41 (Brian, 2026-09-27): v2 at 390 opens only the first group fitting the client type (no client
+ * chosen: individual); every other group starts collapsed, a tapped group opens, a filter opens every
+ * group it matches and clearing it returns the groups to how they were. At 1280 every group is open.
  */
 import { expect, test, type Page } from '@playwright/test';
 import * as OTPAuth from 'otpauth';
@@ -70,6 +74,26 @@ test('v1 renders the chip builder with "Quote as a range"; v2 renders the groupe
     await expect(builder.getByText('This quote'), 'v2: the quote panel').toBeVisible();
     await expect(builder.getByPlaceholder('Filter by name, form number or group'), 'v2: the new filter').toBeVisible();
     await expect(builder.locator('.chipbar button.chip'), 'v2 shows no chip catalog').toHaveCount(0);
+
+    // R41: which groups start open.
+    const groups = builder.locator('details.qb-group');
+    const openGroups = builder.locator('details.qb-group[open]');
+    const total = await groups.count();
+    expect(total, 'more than one group in the book').toBeGreaterThan(1);
+    if (viewport === 'phone') {
+      await expect(openGroups, 'R41: at 390 one group starts open').toHaveCount(1);
+      await expect(openGroups.first(), 'the first group, which fits the client type').toHaveAttribute('data-group', (await groups.first().getAttribute('data-group')) ?? '');
+      await groups.nth(1).locator('summary').click();
+      await expect(openGroups, 'a tapped group opens').toHaveCount(2);
+      const filter = builder.getByPlaceholder('Filter by name, form number or group');
+      await filter.fill('return');
+      await expect(builder.locator('details.qb-group:not([open])'), 'a filter opens every group it matches').toHaveCount(0);
+      await filter.fill('');
+      await expect(openGroups, 'clearing the filter returns the groups to how they were').toHaveCount(2);
+      await expect(groups, 'every group is still there').toHaveCount(total);
+    } else {
+      await expect(openGroups, 'R41: at 1280 every group starts open').toHaveCount(total);
+    }
   } finally {
     // Whatever happened above, the specs after this one tap v2.
     expect(await flip('v2'), 'the switch is back to v2').toBe('v2');

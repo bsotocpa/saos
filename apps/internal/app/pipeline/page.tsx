@@ -15,7 +15,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
 import {
-  addCustomLine, addLine, bookPrice, builderSummary, isOffBook, isPicked, lineTotals, matchesFilter, orderGroups,
+  addCustomLine, addLine, bookPrice, builderSummary, groupsOpenByDefault, isOffBook, isPicked, lineTotals, matchesFilter, orderGroups,
   packageDiscountCents, parseDollars, pickedDepositCents as depositOfPicked, quotedRange, referralDiscountCents,
   referralRowLabel, showsQuantity, taxYearLabel, taxYearOptions, unitWords,
   type CatalogGroup, type ClientType, type PickedLine, type ReferralRule, type TaxYearSource,
@@ -176,8 +176,20 @@ export default function PipelinePage() {
   /** Which client type's groups lead the catalog. Follows the business select until the person flips it. */
   const [clientType, setClientType] = useState<ClientType>('business');
   const [clientTypeChosen, setClientTypeChosen] = useState(false);
-  /** Groups the person collapsed; every group starts open, and a filter opens every group it matches. */
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  /**
+   * Groups the person opened or closed by hand. Otherwise a group starts as groupsOpenByDefault says
+   * (R41: every group on the desk, only the first fitting group at phone width), and a filter opens
+   * every group it matches.
+   */
+  const [toggled, setToggled] = useState<Map<string, boolean>>(new Map());
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setPhone(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
   /** The amount box on each line as typed, keyed by item code; the parsed cents live on the line itself. */
   const [amountText, setAmountText] = useState<Record<string, string>>({});
   /** One reason for every line priced off the book; the field exists only while one is. */
@@ -358,6 +370,7 @@ export default function PipelinePage() {
       }))
       .filter((g) => g.rows.length > 0);
   }, [catalog, groups, clientType, itemFilter]);
+  const openByDefault = useMemo(() => groupsOpenByDefault(groupedCatalog.map((g) => g.group), clientType, phone), [groupedCatalog, clientType, phone]);
   const summary = useMemo(() => builderSummary(picked, catalog), [picked, catalog]);
   const discountCents = packageRule ? packageDiscountCents(packageRule, summary.committedCents) : 0;
   /** R75: the referral discount's own figure, beside the package discount; the quoted total is net of both. */
@@ -1032,18 +1045,19 @@ export default function PipelinePage() {
                   {groupedCatalog.length === 0 ? (
                     <p className="muted small">Nothing in the book matches “{itemFilter}”.</p>
                   ) : null}
-                  {groupedCatalog.map(({ group, rows }) => (
+                  {groupedCatalog.map(({ group, rows }) => {
+                    const open = itemFilter.trim().length > 0 || (toggled.get(group.key) ?? openByDefault.has(group.key));
+                    return (
                     <details
                       key={group.key}
                       className="qb-group"
-                      open={itemFilter.trim().length > 0 || !collapsed.has(group.key)}
+                      data-group={group.key}
+                      open={open}
                       onToggle={(e) => {
+                        // Only the person's own tap is recorded: the toggle the page's own open/close fires matches `open`.
                         const isOpen = (e.currentTarget as HTMLDetailsElement).open;
-                        setCollapsed((prev) => {
-                          const next = new Set(prev);
-                          if (isOpen) next.delete(group.key); else next.add(group.key);
-                          return next;
-                        });
+                        if (isOpen === open) return;
+                        setToggled((prev) => new Map(prev).set(group.key, isOpen));
                       }}
                     >
                       <summary>
@@ -1074,7 +1088,8 @@ export default function PipelinePage() {
                         );
                       })}
                     </details>
-                  ))}
+                    );
+                  })}
                   <div className="qb-custom">
                     {customForm ? (
                       <div className="qb-custom-form">

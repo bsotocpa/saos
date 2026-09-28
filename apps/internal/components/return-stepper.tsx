@@ -162,9 +162,9 @@ function StepperBody({ taxEngagementId, contactId, stage, detail, canManage, err
           >
             <div className="phase-head">
               <span className="step-mark" aria-hidden="true">{p.state === 'done' ? '✓' : i + 1}</span>
-              {/* ONE ELEMENT per phase's words: a done phase's name and date are one text, so a reader (and
-                  the walk's getByText) finds the line once. */}
-              <span className="phase-label">{p.state === 'done' ? phaseLine(p) : p.label}</span>
+              {/* A done phase reads "Engage · Sep 26, 2026" as one text; from 768 up (R50 v3) the date takes its
+                  own line under the name, so the chips share one width without wrapping the date mid-word. */}
+              <span className="phase-label">{p.label}{p.state === 'done' && phaseWhen(p) ? <span className="phase-date"><span className="phase-sep"> · </span>{phaseWhen(p)}</span> : null}</span>
             </div>
             {p.state === 'current' ? (
               <ol className="phase-steps" aria-label={`${p.label} steps`}>
@@ -235,11 +235,10 @@ function StepperBody({ taxEngagementId, contactId, stage, detail, canManage, err
   );
 }
 
-/** "Engage · Sep 26, 2026" — a done phase's one line after its check: the name and the day its last step was done. */
-function phaseLine(p: PhaseView): string {
+/** "Sep 26, 2026" — the day a done phase's last step was done; its line reads "Engage · Sep 26, 2026". */
+function phaseWhen(p: PhaseView): string {
   const d = p.doneOn;
-  const when = d?.day ? formatDate(d.day) : d?.at ? dayOf(d.at) : '';
-  return when ? `${p.label} · ${when}` : p.label;
+  return d?.day ? formatDate(d.day) : d?.at ? dayOf(d.at) : '';
 }
 
 /** "Filed Sep 26, 2026 · by Brian Soto · preparer of record: Ana" — a done step's one line: the check, the day, the person, the detail. */

@@ -146,7 +146,9 @@ test('the business page, with engagements and empty, at 390 and 1280', async ({ 
         await expect(page.getByTestId('card-documents')).toContainText('HARNESS-BIZPAGE-BANK-STATEMENT.pdf');
         await expect(page.getByTestId('entity-ein')).toHaveText('EIN 88-8888801');
         await expect(page.getByTestId('card-entity')).toContainText('Jun 3, 2019');
-        await expect(page.getByTestId('fact-books')).toHaveText('nobody has said');
+        await expect(page.getByTestId('fact-books')).toHaveText('not recorded');
+        await expect(page.getByTestId('fact-sales-tax'), 'R40 wording').toHaveText('no sales-tax engagement on file');
+        await expect(page.getByTestId('fact-payroll'), 'R40 wording').toHaveText('no payroll engagement on file');
       }
       if (state === 'empty') {
         await expect(page.getByTestId('entity-ein')).toHaveText('no EIN on file');

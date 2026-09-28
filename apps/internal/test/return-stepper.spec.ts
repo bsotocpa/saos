@@ -253,7 +253,7 @@ test('the wiring: the page decides from the switch, the stepper reuses the rowâ€
   assert.match(stepper, /data-testid="current-step-control"/, 'the current step carries the control');
   assert.match(stepper, /data-testid=\{`phase-\$\{p\.key\}`\}\s+data-state=\{p\.state\}/, 'each phase carries its key and state');
   assert.match(stepper, /\{p\.state === 'current' \? \([\s\S]*p\.steps\.map/, 'only the current phase opens to its steps');
-  assert.match(stepper, /p\.state === 'done' \? phaseLine\(p\) : p\.label/, 'a done phase is one line, a future phase its name');
+  assert.match(stepper, /\{p\.label\}\{p\.state === 'done' && phaseWhen\(p\) \? <span className="phase-date">/, 'a done phase is its name and date, a future phase its name');
   assert.match(stepper, /scrollIntoView\(\{ block: 'nearest', behavior: still \? 'auto' : 'smooth' \}\)/, 'the current phase scrolls into view on the phone');
   assert.match(stepper, /prefers-reduced-motion: reduce/, 'respecting reduced motion');
   assert.match(stepper, /matchMedia\('\(min-width: 768px\)'\)\.matches\) return;/, 'and only on the phone');

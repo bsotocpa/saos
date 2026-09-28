@@ -288,7 +288,7 @@ export default function BusinessPage() {
           <ul className="list small">
             <li>
               <span className="grow">Books current through</span>
-              <span data-testid="fact-books">{facts.books.currentThrough ? `${formatDate(facts.books.currentThrough)} (as of ${facts.books.asOf ? formatDate(facts.books.asOf) : 'unknown'})` : 'nobody has said'}</span>
+              <span data-testid="fact-books">{facts.books.currentThrough ? `${formatDate(facts.books.currentThrough)} (as of ${facts.books.asOf ? formatDate(facts.books.asOf) : 'unknown'})` : 'not recorded'}</span>
             </li>
             <li>
               <span className="grow">QBO subscription paid by</span>
@@ -310,11 +310,11 @@ export default function BusinessPage() {
             </li>
             <li>
               <span className="grow">Sales tax filing frequency</span>
-              <span data-testid="fact-sales-tax">{facts.salesTaxFrequencies.length > 0 ? facts.salesTaxFrequencies.map(words).join(', ') : 'no open sales-tax engagement says'}</span>
+              <span data-testid="fact-sales-tax">{facts.salesTaxFrequencies.length > 0 ? facts.salesTaxFrequencies.map(words).join(', ') : 'no sales-tax engagement on file'}</span>
             </li>
             <li>
               <span className="grow">Payroll provider</span>
-              <span data-testid="fact-payroll">{facts.payrollProviders.length > 0 ? facts.payrollProviders.join(', ') : 'no open payroll engagement says'}</span>
+              <span data-testid="fact-payroll">{facts.payrollProviders.length > 0 ? facts.payrollProviders.join(', ') : 'no payroll engagement on file'}</span>
             </li>
             <li>
               <span className="grow">Access facts</span>

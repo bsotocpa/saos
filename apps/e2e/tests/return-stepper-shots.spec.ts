@@ -1,7 +1,7 @@
 /*
- * THE RAIL OF FIVE PHASES, FOR BRIAN'S APPROVAL (2026-09-26 R50; re-shot 2026-09-27 for R50 v2). Three
+ * THE RAIL OF FIVE PHASES, FOR BRIAN'S APPROVAL (2026-09-26 R50; re-shot 2026-09-28 for R50 v3). Three
  * states of the rail at three widths — 390, 768 and 1280 — saved as full-page PNGs at full resolution
- * under C:\Users\brian\saos-shots\stepper-v2\<state>-<width>.png:
+ * under C:\Users\brian\saos-shots\stepper-v3\<state>-<width>.png:
  *
  *   mid-preparation      Engage done (one line, dated by "scheduled"); Prepare open with documents
  *                        requested and in preparation done and internal review current with its
@@ -43,7 +43,7 @@ const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixt
   scorp: { taxYear: number; preparer: { id: string; name: string }; webhookSecret: string };
 };
 const API = `http://127.0.0.1:${fixtures.port}`;
-const SHOTS = 'C:\\Users\\brian\\saos-shots\\stepper-v2';
+const SHOTS = 'C:\\Users\\brian\\saos-shots\\stepper-v3';
 const WIDTHS: Array<{ width: number; height: number }> = [
   { width: 390, height: 844 },
   { width: 768, height: 1024 },
@@ -163,6 +163,17 @@ test('the three rail states at 390, 768 and 1280, at full resolution', async ({ 
       await expect(card.getByTestId('return-details')).toHaveCount(1);
       const width = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
       expect(width.scroll, `no page-level horizontal scroll at ${size.width} (${state})`).toBeLessThanOrEqual(width.client);
+      if (size.width >= 768) {
+        // R50 v3: the closed chips share one width, and a done chip's date sits on its own line under its check and name.
+        const chips = await stepper.locator('li.phase:not(.current)').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width));
+        expect(Math.max(...chips) - Math.min(...chips), `the closed chips share one width at ${size.width} (${state}): ${chips.join(', ')}`).toBeLessThanOrEqual(1);
+        const placed = await stepper.locator('li.phase.done').evaluateAll((els) => els.map((e) => {
+          const mark = e.querySelector('.step-mark')!.getBoundingClientRect();
+          const date = e.querySelector('.phase-date')!.getBoundingClientRect();
+          return { below: date.top >= mark.bottom - 1, oneLine: date.height <= 20, inside: date.right <= e.getBoundingClientRect().right + 0.5 };
+        }));
+        for (const p of placed) expect(p, `a done chip's date on its own line, one line, inside the chip at ${size.width} (${state})`).toEqual({ below: true, oneLine: true, inside: true });
+      }
       /** A done phase: one line, check, name, date; a future phase: its name; neither draws a step. */
       const closedPhase = async (key: (typeof PHASES)[number], kind: 'done' | 'future', dateText?: string) => {
         const phase = stepper.getByTestId(`phase-${key}`);

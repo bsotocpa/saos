@@ -88,6 +88,17 @@ export function orderGroups(groups: readonly CatalogGroup[], clientType: ClientT
   return [...fits, ...rest];
 }
 
+/**
+ * WHICH GROUPS START OPEN (Brian, 2026-09-27, R41). On the desk every group starts open. At phone
+ * width only the first group fitting the client type opens (a 'both' group when none fits it alone,
+ * else the first group); every other group starts collapsed. Pass the groups as rendered, in order.
+ */
+export function groupsOpenByDefault(groups: readonly CatalogGroup[], clientType: ClientType, phone: boolean): Set<string> {
+  if (!phone) return new Set(groups.map((g) => g.key));
+  const first = groups.find((g) => g.fits === clientType) ?? groups.find((g) => g.fits === 'both') ?? groups[0];
+  return new Set(first ? [first.key] : []);
+}
+
 /** "1120-S", "1120s", "form 1120 s" all read as 1120s: letters and digits only, lower case. */
 const squash = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
 

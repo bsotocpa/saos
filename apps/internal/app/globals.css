@@ -531,5 +531,10 @@ table.qb-lines td.num { font-variant-numeric: tabular-nums; white-space: nowrap;
   .stepper { flex-direction: row; align-items: flex-start; }
   .stepper .phase { flex: 1 1 0; }
   .stepper .phase.current { flex: 3 1 0; }
+  /* R50 v3: the closed chips share one width; a done chip's date sits on its own line under the name. */
+  .stepper .phase.done .phase-head { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 6px; row-gap: 2px; }
+  .stepper .phase.done .phase-label { display: contents; }
+  .stepper .phase-date { grid-column: 1 / -1; font-weight: 500; font-size: 12px; white-space: nowrap; }
+  .stepper .phase-sep { display: none; }
   .stepper .step-panel { padding-left: 30px; }
 }

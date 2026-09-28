@@ -61,7 +61,7 @@ test('the tax year reads "default" until changed, the year alone once chosen, "f
 
 // ── THE REDESIGNED BUILDER (2026-09-20): grouped rows, the filter, the editable table's numbers ──
 import {
-  addCustomLine, addLine, builderSummary as summaryOf, isOffBook, lineTotals, matchesFilter, orderGroups,
+  addCustomLine, addLine, builderSummary as summaryOf, groupsOpenByDefault, isOffBook, lineTotals, matchesFilter, orderGroups,
   packageDiscountCents, parseDollars, quotedRange, showsQuantity, unitWords, type CatalogGroup,
 } from '../app/pipeline/builder-lib.ts';
 
@@ -80,6 +80,17 @@ const rows: CatalogLine[] = [
 test('the groups fitting the client type come first, then the rest, each in catalog order', () => {
   assert.deepEqual(orderGroups(groups, 'business').map((g) => g.key), ['business_returns', 'advisory', 'recurring', 'individual_returns']);
   assert.deepEqual(orderGroups(groups, 'individual').map((g) => g.key), ['individual_returns', 'advisory', 'business_returns', 'recurring']);
+});
+
+test('R41: at phone width only the first group fitting the client type starts open; on the desk every group does', () => {
+  const all = (t: 'business' | 'individual', phone: boolean) => [...groupsOpenByDefault(orderGroups(groups, t), t, phone)];
+  assert.deepEqual(all('business', true), ['business_returns']);
+  assert.deepEqual(all('individual', true), ['individual_returns']);
+  assert.deepEqual(all('business', false), ['business_returns', 'advisory', 'recurring', 'individual_returns']);
+  // No group fits the type alone: the first 'both' group; none at all: the first group; none rendered: nothing.
+  assert.deepEqual([...groupsOpenByDefault([groups[2]!, groups[0]!], 'individual', true)], ['advisory']);
+  assert.deepEqual([...groupsOpenByDefault([groups[0]!, groups[3]!], 'individual', true)], ['business_returns']);
+  assert.deepEqual([...groupsOpenByDefault([], 'business', true)], []);
 });
 
 test('the filter matches the name, the form number with its punctuation ignored, the code, and the group', () => {

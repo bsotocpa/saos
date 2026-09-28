@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, markAuthed } from '../../lib/api';
+import { TotpQr } from '../../components/totp-qr';
 
 // 'codes' (R65, 2026-09-26): the recovery codes, shown once after enrolment, held until "I saved these".
 type Phase = 'credentials' | 'enroll' | 'verify' | 'codes';
@@ -21,6 +22,8 @@ export default function LoginPage() {
   const [totp, setTotp] = useState('');
   const [setupToken, setSetupToken] = useState('');
   const [secret, setSecret] = useState('');
+  // R76: the otpauth URI the setup returns, drawn as a QR code above the text secret.
+  const [otpauthUri, setOtpauthUri] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [owesPassword, setOwesPassword] = useState(false);
   // THE ERROR STAYS WITH THE FIELD (Brian, 2026-09-19, defect 2): the server's refusal, verbatim,
@@ -57,11 +60,12 @@ export default function LoginPage() {
         await landHome(res.mustChangePassword);
       } else if (res.status === 'mfa_setup_required' && res.setupToken) {
         setSetupToken(res.setupToken);
-        const setup = await api<{ secret: string }>('/auth/mfa/setup', {
+        const setup = await api<{ secret: string; otpauthUri: string }>('/auth/mfa/setup', {
           method: 'POST',
           body: { setupToken: res.setupToken },
         });
         setSecret(setup.secret);
+        setOtpauthUri(setup.otpauthUri);
         setPhase('enroll');
       }
     } catch (err) {
@@ -149,9 +153,10 @@ export default function LoginPage() {
       ) : (
         <div>
           <p className="alert info">
-            MFA is required for all staff accounts. Add this secret to your authenticator app (or scan it as a
-            manual entry), then confirm with a code.
+            MFA is required for all staff accounts. Scan this code with your authenticator app, then confirm
+            with a code. If you cannot scan it, type the secret beneath it into the app instead.
           </p>
+          {otpauthUri ? <TotpQr uri={otpauthUri} /> : null}
           <p className="small" style={{ wordBreak: 'break-all' }}>
             Secret: <strong data-testid="totp-secret">{secret}</strong>
           </p>

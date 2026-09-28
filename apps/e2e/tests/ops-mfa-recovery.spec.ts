@@ -17,11 +17,15 @@
  *       Add staff, the recovery-code alert to the CEO at M2, the reset notice at M3) are read from the
  *       harness mailbox; each link opens the Ops sign-in page, the notice never carries the password,
  *       and the reset mail's link signs the member in to the enrolment screen.
+ *   M6  R76 (2026-09-27): at M1 the enrolment screen shows a QR code with the text secret beneath it;
+ *       the walk reads the code's pixels off the page, decodes them (jsqr) and asserts the otpauth
+ *       URI carries the same secret as the text.
  *
  * Nothing here is a secret: the accounts are synthetic and the codes die with the harness database.
  */
 import { expect, test, type Page } from '@playwright/test';
 import * as OTPAuth from 'otpauth';
+import jsQR from 'jsqr';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,6 +47,7 @@ const M1_CONTROL = '/login Email, Password (the temporary one), "Sign in"; secre
 const M2_CONTROL = '/login "Authenticator code or recovery code (if enrolled)" with a recovery code, "Sign in"; the mfa_recovery_used task and the Ops alert read through GET /tasks/search and GET /notifications as the CEO; the same code again refused inline';
 const M3_CONTROL = '/admin/staff row button "Reset MFA…", modal "Reset MFA for …?", reason textarea, button "Reset MFA"; the row\'s MFA badge reads pending; the member\'s /login lands on the enrolment screen';
 const M4_CONTROL = '/admin/staff as comms_billing: no "Reset MFA…" button; POST /staff/:id/mfa/reset answers 403 "This session does not hold staff.mfa.reset."';
+const M6_CONTROL = '/login enrolment screen: canvas data-testid totp-qr (the QR code) above "Secret:" data-testid totp-secret; the canvas pixels read back and decoded with jsqr: an otpauth://totp/ URI whose secret equals the text secret';
 const M5_CONTROL = 'the harness mailbox (GET /harness/mail-links staffMails): "Your SAOS sign-in: a temporary password was issued", "SAOS alert: … signed in with an MFA recovery code", "Your SAOS sign-in: MFA was reset"; each "Sign in here:" link opened in the address bar → /login Email, Password, "Sign in"; the reset link signs the member in to the enrolment screen';
 const ROLES = 'ceo (staff.mfa.reset, explicit-only); the member signs in as themselves';
 
@@ -98,7 +103,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 }
 
 test.describe('Ops → MFA recovery codes and Reset MFA (R65)', () => {
-  test('M1–M5: enrolment shows the codes once, a code signs in once and alerts the CEO, the CEO resets MFA with a reason, comms_billing is refused, each staff mail links to the Ops sign-in page', async ({ page }, testInfo) => {
+  test('M1–M6: enrolment shows a QR code carrying the secret and the codes once, a code signs in once and alerts the CEO, the CEO resets MFA with a reason, comms_billing is refused, each staff mail links to the Ops sign-in page', async ({ page }, testInfo) => {
     test.setTimeout(300_000);
     const viewport = testInfo.project.name;
     const cap = viewport.charAt(0).toUpperCase() + viewport.slice(1);
@@ -140,6 +145,21 @@ test.describe('Ops → MFA recovery codes and Reset MFA (R65)', () => {
       const secretEl = page.getByTestId('totp-secret');
       await expect(secretEl, 'a first sign-in enrols MFA').toBeVisible();
       const secret = (await secretEl.textContent())?.trim() ?? '';
+      // ── M6 (R76): the QR code above the secret decodes to an otpauth URI carrying the same secret.
+      const qr = page.getByTestId('totp-qr');
+      await expect(qr, 'the code is on the enrolment screen').toBeVisible();
+      await expect.poll(async () => qr.evaluate((c) => (c as HTMLCanvasElement).width), { message: 'the code is drawn' }).toBeGreaterThan(0);
+      const pixels = await qr.evaluate((c) => {
+        const canvas = c as HTMLCanvasElement;
+        const d = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
+        return { w: canvas.width, h: canvas.height, data: Array.from(d.data) };
+      });
+      const decoded = jsQR(new Uint8ClampedArray(pixels.data), pixels.w, pixels.h);
+      expect(decoded, 'the code decodes').toBeTruthy();
+      expect(decoded!.data, 'an authenticator URI').toMatch(/^otpauth:\/\/totp\//);
+      expect(new URL(decoded!.data).searchParams.get('secret'), 'the code carries the same secret as the text beneath it').toBe(secret);
+      await page.screenshot({ path: shot('M6'), fullPage: true });
+      cleared.add('M6');
       await page.getByTestId('enroll-code').fill(code(secret));
       await page.getByRole('button', { name: 'Enable MFA + sign in' }).click();
       const panel = page.getByTestId('recovery-codes-panel');
@@ -264,13 +284,13 @@ test.describe('Ops → MFA recovery codes and Reset MFA (R65)', () => {
       await page.screenshot({ path: shot('M5'), fullPage: true });
       cleared.add('M5');
     } finally {
-      for (const step of ['M1', 'M2', 'M3', 'M4', 'M5']) {
+      for (const step of ['M1', 'M2', 'M3', 'M4', 'M5', 'M6']) {
         const file = shots[step] ?? testInfo.outputPath(`mfa-${step}-${viewport}.png`);
         // A step that never reached its own screenshot keeps the screen as it was when the walk stopped.
         if (!shots[step] && !existsSync(file)) await page.screenshot({ path: file, fullPage: true }).catch(() => undefined);
         testInfo.annotations.push({ type: 'screenshot', description: keepScreenshot(`mfa-${step}-${viewport}`, cleared.has(step), file) });
       }
-      const controls: Record<string, string> = { M1: M1_CONTROL, M2: M2_CONTROL, M3: M3_CONTROL, M4: M4_CONTROL, M5: M5_CONTROL };
+      const controls: Record<string, string> = { M1: M1_CONTROL, M2: M2_CONTROL, M3: M3_CONTROL, M4: M4_CONTROL, M5: M5_CONTROL, M6: M6_CONTROL };
       for (const step of cleared) testInfo.annotations.push({ type: 'walk-step', description: `${step}|${controls[step]}|${step === 'M4' ? 'role proof: comms_billing sees no control, POST refused 403' : ROLES}|tap` });
     }
   });
