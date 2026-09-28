@@ -20,15 +20,31 @@ export const DISPLAY_NAMES = [
   ['BIZ_SCH_C', 'Schedule C (1040) — sole prop or single-member LLC', 'Anexo C (1040) — negocio propio o LLC de un solo miembro'],
 ];
 
+/*
+ * A ROW THE DEPOSIT RULE GRANDFATHERED IS LEFT AS IT IS (2026-09-28). R55's CHECK
+ * (price_book_items_deposit_not_over_price) is NOT VALID: a retired version's row whose deposit was
+ * above its price (v4, in force for one day in August) stays as history. An UPDATE re-checks the
+ * row it touches, so naming that row failed the whole seed on the first production deploy. The
+ * display name is presentation for the catalog and new quotes, which read the version in force;
+ * nothing shows a retired version's row, so it is skipped and counted.
+ */
+const PASSES_DEPOSIT_RULE = `(deposit_cents IS NULL OR unit <> 'flat' OR amount_cents IS NULL OR deposit_cents <= amount_cents)`;
+
 export async function seedPriceBookDisplayNames(client) {
   let rows = 0;
+  let grandfathered = 0;
   for (const [code, en, es] of DISPLAY_NAMES) {
     const r = await client.query(
       `UPDATE price_book_items SET display_name_en = $2, display_name_es = $3
-        WHERE item_code = $1 AND display_name_en IS NULL AND display_name_es IS NULL`,
+        WHERE item_code = $1 AND display_name_en IS NULL AND display_name_es IS NULL AND ${PASSES_DEPOSIT_RULE}`,
       [code, en, es]
     );
     rows += r.rowCount;
+    const skipped = await client.query(
+      `SELECT count(*)::int AS n FROM price_book_items WHERE item_code = $1 AND display_name_en IS NULL AND NOT ${PASSES_DEPOSIT_RULE}`,
+      [code]
+    );
+    grandfathered += skipped.rows[0].n;
   }
-  return `display names: ${DISPLAY_NAMES.length} item code(s), ${rows} row(s) set across every version (rows already named left untouched)`;
+  return `display names: ${DISPLAY_NAMES.length} item code(s), ${rows} row(s) set across every version (rows already named left untouched; ${grandfathered} grandfathered row(s) of a retired version skipped)`;
 }

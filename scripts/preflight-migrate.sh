@@ -2,6 +2,9 @@
 # PREFLIGHT: run the pending migrations against a COPY of the production database before they
 # touch production (Brian, 2026-09-14, ruling 2). A fresh database never has the row that breaks
 # an update; migration 0103 passed every test and failed on the box for exactly that reason.
+# The SEEDS run on the copy too (2026-09-28): the R81 display-name seed updated a grandfathered v4
+# price-book row, re-checked a NOT VALID constraint and rolled the whole seed back on production,
+# after the swap. A seed is an update like any other; it meets production rows here first.
 #
 # Runs ON THE BOX from /opt/saos, with the images already built and the old containers still
 # serving. Copies schema and rows (pg_dump | psql, the database is small), points the new api
@@ -33,7 +36,14 @@ if [ -n "${PREFLIGHT_EXTRA:-}" ]; then EXTRA=(-v "${PREFLIGHT_EXTRA}:/app/packag
 if $COMPOSE run --rm --no-deps "${EXTRA[@]}" \
      -e DATABASE_URL="postgresql://${PG_USER}:${PG_PASS}@postgres:5432/${COPY}" \
      api node packages/db/scripts/migrate.cjs up; then
-  echo "preflight: green on the copy of production."
+  echo "preflight: migrations green on the copy; running the seeds against it..."
+  if ! $COMPOSE run --rm --no-deps \
+       -e DATABASE_URL="postgresql://${PG_USER}:${PG_PASS}@postgres:5432/${COPY}" \
+       api node packages/db/seeds/run.mjs; then
+    echo "preflight: RED. A seed fails on the production copy. The swap does not happen; the box stays on the previous version." >&2
+    exit 1
+  fi
+  echo "preflight: green on the copy of production (migrations and seeds)."
 else
   echo "preflight: RED. A migration fails on the production copy. The swap does not happen; the box stays on the previous version." >&2
   exit 1

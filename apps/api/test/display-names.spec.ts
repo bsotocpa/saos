@@ -68,3 +68,24 @@ test('a new quote snapshots the display name in both languages, so the proposal 
   assert.equal(pub.statusCode, 200, pub.body);
   assert.match(pub.body, /Formulario 1040 — Casados en conjunto|Form 1040 — Married filing jointly/, 'the proposal reads the display name');
 });
+
+test('the seed skips a retired version\'s grandfathered row (deposit above price) instead of failing on it', async () => {
+  // Production's v4 carried base returns whose deposit exceeded the price; R55's CHECK is NOT VALID, so those rows stay as
+  // history, and an UPDATE that touched one failed the whole seed on the 2026-09-28 deploy. Rebuild that row here.
+  const v = await app.db.query<{ id: string }>(`SELECT id FROM price_book_versions ORDER BY version_number LIMIT 1`);
+  const row = await app.db.query<{ id: string }>(
+    `SELECT id FROM price_book_items WHERE version_id = $1 AND item_code = 'IND_BASE_SINGLE'`, [v.rows[0]!.id]);
+  await app.db.query(`ALTER TABLE price_book_items DROP CONSTRAINT price_book_items_deposit_not_over_price`);
+  await app.db.query(`UPDATE price_book_items SET unit = 'flat', amount_cents = 15000, deposit_cents = 25000, display_name_en = NULL, display_name_es = NULL WHERE id = $1`, [row.rows[0]!.id]);
+  await app.db.query(`ALTER TABLE price_book_items ADD CONSTRAINT price_book_items_deposit_not_over_price
+    CHECK (deposit_cents IS NULL OR unit <> 'flat' OR amount_cents IS NULL OR deposit_cents <= amount_cents) NOT VALID`);
+  await app.db.query(`UPDATE price_book_items SET display_name_en = NULL, display_name_es = NULL WHERE item_code = 'IND_BASE_MFJ'`);
+  // @ts-expect-error — the seed is plain JavaScript under packages/db.
+  const { seedPriceBookDisplayNames } = await import('../../../packages/db/seeds/data/price_book_display_names.mjs');
+  const said = await seedPriceBookDisplayNames(app.db);
+  assert.match(said, /1 grandfathered row\(s\) of a retired version skipped/);
+  const left = await app.db.query<{ display_name_en: string | null }>(`SELECT display_name_en FROM price_book_items WHERE id = $1`, [row.rows[0]!.id]);
+  assert.equal(left.rows[0]!.display_name_en, null, 'the grandfathered row is left as history');
+  const named = await app.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM price_book_items WHERE item_code = 'IND_BASE_MFJ' AND display_name_en = 'Form 1040 — Married filing jointly'`);
+  assert.ok(named.rows[0]!.n > 0, 'every other row is named');
+});
