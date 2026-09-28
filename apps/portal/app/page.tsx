@@ -164,6 +164,7 @@ export default function Dashboard() {
   const [packetToSign, setPacketToSign] = useState(false);
   const [pendingSchedules, setPendingSchedules] = useState(0);
   const [consentOffers, setConsentOffers] = useState(0);
+  const [consentLabels, setConsentLabels] = useState<Array<string | null>>([]);
   // The ONBOARDING CONSULTATION — checklist step 6 only (#39).
   const [kickoffUrl, setKickoffUrl] = useState<string | null>(null);
   const [supportUrl, setSupportUrl] = useState<string | null>(null);
@@ -229,8 +230,12 @@ export default function Dashboard() {
         .then((r) => setPendingSchedules((r.pending ?? []).length))
         .catch(() => setPendingSchedules(0)),
       api<{ offers: unknown[] }>('/portal/consents')
-        .then((r) => setConsentOffers((r.offers ?? []).length))
-        .catch(() => setConsentOffers(0)),
+        .then((r) => {
+          setConsentOffers((r.offers ?? []).length);
+          // R87: the USE consent for a new engagement names the engagement it is for.
+          setConsentLabels((r.offers ?? []).map((o) => (o as { engagementLabel?: string | null }).engagementLabel ?? null));
+        })
+        .catch(() => { setConsentOffers(0); setConsentLabels([]); }),
     ]);
   }, [router]);
 
@@ -472,10 +477,19 @@ export default function Dashboard() {
           </section>
         ) : null}
 
-        {envelopes.length > 0 ? (
+        {envelopes.length > 0 || consentOffers > 0 ? (
           <section className="card">
             <h2>{t('unsigned_title')}</h2>
             <ul className="list">
+              {/* R87: a §7216 consent waiting for an answer goes to /consent, where it is answered. */}
+              {consentLabels.map((label, i) => (
+                <li key={`consent-${i}`} data-testid="unsigned-row" data-kind="consent">
+                  <span className="grow">{t('env_consent_7216')}{label ? ` · ${label}` : ''}</span>
+                  <Link className="btn accent" href="/consent" data-testid="consent-sign">
+                    {t('nav_sign')}
+                  </Link>
+                </li>
+              ))}
               {envelopes.map((e) => (
                 <li key={e.id} data-testid="unsigned-row">
                   <span className="grow">{envelopeLabel(t, e)}</span>

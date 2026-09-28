@@ -247,7 +247,8 @@ ${doc.html}
     // A client can only answer a consent they were actually offered. Otherwise a
     // crafted request could record a consent the presentation rules withheld.
     const { offers } = await consentsToPresent(app, client.contactId);
-    if (!offers.some((o) => o.kind === b.kind)) {
+    const offer = offers.find((o) => o.kind === b.kind);
+    if (!offer) {
       throw new AppError(
         409,
         'consent_not_offered',
@@ -256,6 +257,8 @@ ${doc.html}
     }
     return recordConsentAnswer(app, client.contactId, b.kind, b.granted, {
       ip: request.ip, userAgent: request.headers['user-agent'] ?? null,
+      // R87: the answer is for the engagement the offer named, decided by the server, never the request.
+      engagementId: offer.engagementId ?? null,
     });
   });
 

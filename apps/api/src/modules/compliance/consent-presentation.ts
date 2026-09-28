@@ -39,6 +39,10 @@ export type ConsentKind = '7216_use' | '7216_disclose';
 export interface ConsentOffer {
   kind: ConsentKind;
   templateKey: string;
+  /** R87: the tax engagement this USE consent is asked for (null when the client has no tax engagement open). */
+  engagementId?: string | null;
+  /** R87: the engagement in the client's words, e.g. "2025 Form 1040" (null with no engagement). */
+  engagementLabel?: string | null;
   /** Why this client is being shown it — the audit answer to "why did you ask?" */
   reason: string;
   /** Benefit framing, EN. Spanish follows Brian's translation approval. */
@@ -189,9 +193,17 @@ export async function consentsToPresent(
    */
   const texts = await loadConsentTexts(app);
 
-  // USE — every client, benefit-framed.
-  if (answered.has('7216_use')) {
-    withheld.push({ kind: '7216_use', reason: 'Already answered — a declined consent is not re-asked.' });
+  /*
+   * USE — PER TAX ENGAGEMENT (R87, Brian, 2026-09-27): the consent for a new engagement is signable the
+   * moment the engagement opens (once the Master is signed: rule 1 above stands). A client with open tax
+   * engagements is asked for each one no answer covers; an answer covers the engagement it was given for
+   * (consents.engagement_id) and, for an answer given before 2026-09-27 (no engagement on it), the
+   * engagements that were open when it was given. A client with no tax engagement open is asked once.
+   * A decline answers for its engagement and is not re-asked there.
+   */
+  const useFor = await useConsentEngagement(app, contactId);
+  if (useFor.answered) {
+    withheld.push({ kind: '7216_use', reason: 'Already answered for every open tax engagement — a declined consent is not re-asked.' });
   } else if (!texts.consent_7216_use) {
     withheld.push({
       kind: '7216_use',
@@ -200,7 +212,11 @@ export async function consentsToPresent(
   } else {
     offers.push({
       ...USE_OFFER,
-      reason: 'Every client is offered the USE consent after signing.',
+      reason: useFor.engagementId
+        ? `The tax engagement ${useFor.engagementLabel ?? ''} opened ${useFor.openedOn}; no §7216 answer covers it yet.`.replace('  ', ' ')
+        : 'Every client is offered the USE consent after signing.',
+      engagementId: useFor.engagementId,
+      engagementLabel: useFor.engagementLabel,
       ...texts.consent_7216_use,
     });
   }
@@ -287,12 +303,44 @@ async function loadConsentTexts(
   return out;
 }
 
+/**
+ * R87: which open tax engagement the USE consent is asked for, or that every open one is answered.
+ * Oldest first, so a client with two new engagements answers them in the order they opened.
+ */
+export async function useConsentEngagement(
+  app: FastifyInstance,
+  contactId: string
+): Promise<{ answered: boolean; engagementId: string | null; engagementLabel: string | null; openedOn: string | null }> {
+  const live = await app.db.query<{ id: string; opened: Date; opened_on: string; label: string | null }>(
+    `SELECT e.id, e.created_at AS opened, to_char(e.created_at AT TIME ZONE 'America/Chicago', 'YYYY-MM-DD') AS opened_on,
+            (SELECT te.tax_year || ' Form ' || upper(replace(te.return_type::text, 's', '-S'))
+               FROM tax_engagements te WHERE te.engagement_id = e.id AND te.stage <> 'withdrawn' ORDER BY te.created_at LIMIT 1) AS label
+       FROM engagements e
+      WHERE e.contact_id = $1 AND e.service_line = 'tax' AND e.status IN ('draft', 'active', 'on_hold')
+      ORDER BY e.created_at, e.id`,
+    [contactId]
+  );
+  const answers = await app.db.query<{ engagement_id: string | null; at: Date }>(
+    `SELECT engagement_id, COALESCE(signed_at, created_at) AS at FROM consents
+      WHERE contact_id = $1 AND type = '7216_use' AND status IN ('signed', 'declined')`,
+    [contactId]
+  );
+  if (live.rows.length === 0) {
+    return { answered: answers.rows.length > 0, engagementId: null, engagementLabel: null, openedOn: null };
+  }
+  const covered = (e: { id: string; opened: Date }) =>
+    answers.rows.some((a) => a.engagement_id === e.id || (a.engagement_id === null && a.at.getTime() >= e.opened.getTime()));
+  const open = live.rows.find((e) => !covered(e));
+  if (!open) return { answered: true, engagementId: null, engagementLabel: null, openedOn: null };
+  return { answered: false, engagementId: open.id, engagementLabel: open.label, openedOn: open.opened_on };
+}
+
 export async function recordConsentAnswer(
   app: FastifyInstance,
   contactId: string,
   kind: ConsentKind,
   granted: boolean,
-  meta: { ip?: string | null; userAgent?: string | null } = {}
+  meta: { ip?: string | null; userAgent?: string | null; engagementId?: string | null } = {}
 ): Promise<{ status: 'signed' | 'declined' }> {
   const signedMaster = await app.db.query(
     `SELECT 1 FROM engagement_packets WHERE contact_id = $1 AND status = 'signed'`,
@@ -317,10 +365,11 @@ export async function recordConsentAnswer(
 
   const status = granted ? 'signed' : 'declined';
   await app.db.query(
-    `INSERT INTO consents (contact_id, type, status, method, policy_version, signed_at)
+    // R87: the answer names the engagement the offer was for (the USE consent), so the next engagement is asked again.
+    `INSERT INTO consents (contact_id, type, status, method, policy_version, signed_at, engagement_id)
      VALUES ($1, $2::consent_type, $3::consent_status, 'portal_checkbox', $4,
-             CASE WHEN $5 THEN now() END)`,
-    [contactId, kind, status, policyVersion, granted]
+             CASE WHEN $5 THEN now() END, $6)`,
+    [contactId, kind, status, policyVersion, granted, kind === '7216_use' ? meta.engagementId ?? null : null]
   );
 
   // The rollup on contacts is what every existing §7216 gate reads, so it is
@@ -381,7 +430,7 @@ export async function recordConsentAnswer(
     action: granted ? 'consent.granted' : 'consent.declined',
     objectType: 'contact', objectId: contactId, contactId,
     ip: meta.ip ?? null, userAgent: meta.userAgent ?? null,
-    details: { kind, policy_version: policyVersion, method: 'portal_checkbox' },
+    details: { kind, policy_version: policyVersion, method: 'portal_checkbox', engagement_id: kind === '7216_use' ? meta.engagementId ?? null : null },
   });
   return { status };
 }

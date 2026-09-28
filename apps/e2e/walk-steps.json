@@ -25,6 +25,8 @@
         { "id": "B1", "text": "Contact created", "device": "laptop" },
         { "id": "B2", "text": "Quote built and sent", "device": "laptop" },
         { "id": "B3", "text": "Accepted with the deposit paid", "device": "phone" },
+        { "id": "B3c", "text": "A returning client (Master signed, consent answered for an earlier engagement) is quoted a 1040 for another year: the builder asks adding or replacing and focuses Adds (R79); the client accepts in the portal", "device": "phone + laptop" },
+        { "id": "B3d", "text": "Right after acceptance the consent for the new engagement is on Home; its Sign opens /consent; answered, nothing waits on /sign or Home (R87)", "device": "phone + laptop" },
         { "id": "B4", "text": "Engagement packet assembled and sent", "device": "laptop" },
         { "id": "B5", "text": "Section 7216 consent answered", "device": "phone" },
         { "id": "B6", "text": "Onboarding questionnaire submitted", "device": "phone" },
@@ -100,7 +102,10 @@
         { "id": "F3", "text": "Correct the filing: change the PTIN holder; the offer to move the assigned preparer opens checked and both move", "device": "phone + laptop" },
         { "id": "F5", "text": "Correct the filing: the 8879 signed date moved earlier to the day on the paper; a day after today refused in the modal; the history line reads the correction (R69)", "device": "phone + laptop" },
         { "id": "F6", "text": "Correct the filing: the 8879 scan replaced; the previous document row reads superseded, stays listed and downloadable; the return points at the new scan (R69)", "device": "phone + laptop" },
-        { "id": "F4", "text": "Correct the filing: move the filed date earlier; a day before the CORRECTED signed 8879 refused in the modal naming that day, the corrected signed day lands (the rule reads the corrected value, inclusive)", "device": "phone + laptop" }
+        { "id": "F4", "text": "Correct the filing: move the filed date earlier; a day before the CORRECTED signed 8879 refused in the modal naming that day, the corrected signed day lands (the rule reads the corrected value, inclusive)", "device": "phone + laptop" },
+        { "id": "F7", "text": "On a COMPLETED return: Signed on moved to the day on the paper with the real scan; the return stays completed (R86)", "device": "phone + laptop" },
+        { "id": "F8", "text": "On a COMPLETED return: a jurisdiction that answered is refused in the modal; Filed on moved to the corrected signed day (R86)", "device": "phone + laptop" },
+        { "id": "F9", "text": "The client's portal reads the corrected signed day as that calendar day in Chicago (R88)", "device": "phone + laptop" }
       ]
     },
     "N": {

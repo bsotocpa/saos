@@ -713,3 +713,40 @@ test('§7216: the client is shown the MANDATED text, bilingual, with English ope
   assert.doesNotMatch(use!.legalEn, /_{6,}/, 'no ruled signature lines in an e-signed consent');
   if (use!.legalEs) assert.doesNotMatch(use!.legalEs, /_{6,}/);
 });
+
+/*
+ * ═══ R87 (Brian, 2026-09-27): THE §7216 CONSENT FOR A NEW ENGAGEMENT ═════════════════════════════
+ * Brian's case: a USE answer from 2026-09-20 (no engagement on it, the 1120S open), then a 1040
+ * engagement opened 2026-09-27. The new engagement is asked the moment it opens; the answer names it;
+ * the intake consent envelope is never a second, disagreeing row on /sign or Home.
+ */
+test('R87: an answer given before a tax engagement opened does not cover it; the new engagement is offered, answered for itself, and then nothing is asked', async () => {
+  const id = await clientWith('tax', 'NewEngagement');
+  await recordMasterSignature(app, (await createPacket(app, id, actor)).packetId);
+  // The answer from before (engagement_id NULL, as every answer before 2026-09-27 is).
+  await recordConsentAnswer(app, id, '7216_use', true);
+  assert.deepEqual((await consentsToPresent(app, id)).offers, [], 'the open engagement is covered');
+  // An intake-era consent envelope, still at draft.
+  await app.db.query(`INSERT INTO signature_envelopes (contact_id, type, status, template_key) VALUES ($1, 'consent_7216', 'draft', 'consent_7216_use')`, [id]);
+
+  // The new engagement opens a moment later.
+  await app.db.query(`UPDATE contacts SET soto_status = 'active' WHERE id = $1`, [id]);
+  const eng = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, status, period_key, created_at) VALUES ($1, 'tax', 'active', '2025', now() + interval '1 second') RETURNING id`, [id]);
+  await app.db.query(`INSERT INTO tax_engagements (engagement_id, tax_year, return_type, client_type) VALUES ($1, 2025, '1040', 'individual')`, [eng.rows[0]!.id]);
+
+  const cookie = { cookie: `saos_portal_session=${await portalSession(id, 'newengagement-portal@example.test')}` };
+  const shown = await app.inject({ method: 'GET', url: '/portal/consents', headers: cookie });
+  const offers = shown.json().offers as Array<{ kind: string; engagementId: string | null; engagementLabel: string | null }>;
+  assert.deepEqual(offers.map((o) => [o.kind, o.engagementId, o.engagementLabel]), [['7216_use', eng.rows[0]!.id, '2025 Form 1040']], 'signable the moment it opens');
+
+  const envelopes = await app.inject({ method: 'GET', url: '/portal/signature-envelopes', headers: cookie });
+  assert.ok(!(envelopes.json().envelopes as Array<{ type: string }>).some((e) => e.type === 'consent_7216'), 'no consent envelope row to disagree with the consent');
+
+  const answered = await app.inject({ method: 'POST', url: '/portal/consents', headers: cookie, payload: { kind: '7216_use', granted: true } });
+  assert.equal(answered.statusCode, 200, answered.body);
+  const rows = await app.db.query<{ engagement_id: string | null }>(
+    `SELECT engagement_id FROM consents WHERE contact_id = $1 AND type = '7216_use' ORDER BY created_at, id`, [id]);
+  assert.deepEqual(rows.rows.map((r) => r.engagement_id), [null, eng.rows[0]!.id], 'the new answer names its engagement');
+  assert.deepEqual((await consentsToPresent(app, id)).offers, [], 'and nothing is asked after it');
+});
