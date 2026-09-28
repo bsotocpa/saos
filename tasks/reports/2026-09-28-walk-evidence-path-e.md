@@ -1,6 +1,6 @@
 # walk-evidence-path-e (2026-09-28)
 
-Generated 2026-09-28T06:19:04.985Z by scripts/report-table.mjs from the log walk-e.log; 8 row(s).
+Generated 2026-09-28T06:47:37.541Z by scripts/report-table.mjs from the log walk-e.log; 8 row(s).
 
 The migrated client (R37): a proposal link rendering with a stale signed-in marker, the sign-in link spent by a press, the portal email aligned from the client page.
 

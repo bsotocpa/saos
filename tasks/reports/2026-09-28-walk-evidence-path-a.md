@@ -1,6 +1,6 @@
 # walk-evidence-path-a (2026-09-28)
 
-Generated 2026-09-28T06:19:04.284Z by scripts/report-table.mjs from the log walk-a.log; 46 row(s).
+Generated 2026-09-28T06:47:36.903Z by scripts/report-table.mjs from the log walk-a.log; 46 row(s).
 
 Rows come from walk-step annotations the specs push while they run, on the migrated-client fixture (a portal account on one address, the contact record on another; the proposal and sign-in links followed from the emailed hrefs); A3b is the Ops packet step and A3c the consent screen (R27); how=api is the Stripe event beside a passing Pay tap.
 
