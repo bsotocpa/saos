@@ -289,12 +289,20 @@ test.describe('The 1120S dry run', () => {
 
       await page.goto(`${PORTAL}/questionnaire`);
       await expect(page.getByRole('heading', { name: 'A few questions about how you work' })).toBeVisible();
-      // One module per screen and nothing on any of them is required: Continue to the end, then send.
-      for (let i = 0; i < 15; i++) {
-        const next = page.getByRole('button', { name: 'Continue', exact: true });
-        if ((await next.count()) === 0) break;
-        await next.click();
-        await page.waitForTimeout(400);
+      /*
+       * One module per screen and nothing on any of them is required: Continue to the end, then send.
+       * The walk advances by the screen counter ("<module> · 3 / 5"), never by a fixed wait. One button
+       * reads Continue until the last screen, where the same button reads Send it, and it is disabled
+       * while a screen saves. Receipt run 37 (2026-09-29): 400 ms passed with a save still in flight, the
+       * next click resolved the disabled Continue, and by the time it was enabled the screen had advanced
+       * and the same button read Send it, so the click submitted the form and "Send it" was never found.
+       */
+      const counter = page.locator('p.muted.small', { hasText: / · \d+ \/ \d+$/ });
+      for (;;) {
+        const [, at, of] = (await counter.innerText()).match(/(\d+) \/ (\d+)\s*$/)!;
+        if (at === of) break;
+        await page.getByRole('button', { name: 'Continue', exact: true }).click();
+        await expect(counter, 'the questionnaire moves one screen per Continue').toHaveText(new RegExp(` · ${Number(at) + 1} / ${of}\\s*$`));
       }
       await page.getByRole('button', { name: 'Send it' }).click();
       await expect(page.getByRole('heading', { name: 'Thank you — that is everything we needed' }), 'the business onboarding form is submitted').toBeVisible();
