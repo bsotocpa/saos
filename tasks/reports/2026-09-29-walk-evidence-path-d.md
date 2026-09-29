@@ -1,11 +1,11 @@
 # walk-evidence-path-d (2026-09-29)
 
-Generated 2026-09-29T09:43:33.191Z by scripts/report-table.mjs from the log walk-d.log; 16 row(s).
+Generated 2026-09-29T10:10:28.276Z by scripts/report-table.mjs from the log walk-d.log; 16 row(s).
 
 Void, the test-client flag, the refund door on (D3) and off (D3b, R32); how=api rows are the Stripe events.
 
 ```sql
-node scripts/walk-evidence.mjs D  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 133 passed, 0 failed)
+node scripts/walk-evidence.mjs D  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 135 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |

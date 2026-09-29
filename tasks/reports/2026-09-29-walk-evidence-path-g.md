@@ -1,11 +1,11 @@
 # walk-evidence-path-g (2026-09-29)
 
-Generated 2026-09-29T09:43:33.683Z by scripts/report-table.mjs from the log walk-g.log; 4 row(s).
+Generated 2026-09-29T10:10:28.779Z by scripts/report-table.mjs from the log walk-g.log; 4 row(s).
 
 The portal Documents page (R49): G1 reads the three kinds of row on a fixture client (a signed engagement letter and a delivered return filed through POST /documents at boot, the client upload made by the spec through the page control); G2 forces a render failure through the harness-only /harness/documents-crash switch and reads the sentence, the Reload control, the portal_page_error task and the Ops alert through the CEO API.
 
 ```sql
-node scripts/walk-evidence.mjs G  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 133 passed, 0 failed)
+node scripts/walk-evidence.mjs G  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 135 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |

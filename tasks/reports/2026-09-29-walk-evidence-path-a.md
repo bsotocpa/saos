@@ -1,11 +1,11 @@
 # walk-evidence-path-a (2026-09-29)
 
-Generated 2026-09-29T09:43:32.833Z by scripts/report-table.mjs from the log walk-a.log; 48 row(s).
+Generated 2026-09-29T10:10:27.947Z by scripts/report-table.mjs from the log walk-a.log; 48 row(s).
 
 Rows come from walk-step annotations the specs push while they run, on the migrated-client fixture (a portal account on one address, the contact record on another; the proposal and sign-in links followed from the emailed hrefs); A3b is the Ops packet step and A3c the consent screen (R27); how=api is the Stripe event beside a passing Pay tap.
 
 ```sql
-node scripts/walk-evidence.mjs A  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 133 passed, 0 failed)
+node scripts/walk-evidence.mjs A  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 135 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |

@@ -1,11 +1,11 @@
 # walk-evidence-path-v (2026-09-29)
 
-Generated 2026-09-29T09:43:35.347Z by scripts/report-table.mjs from the log walk-v.log; 8 row(s).
+Generated 2026-09-29T10:10:30.542Z by scripts/report-table.mjs from the log walk-v.log; 8 row(s).
 
 The Hilo referral discount (R75, 2026-09-27): ops-hilo-discount.spec.ts at 390 and 1280 under price book v6, which the harness boot publishes through the version door effective its own today; one Hilo-referred client per viewport (the referral on the record, no engagement, one business). V1 the CEO builds the quote (the tax-return line and a recurring line), the builder shows the discount at half the tax-return line and the server applied the same figure; V2 the emailed proposal the client opens shows it as its own row; V3 the CEO removes it with a reason on the Ops quote page; V4 the role proof, the preparer with no control and the route refused 403.
 
 ```sql
-node scripts/walk-evidence.mjs V  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 133 passed, 0 failed)
+node scripts/walk-evidence.mjs V  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 135 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |

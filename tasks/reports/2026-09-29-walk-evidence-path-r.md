@@ -1,11 +1,11 @@
 # walk-evidence-path-r (2026-09-29)
 
-Generated 2026-09-29T09:43:34.172Z by scripts/report-table.mjs from the log walk-r.log; 8 row(s).
+Generated 2026-09-29T10:10:29.347Z by scripts/report-table.mjs from the log walk-r.log; 8 row(s).
 
 Reopen a completed return (R67, ops-reopen-return.spec.ts): a synthetic 1120S per viewport filed federal-only and accepted through the API doors; R1 the CEO's "Reopen…" with a reason on the completed row; R2 the engagement active again and the executive count up by one, read through the CEO API; R3 a forced completion refused 409 jurisdictions_awaiting, then a new acceptance completing it; the role proof is the tax preparer, who sees no Reopen control and is refused 403 (engagements.tax.reopen is explicit-only).
 
 ```sql
-node scripts/walk-evidence.mjs R  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 133 passed, 0 failed)
+node scripts/walk-evidence.mjs R  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 135 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
