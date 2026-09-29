@@ -17,6 +17,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useAsk } from '../../../components/ask';
+import { HydratedFieldset } from '../../../components/hydrated-fieldset';
 
 interface Staff {
   id: string; full_name: string; legal_name: string; display_name: string; email: string; role: string;
@@ -280,6 +281,8 @@ export default function StaffAdminPage() {
 
         <section className="card">
           <h2>Add staff</h2>
+          {/* Rendered before the page hydrates: the fields wait for React (receipt run 35, 2026-09-29). */}
+          <HydratedFieldset>
           <label className="field">
             Legal name
             <input value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} placeholder="Legal name (contracts, anything client-facing)" />
@@ -320,6 +323,7 @@ export default function StaffAdminPage() {
           >
             Create account
           </button>
+          </HydratedFieldset>
           {errAt('create')}
         </section>
       </div>

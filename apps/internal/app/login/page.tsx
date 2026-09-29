@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { api, markAuthed } from '../../lib/api';
+import { HydratedFieldset } from '../../components/hydrated-fieldset';
 /*
  * R76's QR code, loaded only when the enrolment screen asks for it (receipt run 34, 2026-09-29): drawn
  * into the sign-in bundle, qrcode-generator made the page hydrate later, and a walk that typed into the
@@ -129,6 +130,8 @@ export default function LoginPage() {
             void login();
           }}
         >
+          {/* The fields wait for React: a field typed before hydration is reset by it (receipt runs 34 and 35). */}
+          <HydratedFieldset>
           <label className="field">
             Email
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -145,6 +148,7 @@ export default function LoginPage() {
           <button className="btn" type="submit" disabled={busy}>
             Sign in
           </button>
+          </HydratedFieldset>
           {errAt('signin')}
         </form>
       ) : phase === 'codes' ? (
