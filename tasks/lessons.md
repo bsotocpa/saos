@@ -2177,3 +2177,5 @@ The full API suite failed once: completion.spec's executive-dashboard read answe
 ## The root checks run before the receipt, not in it (2026-09-29, receipt run 40)
 Run 40 stopped in check:css-classes: the R89 builder markup used `.qb-years`, which globals.css did not define. The harness and the unit tests had passed in the checkout, because neither runs the root guards.
 **Rule:** before a receipt run, every `check:*` in the root test chain runs in the checkout (the loop over the chain's scripts); a receipt spent on a guard is a receipt wasted.
+
+**Addendum (batch 11, R95):** Brian approved fsync off for the local test container only and turned it off himself (`ALTER SYSTEM SET fsync = off` + reload on saos-postgres-1); it read `off` on 2026-09-29 before the next suite. The reason: the local cluster holds only disposable test and dev databases, and its forced-checkpoint fsync over the Docker Desktop disk (15-97 s) was what stalled the relay into resets. Production is untouched. The churn behind the checkpoints is cut at its source too (R95: per-spec databases cloned from one migrated template; orphans swept at suite start).

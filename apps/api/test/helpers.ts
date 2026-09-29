@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // Test infrastructure: each suite run gets a FRESH database (dropped and
 // recreated, migrated, seeded via @saos/db) so tests never touch dev data and
@@ -22,52 +24,127 @@ import { encryptSecret } from '../src/crypto.ts';
  * spec recreates its database with DROP ... WITH (FORCE), so the same spec in the other checkout lost
  * its database mid-run. The name now carries a short tag of the checkout's own path.
  */
-const CHECKOUT_TAG = createHash('sha1').update(fileURLToPath(new URL('../../..', import.meta.url)).toLowerCase()).digest('hex').slice(0, 6);
+/** The tag of a checkout root, as its test databases carry it (the root with a trailing separator, lower case). */
+export function checkoutTag(root: string): string {
+  const withSep = resolve(root) + sep;
+  return createHash('sha1').update(withSep.toLowerCase()).digest('hex').slice(0, 6);
+}
+const CHECKOUT_TAG = checkoutTag(fileURLToPath(new URL('../../..', import.meta.url)));
 
 /** The test database a spec's createTestConfig(suffix) creates, in this checkout. */
 export function testDatabaseName(dbSuffix: string): string {
   return `saos_api_test_${CHECKOUT_TAG}_${dbSuffix}`;
 }
 
+/*
+ * ONE MIGRATED TEMPLATE, CLONED PER SPEC (Brian, 2026-09-29, R95). Every spec used to run all the
+ * migrations and seeds into its own fresh database, ~145 times a suite, and the files that churn
+ * dirtied were what each forced checkpoint then had to sync. Now the migrations and seeds run once,
+ * into a template named for the hash of every migration and seed file (so any change to either
+ * builds a new one), and each spec's database is CREATE DATABASE ... TEMPLATE of it. The build runs
+ * under an advisory lock, so parallel spec processes wait for one builder instead of racing.
+ */
+const DB_PACKAGE = fileURLToPath(new URL('../../../packages/db', import.meta.url));
+
+/** The hash of every migration and seed file, and the list that orders the seeds. */
+export function schemaHash(): string {
+  const h = createHash('sha1');
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir).sort()) {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else { h.update(p.slice(DB_PACKAGE.length).replaceAll('\\', '/')); h.update(readFileSync(p)); }
+    }
+  };
+  walk(join(DB_PACKAGE, 'migrations'));
+  walk(join(DB_PACKAGE, 'seeds'));
+  h.update(readFileSync(join(DB_PACKAGE, 'index.mjs')));
+  return h.digest('hex').slice(0, 10);
+}
+
+/** This checkout's template for the migrations and seeds as they stand. */
+export function templateDatabaseName(): string {
+  return `saos_api_test_${CHECKOUT_TAG}_tpl_${schemaHash()}`;
+}
+
+function databaseUrl(name: string): string {
+  const url = new URL(loadConfig({ NODE_ENV: 'test' }).DATABASE_URL);
+  url.pathname = `/${name}`;
+  return url.toString();
+}
+
+export async function adminClient(): Promise<pg.Client> {
+  const admin = new pg.Client({ connectionString: databaseUrl('postgres') });
+  await admin.connect();
+  return admin;
+}
+
+/** Drop a database, a template included (Postgres refuses to drop one still marked as a template). */
+export async function dropDatabase(admin: pg.Client, name: string): Promise<void> {
+  if (!/^[a-z0-9_]+$/.test(name)) throw new Error(`refusing to drop '${name}'`);
+  const found = await admin.query(`SELECT datistemplate FROM pg_database WHERE datname = $1`, [name]);
+  if (found.rows.length === 0) return;
+  if (found.rows[0].datistemplate) await admin.query(`ALTER DATABASE ${name} IS_TEMPLATE false`);
+  await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+}
+
+/** Build this checkout's template if the migrations or seeds changed since the last one; return its name. */
+export async function ensureTestTemplate(): Promise<string> {
+  const tpl = templateDatabaseName();
+  const admin = await adminClient();
+  try {
+    await admin.query('SELECT pg_advisory_lock(hashtext($1))', [`saos_api_test_tpl_${CHECKOUT_TAG}`]);
+    const have = await admin.query(`SELECT 1 FROM pg_database WHERE datname = $1`, [tpl]);
+    if (have.rows.length > 0) return tpl;
+    // A template for migrations or seeds that no longer stand goes first.
+    const stale = await admin.query<{ datname: string }>(
+      `SELECT datname FROM pg_database WHERE datname ~ $1 AND datname <> $2`,
+      [`^saos_api_test_${CHECKOUT_TAG}_tpl_`, tpl]
+    );
+    for (const r of stale.rows) await dropDatabase(admin, r.datname);
+    const build = `${tpl}_build`;
+    await dropDatabase(admin, build);
+    await admin.query(`CREATE DATABASE ${build}`);
+    await migrate(databaseUrl(build), 'up');
+    const seeder = new pg.Client({ connectionString: databaseUrl(build) });
+    await seeder.connect();
+    try {
+      await seeder.query('BEGIN');
+      await seedAll(seeder);
+      // Client-acting automations ship DISABLED (Brian arms them in prod as
+      // clients arrive). Tests ARM them all so behaviour is exercised; the
+      // gate itself is proven by tests that explicitly disarm one and assert
+      // the suppression (see automations.spec.ts).
+      await seeder.query(`UPDATE automations SET enabled = true`);
+      await seeder.query('COMMIT');
+    } finally {
+      await seeder.end();
+    }
+    // Complete before it has its name: a template that exists is a template that is whole.
+    await admin.query(`ALTER DATABASE ${build} RENAME TO ${tpl}`);
+    await admin.query(`ALTER DATABASE ${tpl} WITH IS_TEMPLATE true ALLOW_CONNECTIONS false`);
+    return tpl;
+  } finally {
+    await admin.query('SELECT pg_advisory_unlock_all()').catch(() => undefined);
+    await admin.end();
+  }
+}
+
 export async function createTestConfig(dbSuffix: string): Promise<Config> {
   if (!/^[a-z0-9_]+$/.test(dbSuffix)) throw new Error('dbSuffix must be [a-z0-9_]+');
   const testDb = testDatabaseName(dbSuffix);
   if (testDb.length > 63) throw new Error(`test database name too long for Postgres: ${testDb}`);
-  const base = loadConfig({ NODE_ENV: 'test' });
-  const url = new URL(base.DATABASE_URL);
+  const tpl = await ensureTestTemplate();
 
-  // Recreate the test database via the maintenance DB on the same server.
-  const adminUrl = new URL(base.DATABASE_URL);
-  adminUrl.pathname = '/postgres';
-  const admin = new pg.Client({ connectionString: adminUrl.toString() });
-  await admin.connect();
+  // Recreate the test database from the template, via the maintenance DB on the same server.
+  const admin = await adminClient();
   try {
     await admin.query(`DROP DATABASE IF EXISTS ${testDb} WITH (FORCE)`);
-    await admin.query(`CREATE DATABASE ${testDb}`);
+    await admin.query(`CREATE DATABASE ${testDb} TEMPLATE ${tpl}`);
   } finally {
     await admin.end();
   }
-
-  url.pathname = `/${testDb}`;
-  const testUrl = url.toString();
-
-  await migrate(testUrl, 'up');
-  const seeder = new pg.Client({ connectionString: testUrl });
-  await seeder.connect();
-  try {
-    await seeder.query('BEGIN');
-    await seedAll(seeder);
-    // Client-acting automations ship DISABLED (Brian arms them in prod as
-    // clients arrive). Tests ARM them all so behaviour is exercised; the
-    // gate itself is proven by tests that explicitly disarm one and assert
-    // the suppression (see automations.spec.ts).
-    await seeder.query(`UPDATE automations SET enabled = true`);
-    await seeder.query('COMMIT');
-  } finally {
-    await seeder.end();
-  }
-
-  return loadConfig({ NODE_ENV: 'test', DATABASE_URL: testUrl });
+  return loadConfig({ NODE_ENV: 'test', DATABASE_URL: databaseUrl(testDb) });
 }
 
 export interface TestStaff {

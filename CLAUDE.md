@@ -91,6 +91,9 @@
 ### A flaky red is red (Brian, 2026-09-19, standing rule R7)
 - **A flaky red is red until explained.** A test that fails once in the full suite and passes alone is a failure with an unknown cause, not a pass. Find the stack and the root cause before the next receipt run; never rerun the suite to reach a green receipt.
 
+### Pushes (Brian, 2026-09-29, standing rule R94)
+- **Claude pushes; Brian no longer does.** Only to main (`git push origin HEAD:main`), only a commit whose green receipt matches HEAD (`node scripts/green-run.mjs require` passes), never with force. Every report names the commit range pushed. Any change to `.claude/settings*` is a ruling first, never a side effect.
+
 ### The deploy order (Brian, 2026-09-29, standing rule)
 - **Build → preflight (migrations and seeds on the production copy) → migrate → seed → swap.** No seed runs after the swap. `scripts/check-deploy-order.mjs` refuses a deploy.sh that breaks this order, first thing in every deploy and in the root `npm test`.
 
