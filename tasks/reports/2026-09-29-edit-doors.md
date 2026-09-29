@@ -1,11 +1,11 @@
 # edit-doors (2026-09-29)
 
-Generated 2026-09-29T09:20:07.521Z by scripts/report-table.mjs from the log edit-doors.log; 38 row(s).
+Generated 2026-09-29T09:43:37.682Z by scripts/report-table.mjs from the log edit-doors.log; 38 row(s).
 
 Every entity with a create control has an edit control tapped at both viewports, or an explicit "immutable because" entry (R38); the guard scripts/check-edit-doors.mjs fails the root chain when a create route has no update route with a UI caller and the entity is not marked immutable.
 
 ```sql
-node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/modules joined with scripts/edit-doors.json; tapped columns from apps/e2e/.artifacts/last-run.json, the full harness run of 2026-09-29: 131 passed, 0 failed)
+node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/modules joined with scripts/edit-doors.json; tapped columns from apps/e2e/.artifacts/last-run.json, the full harness run of 2026-09-29: 133 passed, 0 failed)
 ```
 
 | entity | create route | update route | UI caller (file) | tapped phone | tapped desk | immutable because |
@@ -45,6 +45,6 @@ node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/mod
 | recording | POST /meetings/upload (apps/api/src/modules/meetings/routes.ts:65) | — | create only: apps/internal/app/recorder/page.tsx | — | — | immutable because an uploaded recording; its recap is drafted and edited through PATCH /meetings/:id/recap |
 | price book version | POST /admin/price-book/versions (apps/api/src/modules/admin/routes.ts:261) | — | create only: apps/internal/app/admin/pricing/page.tsx | — | — | immutable because effective-dated and versioned: a price change is a new version, never an edit of one in force |
 | referral | POST /referrals (apps/api/src/modules/referrals/routes.ts:48) | — | — | — | — | immutable because approved, declined or sent as suggested |
-| document | POST /documents (apps/api/src/modules/documents/routes.ts:248) | — | create only: apps/internal/app/upload-return/page.tsx | — | — | immutable because an uploaded file, scanned and filed as uploaded; withdrawn or superseded by another upload, never edited, every access audited |
+| document | POST /documents (apps/api/src/modules/documents/routes.ts:249) | — | create only: apps/internal/app/upload-return/page.tsx | — | — | immutable because an uploaded file, scanned and filed as uploaded; withdrawn or superseded by another upload, never edited, every access audited |
 | engagement | POST /engagements (apps/api/src/modules/engagements/routes.ts:59) | — | — | — | — | immutable because no free-form edit by design: each change is its own audited door (configure, maintenance mode, pause, resume, close, period, deposit transfer) |
 | quote package | POST /quotes/packages (apps/api/src/modules/pricing/quote-routes.ts:193) | — | create only: apps/internal/app/pipeline/page.tsx | — | — | immutable because composed from the price book only and saved by the CEO alone; a change is a new package, and the discount is admin-set at publish |
