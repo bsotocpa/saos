@@ -1,11 +1,11 @@
 # walk-evidence-path-b (2026-09-29)
 
-Generated 2026-09-29T05:01:11.375Z by scripts/report-table.mjs from the log walk-b.log; 62 row(s).
+Generated 2026-09-29T05:23:37.867Z by scripts/report-table.mjs from the log walk-b.log; 64 row(s).
 
 The 1040 on extension with IL filed on paper, on the migrated-client fixture; B1 is the fixture person, whose Add a client tap is cleared in ops-add-client.spec.ts; how=api rows are the two Stripe events.
 
 ```sql
-node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 123 passed, 0 failed)
+node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 127 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
@@ -48,6 +48,8 @@ node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from 
 | B7c | The Ops return row reads the checklist's received and missing counts; Request documents emails the missing items through its automation, and says it was held while that is off (R83) | phone + laptop | /clients/:id Returns card: the row reads "Documents: 1 received · 4 missing"; button "Request documents" (modal: it emails the missing checklist items) → the outcome modal "Emailed the client the 4 missing items on the checklist, with the portal link." (the harness arms its automations; the held arm is the API spec), button "OK" | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:173 | desk | passed | tap | yes |
 | B7d | Admin → Document checklist: a row's words edited and saved, a document added to an item and switched off (R83) | phone + laptop | /admin/document-checklist: a row's "English" textarea + "Save"; the "Add a document to an item" form ("Price-book item code", "Document key", "English", "Spanish", "Add document"), then the new row's "Asked for" checkbox off + "Save" | ceo (admin.settings) | apps/e2e/tests/ops-document-checklist-admin.spec.ts:33 | phone | passed | tap | yes |
 | B7d | Admin → Document checklist: a row's words edited and saved, a document added to an item and switched off (R83) | phone + laptop | /admin/document-checklist: a row's "English" textarea + "Save"; the "Add a document to an item" form ("Price-book item code", "Document key", "English", "Spanish", "Add document"), then the new row's "Asked for" checkbox off + "Save" | ceo (admin.settings) | apps/e2e/tests/ops-document-checklist-admin.spec.ts:33 | desk | passed | tap | yes |
+| B7e | A return from a quote accepted before checklists existed gets its checklist through the backfill door on its row (R91) | phone + laptop | /clients/:id Returns card, button "Add the document checklist" on a return from a quote accepted before checklists existed → the row reads "Documents: 0 received · n missing" and the button is gone | ceo (engagements.tax.manage); the client | apps/e2e/tests/ops-batch10.spec.ts:47 | phone | passed | tap | yes |
+| B7e | A return from a quote accepted before checklists existed gets its checklist through the backfill door on its row (R91) | phone + laptop | /clients/:id Returns card, button "Add the document checklist" on a return from a quote accepted before checklists existed → the row reads "Documents: 0 received · n missing" and the button is gone | ceo (engagements.tax.manage); the client | apps/e2e/tests/ops-batch10.spec.ts:47 | desk | passed | tap | yes |
 | B8 | Return delivered to the portal | laptop | /upload-return "Find the client" → the client's button → input[type=file] "Final return PDF (from ATX)"; read back on portal /returns | ceo (documents.write) | apps/e2e/tests/ops-path-b.spec.ts:173 | phone | passed | tap | yes |
 | B8 | Return delivered to the portal | laptop | /upload-return "Find the client" → the client's button → input[type=file] "Final return PDF (from ATX)"; read back on portal /returns | ceo (documents.write) | apps/e2e/tests/ops-path-b.spec.ts:173 | desk | passed | tap | yes |
 | B9 | Signed 8879 scan uploaded, wet-signed in office | laptop | /clients/:id Returns card, button "Record 8879 sent" (modal: "Method" In office, "Date sent" opening on today) → the return reads 8879 sent, in office | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:173 | phone | passed | tap | yes |

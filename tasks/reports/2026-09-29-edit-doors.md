@@ -1,17 +1,17 @@
 # edit-doors (2026-09-29)
 
-Generated 2026-09-29T05:01:16.503Z by scripts/report-table.mjs from the log edit-doors.log; 38 row(s).
+Generated 2026-09-29T05:23:43.328Z by scripts/report-table.mjs from the log edit-doors.log; 38 row(s).
 
 Every entity with a create control has an edit control tapped at both viewports, or an explicit "immutable because" entry (R38); the guard scripts/check-edit-doors.mjs fails the root chain when a create route has no update route with a UI caller and the entity is not marked immutable.
 
 ```sql
-node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/modules joined with scripts/edit-doors.json; tapped columns from apps/e2e/.artifacts/last-run.json, the full harness run of 2026-09-29: 123 passed, 0 failed)
+node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/modules joined with scripts/edit-doors.json; tapped columns from apps/e2e/.artifacts/last-run.json, the full harness run of 2026-09-29: 127 passed, 0 failed)
 ```
 
 | entity | create route | update route | UI caller (file) | tapped phone | tapped desk | immutable because |
 |---|---|---|---|---|---|---|
-| contact | POST /contacts (apps/api/src/modules/crm/routes.ts:388) | PATCH /contacts/:id (apps/api/src/modules/crm/routes.ts:548) | apps/internal/app/clients/[id]/page.tsx | yes (apps/e2e/tests/ops-path-b.spec.ts:173) | yes (apps/e2e/tests/ops-path-b.spec.ts:173) |  |
-| business | POST /contacts/:id/businesses (apps/api/src/modules/crm/routes.ts:613) | PATCH /businesses/:id (apps/api/src/modules/crm/routes.ts:956) | apps/internal/components/edit-business.tsx (rendered by apps/internal/app/clients/[id]/page.tsx, apps/internal/app/businesses/[id]/page.tsx) | yes (apps/e2e/tests/ops-scorp-dry-run.spec.ts:132) | yes (apps/e2e/tests/ops-scorp-dry-run.spec.ts:132) |  |
+| contact | POST /contacts (apps/api/src/modules/crm/routes.ts:411) | PATCH /contacts/:id (apps/api/src/modules/crm/routes.ts:577) | apps/internal/app/clients/[id]/page.tsx | yes (apps/e2e/tests/ops-path-b.spec.ts:173) | yes (apps/e2e/tests/ops-path-b.spec.ts:173) |  |
+| business | POST /contacts/:id/businesses (apps/api/src/modules/crm/routes.ts:642) | PATCH /businesses/:id (apps/api/src/modules/crm/routes.ts:985) | apps/internal/components/edit-business.tsx (rendered by apps/internal/app/clients/[id]/page.tsx, apps/internal/app/businesses/[id]/page.tsx) | yes (apps/e2e/tests/ops-scorp-dry-run.spec.ts:132) | yes (apps/e2e/tests/ops-scorp-dry-run.spec.ts:132) |  |
 | document checklist row | POST /admin/document-checklist (apps/api/src/modules/admin/routes.ts:638) | PATCH /admin/document-checklist/:id (apps/api/src/modules/admin/routes.ts:611) | apps/internal/app/admin/document-checklist/page.tsx | yes (apps/e2e/tests/ops-document-checklist-admin.spec.ts:33) | yes (apps/e2e/tests/ops-document-checklist-admin.spec.ts:33) |  |
 | staff member | POST /staff (apps/api/src/modules/staff/routes.ts:86) | PATCH /staff/:id (apps/api/src/modules/staff/routes.ts:121) | apps/internal/app/admin/staff/page.tsx | yes (apps/e2e/tests/ops-edit-doors.spec.ts:98) | yes (apps/e2e/tests/ops-edit-doors.spec.ts:98) |  |
 | task | POST /tasks (apps/api/src/modules/tasks/routes.ts:265) | PATCH /tasks/:id (apps/api/src/modules/tasks/routes.ts:291) | apps/internal/app/tasks/task-form.tsx | yes (apps/e2e/tests/ops-edit-doors.spec.ts:53) | yes (apps/e2e/tests/ops-edit-doors.spec.ts:53) |  |
@@ -32,12 +32,12 @@ node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/mod
 | IRS notice | POST /irs-notices (apps/api/src/modules/notices/routes.ts:39) | PATCH /irs-notices/:id (apps/api/src/modules/notices/routes.ts:68) | — | — | — | no create control in Ops: no Ops screen creates one yet; notices are entered through the API and inbound mail |
 | grant voucher | POST /grant-vouchers (apps/api/src/modules/grants/routes.ts:29) | PATCH /grant-vouchers/:id (apps/api/src/modules/grants/routes.ts:44) | — | — | — | no create control in Ops: status tracking only; no Ops screen creates one yet |
 | PLLC conversion | POST /pllc-conversions (apps/api/src/modules/entity/routes.ts:293) | PATCH /pllc-conversions/:id (apps/api/src/modules/entity/routes.ts:338) | — | — | — | no create control in Ops: no Ops screen creates one yet |
-| entity group | POST /entity-groups (apps/api/src/modules/crm/routes.ts:1036) | PATCH /entity-groups/:id (apps/api/src/modules/crm/routes.ts:1077) | — | — | — | no create control in Ops: groups come from the onboarding form and the API; the group screens are not built |
-| entity group member | POST /entity-groups/:id/members (apps/api/src/modules/crm/routes.ts:1045) | — | — | — | — | immutable because a membership is added, never edited |
+| entity group | POST /entity-groups (apps/api/src/modules/crm/routes.ts:1065) | PATCH /entity-groups/:id (apps/api/src/modules/crm/routes.ts:1106) | — | — | — | no create control in Ops: groups come from the onboarding form and the API; the group screens are not built |
+| entity group member | POST /entity-groups/:id/members (apps/api/src/modules/crm/routes.ts:1074) | — | — | — | — | immutable because a membership is added, never edited |
 | entity compliance item | POST /entity-compliance (apps/api/src/modules/entity/routes.ts:57) | — | — | — | — | immutable because a derived obligation, marked filed through its own door |
 | close cycle | POST /close-cycles (apps/api/src/modules/bookkeeping/routes.ts:60) | — | — | — | — | immutable because a ledger of steps for one period; steps are recorded, the period never changes |
 | client session | POST /client-sessions (apps/api/src/modules/bookkeeping/routes.ts:107) | — | — | — | — | immutable because a scheduled occurrence; rescheduling is a new session |
-| document request | POST /document-requests (apps/api/src/modules/tax/routes.ts:884) | — | — | — | — | immutable because a request as made; fulfilment and chasing are the record |
+| document request | POST /document-requests (apps/api/src/modules/tax/routes.ts:905) | — | — | — | — | immutable because a request as made; fulfilment and chasing are the record |
 | tax engagement (return) | POST /tax-engagements (apps/api/src/modules/tax/routes.ts:334) | — | — | — | — | immutable because no free-form edit by design: each field has its own audited door in return-controls.tsx (estimate, final fee, preparer, extension, transition, signatures, paper mailing) |
 | resolution case | POST /resolution/cases (apps/api/src/modules/tax/resolution-routes.ts:74) | — | — | — | — | immutable because a case as opened; representation and forms are its own doors |
 | signature envelope | POST /signature-envelopes (apps/api/src/modules/signatures/routes.ts:19) | — | — | — | — | immutable because an issued envelope |

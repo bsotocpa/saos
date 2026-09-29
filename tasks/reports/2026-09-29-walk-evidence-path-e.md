@@ -1,11 +1,11 @@
 # walk-evidence-path-e (2026-09-29)
 
-Generated 2026-09-29T05:01:11.868Z by scripts/report-table.mjs from the log walk-e.log; 8 row(s).
+Generated 2026-09-29T05:23:38.332Z by scripts/report-table.mjs from the log walk-e.log; 8 row(s).
 
 The migrated client (R37): a proposal link rendering with a stale signed-in marker, the sign-in link spent by a press, the portal email aligned from the client page.
 
 ```sql
-node scripts/walk-evidence.mjs E  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 123 passed, 0 failed)
+node scripts/walk-evidence.mjs E  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 127 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
