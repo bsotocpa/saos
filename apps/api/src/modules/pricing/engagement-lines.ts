@@ -86,6 +86,8 @@ export interface QuotedScopeItem {
   lineCents: number | null;
   isPassThrough: boolean;
   sortOrder: number;
+  /** R89: the year a return line is for (quote_line_items.tax_year); null on other lines and older quotes. */
+  taxYear: number | null;
 }
 
 export interface QuotedEngagementLine {
@@ -118,14 +120,18 @@ const LINE_LABEL: Record<EngagementLine, string> = {
  * enough either — two tax engagements in different years would collide — so the leading
  * item is named, and the count carries the rest.
  */
-export function engagementTitle(line: QuotedEngagementLine, periodKey?: string | null): string {
+export function engagementTitle(line: QuotedEngagementLine, periodKey?: string | null, years?: readonly number[]): string {
   // Decision 2 (2026-09-09): a tax engagement names its year in the title — "Tax 2025 — …" —
   // so two tax engagements for different years never read the same. Recurring lines carry
-  // 'ongoing' and per-matter lines null; neither belongs in a title.
-  const label = periodKey && /^\d{4}$/.test(periodKey) ? `${LINE_LABEL[line.serviceLine]} ${periodKey}` : LINE_LABEL[line.serviceLine];
-  const first = line.itemNames[0];
+  // 'ongoing' and per-matter lines null; neither belongs in a title. R89: an engagement holding
+  // several years lists them, newest first ("Tax 2025, 2022 — …"), and names each item once.
+  const label = years && years.length > 1
+    ? `${LINE_LABEL[line.serviceLine]} ${[...years].sort((a, b) => b - a).join(', ')}`
+    : periodKey && /^\d{4}$/.test(periodKey) ? `${LINE_LABEL[line.serviceLine]} ${periodKey}` : LINE_LABEL[line.serviceLine];
+  const names = [...new Set(line.itemNames)];
+  const first = names[0];
   if (!first) return label;
-  const extra = line.itemNames.length - 1;
+  const extra = names.length - 1;
   return extra > 0 ? `${label} — ${first} +${extra} more` : `${label} — ${first}`;
 }
 
@@ -144,7 +150,7 @@ export async function engagementLinesForQuote(
     service_line: string; item_code: string; name_en: string; sort_order: number;
     line_id: string; description_en: string; description_es: string | null;
     quantity: string; unit_cents: number | null; line_cents: number | null;
-    is_pass_through: boolean;
+    is_pass_through: boolean; tax_year: number | null;
   }>(
     /*
      * #47 — the line's own text comes back too, not just the price book's name.
@@ -162,7 +168,7 @@ export async function engagementLinesForQuote(
             COALESCE(pbi.name_en, qli.description_en) AS name_en,
             COALESCE(pbi.sort_order, 1000000) AS sort_order,
             qli.id AS line_id, qli.description_en, qli.description_es,
-            qli.quantity::text AS quantity, qli.unit_cents, qli.line_cents, qli.is_pass_through
+            qli.quantity::text AS quantity, qli.unit_cents, qli.line_cents, qli.is_pass_through, qli.tax_year
        FROM quote_line_items qli
        JOIN quotes q ON q.id = qli.quote_id
        LEFT JOIN price_book_items pbi
@@ -188,6 +194,7 @@ export async function engagementLinesForQuote(
       lineCents: r.line_cents,
       isPassThrough: r.is_pass_through,
       sortOrder: r.sort_order,
+      taxYear: r.tax_year,
     };
     const existing = byLine.get(line);
     if (existing) {

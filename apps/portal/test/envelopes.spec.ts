@@ -44,3 +44,15 @@ test('the label names the business first, then the return, then nothing; an unkn
   assert.equal(envelopeLabel(t, { ...base, type: 'grant_agreement' }), 'grant agreement', 'a type the dictionary lacks reads as its words');
   assert.equal(envelopeLabel((k) => translate('es', k), { ...base, type: 'consent_7216' }), 'Consentimiento de información fiscal (§7216)');
 });
+
+test('R89: one engagement holding two years keeps each year\'s 8879 as its own row; a resent letter still folds', () => {
+  const rows: Envelope[] = [
+    { id: 'e1', type: 'f8879', status: 'sent', engagement_id: 'eng', tax_engagement_id: 'te-2025', tax_year: 2025, return_type: '1040' },
+    { id: 'e2', type: 'f8879', status: 'sent', engagement_id: 'eng', tax_engagement_id: 'te-2022', tax_year: 2022, return_type: '1040' },
+    { id: 'e3', type: 'engagement_letter', status: 'sent', engagement_id: 'eng', tax_engagement_id: null, tax_year: 2025, return_type: '1040' },
+    { id: 'e4', type: 'engagement_letter', status: 'completed', engagement_id: 'eng', tax_engagement_id: null, tax_year: 2025, return_type: '1040' },
+  ];
+  const out = envelopeRows(rows);
+  assert.deepEqual(out.filter((e) => e.type === 'f8879').map((e) => e.tax_year).sort(), [2022, 2025]);
+  assert.deepEqual(out.filter((e) => e.type === 'engagement_letter').map((e) => e.id), ['e4']);
+});

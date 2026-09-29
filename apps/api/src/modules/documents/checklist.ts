@@ -198,8 +198,10 @@ export async function backfillChecklist(
   const lines = await app.db.query<{ item_code: string }>(
     `SELECT item_code FROM engagement_scope_items
       WHERE engagement_id = $1 AND source_quote_id IS NOT NULL AND item_code IS NOT NULL
+        AND (tax_year IS NULL OR tax_year = $2)
       ORDER BY sort_order, item_code`,
-    [te.engagement_id]
+    // R89: this return's own year's lines (a row with no year is the engagement's one return's).
+    [te.engagement_id, te.tax_year]
   );
   if (lines.rows.length === 0) {
     throw new AppError(409, 'no_quoted_lines', 'This return was not opened from an accepted quote, so there are no quoted lines to build a checklist from.');

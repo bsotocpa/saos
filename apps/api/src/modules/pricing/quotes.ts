@@ -26,7 +26,8 @@ import { periodKeyFor , defaultTaxYear } from '../engagements/period.ts';
 import {
   assertChangeOrderIfActive, finishSupersession, quoteTaxYear, withdrawForChangeOrder,
 } from '../engagements/change-order.ts';
-import { bundleDiscountFor, composeBundle } from './bundles.ts';
+import { SURCHARGE_ITEM, bundleDiscountFor, composeBundle } from './bundles.ts';
+import { assignLineYears, quoteYearFromAnswers, surchargeYears } from './quote-years.ts';
 import type { CustomLineServiceLine } from './groups.ts';
 import {
   assertEveryLineCreatesWork,
@@ -59,6 +60,8 @@ export interface QuoteLineInput {
   unitCents?: number | undefined;
   /** A line written by hand: no book item, its own name and service line, its amount in unitCents. */
   custom?: { name: string; serviceLine: CustomLineServiceLine } | undefined;
+  /** R89: the year a return line is for. Absent on every line: the quote's one year. */
+  taxYear?: number | undefined;
 }
 
 /** A line the quote prices differently from the book: what the book said, what the quote says. */
@@ -131,6 +134,8 @@ export async function createQuote(
     unitCents: number | null; minCents: number | null; maxCents: number | null;
     isOptional: boolean; chosen: boolean; isPassThrough: boolean;
     isCustom: boolean; serviceLine: string | null;
+    /** R89: the year a return line is for; null on every other line. */
+    taxYear: number | null;
   }> = [];
   let discountCents = 0;
   /*
@@ -158,6 +163,7 @@ export async function createQuote(
       isPassThrough: false,
       isCustom: false,
       serviceLine: null,
+      taxYear: null,
     }));
     discountCents = composed.discount.amountCents;
   } else {
@@ -210,7 +216,7 @@ export async function createQuote(
         return {
           itemCode, descriptionEn: l.custom.name, descriptionEs: l.custom.name, quantity: qty,
           unitCents, minCents: null, maxCents: null, isOptional, chosen, isPassThrough: false,
-          isCustom: true, serviceLine: l.custom.serviceLine,
+          isCustom: true, serviceLine: l.custom.serviceLine, taxYear: l.taxYear ?? null,
         };
       }
       const item = byCode.get(l.itemCode!)!;
@@ -236,6 +242,7 @@ export async function createQuote(
         isPassThrough: item.is_pass_through,
         isCustom: false,
         serviceLine: null,
+        taxYear: l.taxYear ?? null,
       };
     });
     if (input.bundleSlug) {
@@ -267,6 +274,53 @@ export async function createQuote(
   const lineOf = new Map(serviceLines.rows.map((r) => [r.item_code, r.service_line]));
   // A custom line names its own service line; it answers the business question like any other.
   for (const l of lines) if (l.isCustom && l.serviceLine) lineOf.set(l.itemCode, l.serviceLine);
+
+  /*
+   * R89 (Brian, 2026-09-29): EVERY RETURN LINE CARRIES ITS YEAR, AND THE SURCHARGE IS THE SERVER'S.
+   * Answer A: the lines of a multi-year quote each name their year; a one-year quote's return lines
+   * take the quote's year. Answer B: PRIOR_YEAR_SURCHARGE once for every quoted year more than two
+   * back, at the book's price, on single-year and multi-year quotes alike. It is never typed: a
+   * submitted surcharge line is refused, and a package that lists it as a component has that line
+   * replaced here by one per year that carries it (none when no year is that old).
+   */
+  const fromPackage = Boolean(input.bundleSlug) && (input.lines?.length ?? 0) === 0;
+  if (!fromPackage && lines.some((l) => l.itemCode === SURCHARGE_ITEM)) {
+    throw new AppError(400, 'surcharge_is_automatic', 'The prior-year surcharge is added by the quote itself, once for each year more than two back; leave it off the lines.');
+  }
+  const composedSurcharges = lines.filter((l) => l.itemCode === SURCHARGE_ITEM).length;
+  lines = lines.filter((l) => l.itemCode !== SURCHARGE_ITEM);
+  const today = todayChicago();
+  const years = assignLineYears(lines, (l) => lineOf.get(l.itemCode) ?? null, {
+    quoteYear: quoteYearFromAnswers(input.interviewAnswers) ?? defaultTaxYear(today),
+    newestYear: defaultTaxYear(today) + 1,
+  });
+  const surcharged = surchargeYears(years, today);
+  if (surcharged.length > 0) {
+    const s = await app.db.query<{ name_en: string; name_es: string; amount_cents: number | null; service_line: string }>(
+      `SELECT COALESCE(display_name_en, name_en) AS name_en, COALESCE(display_name_es, name_es) AS name_es,
+              amount_cents, service_line::text AS service_line
+         FROM price_book_items WHERE version_id = $1 AND item_code = $2 AND is_active`,
+      [version.id, SURCHARGE_ITEM]
+    );
+    const book = s.rows[0];
+    if (!book || book.amount_cents === null) {
+      throw new AppError(400, 'unknown_price_items', `Not in the price book in force: ${SURCHARGE_ITEM}.`);
+    }
+    lineOf.set(SURCHARGE_ITEM, book.service_line);
+    for (const y of surcharged) {
+      lines.push({
+        itemCode: SURCHARGE_ITEM, descriptionEn: book.name_en, descriptionEs: book.name_es, quantity: 1,
+        unitCents: book.amount_cents, minCents: null, maxCents: null, isOptional: false, chosen: true,
+        isPassThrough: false, isCustom: false, serviceLine: null, taxYear: y,
+      });
+    }
+  }
+  if (input.bundleSlug && (composedSurcharges > 0 || surcharged.length > 0)) {
+    // The package's discount rule applies to what the counted lines now come to, surcharges included.
+    const counted = lines.filter((l) => l.chosen && !l.isPassThrough);
+    const sub = counted.reduce((sum, l) => sum + (l.unitCents === null ? 0 : Math.round(l.unitCents * l.quantity)), 0);
+    discountCents = (await bundleDiscountFor(app, input.bundleSlug, sub)).discount.amountCents;
+  }
   const businessItems = lines.filter((l) => l.chosen && BUSINESS_LINES.has(lineOf.get(l.itemCode) ?? '')).map((l) => l.itemCode);
   if (businessItems.length > 0 && !input.businessId) {
     throw new AppError(400, 'business_required', `Choose the business this quote is for: ${businessItems.join(', ')} is business work.`);
@@ -375,12 +429,12 @@ export async function createQuote(
       await app.db.query(
         `INSERT INTO quote_line_items
            (quote_id, item_code, description_en, description_es, quantity, unit_cents, line_cents,
-            min_cents, max_cents, is_optional, chosen, is_pass_through, sort_order, is_custom, service_line)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::price_service_line)`,
+            min_cents, max_cents, is_optional, chosen, is_pass_through, sort_order, is_custom, service_line, tax_year)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::price_service_line,$16)`,
         [
           quoteId, l.itemCode, l.descriptionEn, l.descriptionEs, l.quantity, l.unitCents,
           l.unitCents === null ? null : Math.round(l.unitCents * l.quantity),
-          l.minCents, l.maxCents, l.isOptional, l.chosen, l.isPassThrough, i, l.isCustom, l.serviceLine,
+          l.minCents, l.maxCents, l.isOptional, l.chosen, l.isPassThrough, i, l.isCustom, l.serviceLine, l.taxYear,
         ]
       );
     }
@@ -388,7 +442,7 @@ export async function createQuote(
       actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
       action: 'quote.created', objectType: 'quote', objectId: quoteId,
       contactId: input.contactId,
-      details: { bundle: input.bundleSlug ?? null, total_cents: totalCents, lines: lines.length, business_id: input.businessId ?? null },
+      details: { bundle: input.bundleSlug ?? null, total_cents: totalCents, lines: lines.length, business_id: input.businessId ?? null, tax_years: years, surcharge_years: surcharged },
     });
     if (changed.length > 0) {
       /*
@@ -669,7 +723,7 @@ export async function quoteByToken(app: FastifyInstance, token: string) {
   // ticks shows its discounted figure before acceptance applies it.
   const lines = await app.db.query(
     `SELECT qli.item_code, qli.description_en, qli.description_es, qli.quantity, qli.unit_cents, qli.line_cents,
-            qli.min_cents, qli.max_cents, qli.is_optional, qli.chosen, qli.is_pass_through,
+            qli.min_cents, qli.max_cents, qli.is_optional, qli.chosen, qli.is_pass_through, qli.tax_year,
             (q.referral_discount_rule_code IS NOT NULL AND q.referral_discount_removed_at IS NULL
              AND COALESCE(pbi.service_line::text, qli.service_line::text) = ANY(q.referral_discount_service_lines)) AS referral_reached
        FROM quote_line_items qli
@@ -759,6 +813,33 @@ async function summedLineDeposits(app: FastifyInstance, quoteId: string): Promis
   // No line asks for a deposit → this quote has none, which is different from zero.
   if (!row || row.n === 0 || row.total === null) return null;
   return Number(row.total);
+}
+
+/**
+ * R89 (2026-09-29): the same standard deposit, split by the year its lines are for. The rule applies
+ * once per year because each year's return repeats its own lines, each with its own deposit; this
+ * reads the sum back per year so the deposit invoice carries one line per year. Lines with no year
+ * (work that is not a return) keep one line of their own. Same rows and rounding as the sum above.
+ */
+async function lineDepositsByYear(app: FastifyInstance, quoteId: string): Promise<Array<{ year: number | null; cents: number }>> {
+  const { rows } = await app.db.query<{ year: number | null; total: string }>(
+    `SELECT qli.tax_year AS year,
+            SUM(round(pbi.deposit_cents * CASE
+                 WHEN q.referral_discount_rule_code IS NOT NULL AND q.referral_discount_removed_at IS NULL
+                      AND pbi.service_line::text = ANY(q.referral_discount_service_lines)
+                 THEN (100 - q.referral_discount_rate) / 100.0 ELSE 1 END))::text AS total
+       FROM quote_line_items qli
+       JOIN quotes q ON q.id = qli.quote_id
+       JOIN price_book_items pbi
+         ON pbi.item_code = qli.item_code
+        AND pbi.version_id = q.price_book_version_id
+      WHERE qli.quote_id = $1
+        AND pbi.deposit_cents IS NOT NULL
+      GROUP BY qli.tax_year
+      ORDER BY qli.tax_year DESC NULLS LAST`,
+    [quoteId]
+  );
+  return rows.map((r) => ({ year: r.year, cents: Number(r.total) }));
 }
 
 export async function resolveDeposit(
@@ -1225,8 +1306,29 @@ async function convertAcceptedQuote(
   const todayIso = todayChicago();
   const engagements: Array<{ id: string; serviceLine: string; title: string }> = [];
   for (const line of quotedLines) {
-    const periodKey = periodKeyFor(line.serviceLine, { taxYear, todayIso });
-    const title = engagementTitle(line, periodKey);
+    /*
+     * R89 (2026-09-29): ONE ENGAGEMENT, ONE RETURN PER YEAR. A tax line's lines each carry their year
+     * (a line from before 0134 carries none and reads the quote's one year). The engagement's period
+     * is its newest year, its title lists them all, and each year opens its own return below. The
+     * index guards the newest year; the older ones are checked here, against every return any active
+     * tax engagement of this client and entity already holds, so no year is opened twice.
+     */
+    const yearOfItem = (i: { taxYear: number | null }) => i.taxYear ?? taxYear ?? defaultTaxYear(todayIso);
+    const years = line.serviceLine === 'tax' ? [...new Set(line.scope.map(yearOfItem))].sort((a, b) => b - a) : [];
+    if (years.length > 0) {
+      const { activeTaxEngagementsForYears } = await import('../engagements/period.ts');
+      const clash = await activeTaxEngagementsForYears(app, row.contact_id, row.business_id, years);
+      if (clash.length > 0) {
+        throw new AppError(
+          409,
+          'engagement_exists',
+          `This client already has active tax work for ${years.join(', ')}: ${clash.map((c) => `${c.title ?? 'tax engagement'} (${c.id})`).join('; ')}. ` +
+            'A second agreement for the same work is a change order that replaces the first, not a new engagement.'
+        );
+      }
+    }
+    const periodKey = periodKeyFor(line.serviceLine, { taxYear: years[0] ?? taxYear, todayIso });
+    const title = engagementTitle(line, periodKey, years);
     const created = await createEngagement(
       app,
       system,
@@ -1291,14 +1393,15 @@ async function convertAcceptedQuote(
      * return as Schedule B instead of defaulting to A. Add-ons alone name no return: nothing is
      * created and the log says so.
      */
-    if (line.serviceLine === 'tax') {
-      const quoted = returnTypeForItems(line.scope.map((i) => i.itemCode));
+    // R89: one return per year the line holds, each from that year's own lines.
+    for (const year of years) {
+      const yearScope = line.scope.filter((i) => yearOfItem(i) === year);
+      const quoted = returnTypeForItems(yearScope.map((i) => i.itemCode));
       if (quoted) {
         const te = await app.db.query<{ id: string }>(
           `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, client_type)
            VALUES ($1, $2, $3::return_type, $4::tax_client_type) RETURNING id`,
-          // The quote's own year when the interview named one; otherwise the same default the period key used.
-          [created.id, taxYear ?? defaultTaxYear(todayIso), quoted.returnType, quoted.clientType]
+          [created.id, year, quoted.returnType, quoted.clientType]
         );
         await app.db.query(
           `INSERT INTO engagement_stage_history (tax_engagement_id, stage, waiting_on, note)
@@ -1326,10 +1429,10 @@ async function convertAcceptedQuote(
         const { openChecklistRequest } = await import('../documents/checklist.ts');
         await openChecklistRequest(app, {
           taxEngagementId: te.rows[0]!.id, engagementId: created.id, contactId: row.contact_id,
-          itemCodes: line.scope.map((i) => i.itemCode), taxYear: taxYear ?? defaultTaxYear(todayIso), returnType: quoted.returnType,
+          itemCodes: yearScope.map((i) => i.itemCode), taxYear: year, returnType: quoted.returnType,
         });
       } else {
-        app.log.warn({ engagementId: created.id, quoteId: quote.id }, 'tax line accepted with no base return item; no return record created');
+        app.log.warn({ engagementId: created.id, quoteId: quote.id, taxYear: year }, 'tax line accepted with no base return item for a year; no return record created');
       }
     }
 
@@ -1377,6 +1480,18 @@ async function convertAcceptedQuote(
 
   let depositInvoiceId: string | null = null;
   if (deposit.chargeCents !== null && deposit.chargeCents > 0) {
+    /*
+     * R89: ONE LINE PER YEAR. A standard deposit on a quote for several years is the sum of each
+     * year's own; the invoice shows each year's part on its own line, and the lines add up to the
+     * standard exactly (same rows, same rounding). A deposit set by hand (reduced) is one figure
+     * someone chose for the whole quote, so it stays one line. A one-year quote reads as before.
+     */
+    const byYear = deposit.treatment === 'standard' ? await lineDepositsByYear(app, quote.id) : [];
+    const perYear = byYear.filter((y) => y.year !== null).length > 1
+      && byYear.reduce((sum, y) => sum + y.cents, 0) === deposit.chargeCents;
+    const depositLines = perYear
+      ? byYear.filter((y) => y.cents > 0).map((y) => ({ description: y.year === null ? deposit.label : `${deposit.label} — ${y.year}`, unitCents: y.cents }))
+      : [{ description: deposit.label, unitCents: deposit.chargeCents }];
     const invoice = await createInvoice(
       app,
       { type: 'system', label: 'quote acceptance' },
@@ -1397,7 +1512,7 @@ async function convertAcceptedQuote(
          * to one path also removes the branch where an override and a standard deposit
          * were billed by different mechanisms.
          */
-        lines: [{ description: deposit.label, unitCents: deposit.chargeCents }],
+        lines: depositLines,
         // THIS is the deposit (finding #26) — it must not try to credit itself, and the
         // invoice that follows it is the one that carries the credit.
         isDepositInvoice: true,

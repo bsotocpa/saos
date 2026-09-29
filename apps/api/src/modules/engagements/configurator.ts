@@ -121,7 +121,7 @@ export async function sElectionEvidence(
   const r = rows[0]!;
   const reasons: string[] = [];
   if (r.scorp_businesses) reasons.push(`S corp entity on file: ${r.scorp_businesses}`);
-  if (r.scorp_returns > 0) reasons.push(`${r.scorp_returns} Form 1120-S engagement(s) on record`);
+  if (r.scorp_returns > 0) reasons.push(`${r.scorp_returns} Form 1120-S return(s) on record`); // R89: a count of returns, which an engagement may hold several of
   return { hasActiveSElection: reasons.length > 0, reasons };
 }
 

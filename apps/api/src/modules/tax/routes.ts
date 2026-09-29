@@ -201,10 +201,10 @@ function actorOf(request: FastifyRequest) {
 
 async function loadTaxEngagement(app: FastifyInstance, id: string) {
   const { rows } = await app.db.query<{
-    id: string; engagement_id: string; contact_id: string; return_type: string; stage: string;
+    id: string; engagement_id: string; tax_year: number; contact_id: string; return_type: string; stage: string;
     estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null;
   }>(
-    `SELECT te.id, te.engagement_id, e.contact_id, te.return_type, te.stage, te.estimated_fee_min_cents, te.estimated_fee_max_cents
+    `SELECT te.id, te.engagement_id, te.tax_year, e.contact_id, te.return_type, te.stage, te.estimated_fee_min_cents, te.estimated_fee_max_cents
      FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`,
     [id]
   );
@@ -246,17 +246,18 @@ export interface QuotedRange { min_cents: number; max_cents: number; price_book_
  */
 export async function quotedRangeFor(
   app: FastifyInstance,
-  te: { engagement_id: string; return_type: string; estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null }
+  te: { engagement_id: string; tax_year: number; return_type: string; estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null }
 ): Promise<QuotedRange | null> {
   const version = await currentPriceBookVersion(app.db);
   if (te.estimated_fee_min_cents !== null && te.estimated_fee_max_cents !== null) {
     return { min_cents: te.estimated_fee_min_cents, max_cents: te.estimated_fee_max_cents, price_book_version: version.versionNumber };
   }
-  const quoted = await acceptedQuoteRange(app, te.engagement_id);
+  const quoted = await acceptedQuoteRange(app, te.engagement_id, te.tax_year);
   if (quoted) return quoted;
+  // R89: this return's own lines; a scope row with no year belongs to the engagement's one return.
   const scope = await app.db.query<{ item_code: string }>(
-    `SELECT item_code FROM engagement_scope_items WHERE engagement_id = $1 ORDER BY sort_order`,
-    [te.engagement_id]
+    `SELECT item_code FROM engagement_scope_items WHERE engagement_id = $1 AND (tax_year IS NULL OR tax_year = $2) ORDER BY sort_order`,
+    [te.engagement_id, te.tax_year]
   );
   // The base item that prices THIS return type — its own, or one it covers (R66: BIZ_990 prices the 990-EZ too).
   const base = scope.rows.map((r) => r.item_code).find((code) => itemPricesReturnType(code, te.return_type));
@@ -282,7 +283,7 @@ export async function quotedRangeFor(
  * Null when no accepted quote stands behind the scope, or when nothing on it carries a price at
  * all, and the caller falls back to the base item under the book in force.
  */
-async function acceptedQuoteRange(app: FastifyInstance, engagementId: string): Promise<QuotedRange | null> {
+async function acceptedQuoteRange(app: FastifyInstance, engagementId: string, taxYear: number): Promise<QuotedRange | null> {
   const { rows } = await app.db.query<{
     quantity: string; unit_cents: number | null; line_cents: number | null; is_pass_through: boolean;
     version_number: number; amount_cents: number | null; price_min_cents: number | null; price_max_cents: number | null;
@@ -293,9 +294,10 @@ async function acceptedQuoteRange(app: FastifyInstance, engagementId: string): P
        JOIN quotes q ON q.id = s.source_quote_id AND q.status = 'accepted'
        JOIN price_book_versions v ON v.id = s.price_book_version_id
        LEFT JOIN price_book_items i ON i.version_id = s.price_book_version_id AND i.item_code = s.item_code
-      WHERE s.engagement_id = $1
+      WHERE s.engagement_id = $1 AND (s.tax_year IS NULL OR s.tax_year = $2)
       ORDER BY s.sort_order`,
-    [engagementId]
+    // R89: an engagement holding several years quoted each year's lines; this return's range is its own year's.
+    [engagementId, taxYear]
   );
   let min = 0;
   let max = 0;
@@ -342,19 +344,27 @@ export function registerTaxRoutes(app: FastifyInstance): void {
      * an active tax engagement for this client and year with no return record is attached to;
      * one that already has its return is named.
      */
-    const existing = await app.db.query<{ id: string; te_id: string | null }>(
-      `SELECT e.id, te.id AS te_id FROM engagements e LEFT JOIN tax_engagements te ON te.engagement_id = e.id
-        WHERE e.contact_id = $1 AND e.service_line = 'tax' AND e.status IN ('active', 'on_hold') AND e.period_key = $2
-          AND COALESCE(e.business_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE($3::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
-        ORDER BY e.created_at LIMIT 1`,
-      [b.contactId, String(b.taxYear), b.businessId ?? null]
-    );
-    if (existing.rows[0]?.te_id) {
-      throw new AppError(409, 'return_exists', `This client already has a ${b.taxYear} return record (tax engagement ${existing.rows[0].te_id}); open that one.`);
+    /*
+     * R89 (2026-09-29): a year is held either as an engagement's period or as a return inside an
+     * engagement that holds several years. Every active tax engagement of this client and entity that
+     * covers the year is read; a return for the year in any of them (withdrawn included, which the
+     * (engagement, year) key still holds) is named, and an engagement for the year with no return
+     * for it is attached to.
+     */
+    const { activeTaxEngagementsForYears } = await import('../engagements/period.ts');
+    const held = await activeTaxEngagementsForYears(app, b.contactId, b.businessId ?? null, [b.taxYear]);
+    const heldReturn = held.length === 0 ? null : (await app.db.query<{ id: string }>(
+      `SELECT id FROM tax_engagements WHERE engagement_id = ANY($1::uuid[]) AND tax_year = $2
+        ORDER BY (stage = 'withdrawn'), created_at LIMIT 1`,
+      [held.map((h) => h.id), b.taxYear]
+    )).rows[0];
+    if (heldReturn) {
+      throw new AppError(409, 'return_exists', `This client already has a ${b.taxYear} return record (tax engagement ${heldReturn.id}); open that one.`);
     }
+    const existing = held.find((h) => h.periodKey === String(b.taxYear));
     let parentId: string;
-    if (existing.rows[0]) {
-      parentId = existing.rows[0].id;
+    if (existing) {
+      parentId = existing.id;
       if (b.businessId) await app.db.query(`UPDATE engagements SET business_id = COALESCE(business_id, $2) WHERE id = $1`, [parentId, b.businessId]);
     } else {
       if (!b.reason) {
@@ -447,7 +457,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
               ck.docs_received, ck.docs_missing, ck.docs_total,
               -- R91: an open return from an accepted quote with no checklist yet (the backfill door applies).
               (ck.docs_total IS NULL AND te.stage::text NOT IN ('completed', 'withdrawn')
-                AND EXISTS (SELECT 1 FROM engagement_scope_items s WHERE s.engagement_id = te.engagement_id AND s.source_quote_id IS NOT NULL)) AS checklist_backfillable,
+                AND EXISTS (SELECT 1 FROM engagement_scope_items s WHERE s.engagement_id = te.engagement_id AND s.source_quote_id IS NOT NULL AND (s.tax_year IS NULL OR s.tax_year = te.tax_year))) AS checklist_backfillable,
               -- R93: the day a return went overdue (derived deadline passed, not filed); null otherwise.
               CASE WHEN te.filed_date IS NULL AND te.stage::text NOT IN ('filed', 'completed', 'withdrawn')
                      AND COALESCE(te.extended_deadline, te.original_deadline) < $${todayParam}::date
@@ -521,7 +531,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
      * assigned preparer (the PTIN-holder default) and who may be the PTIN holder at all.
      */
     const te = rows[0] as {
-      stage: TaxStage; engagement_id: string; return_type: string; preparer_id: string | null;
+      stage: TaxStage; engagement_id: string; tax_year: number; return_type: string; preparer_id: string | null;
       f8879_document_id: string | null; f8879_signed_at: Date | null;
       estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null;
     };

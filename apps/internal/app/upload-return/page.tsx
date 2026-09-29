@@ -42,7 +42,8 @@ export default function UploadReturnPage() {
     setInlineErr(null);
     setDone(null);
     try {
-      const res = await api<{ taxEngagements: TaxEngagement[] }>(`/tax-engagements`);
+      // The client's own returns, asked by contact: the unfiltered list is capped, and an engagement may hold one per year (R89).
+      const res = await api<{ taxEngagements: TaxEngagement[] }>(`/tax-engagements?contactId=${encodeURIComponent(c.id)}`);
       const own = res.taxEngagements.filter((t: TaxEngagement & { contact_id?: string }) => (t as { contact_id?: string }).contact_id === c.id);
       // The matches clear only once the pick succeeded, so a refusal has a button to sit beside.
       setContact(c);
@@ -123,7 +124,15 @@ export default function UploadReturnPage() {
             {engagements.length > 0 ? (
               <label className="field">
                 Tax engagement
-                <select value={engagementId} onChange={(e) => setEngagementId(e.target.value)}>
+                {/* R89: choosing a return sets its year, so a 2022 return's deliverable is filed under 2022. */}
+                <select
+                  value={engagementId}
+                  onChange={(e) => {
+                    setEngagementId(e.target.value);
+                    const chosen = engagements.find((t) => t.id === e.target.value);
+                    if (chosen) setTaxYear(String(chosen.tax_year));
+                  }}
+                >
                   {engagements.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.tax_year} {t.return_type.toUpperCase()} — {t.stage}

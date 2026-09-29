@@ -93,11 +93,12 @@ export function registerSignatureRoutes(app: FastifyInstance): void {
       `SELECT se.id, se.type, se.status, se.sent_at, se.completed_at, se.signed_document_id,
               CASE WHEN se.type = 'f8879' AND se.completed_at IS NOT NULL
                    THEN to_char(se.completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') END AS signed_on,
-              se.engagement_id, e.service_line::text AS service_line,
+              se.engagement_id, se.tax_engagement_id, e.service_line::text AS service_line,
               te.tax_year, te.return_type::text AS return_type, b.name AS business_name
          FROM signature_envelopes se
          LEFT JOIN engagements e ON e.id = se.engagement_id
-         LEFT JOIN tax_engagements te ON te.id = COALESCE(se.tax_engagement_id, (SELECT t2.id FROM tax_engagements t2 WHERE t2.engagement_id = e.id LIMIT 1))
+         -- R89: an envelope for the whole engagement (no return named) reads the engagement's newest open return.
+         LEFT JOIN tax_engagements te ON te.id = COALESCE(se.tax_engagement_id, (SELECT t2.id FROM tax_engagements t2 WHERE t2.engagement_id = e.id ORDER BY (t2.stage = 'withdrawn'), t2.tax_year DESC LIMIT 1))
          LEFT JOIN businesses b ON b.id = e.business_id
         WHERE se.contact_id = $1 AND se.status NOT IN ('voided', 'declined')
           -- R87: a §7216 consent is answered on /consent and read from its own state (GET /portal/consents);

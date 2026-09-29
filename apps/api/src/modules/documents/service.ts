@@ -657,8 +657,9 @@ export async function runDocumentChaseJob(
   }
 
   // Automation 5: 7-day non-response → Brian + Jackson (once per engagement).
-  const stalled = await app.db.query<{ id: string; contact_id: string; first_name: string; last_name: string }>(
-    `SELECT te.id, c.id AS contact_id, c.first_name, c.last_name
+  // R89: per return, and an engagement may hold one per year, so each alert and call names its year.
+  const stalled = await app.db.query<{ id: string; contact_id: string; first_name: string; last_name: string; tax_year: number }>(
+    `SELECT te.id, c.id AS contact_id, c.first_name, c.last_name, te.tax_year
      FROM tax_engagements te
      JOIN engagements e ON e.id = te.engagement_id
      JOIN contacts c ON c.id = e.contact_id
@@ -679,7 +680,7 @@ export async function runDocumentChaseJob(
             staffId,
             type: 'client_non_response',
             severity: 'warning',
-            title: `No client response ${alertDays}+ days: ${s.first_name} ${s.last_name}`,
+            title: `No client response ${alertDays}+ days: ${s.first_name} ${s.last_name} (${s.tax_year} return)`,
             contactId: s.contact_id,
             relatedObjectType: 'tax_engagement',
             relatedObjectId: s.id,
@@ -690,7 +691,7 @@ export async function runDocumentChaseJob(
       // documents arrive (docs_received hook).
       if (rene) {
         await createTask(app, {
-          title: `Call ${s.first_name} ${s.last_name} — no response to document request (${alertDays}+ days)`,
+          title: `Call ${s.first_name} ${s.last_name} — no response to the ${s.tax_year} document request (${alertDays}+ days)`,
           assignedStaffId: rene,
           contactId: s.contact_id,
           priority: 1,

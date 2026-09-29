@@ -269,7 +269,8 @@ export async function closeEngagementIfAllReturnsDone(
     row.engagement_id,
     {
       outcome: 'completed',
-      reason: 'Every return on this engagement is filed and accepted.',
+      // R89: an engagement may hold one return per year; a withdrawn year is closed too, and the words say so.
+      reason: 'Every return on this engagement is filed and accepted, or withdrawn.',
       endedOn: todayChicago(),
     },
     actor

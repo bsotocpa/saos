@@ -15,7 +15,7 @@ import { AppError } from '../../types.ts';
 import { writeAudit } from '../../audit.ts';
 import { engagementLinesForQuote } from '../pricing/engagement-lines.ts';
 import { todayChicago } from '../tax/deadlines.ts';
-import { activeEngagementsFor, periodKeyFor } from './period.ts';
+import { activeEngagementsFor, activeTaxEngagementsForYears, defaultTaxYear, periodKeyFor } from './period.ts';
 
 export interface ChangeOrderTarget {
   engagementId: string;
@@ -50,6 +50,19 @@ export async function quoteTaxYearWithSource(
   return { year, source: 'interview' };
 }
 
+/**
+ * R89 (2026-09-29): the return years a quote is for, newest first. Its chosen lines name them; a
+ * quote whose lines name none (every quote before 0134) is for its one year, or the default.
+ */
+export async function quoteReturnYears(app: FastifyInstance, quoteId: string): Promise<number[]> {
+  const { rows } = await app.db.query<{ tax_year: number }>(
+    `SELECT DISTINCT tax_year FROM quote_line_items WHERE quote_id = $1 AND chosen AND tax_year IS NOT NULL ORDER BY tax_year DESC`,
+    [quoteId]
+  );
+  if (rows.length > 0) return rows.map((r) => r.tax_year);
+  return [(await quoteTaxYear(app, quoteId)) ?? defaultTaxYear(todayChicago())];
+}
+
 /** Each engagement line on the quote with the period it would cover. */
 export async function periodsForQuote(
   app: FastifyInstance,
@@ -58,7 +71,9 @@ export async function periodsForQuote(
   const { year: taxYear, source } = await quoteTaxYearWithSource(app, quoteId);
   const lines = await engagementLinesForQuote(app, quoteId);
   const todayIso = todayChicago();
-  return lines.map((l) => ({ serviceLine: l.serviceLine, periodKey: periodKeyFor(l.serviceLine, { taxYear, todayIso }), source }));
+  // R89: a tax engagement's period is the newest year its lines name (acceptance sets the same).
+  const newest = (await quoteReturnYears(app, quoteId))[0] ?? taxYear;
+  return lines.map((l) => ({ serviceLine: l.serviceLine, periodKey: periodKeyFor(l.serviceLine, { taxYear: l.serviceLine === 'tax' ? newest : taxYear, todayIso }), source }));
 }
 
 /**
@@ -79,9 +94,15 @@ export async function assertChangeOrderIfActive(
   const q = await app.db.query<{ business_id: string | null }>(`SELECT business_id FROM quotes WHERE id = $1`, [quoteId]);
   const businessId = q.rows[0]?.business_id ?? null;
   const candidates: Array<{ id: string; title: string | null; serviceLine: string; periodKey: string }> = [];
+  // R89: tax work is held by year, as a period or as a return inside a multi-year engagement.
+  const years = periods.some((p) => p.serviceLine === 'tax') ? await quoteReturnYears(app, quoteId) : [];
+  const taxHolders = years.length > 0 ? await activeTaxEngagementsForYears(app, contactId, businessId, years) : [];
   for (const p of periods) {
     if (p.periodKey === null) continue; // per-matter lines: not enforced (period.ts)
-    for (const e of await activeEngagementsFor(app, contactId, p.serviceLine, p.periodKey, businessId)) {
+    const found = p.serviceLine === 'tax'
+      ? taxHolders.map((e) => ({ id: e.id, title: e.title }))
+      : await activeEngagementsFor(app, contactId, p.serviceLine, p.periodKey, businessId);
+    for (const e of found) {
       candidates.push({ id: e.id, title: e.title, serviceLine: p.serviceLine, periodKey: p.periodKey });
     }
   }
@@ -94,6 +115,26 @@ export async function assertChangeOrderIfActive(
         'change_order_target_not_active',
         'The engagement this quote says it replaces is not active work on a line this quote covers. Pick the engagement it actually replaces, or send it as a plain quote.'
       );
+    }
+    /*
+     * R89: a change order withdraws the engagement it replaces with every unfiled return inside it.
+     * An engagement holding several years must not lose a year the new quote does not carry: the
+     * quote names every unfiled year the old one holds, or it is refused before anything moves.
+     */
+    if (target.serviceLine === 'tax') {
+      const { PRE_FILED_STAGES } = await import('./close.ts');
+      const held = await app.db.query<{ tax_year: number }>(
+        `SELECT DISTINCT tax_year FROM tax_engagements WHERE engagement_id = $1 AND stage = ANY($2::tax_stage[]) ORDER BY tax_year DESC`,
+        [target.id, [...PRE_FILED_STAGES]]
+      );
+      const dropped = held.rows.map((r) => r.tax_year).filter((y) => !years.includes(y));
+      if (dropped.length > 0) {
+        throw new AppError(
+          409,
+          'change_order_drops_years',
+          `The engagement this quote replaces still holds unfiled returns for ${dropped.join(', ')}, which this quote does not carry; replacing it would withdraw them. Add those years to the quote.`
+        );
+      }
     }
     return { engagementId: target.id, serviceLine: target.serviceLine, periodKey: target.periodKey };
   }

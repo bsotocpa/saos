@@ -18,7 +18,7 @@ import { api, isAuthed } from '../../lib/api';
 import {
   addCustomLine, addLine, bookPrice, builderSummary, groupsOpenByDefault, isOffBook, isPicked, lineTotals, matchesFilter, orderGroups,
   packageDiscountCents, parseDollars, pickedDepositCents as depositOfPicked, quotedRange, referralDiscountCents,
-  referralRowLabel, showsQuantity, taxYearLabel, taxYearOptions, unitWords,
+  referralRowLabel, showsQuantity, SURCHARGE_ITEM, surchargeYear, taxYearLabel, taxYearOptions, unitWords, yearLines,
   type CatalogGroup, type ClientType, type PickedLine, type ReferralRule, type TaxYearSource,
 } from './builder-lib';
 import { BuilderV1Composer } from './builder-v1';
@@ -115,6 +115,8 @@ export default function PipelinePage() {
   /** Item 13c: the year on the quote — the default until changed; the interview's when it said so. */
   const [taxYear, setTaxYear] = useState<number | null>(null);
   const [taxYearSource, setTaxYearSource] = useState<TaxYearSource>('default');
+  /** R89: more years the same return is quoted for, beside the tax year above; each repeats its lines. */
+  const [moreYears, setMoreYears] = useState<number[]>([]);
   const [bundles, setBundles] = useState<CatalogBundle[]>([]);
   /** The load result only: a refused send renders beside the button that sent (Brian, 2026-09-19, defect 2). */
   const [error, setError] = useState('');
@@ -351,7 +353,18 @@ export default function PipelinePage() {
    *
    * `null` means no chosen line carries a deposit — which is different from a deposit of zero.
    */
-  const pickedDepositCents = useMemo(() => depositOfPicked(picked, catalog, referralRule), [picked, catalog, referralRule]);
+  /*
+   * R89: THE LINES THE QUOTE WILL CARRY. The picked lines are one year's return and its schedules;
+   * every chosen year repeats the return lines as its own group, and the prior-year surcharge joins
+   * each year more than two back, as the server will add it. Totals, the deposit and the payload
+   * all read these, so what the person reads is what the quote carries.
+   */
+  const quoteYears = useMemo(() => (taxYear ? [...new Set([taxYear, ...moreYears])].sort((a, b) => b - a) : []), [taxYear, moreYears]);
+  const effective = useMemo(
+    () => (defaultTaxYear ? yearLines(picked, catalog, quoteYears, defaultTaxYear) : picked),
+    [picked, catalog, quoteYears, defaultTaxYear]
+  );
+  const pickedDepositCents = useMemo(() => depositOfPicked(effective, catalog, referralRule), [effective, catalog, referralRule]);
   /** The catalog as grouped rows: the groups fitting the client type first, the filter applied inside each. */
   const groupedCatalog = useMemo(() => {
     const ordered = orderGroups(groups, clientType);
@@ -365,6 +378,8 @@ export default function PipelinePage() {
         group: g,
         rows: catalog
           .filter((i) => i.service_line !== 'deposit')
+          // R89: the prior-year surcharge is the quote's own, added per year; nobody picks it.
+          .filter((i) => i.item_code !== SURCHARGE_ITEM)
           .filter((i) => (g.key === '__other' ? !i.group_key || !known.has(i.group_key) : i.group_key === g.key))
           .filter((i) => matchesFilter(i, g.label, itemFilter))
           .sort((a, b) => a.sort_order - b.sort_order || a.item_code.localeCompare(b.item_code)),
@@ -372,10 +387,10 @@ export default function PipelinePage() {
       .filter((g) => g.rows.length > 0);
   }, [catalog, groups, clientType, itemFilter]);
   const openByDefault = useMemo(() => groupsOpenByDefault(groupedCatalog.map((g) => g.group), clientType, phone), [groupedCatalog, clientType, phone]);
-  const summary = useMemo(() => builderSummary(picked, catalog), [picked, catalog]);
+  const summary = useMemo(() => builderSummary(effective, catalog), [effective, catalog]);
   const discountCents = packageRule ? packageDiscountCents(packageRule, summary.committedCents) : 0;
   /** R75: the referral discount's own figure, beside the package discount; the quoted total is net of both. */
-  const referralCents = referralDiscountCents(picked, catalog, referralRule);
+  const referralCents = referralDiscountCents(effective, catalog, referralRule);
   const quotedTotalCents = Math.max(0, summary.committedCents - discountCents - referralCents);
   const range = quotedRange(quotedTotalCents, bandPercent, asRange);
   const unconfirmed = picked.filter((p) => catalog.find((i) => i.item_code === p.itemCode)?.needs_confirmation);
@@ -426,7 +441,10 @@ export default function PipelinePage() {
     if (!slug) { setPackageRule(null); return; }
     try {
       const composed = await api<ComposedPackage>(`/bundles/${encodeURIComponent(slug)}`);
-      const lines: PickedLine[] = composed.lines.map((l) => ({ itemCode: l.itemCode, quantity: Number(l.quantity) || 1, isOptional: l.isOptional, unitCents: null }));
+      // R89: a package listing the prior-year surcharge fills everything else; the quote adds the surcharge itself.
+      const lines: PickedLine[] = composed.lines
+        .filter((l) => l.itemCode !== SURCHARGE_ITEM)
+        .map((l) => ({ itemCode: l.itemCode, quantity: Number(l.quantity) || 1, isOptional: l.isOptional, unitCents: null }));
       setPicked(lines);
       setAmountText(Object.fromEntries(lines.map((l) => [l.itemCode, dollarsOf(itemOf(l.itemCode)?.amount_cents ?? null)])));
       setPackageRule(composed.discount);
@@ -456,11 +474,14 @@ export default function PipelinePage() {
     }
   };
   /** The lines as the API takes them: a book code or a custom line, the amount only when the person set one. */
-  const linesPayload = () => picked.map((p) => ({
+  // R89: the lines the quote carries, less the surcharge the server adds; a line of a multi-year quote names its year.
+  const payloadLines = () => effective.filter((p) => !p.automatic);
+  const linesPayload = () => payloadLines().map((p) => ({
     ...(p.custom ? { custom: { name: p.custom.name, serviceLine: p.custom.serviceLine } } : { itemCode: p.itemCode }),
     quantity: p.quantity,
     isOptional: p.isOptional,
     ...(p.unitCents !== null && p.unitCents !== undefined ? { unitCents: p.unitCents } : {}),
+    ...(p.taxYear !== undefined ? { taxYear: p.taxYear } : {}),
   }));
   /**
    * A refusal lands at the control it names (2026-09-19): the server's issue path picks the key —
@@ -474,7 +495,7 @@ export default function PipelinePage() {
     const lineIssue = issues.find((i) => /^lines\.\d+/.test(i.path ?? ''));
     if (lineIssue?.message) {
       const n = Number(/^lines\.(\d+)/.exec(lineIssue.path ?? '')?.[1] ?? -1);
-      const code = picked[n]?.itemCode;
+      const code = payloadLines()[n]?.itemCode;
       return { key: code ? `line-${code}` : 'build', message: lineIssue.message };
     }
     return { key: 'build', message: refused(err) };
@@ -556,6 +577,7 @@ export default function PipelinePage() {
     setDraftQuoteId(''); setDraftDeposit(null); setOverrideForm(null); setOverrideError(''); setInlineErr(null);
     setAmountText({}); setPriceChangeReason(''); setCustomForm(null); setCustomError('');
     setPackageRule(null); setPackageForm(null); setPackageSaved(null); setClientTypeChosen(false);
+    setMoreYears([]);
   };
 
   /**
@@ -1234,6 +1256,54 @@ export default function PipelinePage() {
                             The engagement is titled with it and the client reads it on the proposal.
                           </span>
                         </label>
+                      ) : null}
+
+                      {/*
+                        R89 (2026-09-29): MORE YEARS OF THE SAME RETURN. Each year ticked repeats the return
+                        lines above as its own group; acceptance opens one return per year inside one
+                        engagement. A year more than two back carries the prior-year surcharge.
+                      */}
+                      {picked.some((p) => { const l = p.custom?.serviceLine ?? itemOf(p.itemCode)?.service_line; return l === 'individual_tax' || l === 'business_tax'; }) && defaultTaxYear && taxYear ? (
+                        <fieldset className="field" data-testid="more-years" style={{ border: 0, padding: 0, margin: '10px 0 0' }}>
+                          <legend>Also quote the same return for</legend>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
+                            {taxYearOptions(defaultTaxYear).filter((y) => y !== taxYear).map((y) => (
+                              <label key={y} className="inline-check">
+                                <input
+                                  type="checkbox"
+                                  checked={moreYears.includes(y)}
+                                  onChange={(e) => setMoreYears((prev) => (e.target.checked ? [...prev, y] : prev.filter((x) => x !== y)))}
+                                />
+                                <span>{y}{surchargeYear(y, defaultTaxYear) ? ' · prior-year surcharge' : ''}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                      ) : null}
+
+                      {effective.some((p) => p.taxYear !== undefined || p.automatic) ? (
+                        <div className="qb-years" data-testid="quote-years">
+                          {quoteYears.map((y) => {
+                            const rows = effective.filter((p) => (p.taxYear === y) || (quoteYears.length === 1 && p.automatic));
+                            if (rows.length === 0) return null;
+                            return (
+                              <div key={y} data-testid="quote-year" data-year={y}>
+                                <p className="small" style={{ margin: '8px 0 2px' }}><strong>{y}</strong></p>
+                                <ul className="list small">
+                                  {rows.map((p, i) => {
+                                    const t = lineTotals(p, itemOf(p.itemCode));
+                                    return (
+                                      <li key={`${p.itemCode}-${i}`}>
+                                        <span className="grow">{lineName(p)}{p.automatic ? <span className="muted"> — added by the quote</span> : null}</span>
+                                        <span>{t.exactCents !== null ? money(t.exactCents) : t.minCents !== null && t.maxCents !== null ? `${money(t.minCents)}–${money(t.maxCents)}` : '—'}</span>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            );
+                          })}
+                        </div>
                       ) : null}
 
                       <div className="qb-totals" aria-live="polite">

@@ -198,6 +198,16 @@
       "steps": [
         { "id": "X1", "text": "The CEO merges a marked pair; the survivor is chosen by rule (the portal sign-in, else the most engagements); the retired record redirects to the survivor and leaves search", "device": "phone + laptop" }
       ]
+    },
+    "Y": {
+      "title": "Path B, the two-year variant: one engagement, one return per year (R89)",
+      "steps": [
+        { "id": "Y1", "text": "The builder quotes the base return and its schedule for the current year and three back; each year is its own group, the prior-year surcharge in the older group only, added by the quote", "device": "phone + laptop" },
+        { "id": "Y2", "text": "The client's proposal reads one heading per year over its lines, the surcharge under the older year only; the client accepts", "device": "phone + laptop" },
+        { "id": "Y3", "text": "The deposit invoice carries one line per year", "device": "phone + laptop" },
+        { "id": "Y4", "text": "The portal Home reads one row per year", "device": "phone + laptop" },
+        { "id": "Y5", "text": "Ops reads two returns, each at its own stage, under one engagement", "device": "phone + laptop" }
+      ]
     }
   }
 }

@@ -22,7 +22,7 @@ await app.ready();
 const COUNT = `SELECT count(*)::int AS open_returns,
          count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM document_requests dr WHERE dr.tax_engagement_id = te.id AND dr.source = 'checklist'))::int AS without_checklist,
          count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM document_requests dr WHERE dr.tax_engagement_id = te.id AND dr.source = 'checklist')
-                            AND EXISTS (SELECT 1 FROM engagement_scope_items s WHERE s.engagement_id = te.engagement_id AND s.source_quote_id IS NOT NULL))::int AS without_checklist_from_a_quote
+                            AND EXISTS (SELECT 1 FROM engagement_scope_items s WHERE s.engagement_id = te.engagement_id AND s.source_quote_id IS NOT NULL AND (s.tax_year IS NULL OR s.tax_year = te.tax_year)))::int AS without_checklist_from_a_quote
     FROM tax_engagements te WHERE te.stage::text NOT IN ('completed', 'withdrawn')`;
 try {
   const before = (await app.db.query(COUNT)).rows[0];
@@ -30,7 +30,7 @@ try {
     `SELECT te.id FROM tax_engagements te
       WHERE te.stage::text NOT IN ('completed', 'withdrawn')
         AND NOT EXISTS (SELECT 1 FROM document_requests dr WHERE dr.tax_engagement_id = te.id AND dr.source = 'checklist')
-        AND EXISTS (SELECT 1 FROM engagement_scope_items s WHERE s.engagement_id = te.engagement_id AND s.source_quote_id IS NOT NULL)
+        AND EXISTS (SELECT 1 FROM engagement_scope_items s WHERE s.engagement_id = te.engagement_id AND s.source_quote_id IS NOT NULL AND (s.tax_year IS NULL OR s.tax_year = te.tax_year))
       ORDER BY te.created_at`
   );
   const ceo = await app.db.query<{ id: string }>(

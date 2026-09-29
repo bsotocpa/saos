@@ -29,6 +29,8 @@ interface Line {
   is_optional: boolean;
   chosen: boolean;
   is_pass_through: boolean;
+  /** R89: the year a return line is for; null on other lines and on quotes written before. */
+  tax_year?: number | null;
   /** R75: whether the quote's Hilo referral discount reaches this line (an add-on the client ticks takes it too). */
   referral_reached?: boolean;
 }
@@ -217,8 +219,22 @@ export default function QuotePage() {
   }
 
   const included = lines.filter((l) => !l.is_optional);
-  const optional = lines.filter((l) => l.is_optional);
   const label = (l: Line) => (lang === 'es' ? l.description_es : l.description_en);
+  /*
+   * R89 (2026-09-29): A QUOTE FOR SEVERAL YEARS reads one heading per year, newest first, with that
+   * year's lines under it; lines that are not a return follow under no heading. A one-year quote
+   * reads as it always has. An add-on offered in several years is one tick (the tick is by item),
+   * so it is listed once with its years.
+   */
+  const years = [...new Set(lines.map((l) => l.tax_year).filter((y): y is number => typeof y === 'number'))].sort((a, b) => b - a);
+  const byYear = years.length > 1;
+  const includedGroups: Array<{ year: number | null; lines: Line[] }> = byYear
+    ? [...years.map((y) => ({ year: y as number | null, lines: included.filter((l) => l.tax_year === y) })),
+       { year: null, lines: included.filter((l) => typeof l.tax_year !== 'number') }].filter((g) => g.lines.length > 0)
+    : [{ year: null, lines: included }];
+  const optional = lines.filter((l) => l.is_optional).filter((l, i, all) => all.findIndex((o) => o.item_code === l.item_code) === i);
+  const optionalYears = (code: string) =>
+    byYear ? lines.filter((l) => l.is_optional && l.item_code === code && typeof l.tax_year === 'number').map((l) => l.tax_year).join(', ') : '';
   const isRange = quote?.range_min_cents !== null && quote?.range_max_cents !== null;
 
   return (
@@ -228,15 +244,18 @@ export default function QuotePage() {
 
       <section className="card">
         <h2>{t('quote_included')}</h2>
-        {taxYear ? (
+        {taxYear && !byYear ? (
           <p className="muted small">
             {t('quote_tax_year')}: <strong>{taxYear}</strong>
             {taxYearSource === 'interview' ? ` (${t('quote_tax_year_interview')})` : ''}
           </p>
         ) : null}
+        {includedGroups.map((g) => (
+        <div key={g.year ?? 'other'} data-testid="quote-year-group" data-year={g.year ?? ''}>
+        {g.year !== null ? <h3>{t('quote_tax_year')} {g.year}</h3> : null}
         <ul className="quote-lines">
-          {included.map((l) => (
-            <li key={l.item_code}>
+          {g.lines.map((l, i) => (
+            <li key={`${l.item_code}-${i}`}>
               <span className="quote-desc">
                 {label(l)}
                 {Number(l.quantity) > 1 ? ` × ${Number(l.quantity)}` : ''}
@@ -257,6 +276,8 @@ export default function QuotePage() {
             </li>
           ))}
         </ul>
+        </div>
+        ))}
       </section>
 
       {optional.length > 0 ? (
@@ -272,7 +293,7 @@ export default function QuotePage() {
                     checked={Boolean(picked[l.item_code])}
                     onChange={(e) => setPicked((p) => ({ ...p, [l.item_code]: e.target.checked }))}
                   />
-                  <span>{label(l)}</span>
+                  <span>{label(l)}{optionalYears(l.item_code) ? ` · ${optionalYears(l.item_code)}` : ''}</span>
                 </label>
                 <span className="quote-amount">
                   {l.line_cents !== null ? formatMoney(l.line_cents) : '—'}

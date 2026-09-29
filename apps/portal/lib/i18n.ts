@@ -881,6 +881,8 @@ export interface Envelope {
   /** R88: the calendar day a wet-signed 8879 was signed (YYYY-MM-DD), never zone-shifted. */
   signed_on?: string | null;
   engagement_id?: string | null;
+  /** The return the envelope was sent for, when it names one (an 8879 does; an engagement letter does not). */
+  tax_engagement_id?: string | null;
   service_line?: string | null;
   tax_year?: number | null;
   return_type?: string | null;
@@ -895,7 +897,8 @@ const envelopeRank = (s: string): number => ENVELOPE_RANK[s] ?? 0;
 export function envelopeRows(envelopes: Envelope[]): Envelope[] {
   const byDocument = new Map<string, Envelope>();
   for (const e of envelopes) {
-    const key = `${e.type}:${e.engagement_id ?? ''}`;
+    // R89: an engagement may hold one return per year, each with its own 8879: the return is the document's key when named.
+    const key = `${e.type}:${e.tax_engagement_id ?? e.engagement_id ?? ''}`;
     const have = byDocument.get(key);
     if (!have || envelopeRank(e.status) > envelopeRank(have.status)) byDocument.set(key, e);
   }

@@ -313,8 +313,10 @@ export async function useConsentEngagement(
 ): Promise<{ answered: boolean; engagementId: string | null; engagementLabel: string | null; openedOn: string | null }> {
   const live = await app.db.query<{ id: string; opened: Date; opened_on: string; label: string | null }>(
     `SELECT e.id, e.created_at AS opened, to_char(e.created_at AT TIME ZONE 'America/Chicago', 'YYYY-MM-DD') AS opened_on,
-            (SELECT te.tax_year || ' Form ' || upper(replace(te.return_type::text, 's', '-S'))
-               FROM tax_engagements te WHERE te.engagement_id = e.id AND te.stage <> 'withdrawn' ORDER BY te.created_at LIMIT 1) AS label
+            -- R89: an engagement holding several years names them all, newest first ("2025, 2022 Form 1040").
+            (SELECT string_agg(te.tax_year::text, ', ' ORDER BY te.tax_year DESC) || ' Form ' ||
+                    upper(replace((array_agg(te.return_type::text ORDER BY te.tax_year DESC))[1], 's', '-S'))
+               FROM tax_engagements te WHERE te.engagement_id = e.id AND te.stage <> 'withdrawn') AS label
        FROM engagements e
       WHERE e.contact_id = $1 AND e.service_line = 'tax' AND e.status IN ('draft', 'active', 'on_hold')
       ORDER BY e.created_at, e.id`,

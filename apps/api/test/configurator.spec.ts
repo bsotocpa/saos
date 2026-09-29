@@ -241,7 +241,7 @@ test('the S election is detected from a 1120-S filing too, not just entity_type'
 
   evidence = await sElectionEvidence(app, client.id);
   assert.equal(evidence.hasActiveSElection, true, 'filing an 1120-S IS an active S election');
-  assert.match(evidence.reasons.join(' '), /1120-S engagement/);
+  assert.match(evidence.reasons.join(' '), /1120-S return/);
 
   // And the gate binds on that evidence alone.
   const engId = await engagementFor(client.id);

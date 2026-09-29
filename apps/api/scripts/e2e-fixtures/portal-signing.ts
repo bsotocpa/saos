@@ -110,7 +110,7 @@ export async function buildSigningFixture(app: FastifyInstance, deps: SigningDep
     const accepted = await acceptQuote(app, sentQuote.url.split('/').pop()!, {});
     await drainOutbox();
     const liveEngagementId = accepted.engagementId;
-    const liveReturn = await app.db.query<{ id: string; tax_year: number }>(`SELECT id, tax_year FROM tax_engagements WHERE engagement_id = $1`, [liveEngagementId]);
+    const liveReturn = await app.db.query<{ id: string; tax_year: number }>(`SELECT id, tax_year FROM tax_engagements WHERE engagement_id = $1 ORDER BY tax_year DESC`, [liveEngagementId]);
     if (!liveReturn.rows[0]) throw new Error('signing fixture: the accepted 1120-S quote opened no return record');
     // Two letters on the live engagement: the duplicate row.
     for (let i = 0; i < 2; i++) {

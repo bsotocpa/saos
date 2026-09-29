@@ -20,6 +20,10 @@ export interface PickedLine {
   unitCents?: number | null;
   /** A line written by hand: no book item, its own name and service line. */
   custom?: { name: string; serviceLine: string } | undefined;
+  /** R89: the year a return line is for, on a line yearLines() wrote; the picked lines themselves carry none. */
+  taxYear?: number | undefined;
+  /** R89: a line the quote adds by itself (the prior-year surcharge); shown, never sent. */
+  automatic?: boolean | undefined;
 }
 
 export interface CatalogLine {
@@ -327,4 +331,52 @@ export function pickedDepositCents(
 /** The words on the discount's own row: the book's label and its rate, "Hilo referral discount (50%)". */
 export function referralRowLabel(rule: Pick<ReferralRule, 'labelEn' | 'rate'>): string {
   return `${rule.labelEn} (${rule.rate}%)`;
+}
+
+/*
+ * THE YEARS A QUOTE IS FOR (Brian, 2026-09-29, R89) — the server's rule, mirrored so the lines and the
+ * totals the person reads are the ones the quote will carry (pricing/quote-years.ts).
+ *
+ * The picked lines are one year's return and its schedules. Each chosen year repeats every return
+ * line (individual_tax, business_tax) as its own group, each line carrying its year; a line that is
+ * not a return appears once. The prior-year surcharge is the quote's own: one per year more than two
+ * back (resolution.ts surchargeApplies), marked automatic, at the book's price, never sent. A
+ * surcharge a package listed among its lines is dropped for the same reason. One year: the lines
+ * carry no year (the server writes the quote's year on them) and only the surcharge can be added.
+ */
+export const SURCHARGE_ITEM = 'PRIOR_YEAR_SURCHARGE';
+const RETURN_LINES = new Set(['individual_tax', 'business_tax']);
+
+export function isReturnLine(line: PickedLine, item: CatalogLine | undefined): boolean {
+  return RETURN_LINES.has(serviceLineOf(line, item) ?? '');
+}
+
+/** More than two years before the default tax year (the prior calendar year): the surcharge applies. */
+export function surchargeYear(year: number, defaultTaxYear: number): boolean {
+  return defaultTaxYear - year > 2;
+}
+
+export function yearLines(
+  picked: readonly PickedLine[],
+  catalog: readonly CatalogLine[],
+  years: readonly number[],
+  defaultTaxYear: number
+): PickedLine[] {
+  const itemOf = (code: string) => catalog.find((i) => i.item_code === code);
+  const lines = picked.filter((p) => p.itemCode !== SURCHARGE_ITEM);
+  const hasReturn = lines.some((p) => isReturnLine(p, itemOf(p.itemCode)));
+  const chosen = [...new Set(years)].sort((a, b) => b - a);
+  if (!hasReturn || chosen.length === 0) return lines;
+  const surcharge = (y: number): PickedLine[] =>
+    surchargeYear(y, defaultTaxYear) && itemOf(SURCHARGE_ITEM)
+      ? [{ itemCode: SURCHARGE_ITEM, quantity: 1, isOptional: false, unitCents: null, automatic: true, taxYear: y }]
+      : [];
+  if (chosen.length === 1) return [...lines, ...surcharge(chosen[0]!)];
+  const out: PickedLine[] = [];
+  for (const y of chosen) {
+    for (const p of lines) if (isReturnLine(p, itemOf(p.itemCode))) out.push({ ...p, taxYear: y });
+    out.push(...surcharge(y));
+  }
+  for (const p of lines) if (!isReturnLine(p, itemOf(p.itemCode))) out.push(p);
+  return out;
 }

@@ -557,12 +557,13 @@ export async function processServiceOnboarding(
     }
   }
 
-  // Module F feeds the complexity score (states count) on the latest tax engagement.
+  // Module F feeds the complexity score (states count) on the latest tax engagement. R89: the returns a
+  // multi-year acceptance opens share one instant, so the newest year among them is the one it describes.
   if (modules.some((m) => m.key === 'module_f') && Array.isArray(answers.F4)) {
     await app.db.query(
       `UPDATE tax_engagements SET complexity_inputs = complexity_inputs || $2::jsonb
        WHERE id = (SELECT te.id FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
-                   WHERE e.contact_id = $1 ORDER BY te.created_at DESC LIMIT 1)`,
+                   WHERE e.contact_id = $1 ORDER BY te.created_at DESC, te.tax_year DESC LIMIT 1)`,
       [contactId, JSON.stringify({ states: (answers.F4 as string[]).length })]
     );
   }

@@ -30,6 +30,8 @@ const LineInput = z.object({
   isOptional: z.boolean().optional(),
   chosen: z.boolean().optional(),
   unitCents: z.number().int().min(0).optional(),
+  // R89: the year a return line is for; the server checks the rest (quote-years.ts).
+  taxYear: z.number().int().min(1990).max(2199).optional(),
   custom: z.object({
     name: z.string().trim().min(1, 'Name the line.').max(120),
     serviceLine: z.enum(CUSTOM_LINE_SERVICE_LINES),

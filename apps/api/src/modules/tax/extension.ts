@@ -127,7 +127,7 @@ export async function runExtensionDecisionListJob(
      * existed. A notification still needs a real person — that gate stays.
      */
     await createTask(app, {
-      title: `Review Extension Decision List — deadline ${list.deadline} (${list.count} engagement(s))`,
+      title: `Review Extension Decision List — deadline ${list.deadline} (${list.count} return(s))`,
       description: 'Mark each engagement: Extend or Push to finish. The auto-extension batch (Mar 25 / Apr 1 cutoffs) files only after this review.',
       assignedStaffId: ceo,
       dueDate: list.deadline,
@@ -151,7 +151,7 @@ export async function runExtensionDecisionListJob(
         [
           s.id,
           `Extension Decision List ready — deadline ${list.deadline}`,
-          `${list.count} engagement(s) not yet at Internal Review. Mark each: Extend or Push to finish.`,
+          `${list.count} return(s) not yet at Internal Review. Mark each: Extend or Push to finish.`,
         ]
       );
     }
@@ -347,10 +347,10 @@ export async function runSummerChaseJob(
     email: string | null;
     language: 'en' | 'es';
     extended_deadline: string | null;
-    preparer_id: string | null;
+    preparer_id: string | null; tax_year: number;
   }>(
     `SELECT te.id, c.id AS contact_id, c.first_name, c.last_name, c.email, c.language,
-            te.extended_deadline::text AS extended_deadline, te.preparer_id
+            te.extended_deadline::text AS extended_deadline, te.preparer_id, te.tax_year
      FROM tax_engagements te
      JOIN engagements e ON e.id = te.engagement_id
      JOIN contacts c ON c.id = e.contact_id
@@ -387,7 +387,7 @@ export async function runSummerChaseJob(
       await app.db.query(
         `INSERT INTO notifications (staff_id, type, severity, title, contact_id)
          VALUES ($1, 'extension_at_risk', 'critical', $2, $3)`,
-        [r.preparer_id, `Extension AT RISK: ${r.first_name} ${r.last_name} — no documents received`, r.contact_id]
+        [r.preparer_id, `Extension AT RISK: ${r.first_name} ${r.last_name} (${r.tax_year}) — no documents received`, r.contact_id]
       );
       atRiskAlerts++;
     }

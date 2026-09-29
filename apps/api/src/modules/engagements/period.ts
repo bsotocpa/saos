@@ -82,6 +82,34 @@ export async function activeEngagementsFor(
 }
 
 /**
+ * R89 (2026-09-29): the active tax engagements that already cover any of these years for this client
+ * and entity. A multi-year engagement's period is its newest year, and it holds its older years only
+ * as returns, so the one-active-per-period index sees the first and not the rest: this reads both,
+ * the period and every return not withdrawn. `years` is what each one holds.
+ */
+export async function activeTaxEngagementsForYears(
+  app: FastifyInstance,
+  contactId: string,
+  businessId: string | null,
+  years: readonly number[]
+): Promise<Array<{ id: string; title: string | null; periodKey: string | null; years: number[] }>> {
+  if (years.length === 0) return [];
+  const { rows } = await app.db.query<{ id: string; title: string | null; period_key: string | null; years: number[] | null }>(
+    `SELECT e.id, e.title, e.period_key,
+            array_agg(DISTINCT te.tax_year ORDER BY te.tax_year DESC) FILTER (WHERE te.stage <> 'withdrawn') AS years
+       FROM engagements e
+       LEFT JOIN tax_engagements te ON te.engagement_id = e.id
+      WHERE e.contact_id = $1 AND e.service_line = 'tax' AND e.business_id IS NOT DISTINCT FROM $2::uuid
+        AND e.status IN ('active', 'on_hold')
+      GROUP BY e.id
+     HAVING e.period_key = ANY($3::text[]) OR bool_or(te.stage <> 'withdrawn' AND te.tax_year = ANY($4::int[]))
+      ORDER BY min(e.created_at)`,
+    [contactId, businessId, years.map(String), [...years]]
+  );
+  return rows.map((r) => ({ id: r.id, title: r.title, periodKey: r.period_key, years: r.years ?? [] }));
+}
+
+/**
  * The legacy population the index does not cover: active/on-hold engagements with no
  * period. Reported by contact (name abbreviated: this goes into a report) — never guessed.
  */

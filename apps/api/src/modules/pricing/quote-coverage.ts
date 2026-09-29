@@ -127,17 +127,23 @@ export async function differentTaxYear(
   quoteId: string,
   contactId: string
 ): Promise<{ differs: boolean; quoteYear: string; liveYears: string[] } | null> {
-  const { periodsForQuote } = await import('../engagements/change-order.ts');
+  const { periodsForQuote, quoteReturnYears } = await import('../engagements/change-order.ts');
   const tax = (await periodsForQuote(app, quoteId)).find((p) => p.serviceLine === 'tax' && p.periodKey !== null);
   if (!tax) return null;
-  const { rows } = await app.db.query<{ period_key: string }>(
-    `SELECT DISTINCT period_key FROM engagements
-      WHERE contact_id = $1 AND service_line = 'tax' AND status IN ('draft', 'active', 'on_hold') AND period_key IS NOT NULL
-      ORDER BY period_key`,
+  // R89: a live year is an engagement's period or a return an engagement holds (a multi-year
+  // engagement holds its older years only as returns); the quote differs when none of its years is live.
+  const { rows } = await app.db.query<{ year: string }>(
+    `SELECT e.period_key AS year FROM engagements e
+      WHERE e.contact_id = $1 AND e.service_line = 'tax' AND e.status IN ('draft', 'active', 'on_hold') AND e.period_key IS NOT NULL
+     UNION
+     SELECT te.tax_year::text FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
+      WHERE e.contact_id = $1 AND e.service_line = 'tax' AND e.status IN ('draft', 'active', 'on_hold') AND te.stage <> 'withdrawn'
+     ORDER BY 1`,
     [contactId]
   );
-  const liveYears = rows.map((r) => r.period_key);
-  return { differs: !liveYears.includes(tax.periodKey!), quoteYear: tax.periodKey!, liveYears };
+  const liveYears = rows.map((r) => r.year);
+  const quoteYears = (await quoteReturnYears(app, quoteId)).map(String);
+  return { differs: !quoteYears.some((y) => liveYears.includes(y)), quoteYear: quoteYears.join(', '), liveYears };
 }
 
 export interface CoverageOverlap {

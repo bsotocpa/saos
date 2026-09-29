@@ -22,6 +22,13 @@ export interface ScopeItem {
   unitCents: number | null;
   lineCents: number | null;
   isPassThrough: boolean;
+  /** R89: the return year this line is for; null on non-return lines and on scope written before 0134. */
+  taxYear: number | null;
+}
+
+/** R89: the lines of one return, read out of a multi-year engagement's scope (a null year is the engagement's one year). */
+export function scopeForYear<T extends { taxYear: number | null }>(items: T[], taxYear: number): T[] {
+  return items.filter((i) => i.taxYear === null || i.taxYear === taxYear);
 }
 
 /**
@@ -47,14 +54,14 @@ export async function captureEngagementScope(
     `INSERT INTO engagement_scope_items
        (engagement_id, source_quote_id, source_quote_line_id, price_book_version_id,
         item_code, description_en, description_es, quantity, unit_cents, line_cents,
-        is_pass_through, sort_order)
+        is_pass_through, sort_order, tax_year)
      SELECT $1, $2, x.line_id, $3,
             x.item_code, x.description_en, x.description_es, x.quantity, x.unit_cents,
-            x.line_cents, x.is_pass_through, x.sort_order
+            x.line_cents, x.is_pass_through, x.sort_order, x.tax_year
        FROM jsonb_to_recordset($4::jsonb) AS x(
          line_id uuid, item_code text, description_en text, description_es text,
          quantity numeric, unit_cents integer, line_cents integer,
-         is_pass_through boolean, sort_order integer
+         is_pass_through boolean, sort_order integer, tax_year integer
        )`,
     [
       engagementId,
@@ -71,6 +78,7 @@ export async function captureEngagementScope(
           line_cents: i.lineCents,
           is_pass_through: i.isPassThrough,
           sort_order: i.sortOrder,
+          tax_year: i.taxYear,
         }))
       ),
     ]
@@ -86,10 +94,10 @@ export async function scopeForEngagement(
   const { rows } = await app.db.query<{
     item_code: string; description_en: string; description_es: string | null;
     quantity: string; unit_cents: number | null; line_cents: number | null;
-    is_pass_through: boolean;
+    is_pass_through: boolean; tax_year: number | null;
   }>(
     `SELECT item_code, description_en, description_es, quantity::text AS quantity,
-            unit_cents, line_cents, is_pass_through
+            unit_cents, line_cents, is_pass_through, tax_year
        FROM engagement_scope_items
       WHERE engagement_id = $1
       ORDER BY sort_order, item_code`,
@@ -103,6 +111,7 @@ export async function scopeForEngagement(
     unitCents: r.unit_cents,
     lineCents: r.line_cents,
     isPassThrough: r.is_pass_through,
+    taxYear: r.tax_year,
   }));
 }
 
@@ -121,10 +130,10 @@ export async function scopeForEngagements(
   const { rows } = await app.db.query<{
     engagement_id: string; item_code: string; description_en: string;
     description_es: string | null; quantity: string; unit_cents: number | null;
-    line_cents: number | null; is_pass_through: boolean;
+    line_cents: number | null; is_pass_through: boolean; tax_year: number | null;
   }>(
     `SELECT engagement_id, item_code, description_en, description_es,
-            quantity::text AS quantity, unit_cents, line_cents, is_pass_through
+            quantity::text AS quantity, unit_cents, line_cents, is_pass_through, tax_year
        FROM engagement_scope_items
       WHERE engagement_id = ANY($1::uuid[])
       ORDER BY engagement_id, sort_order, item_code`,
@@ -140,6 +149,7 @@ export async function scopeForEngagements(
       unitCents: r.unit_cents,
       lineCents: r.line_cents,
       isPassThrough: r.is_pass_through,
+      taxYear: r.tax_year,
     });
     out.set(r.engagement_id, list);
   }

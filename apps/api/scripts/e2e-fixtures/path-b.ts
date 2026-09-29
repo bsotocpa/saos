@@ -120,6 +120,8 @@ export async function buildPathB(app: FastifyInstance, deps: PathBDeps): Promise
       WHERE pbi.service_line = 'individual_tax' AND pbi.is_active AND pbi.display_on_quote
         AND pbi.amount_cents IS NOT NULL AND pbi.amount_cents > 0 AND COALESCE(pbi.deposit_cents, 0) = 0
         AND NOT pbi.needs_confirmation AND pbi.unit = 'flat'
+        -- R89: the prior-year surcharge is the quote's own, never a line a person adds.
+        AND pbi.item_code <> 'PRIOR_YEAR_SURCHARGE'
         AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
       ORDER BY pbi.amount_cents, pbi.item_code LIMIT 1`
   );

@@ -550,7 +550,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
      * Engagements created before #47 have no scope and get `null` — the page keeps
      * composing from service line and tax year, which is honest about what is known.
      */
-    const { scopeForEngagements, scopeName } = await import('../engagements/scope.ts');
+    const { scopeForEngagements, scopeForYear, scopeName } = await import('../engagements/scope.ts');
     const ids = rows.map((r) => String(r.id));
     const scopes = await scopeForEngagements(app, ids);
     const lang = client.language;
@@ -562,7 +562,9 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     })));
     return {
       engagements: rows.map((r) => {
-        const items = scopes.get(String(r.id)) ?? [];
+        // R89: one row per return; a multi-year engagement's row reads its own year's lines.
+        const all = scopes.get(String(r.id)) ?? [];
+        const items = r.tax_engagement_id && r.tax_year ? scopeForYear(all, Number(r.tax_year)) : all;
         const isFiled = r.stage === 'filed' || r.stage === 'completed';
         // R93: a deadline that passed with no filing reads as overdue, never as a bare past date.
         const overdue = r.stage ? overdueSince(r.deadline ?? null, todayChicago(), { stage: String(r.stage) }) : null;

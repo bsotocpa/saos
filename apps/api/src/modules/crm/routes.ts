@@ -1139,13 +1139,13 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     let yearClause = '';
     if (q.taxYear) { params.push(q.taxYear); yearClause = `AND te.tax_year = $${params.length}`; }
     const entities = await app.db.query<{
-      business_id: string; business_name: string; te_id: string | null; tax_year: number | null;
+      business_id: string; business_name: string; te_id: string | null; engagement_id: string | null; tax_year: number | null;
       return_type: string | null; stage: string | null;
       estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null;
       final_fee_cents: number | null; f8879_signed_at: Date | null; invoice_number: string | null;
     }>(
       `SELECT b.id AS business_id, b.name AS business_name,
-              te.id AS te_id, te.tax_year, te.return_type, te.stage,
+              te.id AS te_id, te.engagement_id, te.tax_year, te.return_type, te.stage,
               te.estimated_fee_min_cents, te.estimated_fee_max_cents, te.final_fee_cents,
               te.f8879_signed_at, te.invoice_number
        FROM entity_group_members gm
@@ -1159,7 +1159,9 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     const withTe = entities.rows.filter((r) => r.te_id);
     const rollup = {
       entities: new Set(entities.rows.map((r) => r.business_id)).size,
-      engagements: withTe.length,
+      // R89: an engagement may hold one return per year, so the two counts are read apart.
+      engagements: new Set(withTe.map((r) => r.engagement_id)).size,
+      returns: withTe.length,
       estimatedMinCents: withTe.reduce((a, r) => a + (r.estimated_fee_min_cents ?? 0), 0),
       estimatedMaxCents: withTe.reduce((a, r) => a + (r.estimated_fee_max_cents ?? 0), 0),
       finalFeeCents: withTe.reduce((a, r) => a + (r.final_fee_cents ?? 0), 0),
@@ -1209,7 +1211,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       [id, b.taxYear]
     );
     if (billable.rows.length === 0) {
-      throw new AppError(400, 'nothing_billable', 'No filed group engagements with a final fee are awaiting an invoice.');
+      throw new AppError(400, 'nothing_billable', 'No filed group returns with a final fee are awaiting an invoice.');
     }
     // R68: the consolidated invoice names no engagement of its own, so each return's parent is asked.
     for (const engagementId of new Set(billable.rows.map((r) => r.engagement_id))) {

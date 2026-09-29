@@ -225,3 +225,33 @@ test('the row reads the book\'s label with its rate', () => {
   assert.equal(referralRowLabel(hilo), 'Hilo referral discount (50%)');
   assert.equal(referralRowLabel({ labelEn: 'Hilo referral discount', rate: 12.5 }), 'Hilo referral discount (12.5%)');
 });
+
+// ── R89 (2026-09-29): the years a quote is for, mirrored from the server ──
+import { SURCHARGE_ITEM, yearLines } from '../app/pipeline/builder-lib.ts';
+
+test('R89: each chosen year repeats the return and its schedules; the surcharge is the quote\'s own, older year only', () => {
+  const book = [
+    { item_code: 'IND_BASE', amount_cents: 40000, price_min_cents: null, price_max_cents: null, deposit_cents: 10000, is_pass_through: false, service_line: 'individual_tax' },
+    { item_code: 'IND_SCH_C', amount_cents: 15000, price_min_cents: null, price_max_cents: null, deposit_cents: null, is_pass_through: false, service_line: 'individual_tax' },
+    { item_code: 'BK_SETUP', amount_cents: 50000, price_min_cents: null, price_max_cents: null, deposit_cents: null, is_pass_through: false, service_line: 'setup_conversion' },
+    { item_code: SURCHARGE_ITEM, amount_cents: 10000, price_min_cents: null, price_max_cents: null, deposit_cents: null, is_pass_through: false, service_line: 'individual_tax' },
+  ];
+  const picked = [
+    { itemCode: 'IND_BASE', quantity: 1, isOptional: false, unitCents: null },
+    { itemCode: 'IND_SCH_C', quantity: 1, isOptional: false, unitCents: null },
+    { itemCode: 'BK_SETUP', quantity: 1, isOptional: false, unitCents: null },
+    // A package listing the surcharge: the quote adds its own, so this one never stands.
+    { itemCode: SURCHARGE_ITEM, quantity: 1, isOptional: false, unitCents: null },
+  ];
+  const two = yearLines(picked, book, [2022, 2025], 2025);
+  assert.deepEqual(two.map((l) => `${l.itemCode}@${l.taxYear ?? '-'}${l.automatic ? '*' : ''}`), [
+    'IND_BASE@2025', 'IND_SCH_C@2025', 'IND_BASE@2022', 'IND_SCH_C@2022', `${SURCHARGE_ITEM}@2022*`, 'BK_SETUP@-',
+  ]);
+  const s = builderSummary(two, book);
+  assert.equal(s.committedCents, 2 * 55000 + 10000 + 50000, 'two years of the return, one surcharge, the setup once');
+  assert.equal(s.depositCents, 20000, 'the deposit rule applies once per year');
+  // One year: the lines carry no year (the server writes it); the surcharge only when that year is old.
+  assert.deepEqual(yearLines(picked, book, [2025], 2025).map((l) => l.itemCode), ['IND_BASE', 'IND_SCH_C', 'BK_SETUP']);
+  assert.deepEqual(yearLines(picked, book, [2022], 2025).map((l) => `${l.itemCode}${l.automatic ? '*' : ''}`), ['IND_BASE', 'IND_SCH_C', 'BK_SETUP', `${SURCHARGE_ITEM}*`]);
+  assert.deepEqual(yearLines(picked, book, [2023], 2025).map((l) => l.itemCode), ['IND_BASE', 'IND_SCH_C', 'BK_SETUP'], 'two back carries none');
+});

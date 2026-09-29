@@ -33,7 +33,7 @@ interface Executive {
   deadlines: {
     atRiskCount: number;
     extendedCount: number;
-    next: Array<{ client: string; deadline: string; daysLeft: number }>;
+    next: Array<{ client: string; taxYear?: number; deadline: string; daysLeft: number }>;
     ag990Next: Array<{ business: string; deadline: string; daysLeft: number }>;
   };
   flows: {
@@ -309,7 +309,8 @@ export default function ExecutivePage() {
             <div><div className="stat" style={{ color: data.deadlines.atRiskCount > 0 ? 'var(--danger)' : 'var(--ok)' }}>{data.deadlines.atRiskCount}</div><div className="muted small">At risk</div></div>
           </div>
           {data.deadlines.next.slice(0, 3).map((d, i) => (
-            <p key={i} className="small muted">{d.client} · {d.deadline} ({d.daysLeft}d)</p>
+            // R89: one row per return, and a client may have two years open; the year tells them apart.
+            <p key={i} className="small muted">{d.client}{d.taxYear ? ` ${d.taxYear}` : ''} · {d.deadline} ({d.daysLeft}d)</p>
           ))}
           {data.deadlines.ag990Next.length > 0 ? (
             <>

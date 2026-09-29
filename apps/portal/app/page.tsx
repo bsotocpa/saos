@@ -40,6 +40,8 @@ interface Engagement {
   title: string | null;
   tax_year: number | null;
   return_type: string | null;
+  /** The return this row is (R89: an engagement may hold one per year); null for work with no return. */
+  tax_engagement_id: string | null;
   stage: string | null;
   extension_filed: boolean;
   deadline: string | null;
@@ -366,7 +368,8 @@ export default function Dashboard() {
           <h2>{t('projects_title')}</h2>
           <ul className="list">
             {engagements.map((e) => (
-              <li key={e.id}>
+              // R89: one row per return, so an engagement holding several years has several rows.
+              <li key={e.tax_engagement_id ?? e.id}>
                 <span className="grow">
                   <strong>{projectName(e, t)}</strong>
                   <br />
