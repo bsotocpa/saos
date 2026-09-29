@@ -468,6 +468,8 @@ table.qb-lines td.line-name .inline-check { font-size: 11.5px; }
 table.qb-lines td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .qb-book { display: block; font-size: 11.5px; color: var(--muted); }
 .qb-totals { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; }
+/* R89: the quote's lines by year, as the server will write them (each year its own group, the surcharge marked). */
+.qb-years { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 4px; }
 .qb-total-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
 .qb-total-row strong { font-variant-numeric: tabular-nums; }
 .qb-totals .inline-check { margin: 2px 0; font-size: 12.5px; }
