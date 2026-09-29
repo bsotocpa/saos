@@ -12,6 +12,8 @@ import { migrate, seedAll } from '@saos/db';
 import { loadConfig, type Config } from '../src/config.ts';
 import type { Db } from '../src/db.ts';
 import { encryptSecret } from '../src/crypto.ts';
+import { CONNECT_TIMEOUT_MS, installConnectRetry, isConnectReset, retryLogPath } from './connect-retry.ts';
+import { appendFileSync } from 'node:fs';
 
 /**
  * Each spec FILE gets its own database (node --test runs files in parallel
@@ -30,6 +32,10 @@ export function checkoutTag(root: string): string {
   return createHash('sha1').update(withSep.toLowerCase()).digest('hex').slice(0, 6);
 }
 const CHECKOUT_TAG = checkoutTag(fileURLToPath(new URL('../../..', import.meta.url)));
+/** This checkout's tag, for the per-suite files the test tooling keeps (the connect-retry count). */
+export const TEST_CHECKOUT_TAG = CHECKOUT_TAG;
+// The bounded connect-phase retry for the Docker Desktop relay (Brian, 2026-09-29): test processes only.
+installConnectRetry(CHECKOUT_TAG);
 
 /** The test database a spec's createTestConfig(suffix) creates, in this checkout. */
 export function testDatabaseName(dbSuffix: string): string {
@@ -74,9 +80,18 @@ function databaseUrl(name: string): string {
 }
 
 export async function adminClient(): Promise<pg.Client> {
-  const admin = new pg.Client({ connectionString: databaseUrl('postgres') });
-  await admin.connect();
-  return admin;
+  // The same bounded connect-phase retry as the pools (connect-retry.ts): one fresh attempt, counted.
+  for (let attempt = 0; ; attempt++) {
+    const admin = new pg.Client({ connectionString: databaseUrl('postgres'), connectionTimeoutMillis: CONNECT_TIMEOUT_MS });
+    try {
+      await admin.connect();
+      return admin;
+    } catch (err) {
+      await admin.end().catch(() => undefined);
+      if (attempt > 0 || !isConnectReset(err)) throw err;
+      try { appendFileSync(retryLogPath(CHECKOUT_TAG), `${process.pid} admin ${(err as { code?: string }).code ?? 'timeout'}\n`); } catch { /* the suite still fails loudly if the retry does too */ }
+    }
+  }
 }
 
 /** Drop a database, a template included (Postgres refuses to drop one still marked as a template). */
