@@ -206,15 +206,17 @@ export function registerCrmRoutes(app: FastifyInstance): void {
    * front desk and the CEO are unchanged.
    */
   const businessWrite = { preHandler: [app.authenticate, requireAnyPermission('contacts.write', 'businesses.write')] };
-  // Merging two records is a money-adjacent act (invoices move): billing.manage, or the CEO.
+  // Merging two records is a money-adjacent act (invoices move): billing.manage, or the CEO. Businesses.
   const merge = { preHandler: [app.authenticate, requireAnyPermission('billing.manage')] };
+  // R92 (2026-09-29): merging two CLIENT records is the CEO's alone (contacts.merge, explicit-only).
+  const contactMerge = { preHandler: [app.authenticate, requirePermission('contacts.merge')] };
 
   /**
    * CONTACT MERGE (2026-09-12). The winner keeps its identity; the losers' rows move to it, one
    * audit row per object; the losers are archived pointing at the winner. Refused when both sides
    * hold active work on the same line, period and entity. crm/merge.ts.
    */
-  app.post<{ Params: { id: string } }>('/contacts/:id/merge', merge, async (request) => {
+  app.post<{ Params: { id: string } }>('/contacts/:id/merge', contactMerge, async (request) => {
     const winnerId = z.uuid().parse(request.params.id);
     const b = z.object({
       loserIds: z.array(z.uuid()).min(1).max(10),
@@ -224,6 +226,27 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     }).parse(request.body);
     const actor = request.staff!;
     return mergeContacts(app, winnerId, b.loserIds, b.reason, { id: actor.id, email: actor.email, fullName: actor.fullName }, meta(request), { identityOverrideReason: b.identityOverrideReason });
+  });
+
+  /**
+   * THE PAIR DOOR (Brian, 2026-09-29, R92): two records the duplicate review marked "merge". The CEO
+   * alone, with a standalone reason; neither side is named the winner: the survivor is the record with
+   * the portal user, else the most engagements, else the older one (survivorOf). The retired record is
+   * kept, archived, pointing at the survivor (GET /contacts/:id answers the redirect), and leaves search.
+   */
+  app.post('/contacts/merge-pair', contactMerge, async (request) => {
+    const b = z.object({
+      aId: z.uuid(),
+      bId: z.uuid(),
+      reason: reasonText(10, 1000),
+      identityOverrideReason: reasonText(10, 1000).optional(),
+    }).parse(request.body);
+    if (b.aId === b.bId) throw new AppError(400, 'same_record', 'A record cannot be merged with itself.');
+    const { survivorOf } = await import('./merge.ts');
+    const pick = await survivorOf(app, b.aId, b.bId);
+    const actor = request.staff!;
+    const out = await mergeContacts(app, pick.survivor, [pick.retired], b.reason, { id: actor.id, email: actor.email, fullName: actor.fullName }, meta(request), { identityOverrideReason: b.identityOverrideReason });
+    return { ...out, survivorId: pick.survivor, retiredId: pick.retired, survivorRule: pick.rule };
   });
 
   /**
@@ -493,7 +516,13 @@ export function registerCrmRoutes(app: FastifyInstance): void {
        FROM contacts c WHERE c.id = $1 AND NOT c.is_archived`,
       [id]
     );
-    if (!contact.rows[0]) throw new AppError(404, 'not_found', 'Contact not found.');
+    if (!contact.rows[0]) {
+      // R92: a record retired by a merge is kept; anything pointing at it is told where the client is now.
+      const merged = await app.db.query<{ merged_into_contact_id: string | null }>(
+        `SELECT merged_into_contact_id FROM contacts WHERE id = $1 AND merged_into_contact_id IS NOT NULL`, [id]);
+      if (merged.rows[0]?.merged_into_contact_id) return { merged_into: merged.rows[0].merged_into_contact_id };
+      throw new AppError(404, 'not_found', 'Contact not found.');
+    }
     // THE WALL, field filtering (phase 2, 2026-09-12): the SSN last-4 leaves this route only for a
     // holder of pii.read. ssn_status stays: whether one is on file is workflow, not the number.
     // The EIN below is a business identifier and stays with contacts.read (Laura files with it).

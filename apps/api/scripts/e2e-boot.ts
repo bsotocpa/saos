@@ -33,6 +33,7 @@ import { buildPath990 } from './e2e-fixtures/path-b-990.ts';
 import { buildDocumentsFixture } from './e2e-fixtures/documents.ts';
 import { buildSigningFixture } from './e2e-fixtures/portal-signing.ts';
 import { buildConsentFixture } from './e2e-fixtures/consent-new-engagement.ts';
+import { buildBatch10Fixture } from './e2e-fixtures/batch10.ts';
 import { buildBillingHoldFixture } from './e2e-fixtures/billing-hold.ts';
 
 const PORT = Number(process.env.E2E_API_PORT ?? 3101);
@@ -542,6 +543,8 @@ const documents = await buildDocumentsFixture(app, { staffToken, magicTokens, ma
 const signing = await buildSigningFixture(app, { staffToken, actor, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app) });
 // The returning client's new engagement (R87): Master signed, the consent answered for an earlier engagement, one per viewport.
 const consentNew = await buildConsentFixture(app, { staffToken, actor, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app), taxYear: scorpTaxYear - 1 });
+// Batch 10 (2026-09-29): the R91 backfill return and the R93 overdue return, one client of each per viewport.
+const batch10 = await buildBatch10Fixture(app, { staffToken, actor, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app), preparerId: anamaria.id });
 // The billing hold the importer places (R68): one held client per viewport, made through the importer's own function.
 const billingHold = await buildBillingHoldFixture(app, { actor });
 // The 990 variant of Path B (R66): an exempt organization's return at ready to file, one per viewport.
@@ -591,6 +594,7 @@ console.log('E2E_READY ' + JSON.stringify({
   documents,
   signing,
   consentNew,
+  batch10,
   billingHold,
   hilo,
   wall: {

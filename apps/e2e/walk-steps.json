@@ -37,6 +37,7 @@
         { "id": "B7b", "text": "The accepted quote built the return's document checklist: the portal shows a slot per item, an upload answers its item, and what happens next counts what is missing (R83)", "device": "phone + laptop" },
         { "id": "B7c", "text": "The Ops return row reads the checklist's received and missing counts; Request documents emails the missing items through its automation, and says it was held while that is off (R83)", "device": "phone + laptop" },
         { "id": "B7d", "text": "Admin → Document checklist: a row's words edited and saved, a document added to an item and switched off (R83)", "device": "phone + laptop" },
+        { "id": "B7e", "text": "A return from a quote accepted before checklists existed gets its checklist through the backfill door on its row (R91)", "device": "phone + laptop" },
         { "id": "B8", "text": "Return delivered to the portal", "device": "laptop" },
         { "id": "B9", "text": "Signed 8879 scan uploaded, wet-signed in office", "device": "laptop" },
         { "id": "B10", "text": "Filed with the PTIN holder", "device": "laptop" },
@@ -183,6 +184,19 @@
         { "id": "V2", "text": "The client's emailed proposal shows the discount as its own row", "device": "phone + laptop" },
         { "id": "V3", "text": "The CEO removes it on the Ops quote page with a reason; the row reads removed with the reason and the total returns to the book's", "device": "phone + laptop" },
         { "id": "V4", "text": "Role proof: the preparer reads the discount with no Remove control and the route refuses 403 quotes.referral_discount.remove", "device": "phone + laptop" }
+      ]
+    },
+    "W": {
+      "title": "Past deadlines read as overdue (R93)",
+      "steps": [
+        { "id": "W1", "text": "A return past its derived deadline, with no extension and no filing, reads \"Overdue since <date>\" on the Ops row, the queue and the portal card, never a bare past date", "device": "phone + laptop" },
+        { "id": "W2", "text": "Recording the extension clears the overdue reading on the row, the queue and the portal card", "device": "phone + laptop" }
+      ]
+    },
+    "X": {
+      "title": "Duplicate merges through the pair door (R92)",
+      "steps": [
+        { "id": "X1", "text": "The CEO merges a marked pair; the survivor is chosen by rule (the portal sign-in, else the most engagements); the retired record redirects to the survivor and leaves search", "device": "phone + laptop" }
       ]
     }
   }

@@ -48,6 +48,15 @@ export function documentRequestSentence(o: DocumentRequestOutcome): string {
   }
 }
 
+/** R93 (2026-09-29): a return whose derived deadline passed with no filing; the caller formats the day. */
+export function overdueSinceText(day: string): string {
+  return `Overdue since ${day}`;
+}
+
+/** R91 (2026-09-29): the backfill door's control and its one sentence. */
+export const CHECKLIST_BACKFILL_LABEL = 'Add the document checklist';
+export const CHECKLIST_BACKFILL_SENTENCE = 'This return came from a quote accepted before checklists existed. Builds its checklist from the accepted lines; the client sees it in the portal. No email is sent.';
+
 /** R83: the return row's line, when the return has a checklist. */
 export function checklistCountLine(received: number, missing: number): string {
   return `Documents: ${received} received · ${missing} missing`;

@@ -428,7 +428,9 @@ export function registerTaxRoutes(app: FastifyInstance): void {
   app.get('/tax-engagements', read, async (request) => {
     const q = ListQuery.parse(request.query);
     const clauses: string[] = ['true'];
-    const params: unknown[] = [];
+    // R93: "today" is Chicago's calendar day; the first parameter, so the overdue column can read it.
+    const params: unknown[] = [todayChicago()];
+    const todayParam = 1;
     if (q.stage) { params.push(q.stage); clauses.push(`te.stage = $${params.length}::tax_stage`); }
     if (q.preparerId) { params.push(q.preparerId); clauses.push(`te.preparer_id = $${params.length}`); }
     if (q.taxYear) { params.push(q.taxYear); clauses.push(`te.tax_year = $${params.length}`); }
@@ -442,7 +444,14 @@ export function registerTaxRoutes(app: FastifyInstance): void {
               te.scope_creep_flag, te.complexity_score, te.extension_filed, te.filed_date, te.reopened_at, te.reopen_reason,
               e.contact_id, c.first_name, c.last_name,
               -- R83: the return's checklist, as the Ops row reads it (null: no checklist).
-              ck.docs_received, ck.docs_missing, ck.docs_total
+              ck.docs_received, ck.docs_missing, ck.docs_total,
+              -- R91: an open return from an accepted quote with no checklist yet (the backfill door applies).
+              (ck.docs_total IS NULL AND te.stage::text NOT IN ('completed', 'withdrawn')
+                AND EXISTS (SELECT 1 FROM engagement_scope_items s WHERE s.engagement_id = te.engagement_id AND s.source_quote_id IS NOT NULL)) AS checklist_backfillable,
+              -- R93: the day a return went overdue (derived deadline passed, not filed); null otherwise.
+              CASE WHEN te.filed_date IS NULL AND te.stage::text NOT IN ('filed', 'completed', 'withdrawn')
+                     AND COALESCE(te.extended_deadline, te.original_deadline) < $${todayParam}::date
+                   THEN COALESCE(te.extended_deadline, te.original_deadline)::text END AS overdue_since
        FROM tax_engagements te
        JOIN engagements e ON e.id = te.engagement_id
        JOIN contacts c ON c.id = e.contact_id
@@ -601,6 +610,18 @@ export function registerTaxRoutes(app: FastifyInstance): void {
   });
 
   /**
+   * THE CHECKLIST BACKFILL (Brian, 2026-09-29, R91): an open return from a quote accepted before the
+   * checklist existed gets one from its quoted lines, audited "Checklist added after the fact from the
+   * accepted quote." The rules and refusals live in backfillChecklist (documents/checklist.ts).
+   */
+  app.post<{ Params: { id: string } }>('/tax-engagements/:id/checklist-backfill', manage, async (request, reply) => {
+    const id = z.uuid().parse(request.params.id);
+    const { backfillChecklist } = await import('../documents/checklist.ts');
+    const out = await backfillChecklist(app, { id: request.staff!.id, fullName: request.staff!.fullName }, id);
+    return reply.code(201).send({ status: 'ok', ...out });
+  });
+
+  /*
    * THE FILING, CORRECTED (Brian, 2026-09-26): the filed day, the PTIN holder and the declared
    * jurisdictions of a return at filed, appended as a correction with a standalone reason and then
    * reflected on the return. The rules and the refusals live in correctFiling (pipeline.ts); the

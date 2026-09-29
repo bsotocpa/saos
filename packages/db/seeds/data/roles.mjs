@@ -26,7 +26,8 @@ export const roles = [
     // explicit-only mechanism; a preparer is refused 403 in the server's words.
     // 'quotes.referral_discount.remove' (2026-09-27, R75): removing the Hilo referral discount from a quote
     // is the CEO's alone, with a reason; nothing widens it.
-    permissions: ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset', 'engagements.billing_hold.lift', 'engagements.tax.reopen', 'quotes.referral_discount.remove'], // '*' includes referrals.approve (Jackson too)
+    // 'contacts.merge' (2026-09-29, R92): merging two client records is the CEO's alone.
+    permissions: ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset', 'engagements.billing_hold.lift', 'engagements.tax.reopen', 'quotes.referral_discount.remove', 'contacts.merge'], // '*' includes referrals.approve (Jackson too)
   },
   {
     key: 'ed_coo',

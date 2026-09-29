@@ -11,7 +11,7 @@ import { alertRecipientForRole, notifyOnce, ownerForRole } from '../../staffing.
 import { refreshEnrichmentGaps } from '../crm/service.ts';
 import { cascadeUnblock, createTask } from '../tasks/service.ts';
 import { computeQuote } from '../pricing/service.ts';
-import { addDays, todayChicago, upcomingEstimateDates } from '../tax/deadlines.ts';
+import { addDays, overdueSince, todayChicago, upcomingEstimateDates } from '../tax/deadlines.ts';
 
 /**
  * A FILED RETURN'S ANSWERS, PER JURISDICTION (R48, 2026-09-26; R84, 2026-09-27): one line per row the
@@ -564,9 +564,12 @@ export function registerPortalRoutes(app: FastifyInstance): void {
       engagements: rows.map((r) => {
         const items = scopes.get(String(r.id)) ?? [];
         const isFiled = r.stage === 'filed' || r.stage === 'completed';
+        // R93: a deadline that passed with no filing reads as overdue, never as a bare past date.
+        const overdue = r.stage ? overdueSince(r.deadline ?? null, todayChicago(), { stage: String(r.stage) }) : null;
         return {
           ...r,
-          deadline: isFiled ? null : r.deadline,
+          deadline: isFiled || overdue ? null : r.deadline,
+          overdue_since: overdue,
           answer_lines: isFiled ? (answers.get(String(r.tax_engagement_id)) ?? []) : [],
           scopeName: scopeName(items, lang),
           scope: items.map((i) => ({

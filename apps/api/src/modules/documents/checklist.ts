@@ -18,6 +18,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { isAutomationEnabled } from '../../automations.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
+import { AppError } from '../../types.ts';
 
 /** "1120s" → "1120-S", "990ez" → "990-EZ", "w7_itin" → "W-7": the form number a client reads. */
 export function formNumber(returnType: string): string {
@@ -166,4 +167,53 @@ export async function sendChecklistRequest(
     [r.request_id]
   );
   return { emailed: true, missing };
+}
+
+export const BACKFILL_NOTE = 'Checklist added after the fact from the accepted quote.';
+
+/**
+ * THE CHECKLIST BACKFILL (Brian, 2026-09-29, R91). A return opened from a quote accepted before
+ * migration 0132 has no checklist; this door gives it one from the lines the client accepted (its
+ * engagement's scope snapshot, in the quote's order), audited in the ruled words. Refused for a
+ * return that is completed or withdrawn, one that already has its checklist, and one with no quoted
+ * lines (opened by hand: there is nothing to build a checklist from).
+ */
+export async function backfillChecklist(
+  app: FastifyInstance,
+  actor: { id: string; fullName: string },
+  taxEngagementId: string
+): Promise<{ requestId: string; items: number }> {
+  const { rows } = await app.db.query<{ engagement_id: string; contact_id: string; stage: string; tax_year: number; return_type: string }>(
+    `SELECT te.engagement_id, e.contact_id, te.stage::text AS stage, te.tax_year, te.return_type::text AS return_type
+       FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`,
+    [taxEngagementId]
+  );
+  const te = rows[0];
+  if (!te) throw new AppError(404, 'not_found', 'Tax engagement not found.');
+  if (te.stage === 'completed' || te.stage === 'withdrawn') {
+    throw new AppError(409, 'return_closed', `This return is ${te.stage}; a checklist is for a return still being worked.`);
+  }
+  const has = await app.db.query(`SELECT 1 FROM document_requests WHERE tax_engagement_id = $1 AND source = 'checklist'`, [taxEngagementId]);
+  if (has.rows.length > 0) throw new AppError(409, 'checklist_exists', 'This return already has its document checklist.');
+  const lines = await app.db.query<{ item_code: string }>(
+    `SELECT item_code FROM engagement_scope_items
+      WHERE engagement_id = $1 AND source_quote_id IS NOT NULL AND item_code IS NOT NULL
+      ORDER BY sort_order, item_code`,
+    [te.engagement_id]
+  );
+  if (lines.rows.length === 0) {
+    throw new AppError(409, 'no_quoted_lines', 'This return was not opened from an accepted quote, so there are no quoted lines to build a checklist from.');
+  }
+  const opened = await openChecklistRequest(app, {
+    taxEngagementId, engagementId: te.engagement_id, contactId: te.contact_id,
+    itemCodes: lines.rows.map((l) => l.item_code), taxYear: te.tax_year, returnType: te.return_type,
+  });
+  if (!opened) throw new AppError(409, 'no_checklist_items', 'None of the quoted lines asks for a document (Admin -> Document checklist).');
+  await writeAudit(app.db, {
+    actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+    action: 'document_request.checklist_backfilled',
+    objectType: 'tax_engagement', objectId: taxEngagementId, contactId: te.contact_id,
+    details: { note: BACKFILL_NOTE, request_id: opened.requestId, items: opened.items },
+  });
+  return opened;
 }

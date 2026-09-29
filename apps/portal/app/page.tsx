@@ -45,6 +45,8 @@ interface Engagement {
   deadline: string | null;
   /** R84: a filed or completed return's answers per jurisdiction (the server sends no deadline for it). */
   answer_lines?: AnswerLine[];
+  /** R93: the day the return went overdue (its deadline passed, not filed); the server then sends no deadline. */
+  overdue_since?: string | null;
   /** #47 — what this engagement covers, snapshotted at acceptance, already in this language. */
   scopeName: string | null;
   scope: Array<{ itemCode: string; description: string; quantity: string; isPassThrough: boolean }>;
@@ -378,6 +380,11 @@ export default function Dashboard() {
                           ? t(`stage_${e.stage}` as DictKey)
                           : t(`estatus_${e.status}` as DictKey)}
                         {e.deadline ? ` · ${t('status_deadline')}: ${formatDate(e.deadline, lang)}` : ''}
+                        {e.overdue_since ? (
+                          <strong style={{ color: 'var(--danger)' }} data-testid="service-overdue">
+                            {' · '}{t('status_overdue_since').replace('{{date}}', formatDate(e.overdue_since, lang))}
+                          </strong>
+                        ) : null}
                       </>
                     )}
                   </span>

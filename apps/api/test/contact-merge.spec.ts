@@ -72,8 +72,11 @@ test('merge: every row moves to the winner, one audit row per object, the loser 
   assert.ok(before.engagements === 1 && before.invoices === 1 && before.documents === 1 && (before.tasks ?? 0) >= 1 && before.portal_users === 1 && before.business_members === 1 && before.consents === 1, JSON.stringify(before));
 
   const refused = await app.inject({ method: 'POST', url: `/contacts/${winner.id}/merge`, headers: auth(laura), payload: { loserIds: [loser.id], reason: 'The same person was imported twice from Dubsado.', identityOverrideReason: 'The client confirmed both records are theirs; the import gave each a different address' } });
-  assert.equal(refused.statusCode, 403, 'Laura does not hold billing.manage');
-  const res = await app.inject({ method: 'POST', url: `/contacts/${winner.id}/merge`, headers: auth(rene), payload: { loserIds: [loser.id], reason: 'The same person was imported twice from Dubsado.', identityOverrideReason: 'The client confirmed both records are theirs; the import gave each a different address' } });
+  assert.equal(refused.statusCode, 403, 'Laura does not hold contacts.merge');
+  // R92 (2026-09-29): merging two client records is the CEO's alone; billing.manage (Rene) no longer opens it.
+  const reneRefused = await app.inject({ method: 'POST', url: `/contacts/${winner.id}/merge`, headers: auth(rene), payload: { loserIds: [loser.id], reason: 'The same person was imported twice from Dubsado.', identityOverrideReason: 'The client confirmed both records are theirs; the import gave each a different address' } });
+  assert.equal(reneRefused.statusCode, 403, 'R92: the CEO alone merges client records');
+  const res = await app.inject({ method: 'POST', url: `/contacts/${winner.id}/merge`, headers: auth(brian), payload: { loserIds: [loser.id], reason: 'The same person was imported twice from Dubsado.', identityOverrideReason: 'The client confirmed both records are theirs; the import gave each a different address' } });
   assert.equal(res.statusCode, 200, res.body);
   const r = res.json() as { losers: Array<{ moved: Record<string, number> }> };
   assert.equal(r.losers[0]!.moved.engagements, 1);

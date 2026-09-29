@@ -91,5 +91,8 @@
 ### A flaky red is red (Brian, 2026-09-19, standing rule R7)
 - **A flaky red is red until explained.** A test that fails once in the full suite and passes alone is a failure with an unknown cause, not a pass. Find the stack and the root cause before the next receipt run; never rerun the suite to reach a green receipt.
 
+### The deploy order (Brian, 2026-09-29, standing rule)
+- **Build → preflight (migrations and seeds on the production copy) → migrate → seed → swap.** No seed runs after the swap. `scripts/check-deploy-order.mjs` refuses a deploy.sh that breaks this order, first thing in every deploy and in the root `npm test`.
+
 ### The design plugin (Brian, 2026-09-20, standing rule R26)
 - **Never authorize the design plugin's servers** (Asana, Figma, Intercom, Linear) in a SAOS session. The project settings file disables the plugin; if a session still lists them, they stay unauthenticated and no restart is spent on it.

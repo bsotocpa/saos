@@ -88,6 +88,26 @@ export async function contactReferences(app: FastifyInstance, contactId: string)
   return out;
 }
 
+/**
+ * THE SURVIVOR OF A PAIR (Brian, 2026-09-29, R92): the record with the portal user, else the one with
+ * the most engagements, else the older record. The pair door names neither side the winner; this does,
+ * so a merge never retires the sign-in a client uses or the record the work sits on.
+ */
+export async function survivorOf(app: FastifyInstance, a: string, b: string): Promise<{ survivor: string; retired: string; rule: 'portal_user' | 'engagements' | 'older_record' }> {
+  const { rows } = await app.db.query<{ id: string; portal: boolean; engagements: number; created_at: Date }>(
+    `SELECT c.id, EXISTS (SELECT 1 FROM portal_users pu WHERE pu.contact_id = c.id) AS portal,
+            (SELECT count(*)::int FROM engagements e WHERE e.contact_id = c.id) AS engagements, c.created_at
+       FROM contacts c WHERE c.id = ANY($1::uuid[])`,
+    [[a, b]]
+  );
+  const x = rows.find((r) => r.id === a);
+  const y = rows.find((r) => r.id === b);
+  if (!x || !y) throw new AppError(404, 'not_found', 'One of the two records does not exist.');
+  if (x.portal !== y.portal) return x.portal ? { survivor: a, retired: b, rule: 'portal_user' } : { survivor: b, retired: a, rule: 'portal_user' };
+  if (x.engagements !== y.engagements) return x.engagements > y.engagements ? { survivor: a, retired: b, rule: 'engagements' } : { survivor: b, retired: a, rule: 'engagements' };
+  return x.created_at <= y.created_at ? { survivor: a, retired: b, rule: 'older_record' } : { survivor: b, retired: a, rule: 'older_record' };
+}
+
 export interface MergeResult {
   winnerId: string;
   losers: Array<{ id: string; moved: Record<string, number>; portalUserRetired: boolean; duplicateAcceptancesDropped: string[] }>;

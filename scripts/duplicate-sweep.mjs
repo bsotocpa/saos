@@ -99,7 +99,7 @@ const proposalOf = (p) => {
 // The review file: client data, local only.
 mkdirSync(REVIEW_DIR, { recursive: true });
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-const lines = [['kind', 'record A id', 'record A', 'A holds (score)', 'record B id', 'record B', 'B holds (score)', 'shared', 'proposal', 'keep id', 'merge id', 'Brian rules (yes / no / other)'].map(csvCell).join(',')];
+const lines = [['kind', 'record A id', 'record A', 'A holds (score)', 'record B id', 'record B', 'B holds (score)', 'shared', 'proposal', 'keep id', 'merge id', 'decision (merge / keep)'].map(csvCell).join(',')];
 const counts = new Map();
 for (const p of pairs) {
   const reasons = reasonsOf(p);

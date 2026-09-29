@@ -12,8 +12,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
+import { formatDate } from '../../lib/dates';
+import { overdueSinceText } from '../../lib/return-controls';
 
 interface QueueRow {
+  /** R93: the day the return went overdue (its derived deadline passed, not filed), or null. */
+  overdueSince?: string | null;
   id: string;
   contactId: string;
   client: string;
@@ -156,6 +160,11 @@ export default function QueuePage() {
                     {r.rejected && r.perfectionDeadline ? (
                       <strong style={{ color: 'var(--danger)' }}>
                         Perfection period ends {r.perfectionDeadline}
+                      </strong>
+                    ) : r.overdueSince ? (
+                      /* R93 (2026-09-29): a passed deadline with no filing reads as overdue, never a bare past date. */
+                      <strong style={{ color: 'var(--danger)' }} data-testid="queue-overdue">
+                        {overdueSinceText(formatDate(r.overdueSince))}
                       </strong>
                     ) : r.deadline ? (
                       <span style={overdue ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>

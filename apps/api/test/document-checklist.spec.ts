@@ -289,3 +289,40 @@ test('Admin edits the checklist: the words and on/off reach the next checklist, 
   const refusedList = await app.inject({ method: 'GET', url: '/admin/document-checklist', headers: auth(preparer) });
   assert.equal(refusedList.statusCode, 403);
 });
+
+test('R91: the backfill door gives an open return from an accepted quote its checklist, once, audited in the ruled words', async () => {
+  const c = await client('Backfill');
+  const { te } = await accepted(c.contactId, ['IND_BASE_SINGLE', 'IND_SCH_B_D']);
+  // As a return accepted before 0132 stands: no checklist.
+  await app.db.query(`DELETE FROM document_requests WHERE tax_engagement_id = $1`, [te]);
+  const listed = async () => (await app.inject({ method: 'GET', url: `/tax-engagements?contactId=${c.contactId}`, headers: auth(ceo) }))
+    .json().taxEngagements.find((t: { id: string }) => t.id === te);
+  assert.equal((await listed()).checklist_backfillable, true, 'the row offers the door');
+
+  const res = await app.inject({ method: 'POST', url: `/tax-engagements/${te}/checklist-backfill`, headers: auth(ceo) });
+  assert.equal(res.statusCode, 201, res.body);
+  assert.deepEqual((await items(te)).map((i) => i.doc_key), ['photo_id', 'prior_year_return', 'w2', 'forms_1099', 'forms_1099_int_div_b']);
+  const audit = await app.db.query<{ details: { note: string } }>(
+    `SELECT details FROM audit_log WHERE action = 'document_request.checklist_backfilled' AND object_id = $1`, [te]);
+  assert.equal(audit.rows.length, 1);
+  assert.equal(audit.rows[0]!.details.note, 'Checklist added after the fact from the accepted quote.');
+  assert.equal((await listed()).checklist_backfillable, false, 'the door closes once used');
+
+  const again = await app.inject({ method: 'POST', url: `/tax-engagements/${te}/checklist-backfill`, headers: auth(ceo) });
+  assert.equal(again.statusCode, 409);
+  assert.equal(again.json().error, 'checklist_exists');
+
+  // A return opened by hand (no accepted quote behind it) has no quoted lines to build from.
+  const hand = await client('ByHand');
+  const e = await app.db.query<{ id: string }>(
+    `INSERT INTO engagements (contact_id, service_line, status, title, period_key) VALUES ($1, 'tax', 'active', 'Tax — synthetic by hand', '2024') RETURNING id`,
+    [hand.contactId]);
+  const handTe = await app.db.query<{ id: string }>(
+    `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, client_type) VALUES ($1, 2024, '1040', 'individual') RETURNING id`,
+    [e.rows[0]!.id]);
+  const byHand = await app.inject({ method: 'POST', url: `/tax-engagements/${handTe.rows[0]!.id}/checklist-backfill`, headers: auth(ceo) });
+  assert.equal(byHand.statusCode, 409);
+  assert.equal(byHand.json().error, 'no_quoted_lines');
+  const handRow = (await app.inject({ method: 'GET', url: `/tax-engagements?contactId=${hand.contactId}`, headers: auth(ceo) })).json().taxEngagements[0];
+  assert.equal(handRow.checklist_backfillable, false, 'nor does its row offer the door');
+});

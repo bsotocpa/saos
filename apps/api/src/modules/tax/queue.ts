@@ -11,11 +11,13 @@
 // can never disagree about what "late" means.
 
 import type { FastifyInstance } from 'fastify';
-import { daysBetween } from './deadlines.ts';
+import { daysBetween, overdueSince } from './deadlines.ts';
 import { getSetting } from './extension.ts';
 import { F8879_SENT_METHOD_LABEL, type F8879SentMethod } from './f8879-sent.ts';
 
 export interface QueueRow {
+  /** R93: the day the return went overdue (its deadline passed, not filed), or null. */
+  overdueSince: string | null;
   id: string;
   contactId: string;
   client: string;
@@ -118,6 +120,7 @@ export async function preparerQueue(
       returnType: r.return_type,
       stage: r.stage,
       deadline: r.effective_deadline,
+      overdueSince: overdueSince(r.effective_deadline, today, { stage: r.stage }),
       daysLeft: r.effective_deadline ? daysBetween(today, r.effective_deadline) : null,
       extended: r.extension_filed,
       // Same rule as the extension board, from the same setting.

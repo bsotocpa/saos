@@ -24,7 +24,7 @@ import { ReturnStepper } from '../../../components/return-stepper';
 import { amountLabel, showExtendedBadge } from '../../../lib/return-stepper';
 import { consent7216Label, engagementStatusSentence, invoiceStatusLabel, letterStatusLabel, quoteStatusLabel } from '../../../lib/labels';
 import {
-  checklistCountLine, correctionLine, dollarsToCents, f8879OnFileText, jurisdictionLabel, jurisdictionStatusText, MAILING_METHOD_LABEL,
+  checklistCountLine, CHECKLIST_BACKFILL_LABEL, CHECKLIST_BACKFILL_SENTENCE, correctionLine, overdueSinceText, dollarsToCents, f8879OnFileText, jurisdictionLabel, jurisdictionStatusText, MAILING_METHOD_LABEL,
   type FilingCorrectionView, type JurisdictionView,
 } from '../../../lib/return-controls';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
@@ -75,6 +75,8 @@ interface TaxEngagement {
   f8879_variant?: string | null; reopened_at?: string | null; reopen_reason?: string | null;
   /** R83: the return's document checklist (null: it has none). */
   docs_received?: number | null; docs_missing?: number | null; docs_total?: number | null;
+  /** R91: an open return from an accepted quote with no checklist yet. R93: the day it went overdue, or null. */
+  checklist_backfillable?: boolean; overdue_since?: string | null;
 }
 interface Doc {
   id: string; category: string; original_filename: string; created_at: string;
@@ -346,6 +348,9 @@ export default function ClientPacketPage() {
    * quotes.manage (or the wildcard) and for nobody else — not disabled, absent.
    */
   const [canManageQuotes, setCanManageQuotes] = useState(false);
+  /** R91: the checklist backfill rides on engagements.tax.manage, as the route does. */
+  const [canManageReturns, setCanManageReturns] = useState(false);
+  const [backfillErr, setBackfillErr] = useState<{ id: string; message: string } | null>(null);
   /*
    * LIFTING THE BILLING HOLD (R68, 2026-09-26): engagements.billing_hold.lift is EXPLICIT-ONLY, so the
    * wildcard is not enough here — the grant must be on the session by name. The CEO's role carries it;
@@ -386,7 +391,12 @@ export default function ClientPacketPage() {
 
   const load = useCallback(async () => {
     try {
-      const p = await api<Packet>(`/contacts/${params.id}`);
+      const p = await api<Packet & { merged_into?: string }>(`/contacts/${params.id}`);
+      // R92 (2026-09-29): a record retired by a merge is kept; its page opens the record it was merged into.
+      if (p.merged_into) {
+        router.replace(`/clients/${p.merged_into}?merged-from=${params.id}`);
+        return;
+      }
       setPacket(p);
       setUnavailable({});
       // These are separate reads so a failure in one does not blank the packet.
@@ -494,6 +504,7 @@ export default function ClientPacketPage() {
         setCanFlagTest(['*', 'contacts.write'].some((p) => m.permissions.includes(p)));
         setCanRefund(['*', 'billing.manage'].some((p) => m.permissions.includes(p)));
         setCanManageQuotes(['*', 'quotes.manage'].some((p) => m.permissions.includes(p)));
+        setCanManageReturns(['*', 'engagements.tax.manage'].some((p) => m.permissions.includes(p)));
         // Explicit-only: the named grant, never '*'.
         setCanLiftBillingHold(m.permissions.includes('engagements.billing_hold.lift'));
         // Anything but the server saying "on" is off: a missing field is a closed door, never an open one.
@@ -1637,6 +1648,35 @@ export default function ClientPacketPage() {
               )}
               {/* R50 fix 3: the amount says what it is — a final fee, an estimate's top, or nothing yet. */}
               <span className="amt" data-testid={`return-amount-${t.id}`}>{amountLabel(t, formatMoney)}</span>
+              {/* R93: a derived deadline that passed with no filing reads as overdue, never a bare past date. */}
+              {t.overdue_since ? (
+                <span className="small" style={{ flex: '1 1 100%', color: 'var(--danger)', fontWeight: 600 }} data-testid={`return-overdue-${t.id}`}>
+                  {overdueSinceText(formatDate(t.overdue_since))}
+                </span>
+              ) : null}
+              {/* R91: a return from a quote accepted before checklists existed gets one through this door. */}
+              {t.checklist_backfillable && canManageReturns ? (
+                <span style={{ flex: '1 1 100%' }}>
+                  <button
+                    type="button"
+                    className="btn small ghost"
+                    data-testid={`checklist-backfill-${t.id}`}
+                    onClick={() => void (async () => {
+                      setBackfillErr(null);
+                      try {
+                        await api(`/tax-engagements/${t.id}/checklist-backfill`, { method: 'POST' });
+                        await load();
+                      } catch (err) {
+                        setBackfillErr({ id: t.id, message: err instanceof Error && err.message ? err.message : 'The request was refused.' });
+                      }
+                    })()}
+                  >
+                    {CHECKLIST_BACKFILL_LABEL}
+                  </button>
+                  <span className="muted small" style={{ display: 'block' }}>{CHECKLIST_BACKFILL_SENTENCE}</span>
+                  {backfillErr?.id === t.id ? <p className="field-error" role="alert">{backfillErr.message}</p> : null}
+                </span>
+              ) : null}
               {/* R83: the checklist the accepted quote built, as counts; the portal holds the items. Either rendering. */}
               {t.docs_total ? (
                 <span className="muted small" style={{ flex: '1 1 100%' }} data-testid={`return-docs-${t.id}`}>

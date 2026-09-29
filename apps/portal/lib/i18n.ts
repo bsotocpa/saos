@@ -309,6 +309,8 @@ const dict = {
   jurisdiction_irs: ['the IRS', 'el IRS'],
   // R84 (2026-09-27): a filed return's status, and the five phases of the progress bar.
   status_filed_line: ['Filed.', 'Presentada.'],
+  // R93 (2026-09-29): a deadline that passed with no filing reads as overdue, never a bare past date.
+  status_overdue_since: ['Overdue since {{date}}', 'Vencida desde el {{date}}'],
   status_filed_waiting: ['Filed. Waiting for the acceptance.', 'Presentada. En espera de la aceptación.'],
   phase_engage: ['Engage', 'Contratación'],
   phase_prepare: ['Prepare', 'Preparación'],

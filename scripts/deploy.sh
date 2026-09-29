@@ -18,6 +18,10 @@ cd "$REPO"
 # Dropbox, OneDrive or Google Drive ships .env.production and every ignored export to that service;
 # this refuses before anything is read. `--preflight-only` stops here (the sabotage runner's door).
 node scripts/check-sync-root.mjs
+# THE DEPLOY ORDER (Brian, 2026-09-29): build, preflight (migrations and seeds on the copy), migrate,
+# seed, swap; no seed after the swap. This file is read and refused before anything runs, so the
+# dry run (`--preflight-only`) refuses a misordered script too.
+node scripts/check-deploy-order.mjs
 if [ "${1:-}" = "--preflight-only" ]; then echo "deploy: preflight only, stopping before the receipt check"; exit 0; fi
 
 # THE PUSH REFUSES WITHOUT A GREEN ROOT-SUITE RUN ON THIS EXACT TREE (Brian, 2026-09-12). Twice in
@@ -73,17 +77,20 @@ echo "deploy: [1e/5] recreating caddy if its config changed (single-file bind mo
 echo "deploy: [2/6] building images (the old containers keep serving)..."
 "${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml build --quiet'
 
-echo "deploy: [3/6] preflight: pending migrations against a copy of production..."
+echo "deploy: [3/6] preflight: pending migrations and the seeds against a copy of production..."
 "${SSH[@]}" 'cd /opt/saos && bash scripts/preflight-migrate.sh'
 
 echo "deploy: [4/6] running migrations on production..."
 "${SSH[@]}" 'cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api node packages/db/scripts/migrate.cjs up'
 
-echo "deploy: [5/6] swapping to the new containers..."
-"${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml up -d --quiet-pull'
-
-echo "deploy: [6/6] seeding (idempotent — roles, settings, templates, price book, forms; NO demo data)..."
+# SEED BEFORE SWAP (Brian, 2026-09-29). The seed ran after the swap until 2026-09-28, when it failed on a
+# grandfathered production row with the new code already serving. It runs here, with the NEW image,
+# while the old containers keep serving; a red seed ends the deploy with the box on the previous version.
+echo "deploy: [5/6] seeding production (idempotent — roles, settings, templates, price book, forms; NO demo data)..."
 "${SSH[@]}" 'cd /opt/saos && docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api node packages/db/seeds/run.mjs'
+
+echo "deploy: [6/6] swapping to the new containers..."
+"${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml up -d --quiet-pull'
 
 echo "deploy: service status:"
 "${SSH[@]}" 'cd /opt/saos && docker compose --profile intel --profile booking --profile scan -f docker-compose.yml -f docker-compose.prod.yml ps --format "table {{.Name}}\t{{.Status}}"'

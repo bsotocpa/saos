@@ -264,6 +264,23 @@ export function calendarDay(v: unknown, what = 'date'): CalendarDay {
 }
 
 /** Days from `from` (YYYY-MM-DD) to `to` (YYYY-MM-DD); negative when past. */
+/**
+ * PAST DEADLINES (Brian, 2026-09-29, R93). The day a return went overdue: its derived deadline (the
+ * extended one when an extension is recorded, else the original) when that day is before today and the
+ * return is not filed; null otherwise. Recording an extension moves the deadline, which clears it while
+ * the extended day is still ahead. Every surface reads this and prints "Overdue since <date>", never a
+ * bare past date. GET /tax-engagements applies the same rule in SQL.
+ */
+export function overdueSince(
+  deadline: string | null,
+  today: string,
+  ret: { stage: string; filedDate?: string | null }
+): string | null {
+  if (!deadline) return null;
+  if (ret.filedDate || ret.stage === 'filed' || ret.stage === 'completed' || ret.stage === 'withdrawn') return null;
+  return deadline < today ? deadline : null;
+}
+
 export function daysBetween(from: string, to: string): number {
   const f = calendarDay(from, 'from');
   const t = calendarDay(to, 'to');
