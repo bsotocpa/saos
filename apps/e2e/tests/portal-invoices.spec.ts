@@ -14,6 +14,7 @@
  * .artifacts/<date>/ for 14 days.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { redeemPortalToken } from './portal-sign-in';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,15 +42,7 @@ test.use({ baseURL: `http://localhost:${fixtures.portalPort ?? 3106}` });
 
 // A magic link is single use, so each viewport redeems its own (the fixture minted one each).
 async function signIn(page: Page, which: number): Promise<void> {
-  await page.goto('/login');
-  const status = await page.evaluate(async (token) => {
-    const r = await fetch('/api/portal/auth/magic/verify', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }),
-    });
-    localStorage.setItem('saos_portal_authed', '1');
-    return r.status;
-  }, fixtures.portalMagicTokens[which] ?? '');
-  expect(status, 'redeeming the sign-in link the client was emailed').toBe(200);
+  await redeemPortalToken(page, '', fixtures.portalMagicTokens[which] ?? '');
 }
 
 function keepScreenshot(name: string, passed: boolean, file: string): string {

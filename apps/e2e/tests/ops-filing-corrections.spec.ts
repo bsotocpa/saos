@@ -33,6 +33,7 @@
  * and a return corrected by the phone would have nothing left for the desk to correct.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { redeemPortalToken } from './portal-sign-in';
 import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -419,13 +420,7 @@ test.describe('Ops → Filed on, and the filing corrected', () => {
         await asStaff(token, '/portal-users', { method: 'POST', body: JSON.stringify({ contactId }) });
         await expect.poll(async () => ((await (await fetch(`${API}/harness/mail-links`)).json()) as { magicTokens: string[] }).magicTokens.length).toBeGreaterThan(before);
         const tokens = ((await (await fetch(`${API}/harness/mail-links`)).json()) as { magicTokens: string[] }).magicTokens;
-        await page.goto(`${PORTAL}/login`);
-        const status = await page.evaluate(async (t) => {
-          const r = await fetch('/api/portal/auth/magic/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: t }) });
-          localStorage.setItem('saos_portal_authed', '1');
-          return r.status;
-        }, tokens[tokens.length - 1]!);
-        expect(status).toBe(200);
+        await redeemPortalToken(page, `${PORTAL}`, tokens[tokens.length - 1]!);
         await page.goto(`${PORTAL}/sign`);
         await page.waitForLoadState('networkidle');
         const signedRow = page.getByTestId('envelope-row').filter({ hasText: /Signed on/ }).first();

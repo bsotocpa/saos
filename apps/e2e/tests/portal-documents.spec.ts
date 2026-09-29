@@ -12,6 +12,7 @@
  * Both projects: each viewport has its own client, its own two sign-in links, its own rows.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { redeemPortalToken } from './portal-sign-in';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,13 +34,7 @@ const PDF = Buffer.from('%PDF-1.4 synthetic harness upload (R49) — no real cli
 test.use({ baseURL: `http://localhost:${fixtures.portalPort ?? 3106}` });
 
 async function signIn(page: Page, token: string): Promise<void> {
-  await page.goto('/login');
-  const status = await page.evaluate(async (t) => {
-    const r = await fetch('/api/portal/auth/magic/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: t }) });
-    localStorage.setItem('saos_portal_authed', '1');
-    return r.status;
-  }, token);
-  expect(status, 'redeeming the sign-in link the client was emailed').toBe(200);
+  await redeemPortalToken(page, '', token);
 }
 function keepScreenshot(name: string, passed: boolean, file: string): string {
   const dir = passed ? resolve(here, '..', '.artifacts', today) : resolve(root, 'tasks', 'walks', today);
@@ -72,10 +67,12 @@ test('the Documents page lists three kinds of row: the signed agreement copy, th
   const viewport = testInfo.project.name;
   const person = personFor(viewport);
   const shot = testInfo.outputPath(`portal-documents-${viewport}.png`);
-  const errors = watchErrors(page);
   let passed = false;
   try {
     await signIn(page, person.portalMagicTokens[0]!);
+    // The claim is the Documents page's: errors are watched from here. Signing in lands on Home, whose
+    // "no packet yet" read is a 404 by design and is not this page's.
+    const errors = watchErrors(page);
     await page.goto('/documents');
     await expect(page.getByRole('heading', { name: 'Document Center' })).toBeVisible();
     // The two staff-filed rows are there before the client does anything: the shapes that crashed.

@@ -14,6 +14,7 @@
  *              retired record has left search.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { redeemPortalToken } from './portal-sign-in';
 import * as OTPAuth from 'otpauth';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -69,13 +70,7 @@ test('B7e and W1–W2: the checklist backfill on a pre-checklist return; a past 
   await expect(qRow, 'never a bare past date').not.toContainText('Due ');
   // The client's portal card.
   const portal = await context.newPage();
-  await portal.goto(`${PORTAL}/login`);
-  const status = await portal.evaluate(async (t) => {
-    const r = await fetch('/api/portal/auth/magic/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: t }) });
-    localStorage.setItem('saos_portal_authed', '1');
-    return r.status;
-  }, who.overdue.portalMagicTokens[0]!);
-  expect(status, 'the client redeems the sign-in link they were emailed').toBe(200);
+  await redeemPortalToken(portal, `${PORTAL}`, who.overdue.portalMagicTokens[0]!);
   await portal.goto(`${PORTAL}/`);
   const card = portal.locator('section#services');
   await expect(card.getByTestId('service-overdue')).toHaveText(/^ · Overdue since [A-Z][a-z]{2} \d{1,2}, \d{4}$/);

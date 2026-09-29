@@ -18,6 +18,7 @@
  * /jurisdictions/IL/mailing) completes it, and the completed line names both with their calendar days.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { redeemPortalToken } from './portal-sign-in';
 import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -62,13 +63,7 @@ async function magicTokens(): Promise<string[]> {
   return ((await (await fetch(`${API}/harness/mail-links`)).json()) as { magicTokens: string[] }).magicTokens;
 }
 async function signIn(page: Page, token: string): Promise<void> {
-  await page.goto('/login');
-  const status = await page.evaluate(async (t) => {
-    const r = await fetch('/api/portal/auth/magic/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: t }) });
-    localStorage.setItem('saos_portal_authed', '1');
-    return r.status;
-  }, token);
-  expect(status, 'redeeming the sign-in link the client was emailed').toBe(200);
+  await redeemPortalToken(page, '', token);
 }
 /** The block, read fresh: the page is reloaded and the one row's next-step key and sentence returned. */
 async function readNext(page: Page): Promise<{ step: string | null; text: string }> {

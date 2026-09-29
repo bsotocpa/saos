@@ -16,6 +16,7 @@
  * §7216 prohibits), so "signable the moment the engagement opens" is proven on a returning client.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { redeemPortalToken } from './portal-sign-in';
 import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -92,13 +93,7 @@ test.describe('the §7216 consent for a new engagement (R87, R79)', () => {
       await page.locator('[role=dialog]').getByRole('button', { name: 'Dismiss' }).click();
 
       // The client signs in with the link they were emailed, then accepts the proposal they were emailed.
-      await page.goto(`${PORTAL}/login`);
-      const status = await page.evaluate(async (t) => {
-        const r = await fetch('/api/portal/auth/magic/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: t }) });
-        localStorage.setItem('saos_portal_authed', '1');
-        return r.status;
-      }, who.portalMagicTokens[0]!);
-      expect(status).toBe(200);
+      await redeemPortalToken(page, `${PORTAL}`, who.portalMagicTokens[0]!);
       await page.goto(fresh[fresh.length - 1]!);
       await expect(page.getByRole('heading', { name: 'Your proposal' })).toBeVisible();
       await page.getByRole('button', { name: 'Accept and start the work' }).click();

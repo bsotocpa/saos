@@ -11,6 +11,7 @@
  * /consent; the signed letter waits nowhere.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { redeemPortalToken } from './portal-sign-in';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,13 +30,7 @@ const CONTROL = 'portal / "Waiting for your signature" rows and /sign envelope r
 test.use({ baseURL: `http://localhost:${fixtures.portalPort ?? 3106}` });
 
 async function signIn(page: Page, token: string): Promise<void> {
-  await page.goto('/login');
-  const status = await page.evaluate(async (t) => {
-    const r = await fetch('/api/portal/auth/magic/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: t }) });
-    localStorage.setItem('saos_portal_authed', '1');
-    return r.status;
-  }, token);
-  expect(status, 'redeeming the sign-in link the client was emailed').toBe(200);
+  await redeemPortalToken(page, '', token);
 }
 function keepScreenshot(name: string, passed: boolean, file: string): string {
   const dir = passed ? resolve(here, '..', '.artifacts', today) : resolve(root, 'tasks', 'walks', today);
