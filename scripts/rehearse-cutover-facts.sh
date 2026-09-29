@@ -28,7 +28,9 @@ echo "rehearsal: shipping the bundle's CSV files to the box..."
 tar -C "$BUNDLE" -cf - $(cd "$BUNDLE" && ls *.csv) | "${SSH[@]}" 'rm -rf /opt/saos/imports/rehearsal && mkdir -p /opt/saos/imports/rehearsal/trello_import && tar -C /opt/saos/imports/rehearsal/trello_import -xf -'
 if [ -f "$DECISIONS" ]; then "${SSH[@]}" 'cat > /opt/saos/imports/rehearsal/decisions.json' < "$DECISIONS"; fi
 
-"${SSH[@]}" 'bash -s' <<'BOX'
+# The box's part goes up as a file and runs from there: fed to `bash -s`, its `docker exec -i` would
+# swallow the rest of the script as its own stdin (the first rehearsal attempt, 2026-09-29).
+"${SSH[@]}" 'cat > /opt/saos/imports/rehearsal/run.sh' <<'BOX'
 set -euo pipefail
 cd /opt/saos
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
@@ -54,3 +56,4 @@ $COMPOSE run --rm --no-deps -T -v /opt/saos/imports/rehearsal:/imports \
   api node --experimental-strip-types apps/api/scripts/trello-import.ts 2>/dev/null \
   | grep -E '^(A|B|C|D) |R2[0-9]|R3[0-9]|R90|ALL FILES|04b|delta|refused|ledger|rerun|RERUN|zero' || true
 BOX
+"${SSH[@]}" 'bash /opt/saos/imports/rehearsal/run.sh'
