@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, isAuthed, signOut } from '../lib/api';
 import { visibleNav } from '../lib/nav';
+import { HydratedFieldset } from '../components/hydrated-fieldset';
 
 /*
  * WHO IS SIGNED IN, ONCE PER SESSION (R64, 2026-09-26). The navigation shows only the pages this
@@ -77,7 +78,10 @@ export function Shell({ children }: { children: ReactNode }) {
           ))}
         </nav>
       ) : null}
-      <main>{redirecting || (authed && pathname === '/' && me === null) ? null : children}</main>
+      {/* EVERY PAGE WAITS FOR REACT BEFORE IT TAKES TYPING (2026-09-29, receipt runs 34-36): the fieldset's
+          effect runs after the whole page subtree has hydrated, so no field can be typed into and then reset
+          by hydration: three walks lost a first field that way (sign-in, Add staff, Deliver Return). */}
+      <main><HydratedFieldset>{redirecting || (authed && pathname === '/' && me === null) ? null : children}</HydratedFieldset></main>
     </>
   );
 }

@@ -7,8 +7,9 @@
  * typed in that moment (a quick person on a phone, the harness at 390) is reset to empty by the
  * hydration: run 34 lost the sign-in Email, run 35 the Add staff Legal name. The fields render disabled
  * until React owns them, so nothing can be typed into a field about to be reset; Playwright's fill
- * waits for an enabled field on its own. A form that appears only after its data loads is past
- * hydration already and needs none of this.
+ * waits for an enabled field on its own. The Ops shell wraps every page in one (receipt run 36 lost a
+ * third form the same way, so the fix belongs to the shell, not to each form): the fieldset's effect runs
+ * after its whole subtree has hydrated. A form may still wrap its own fields; nesting is harmless.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 
