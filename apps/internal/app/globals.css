@@ -470,6 +470,9 @@ table.qb-lines td.num { font-variant-numeric: tabular-nums; white-space: nowrap;
 .qb-totals { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; }
 /* R89: the quote's lines by year, as the server will write them (each year its own group, the surcharge marked). */
 .qb-years { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 4px; }
+/* R97: Compare, two same-name records side by side. */
+.compare { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+.compare th, .compare td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
 .qb-total-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
 .qb-total-row strong { font-variant-numeric: tabular-nums; }
 .qb-totals .inline-check { margin: 2px 0; font-size: 12.5px; }

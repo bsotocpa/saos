@@ -17,6 +17,8 @@
   ],
   "actions": [
     "POST /tax-engagements/:id/checklist-backfill",
+    "POST /contacts/same-name/resolve",
+    "POST /contacts/duplicate-suggestions/:id/dismiss",
     "POST /documents/:id/counts-as",
     "POST /portal/documents/:id/counts-as",
     "POST /businesses/:id/books-current-through",

@@ -222,6 +222,13 @@
         { "id": "K1", "text": "Ops: a file on file before the checklist is matched to a pending item from its row; the row reads what it counts as", "device": "phone + laptop" },
         { "id": "K2", "text": "The client matches a file already sent to the item it is for on the portal's Documents page", "device": "phone + laptop" }
       ]
+    },
+    "C": {
+      "title": "Same-name pairs: Compare, Merge or Not a duplicate (R97)",
+      "steps": [
+        { "id": "C1", "text": "A same-name pair's banner opens Compare; a reason and Merge (the R92 door) join them; the banner goes and the other record redirects", "device": "phone + laptop" },
+        { "id": "C2", "text": "Compare, a reason and Not a duplicate: the banner goes from both records", "device": "phone + laptop" }
+      ]
     }
   }
 }

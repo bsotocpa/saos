@@ -57,7 +57,14 @@ interface Business {
   is_test?: boolean; test_note?: string | null;
   unverified_import_source?: string | null;
 }
+/** R97: one side of a same-name pair, as Compare reads it. */
+interface CompareSide {
+  id: string; name: string; email: string | null; phone: string | null; businesses: string[];
+  engagements: number; lastActivity: string | null; portalUser: boolean; createdAt: string;
+}
 interface Packet {
+  /** R97: an open same-name suggestion per other record: the banner "Possible duplicate of <other>, compare". */
+  possibleDuplicates?: Array<{ suggestionId: string; otherId: string; otherName: string }>;
   contact: Contact;
   businesses: Business[];
   entityGroups: Array<{ id: string; name: string }>;
@@ -345,6 +352,8 @@ export default function ClientPacketPage() {
    */
   const [canAddBusiness, setCanAddBusiness] = useState(false);
   const [canFlagTest, setCanFlagTest] = useState(false);
+  /** R97: Merge in Compare is the R92 pair door, contacts.merge (the CEO); Not a duplicate is contacts.write. */
+  const [canMergeContacts, setCanMergeContacts] = useState(false);
   // R29: the refund door is billing.manage (Rene's role) or the CEO's '*', decided from /auth/me.
   const [canRefund, setCanRefund] = useState(false);
   /*
@@ -515,6 +524,7 @@ export default function ClientPacketPage() {
         setCanAddBusiness(['*', 'contacts.write', 'businesses.write'].some((p) => m.permissions.includes(p)));
         // The test flag rides on POST /contacts/:id/archive, whose preHandler is contacts.write alone.
         setCanFlagTest(['*', 'contacts.write'].some((p) => m.permissions.includes(p)));
+        setCanMergeContacts(['*', 'contacts.merge'].some((p) => m.permissions.includes(p)));
         setCanRefund(['*', 'billing.manage'].some((p) => m.permissions.includes(p)));
         setCanManageQuotes(['*', 'quotes.manage'].some((p) => m.permissions.includes(p)));
         setCanManageReturns(['*', 'engagements.tax.manage'].some((p) => m.permissions.includes(p)));
@@ -550,6 +560,64 @@ export default function ClientPacketPage() {
         scripts/check-flash-once.mjs refuses a second render of the same notice on any page.
       */}
       {actionMsg ? <p className="alert ok" role="status" aria-live="polite">{actionMsg}</p> : null}
+      {/*
+        R97 (Brian, 2026-09-29): a same-name record Dubsado may have made twice. The banner stays on both
+        pages until a person merges the two (the R92 door) or says they are not one person, with a reason.
+      */}
+      {(packet.possibleDuplicates ?? []).map((dup) => (
+        <div key={dup.suggestionId} className="alert warn" data-testid="duplicate-banner" data-other={dup.otherId}>
+          Possible duplicate of <a href={`/clients/${dup.otherId}`}>{dup.otherName}</a>,{' '}
+          <button
+            type="button"
+            className="btn ghost small"
+            data-testid="duplicate-compare"
+            onClick={async () => {
+              const cmp = await api<{ a: CompareSide; b: CompareSide }>(`/contacts/duplicate-suggestions/${dup.suggestionId}/compare`);
+              const row = (label: string, f: (s: CompareSide) => string) => (
+                <tr><th scope="row">{label}</th><td>{f(cmp.a)}</td><td>{f(cmp.b)}</td></tr>
+              );
+              let survivor: string | null = null;
+              const r = await ask({
+                title: 'Compare the two records',
+                body: (
+                  <table className="compare" data-testid="duplicate-compare-table">
+                    <thead><tr><th /><th>{cmp.a.name}</th><th>{cmp.b.name}</th></tr></thead>
+                    <tbody>
+                      {row('Email', (s) => s.email ?? 'none')}
+                      {row('Phone', (s) => s.phone ?? 'none')}
+                      {row('Businesses', (s) => (s.businesses.length > 0 ? s.businesses.join(', ') : 'none'))}
+                      {row('Engagements', (s) => String(s.engagements))}
+                      {row('Last activity', (s) => (s.lastActivity ? dayOf(s.lastActivity) : 'none'))}
+                      {row('Portal user', (s) => (s.portalUser ? 'yes' : 'no'))}
+                    </tbody>
+                  </table>
+                ),
+                reason: { label: 'Why (merged: why these are one person; not a duplicate: why they are two)', required: true },
+                choices: [
+                  ...(canMergeContacts ? [{ key: 'merge', label: 'Merge', tone: 'danger' as const }] : []),
+                  { key: 'dismiss', label: 'Not a duplicate', tone: 'primary' as const },
+                ],
+                run: async (a) => {
+                  if (a.choice === 'merge') {
+                    const m = await api<{ survivorId: string }>('/contacts/merge-pair', {
+                      method: 'POST', body: { aId: cmp.a.id, bId: cmp.b.id, reason: a.reason, identityOverrideReason: a.reason },
+                    });
+                    survivor = m.survivorId;
+                  } else {
+                    await api(`/contacts/duplicate-suggestions/${dup.suggestionId}/dismiss`, { method: 'POST', body: { reason: a.reason } });
+                  }
+                },
+              });
+              if (!r) return;
+              if (survivor && survivor !== params.id) { router.push(`/clients/${survivor}`); return; }
+              setActionMsg(r.choice === 'merge' ? 'Merged. The other record redirects here.' : 'Marked not a duplicate. The banner is gone from both records.');
+              await load();
+            }}
+          >
+            compare
+          </button>
+        </div>
+      ))}
       {/*
         #42. This read "lead · from native" for a client with a signed Master, an answered
         §7216, a paid invoice and a live portal session — two unrelated facts wearing one

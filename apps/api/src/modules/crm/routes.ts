@@ -571,6 +571,8 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       // Where the client's own screens live, so the record can show the pay link staff
       // read out on a call (#33) instead of hardcoding the domain in the ops app.
       portalBaseUrl: app.config.PORTAL_BASE_URL,
+      // R97: "Possible duplicate of <other record>, compare", one banner per open same-name suggestion.
+      possibleDuplicates: await (await import('./same-name.ts')).openSuggestionsFor(app, id),
     };
   });
 
@@ -985,6 +987,27 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       });
       return { through, asOf, unconfirmed: false };
     });
+
+  /*
+   * R97 (Brian, 2026-09-29): SAME-NAME PAIRS. The pass (CEO-only, the merge permission): every name-only
+   * pair resolved by rule, `apply: false` counting without writing. Compare reads the two side by side;
+   * Not a duplicate dismisses a suggestion with a reason, audited, and the banner goes from both pages.
+   */
+  app.post('/contacts/same-name/resolve', contactMerge, async (request) => {
+    const b = z.object({ apply: z.boolean() }).parse(request.body);
+    const { resolveSameNamePairs } = await import('./same-name.ts');
+    return resolveSameNamePairs(app, request.staff!, { apply: b.apply });
+  });
+  app.get<{ Params: { id: string } }>('/contacts/duplicate-suggestions/:id/compare', read, async (request) => {
+    const { compareSuggestion } = await import('./same-name.ts');
+    return compareSuggestion(app, z.uuid().parse(request.params.id));
+  });
+  app.post<{ Params: { id: string } }>('/contacts/duplicate-suggestions/:id/dismiss', write, async (request) => {
+    const b = z.object({ reason: reasonText(10, 1000) }).parse(request.body);
+    const { dismissSuggestion } = await import('./same-name.ts');
+    await dismissSuggestion(app, request.staff!, z.uuid().parse(request.params.id), b.reason);
+    return { status: 'ok' };
+  });
 
   /** Archive a business (2026-09-12): never a delete; a primary that goes clears the flag and nothing is promoted. */
   app.post<{ Params: { id: string } }>('/businesses/:id/archive', write, async (request) => {

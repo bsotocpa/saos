@@ -65,7 +65,9 @@ const REPARENT: Array<{ table: string; audit: 'rows' | 'summary' }> = [
 ];
 
 /** Contact-keyed tables the merge deliberately leaves alone: history, read through the link. */
-const HISTORY_TABLES = new Set(['audit_log']);
+// R97 (2026-09-29): a duplicate suggestion names both records by design; the merge closes it as merged
+// (below) and it stays as the record of the question, never reparented onto one record twice.
+const HISTORY_TABLES = new Set(['audit_log', 'contact_duplicate_suggestions']);
 
 export interface MergeActor { id: string; email: string; fullName: string }
 
@@ -266,6 +268,12 @@ export async function mergeContacts(
         throw new AppError(500, 'merge_orphans', `The merge would leave rows behind on the losing record: ${JSON.stringify(left)}. Nothing was changed.`);
       }
 
+      // R97: a suggestion that this pair (or the loser and anyone else) is one person is answered by the merge.
+      await app.db.query(
+        `UPDATE contact_duplicate_suggestions SET status = 'merged', closed_by_staff_id = NULLIF($2, '')::uuid, closed_at = now()
+          WHERE status = 'open' AND ($1 IN (a_contact_id, b_contact_id))`,
+        [loserId, actor.id]
+      );
       // The loser: archived, pointing at the winner, nothing else. Archiving after reparenting is what the invariant allows.
       await app.db.query(
         `UPDATE contacts SET is_archived = true, contact_status = 'archived', contact_status_at = now(),
