@@ -168,10 +168,11 @@ function StepperBody({ taxEngagementId, contactId, stage, detail, canManage, err
             </div>
             {p.state === 'current' ? (
               <ol className="phase-steps" aria-label={`${p.label} steps`}>
-                {p.steps.map((s, j) => (
+                {p.steps.map((s) => (
                   <li key={s.key} className={`step ${s.state}`} data-testid={`step-${s.key}`} data-state={s.state} aria-current={s.state === 'current' ? 'step' : undefined}>
                     <div className="step-head">
-                      <span className="step-mark" aria-hidden="true">{s.state === 'done' ? '✓' : j + 1}</span>
+                      {/* R50 v3 approval (2026-09-29): only the five phases are numbered; a step's mark is its state (a check when done). */}
+                      <span className="step-mark" aria-hidden="true">{s.state === 'done' ? '✓' : ''}</span>
                       <span className="step-label">{s.state === 'done' && s.done ? doneLine(s, te, actions.rangeText) : s.label}</span>
                     </div>
                     {s.key === 'jurisdictions' ? jurisdictionBlock : null}

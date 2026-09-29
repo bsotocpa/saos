@@ -121,8 +121,9 @@ test('off renders the row with its control grid; on renders the rail of five pha
     await expect(control.getByText(/signs the engagement packet in the portal/), 'and its one sentence').toBeVisible();
     await expect(stepper.getByTestId('current-step-control'), 'exactly one control in the whole rail').toHaveCount(1);
     await expect(openPhase.locator('li.step.later'), 'the other three steps of Engage are later').toHaveCount(3);
-    for (const [key, label, n] of [['preparer', 'Preparer assigned', 2], ['estimate', 'Estimate locked', 3], ['scheduled', 'Scheduled', 4]] as const) {
-      await expect(openPhase.getByTestId(`step-${key}`), `${key}: one line, its name alone`).toHaveText(`${n}${label}`);
+    // R50 v3 approval (2026-09-29): a step carries no number; only the five phases are numbered.
+    for (const [key, label] of [['preparer', 'Preparer assigned'], ['estimate', 'Estimate locked'], ['scheduled', 'Scheduled']] as const) {
+      await expect(openPhase.getByTestId(`step-${key}`), `${key}: one line, its name alone, no number`).toHaveText(label);
     }
     await expect(stepper.getByTestId('step-f8879_sent'), 'a step of a future phase is not drawn').toHaveCount(0);
     await expect(stepper.getByTestId('step-completed')).toHaveCount(0);

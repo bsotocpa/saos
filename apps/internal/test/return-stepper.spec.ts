@@ -258,6 +258,9 @@ test('the wiring: the page decides from the switch, the stepper reuses the rowâ€
   assert.match(stepper, /prefers-reduced-motion: reduce/, 'respecting reduced motion');
   assert.match(stepper, /matchMedia\('\(min-width: 768px\)'\)\.matches\) return;/, 'and only on the phone');
   assert.match(stepper, /data-testid="return-details"/, 'the details area');
+  // R50 v3 approval (2026-09-29): only the five phases are numbered; a step inside the open phase carries none.
+  assert.match(stepper, /<span className="step-mark" aria-hidden="true">\{s\.state === 'done' \? 'âœ“' : ''\}<\/span>/, 'a step mark is a check or nothing');
+  assert.doesNotMatch(stepper, /j \+ 1/, 'no step number');
   assert.match(stepper, /hasPaperJurisdiction\(rows\) \? <p className="muted small">\{CONTROL_SENTENCES\.mailing\}/, 'fix 2');
 
   const lib = readFileSync(new URL('../lib/return-stepper.ts', import.meta.url), 'utf8');

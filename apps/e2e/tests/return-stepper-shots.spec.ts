@@ -163,6 +163,9 @@ test('the three rail states at 390, 768 and 1280, at full resolution', async ({ 
       await expect(card.getByTestId('return-details')).toHaveCount(1);
       const width = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
       expect(width.scroll, `no page-level horizontal scroll at ${size.width} (${state})`).toBeLessThanOrEqual(width.client);
+      // R50 v3 approval (2026-09-29): only the five phases carry a number; a step's mark is a check or nothing.
+      const stepMarks = await stepper.locator('li.phase.current li.step .step-mark').allTextContents();
+      expect(stepMarks.every((m) => m === '' || m === '✓'), `no step number inside the open phase (${state}, ${size.width}): ${stepMarks.join(',')}`).toBe(true);
       if (size.width >= 768) {
         // R50 v3: the closed chips share one width, and a done chip's date sits on its own line under its check and name.
         const chips = await stepper.locator('li.phase:not(.current)').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width));
