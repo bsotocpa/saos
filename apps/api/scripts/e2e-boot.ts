@@ -36,6 +36,7 @@ import { buildConsentFixture } from './e2e-fixtures/consent-new-engagement.ts';
 import { buildBatch10Fixture } from './e2e-fixtures/batch10.ts';
 import { buildTwoYearFixture } from './e2e-fixtures/path-b-two-year.ts';
 import { buildCutoverFixture } from './e2e-fixtures/cutover.ts';
+import { buildCountsAsFixture } from './e2e-fixtures/counts-as.ts';
 import { buildBillingHoldFixture } from './e2e-fixtures/billing-hold.ts';
 
 const PORT = Number(process.env.E2E_API_PORT ?? 3101);
@@ -551,6 +552,8 @@ const batch10 = await buildBatch10Fixture(app, { staffToken, actor, magicTokens,
 const twoYear = await buildTwoYearFixture(app, { staffToken, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app) });
 // R90 (2026-09-29): path Z, the cutover facts on the business page: an unconfirmed month and a self-filer per viewport.
 const cutover = await buildCutoverFixture(app, { actor });
+// R96 (2026-09-29): path K, a file already on file matched to a checklist item from Ops and from the portal.
+const countsAs = await buildCountsAsFixture(app, { staffToken, actor, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app) });
 // The billing hold the importer places (R68): one held client per viewport, made through the importer's own function.
 const billingHold = await buildBillingHoldFixture(app, { actor });
 // The 990 variant of Path B (R66): an exempt organization's return at ready to file, one per viewport.
@@ -603,6 +606,7 @@ console.log('E2E_READY ' + JSON.stringify({
   batch10,
   twoYear,
   cutover,
+  countsAs,
   billingHold,
   hilo,
   wall: {

@@ -16,7 +16,11 @@ import { docCategoryLabel, docStatusLabel, docStatusTone, type DictKey } from '.
  * account (R49, 2026-09-26). `filename` is typed as the API declares it; the render below still
  * reads it defensively, because a page that dies leaves the client with nothing.
  */
-interface Doc { id: string; category: string; status: string; filename: string; tax_year: number | null; uploaded_at: string }
+interface Doc {
+  id: string; category: string; status: string; filename: string; tax_year: number | null; uploaded_at: string;
+  /** R96: the checklist items this file counts as. */
+  counts_as?: Array<{ itemId: string; labelEn: string; labelEs: string | null }>;
+}
 interface RequestItem { id: string; labelEn: string; labelEs: string | null; status: string }
 interface DocRequest { id: string; title_en: string; title_es: string | null; items: RequestItem[] }
 /** One line per file the client just chose: its name and what happened to it (R47). */
@@ -136,6 +140,13 @@ export default function DocumentsPage() {
   const [results, setResults] = useState<UploadResult[]>([]);
   // Keyed by document id so a failed download says so on ITS row, not at the page top.
   const [downloadError, setDownloadError] = useState<{ id: string; message: string } | null>(null);
+  /** R96: the item a file already sent is for, picked on its row; the refusal beside it. */
+  const [countsPick, setCountsPick] = useState<Record<string, string>>({});
+  const [countsErr, setCountsErr] = useState<{ id: string; message: string } | null>(null);
+  // R96: the checklist items still pending, which a file already sent can count as.
+  const checklistOpenItems = checklists.flatMap((c) => c.items.filter((i) => i.status === 'pending').map((i) => ({
+    id: i.id, labelEn: i.labelEn, labelEs: i.labelEs, year: c.tax_year, form: formNumber(c.return_type),
+  })));
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -306,6 +317,47 @@ export default function DocumentsPage() {
                   {docCategoryLabel(lang, d.category)}
                   {d.tax_year ? ` · ${d.tax_year}` : ''}
                 </span>
+                {/* R96: a file sent before the checklist, or under a general category, is matched to the item it is for. */}
+                {(d.counts_as ?? []).length > 0 ? (
+                  <>
+                    <br />
+                    <span className="muted small" data-testid="doc-counts-as">
+                      {t('doc_counts_as')}: {(d.counts_as ?? []).map((c) => (lang === 'es' ? c.labelEs || c.labelEn : c.labelEn)).join(', ')}
+                    </span>
+                  </>
+                ) : checklistOpenItems.length > 0 ? (
+                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                    <select
+                      aria-label={t('doc_counts_as_pick')}
+                      data-testid="doc-counts-as-select"
+                      value={countsPick[d.id] ?? ''}
+                      onChange={(e) => setCountsPick((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                    >
+                      <option value="">{t('doc_counts_as_pick')}</option>
+                      {checklistOpenItems.map((it) => (
+                        <option key={it.id} value={it.id}>{it.year} {it.form}: {lang === 'es' ? it.labelEs || it.labelEn : it.labelEn}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      data-testid="doc-counts-as-save"
+                      disabled={!countsPick[d.id]}
+                      onClick={async () => {
+                        setCountsErr(null);
+                        try {
+                          await api(`/portal/documents/${d.id}/counts-as`, { method: 'POST', body: { itemId: countsPick[d.id] } });
+                          await load();
+                        } catch (err) {
+                          setCountsErr({ id: d.id, message: err instanceof Error && err.message ? err.message : t('error_generic') });
+                        }
+                      }}
+                    >
+                      {t('doc_counts_as_save')}
+                    </button>
+                    {countsErr?.id === d.id ? <p className="field-error" role="alert" style={{ flexBasis: '100%' }}>{countsErr.message}</p> : null}
+                  </span>
+                ) : null}
               </span>
               <span className={`badge ${docStatusTone(d.status)}`}>
                 {docStatusLabel(lang, d.status)}

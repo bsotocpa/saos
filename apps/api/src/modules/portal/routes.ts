@@ -348,13 +348,28 @@ export function registerPortalRoutes(app: FastifyInstance): void {
       // Withdrawn files are gone from the client's view but not from the record —
       // see withdrawDocument(). A client who uploaded the wrong thing should not keep
       // seeing it; an auditor should still be able to.
-      `SELECT id, category, status, filename, tax_year, uploaded_at
-       FROM documents
-       WHERE contact_id = $1 AND archived_at IS NULL AND withdrawn_at IS NULL
-       ORDER BY uploaded_at DESC`,
+      // R96: each row says which checklist item it counts as, so an unmatched one can be matched here.
+      `SELECT d.id, d.category, d.status, d.filename, d.tax_year, d.uploaded_at, ${(await import('../documents/counts-as.ts')).COUNTS_AS_SQL} AS counts_as
+       FROM documents d
+       WHERE d.contact_id = $1 AND d.archived_at IS NULL AND d.withdrawn_at IS NULL
+       ORDER BY d.uploaded_at DESC`,
       [client.contactId]
     );
     return { documents: rows };
+  });
+
+  /*
+   * R96 (Brian, 2026-09-29): the client picks the checklist item a document already on file is for.
+   * Scoped to the session contact; someone else's document reads as not found. Audited as the client.
+   */
+  app.post<{ Params: { id: string } }>('/portal/documents/:id/counts-as', scoped, async (request) => {
+    const client = request.client!;
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ itemId: z.uuid() }).parse(request.body);
+    const { countDocumentAs } = await import('../documents/counts-as.ts');
+    return countDocumentAs(app, { type: 'client', id: client.portalUserId, label: client.displayName, ip: request.ip }, {
+      documentId: id, itemId: b.itemId, clientContactId: client.contactId,
+    });
   });
 
   /**

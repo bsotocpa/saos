@@ -243,6 +243,10 @@ const dict = {
   // R47 (2026-09-26): the category starts unselected; a file chosen before one is picked is refused here, not sent.
   docs_category_placeholder: ['Choose a category', 'Elija una categoría'],
   docs_category_required: ['Choose a category first, then pick your files.', 'Elija una categoría primero y luego sus archivos.'],
+  // R96: a file already sent, matched by the client to the checklist item it is for.
+  doc_counts_as: ['Counts as', 'Cuenta como'],
+  doc_counts_as_pick: ['This file is for…', 'Este archivo es para…'],
+  doc_counts_as_save: ['Save', 'Guardar'],
   docs_empty: ['Nothing uploaded yet. Files you send us appear here.', 'Aún no hay archivos. Los que nos envíe aparecerán aquí.'],
   docs_file_uploaded: ['uploaded', 'subido'],
   cat_tax_documents: ['Tax documents', 'Documentos de impuestos'],

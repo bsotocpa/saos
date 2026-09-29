@@ -82,7 +82,11 @@ interface Doc {
   id: string; category: string; original_filename: string; created_at: string;
   /** R69: a scan replaced through the correction door is kept and marked; the row says so. */
   superseded_at?: string | null; superseded_by?: string | null; f8879_variant?: string | null;
+  /** R96: the checklist items this document counts as. */
+  counts_as?: Array<{ itemId: string; labelEn: string }>;
 }
+/** R96: a pending checklist item a document on file can count as. */
+interface ChecklistItemOption { id: string; label_en: string; tax_year: number; return_type: string }
 interface Quote {
   created_by?: string | null;
   is_stale?: boolean;
@@ -350,6 +354,11 @@ export default function ClientPacketPage() {
   const [canManageQuotes, setCanManageQuotes] = useState(false);
   /** R91: the checklist backfill rides on engagements.tax.manage, as the route does. */
   const [canManageReturns, setCanManageReturns] = useState(false);
+  /** R96: the "Counts as" control on a document row, for documents.write. */
+  const [canWriteDocs, setCanWriteDocs] = useState(false);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItemOption[]>([]);
+  const [countsAsPick, setCountsAsPick] = useState<Record<string, string>>({});
+  const [countsAsErr, setCountsAsErr] = useState<{ docId: string; message: string } | null>(null);
   const [backfillErr, setBackfillErr] = useState<{ id: string; message: string } | null>(null);
   /*
    * LIFTING THE BILLING HOLD (R68, 2026-09-26): engagements.billing_hold.lift is EXPLICIT-ONLY, so the
@@ -419,6 +428,10 @@ export default function ClientPacketPage() {
         api<{ documents: Doc[] }>(`/documents?contactId=${params.id}`)
           .then((r) => { setDocs(r.documents ?? []); settle('documents'); })
           .catch(refused('documents', () => setDocs([]))),
+        // R96: what a document on file can count as; a refusal leaves the control off, nothing else.
+        api<{ items: ChecklistItemOption[] }>(`/documents/checklist-items?contactId=${params.id}`)
+          .then((r) => setChecklistItems(r.items ?? []))
+          .catch(() => setChecklistItems([])),
         api<{ quotes: Quote[] }>(`/contacts/${params.id}/quotes`)
           .then((r) => setQuotes(r.quotes ?? []))
           .catch(refused('quotes', () => setQuotes([]))),
@@ -505,6 +518,7 @@ export default function ClientPacketPage() {
         setCanRefund(['*', 'billing.manage'].some((p) => m.permissions.includes(p)));
         setCanManageQuotes(['*', 'quotes.manage'].some((p) => m.permissions.includes(p)));
         setCanManageReturns(['*', 'engagements.tax.manage'].some((p) => m.permissions.includes(p)));
+        setCanWriteDocs(['*', 'documents.write'].some((p) => m.permissions.includes(p)));
         // Explicit-only: the named grant, never '*'.
         setCanLiftBillingHold(m.permissions.includes('engagements.billing_hold.lift'));
         // Anything but the server saying "on" is off: a missing field is a closed door, never an open one.
@@ -1097,6 +1111,42 @@ export default function ClientPacketPage() {
                 <span className="muted"> · {dayOf(d.created_at)}</span>
                 {/* R69: a replaced scan stays on the record, downloadable, and reads what it is. */}
                 {d.superseded_at ? <span className="badge warn" data-testid={`document-superseded-${d.id}`}> superseded {dayOf(d.superseded_at)}</span> : null}
+                {/* R96: a document on file counts as a checklist item, matched here when it was uploaded before the checklist or under a general category. */}
+                {(d.counts_as ?? []).length > 0 ? (
+                  <span className="muted" data-testid={`document-counts-as-${d.id}`}> · counts as {(d.counts_as ?? []).map((c) => c.labelEn).join(', ')}</span>
+                ) : canWriteDocs && checklistItems.length > 0 && !d.superseded_at ? (
+                  <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginLeft: 6 }}>
+                    <select
+                      aria-label={`Counts as, for ${d.original_filename}`}
+                      data-testid={`counts-as-select-${d.id}`}
+                      value={countsAsPick[d.id] ?? ''}
+                      onChange={(e) => setCountsAsPick((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                    >
+                      <option value="">Counts as…</option>
+                      {checklistItems.map((it) => (
+                        <option key={it.id} value={it.id}>{it.tax_year} {it.return_type.toUpperCase()}: {it.label_en}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      data-testid={`counts-as-save-${d.id}`}
+                      disabled={!countsAsPick[d.id]}
+                      onClick={async () => {
+                        setCountsAsErr(null);
+                        try {
+                          await api(`/documents/${d.id}/counts-as`, { method: 'POST', body: { itemId: countsAsPick[d.id] } });
+                          await load();
+                        } catch (err) {
+                          setCountsAsErr({ docId: d.id, message: err instanceof Error && err.message ? err.message : 'The request was refused.' });
+                        }
+                      }}
+                    >
+                      Save
+                    </button>
+                  </span>
+                ) : null}
+                {countsAsErr?.docId === d.id ? <span className="field-error" role="alert" style={{ display: 'block' }}>{countsAsErr.message}</span> : null}
               </p>
             ))
           )}

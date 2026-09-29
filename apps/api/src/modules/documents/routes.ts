@@ -12,6 +12,7 @@ import { makeMinioClient } from './storage.ts';
 import { afterReturnDelivered, downloadDocument, runDocumentChaseJob, uploadDocument } from './service.ts';
 import { alertRecipientForRole } from '../../staffing.ts';
 import { canReadCategory, readableCategories } from './wall.ts';
+import { COUNTS_AS_SQL, countDocumentAs, openChecklistItemsFor } from './counts-as.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 
 const CLIENT_CATEGORIES = ['tax_documents', 'business_records', 'id_verification', 'irs_notices', 'other'] as const;
@@ -351,7 +352,8 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         `SELECT d.id, d.category::text AS category, d.filename AS original_filename,
                 d.mime_type, d.size_bytes, d.tax_year, d.status::text AS status,
                 d.uploaded_by_type, d.created_at,
-                d.superseded_by, d.superseded_at, d.f8879_variant
+                d.superseded_by, d.superseded_at, d.f8879_variant,
+                ${COUNTS_AS_SQL} AS counts_as
          FROM documents d
          WHERE d.contact_id = $1 AND d.archived_at IS NULL${categoryClause}
          ORDER BY d.created_at DESC
@@ -373,6 +375,23 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       return { documents: rows };
     }
   );
+
+  /*
+   * R96 (Brian, 2026-09-29): "COUNTS AS". The client's pending checklist items, for the control on a
+   * document row, and the door that matches a document already on file to one of them (audited).
+   */
+  app.get('/documents/checklist-items', { preHandler: [app.authenticate, requirePermission('documents.read')] }, async (request) => {
+    const q = z.object({ contactId: z.uuid() }).parse(request.query);
+    return { items: await openChecklistItemsFor(app, q.contactId) };
+  });
+  app.post<{ Params: { id: string } }>('/documents/:id/counts-as', { preHandler: [app.authenticate, requirePermission('documents.write')] }, async (request) => {
+    const id = z.uuid().parse(request.params.id);
+    const b = z.object({ itemId: z.uuid() }).parse(request.body);
+    const staff = request.staff!;
+    return countDocumentAs(app, { type: 'staff', id: staff.id, label: staff.fullName, ip: request.ip }, {
+      documentId: id, itemId: b.itemId, canReadCategory: (c) => canReadCategory(staff, c),
+    });
+  });
 
   /*
    * FINDING #16 — the firm-wide document surface for staff.

@@ -215,6 +215,13 @@
         { "id": "Z1", "text": "An imported \"books current through\" from a card untouched since before 2026-09-21 reads unconfirmed; the bookkeeper corrects it; the badge, the door and the confirm task clear", "device": "phone + laptop" },
         { "id": "Z2", "text": "A client who files their own ST-1 reads so on the Sales tax line, with no sales-tax engagement", "device": "phone + laptop" }
       ]
+    },
+    "K": {
+      "title": "A file on file counts as a checklist item (R96)",
+      "steps": [
+        { "id": "K1", "text": "Ops: a file on file before the checklist is matched to a pending item from its row; the row reads what it counts as", "device": "phone + laptop" },
+        { "id": "K2", "text": "The client matches a file already sent to the item it is for on the portal's Documents page", "device": "phone + laptop" }
+      ]
     }
   }
 }
