@@ -2156,3 +2156,7 @@ The R81 display-name seed updated every price-book version's rows; production's 
 ## Nothing commits after the receipt (2026-09-29, Brian's refused push)
 After receipt run 32 I committed a refreshed sabotage table (929647d). The pre-push hook keys the receipt to HEAD's exact tree, so Brian's `git push origin HEAD:main` was refused ("No green root-suite run is recorded for tree 2f58b7aa7589"), and receipt run 33 had to run before the push could go.
 **Rule:** regenerate every report table and write every lesson before the final receipt run; after it, only that run's own generated files are copied and committed (that commit's tree is the receipt's tree); `node scripts/green-run.mjs require` passes on HEAD before the push is called ready.
+
+## "networkidle" is not hydration (2026-09-29, receipt run 34, R7)
+Run 34 failed once: the MFA walk at 390 typed the Email into /login and read it back empty. The helper already knew WebKit could fill before React hydrated and waited for networkidle, which is not a hydration signal; R76 had put the QR library into the sign-in bundle, hydration landed later, and the window opened. Not a flake to rerun: a race with a named cause.
+**Rule:** a page a walk types into says when React owns it (the /login form's data-hydrated="true") and the walk waits for that, never for network quiet; a library only one screen needs loads with that screen (the QR code is a dynamic import), so the sign-in bundle does not grow.

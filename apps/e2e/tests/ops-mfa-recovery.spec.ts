@@ -64,11 +64,14 @@ async function signIn(page: Page, who: Persona): Promise<void> {
 }
 /**
  * The sign-in form typed by hand. WebKit at 390 filled the Email before React hydrated and the
- * hydration reset it, so each field is filled after the page settles and read back before Sign in.
+ * hydration reset it (again in receipt run 34, 2026-09-29: networkidle is not hydration). The form
+ * now says when React owns it (data-hydrated="true"); each field is filled after that and read back
+ * before Sign in.
  */
 async function typeSignIn(page: Page, email: string, password: string, secondFactor?: string): Promise<void> {
   await page.goto('/login');
   await page.waitForLoadState('networkidle');
+  await expect(page.locator('form[data-hydrated="true"]'), 'React owns the form before anything is typed').toHaveCount(1);
   const emailBox = page.getByLabel('Email');
   const passwordBox = page.getByLabel('Password', { exact: true });
   const codeBox = page.getByLabel(/^Authenticator code or recovery code/);
@@ -276,6 +279,7 @@ test.describe('Ops → MFA recovery codes and Reset MFA (R65)', () => {
       // The reset mail's page is a working sign-in: the member lands on enrolment, as M3 said they would.
       await page.goto(resetMail.opsLinks[0]!);
       await page.waitForLoadState('networkidle');
+      await expect(page.locator('form[data-hydrated="true"]'), 'React owns the form before anything is typed').toHaveCount(1);
       await page.getByLabel('Email').fill(email);
       await page.getByLabel('Password', { exact: true }).fill(ownPassword);
       await expect(page.getByLabel('Email')).toHaveValue(email);

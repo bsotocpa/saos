@@ -3,10 +3,16 @@
 // Staff login: password + TOTP required (WISP). First login walks through
 // MFA enrollment — no full session exists until the authenticator is proven.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { api, markAuthed } from '../../lib/api';
-import { TotpQr } from '../../components/totp-qr';
+/*
+ * R76's QR code, loaded only when the enrolment screen asks for it (receipt run 34, 2026-09-29): drawn
+ * into the sign-in bundle, qrcode-generator made the page hydrate later, and a walk that typed into the
+ * form before hydration had its Email reset. Enrolment waits for it; sign-in no longer carries it.
+ */
+const TotpQr = dynamic(() => import('../../components/totp-qr').then((m) => m.TotpQr), { ssr: false });
 
 // 'codes' (R65, 2026-09-26): the recovery codes, shown once after enrolment, held until "I saved these".
 type Phase = 'credentials' | 'enroll' | 'verify' | 'codes';
@@ -18,6 +24,12 @@ export default function LoginPage() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>('credentials');
   const [email, setEmail] = useState('');
+  /*
+   * HYDRATED (2026-09-29, receipt run 34): the form says when React owns it. A field filled before
+   * hydration is reset by it; the harness waits for data-hydrated before it types.
+   */
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => { setHydrated(true); }, []);
   const [password, setPassword] = useState('');
   const [totp, setTotp] = useState('');
   const [setupToken, setSetupToken] = useState('');
@@ -111,6 +123,7 @@ export default function LoginPage() {
 
       {phase === 'credentials' ? (
         <form
+          data-hydrated={hydrated ? 'true' : 'false'}
           onSubmit={(e) => {
             e.preventDefault();
             void login();
