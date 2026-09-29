@@ -1,11 +1,11 @@
 # walk-evidence-path-u (2026-09-29)
 
-Generated 2026-09-29T05:23:40.781Z by scripts/report-table.mjs from the log walk-u.log; 8 row(s).
+Generated 2026-09-29T08:34:26.503Z by scripts/report-table.mjs from the log walk-u.log; 8 row(s).
 
 The business page (R40, 2026-09-26, behind OPS_BUSINESS_PAGE, off in production): ops-business-page.spec.ts at 390 and 1280, each viewport on its own S corp fixture; U1 reaches /businesses/:id from the client page's Businesses card and saves an industry through the shared Edit business modal, U2 from the clients-list "Business — owner" row, U3 is the role proof (the bookkeeper: three cards read the sentence, the aggregate says refused with the permission, the EIN is the last four only), U4 flips the switch off through the harness-only /harness/business-page door and reads the sentence, the plain-text name and the client href. The four approval screenshots come from business-page-shots.spec.ts (C:\Users\brian\saos-shots\business-page), not from these rows.
 
 ```sql
-node scripts/walk-evidence.mjs U  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 127 passed, 0 failed)
+node scripts/walk-evidence.mjs U  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 129 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |

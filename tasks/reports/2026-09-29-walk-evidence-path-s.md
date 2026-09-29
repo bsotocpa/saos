@@ -1,11 +1,11 @@
 # walk-evidence-path-s (2026-09-29)
 
-Generated 2026-09-29T05:23:39.973Z by scripts/report-table.mjs from the log walk-s.log; 6 row(s).
+Generated 2026-09-29T08:34:25.680Z by scripts/report-table.mjs from the log walk-s.log; 6 row(s).
 
 The Returns card as a stepper (R50, behind OPS_RETURN_STEPPER, off in production): S1 and S2 read the stepper on the harness return with the switch flipped on through the harness-only /harness/return-stepper door, S3 the row with it off, at 390 and 1280; the role proof is ed_coo, who reads the steps and gets no control and no details area. The nine approval screenshots come from return-stepper-shots.spec.ts, not from these rows.
 
 ```sql
-node scripts/walk-evidence.mjs S  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 127 passed, 0 failed)
+node scripts/walk-evidence.mjs S  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-29: 129 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
