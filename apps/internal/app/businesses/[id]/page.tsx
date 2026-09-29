@@ -62,7 +62,10 @@ interface ReturnRow {
   contact_id: string; first_name: string; last_name: string;
 }
 interface ServiceFacts {
-  books: { currentThrough: string | null; asOf: string | null };
+  /** R90: `unconfirmed` when the Trello import wrote it from a card untouched since before 2026-09-21. */
+  books: { currentThrough: string | null; asOf: string | null; unconfirmed?: boolean; canConfirm?: boolean };
+  /** R90: 'client' when the card says the client files their own ST-1. */
+  salesTaxFiledBy?: { by: string; asOf: string | null };
   qbo: { paidBy: string; asOf: string | null };
   annualReport: { state: string; anniversary_mmdd: string | null; anniversary_kind: string | null; annual_report_due_date: string | null; status: string; last_filed_date: string | null } | null;
   accessFacts: Array<{ fact: string; as_of: string; source: string }>;
@@ -106,6 +109,22 @@ export default function BusinessPage() {
   const [canEdit, setCanEdit] = useState(false);
   const [editing, setEditing] = useState(false);
   const [actionMsg, setActionMsg] = useState('');
+  /** R90: the Correct control's month (YYYY-MM), open while correcting; the door's refusal, beside it. */
+  const [correcting, setCorrecting] = useState<string | null>(null);
+  const [booksErr, setBooksErr] = useState('');
+  const [booksBusy, setBooksBusy] = useState(false);
+  const saveBooks = async (body: { action: 'confirm' } | { action: 'correct'; month: string }) => {
+    setBooksBusy(true); setBooksErr('');
+    try {
+      await api(`/businesses/${params.id}/books-current-through`, { method: 'POST', body });
+      setCorrecting(null);
+      await load();
+    } catch (err) {
+      setBooksErr(err instanceof Error && err.message ? err.message : 'The request was refused.');
+    } finally {
+      setBooksBusy(false);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -289,7 +308,30 @@ export default function BusinessPage() {
             <li>
               <span className="grow">Books current through</span>
               <span data-testid="fact-books">{facts.books.currentThrough ? `${formatDate(facts.books.currentThrough)} (as of ${facts.books.asOf ? formatDate(facts.books.asOf) : 'unknown'})` : 'not recorded'}</span>
+              {/* R90: a month the import could not vouch for reads unconfirmed until a person confirms or corrects it. */}
+              {facts.books.unconfirmed ? <span className="badge warn" data-testid="fact-books-unconfirmed" style={{ marginLeft: 6 }}>unconfirmed</span> : null}
             </li>
+            {facts.books.unconfirmed && facts.books.canConfirm ? (
+              <li data-testid="books-confirm-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+                <span className="grow muted">Is this the last month reconciled in the client&apos;s QBO file?</span>
+                {correcting === null ? (
+                  <>
+                    <button type="button" className="btn small" disabled={booksBusy} onClick={() => void saveBooks({ action: 'confirm' })}>Confirm</button>
+                    <button type="button" className="btn ghost small" disabled={booksBusy} onClick={() => setCorrecting(facts.books.currentThrough?.slice(0, 7) ?? '')}>Correct</button>
+                  </>
+                ) : (
+                  <>
+                    <label className="field" style={{ margin: 0 }}>
+                      Books current through (month)
+                      <input type="month" value={correcting} onChange={(e) => setCorrecting(e.target.value)} />
+                    </label>
+                    <button type="button" className="btn small" disabled={booksBusy || !/^\d{4}-\d{2}$/.test(correcting)} onClick={() => void saveBooks({ action: 'correct', month: correcting })}>Save</button>
+                    <button type="button" className="btn ghost small" disabled={booksBusy} onClick={() => { setCorrecting(null); setBooksErr(''); }}>Cancel</button>
+                  </>
+                )}
+                {booksErr ? <p className="field-error" role="alert" style={{ flexBasis: '100%' }}>{booksErr}</p> : null}
+              </li>
+            ) : null}
             <li>
               <span className="grow">QBO subscription paid by</span>
               <span data-testid="fact-qbo">{facts.qbo.paidBy === 'unknown' ? 'unknown' : `${facts.qbo.paidBy}${facts.qbo.asOf ? ` (as of ${formatDate(facts.qbo.asOf)})` : ''}`}</span>
@@ -310,7 +352,14 @@ export default function BusinessPage() {
             </li>
             <li>
               <span className="grow">Sales tax filing frequency</span>
-              <span data-testid="fact-sales-tax">{facts.salesTaxFrequencies.length > 0 ? facts.salesTaxFrequencies.map(words).join(', ') : 'no sales-tax engagement on file'}</span>
+              <span data-testid="fact-sales-tax">
+                {/* R90: a client who files their own ST-1 has no sales-tax engagement, by design; the line says why. */}
+                {facts.salesTaxFrequencies.length > 0
+                  ? facts.salesTaxFrequencies.map(words).join(', ')
+                  : facts.salesTaxFiledBy?.by === 'client'
+                    ? `client files their own ST-1${facts.salesTaxFiledBy.asOf ? ` (as of ${formatDate(facts.salesTaxFiledBy.asOf)})` : ''}`
+                    : 'no sales-tax engagement on file'}
+              </span>
             </li>
             <li>
               <span className="grow">Payroll provider</span>

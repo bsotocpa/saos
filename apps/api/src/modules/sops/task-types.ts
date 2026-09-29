@@ -31,6 +31,8 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
   // ── Client comms & billing (Rene) ──────────────────────────────────────────
   ladder_call: { sop: 'rene-escalation-call' },
   dunning_call: { sop: 'rene-dunning-call' },
+  /** R90 (batch 9 answer 1): the card says the client self-files and SAOS holds a live sales-tax engagement. */
+  trello_sales_tax_filer_conflict: { sop: 'rene-trello-sales-tax-filer-conflict' },
   // A known client asked for a sign-in link and could not get one. Same fix as a
   // bounced link — confirm the address and grant access — so it shares that SOP.
   portal_access_blocked: { sop: 'rene-portal-access' },
@@ -179,6 +181,8 @@ export const TASK_TYPE_SOPS: Record<string, TaskTypeSop> = {
 
   // ── Books (Marian) ────────────────────────────────────────────────────────
   close_cycle: { sop: 'marian-month-end-close' },
+  /** R90: a "books current through" month the import marked unconfirmed (card untouched since before 2026-09-21). */
+  trello_confirm_books_through: { sop: 'marian-trello-confirm-books-through' },
   close_session_scheduling: { sop: 'marian-close-session-scheduling' },
   /*
    * #33: the same act, asked for from the client record instead of falling out of a

@@ -13,6 +13,7 @@
  *       "This session does not hold quotes.referral_discount.remove."
  */
 import { expect, test, type Page } from '@playwright/test';
+import { opsSignOut } from './ops-sign-out';
 import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -50,10 +51,7 @@ async function signIn(page: Page, who: Persona): Promise<void> {
   expect(status, `${who.email} signs in`).toBe(200);
 }
 async function signOut(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
-    sessionStorage.removeItem('saos_staff_authed');
-  });
+  await opsSignOut(page);
 }
 async function quoteLinksSoFar(): Promise<string[]> {
   return ((await (await fetch(`${API}/harness/mail-links`)).json()) as { quoteLinks: string[] }).quoteLinks;

@@ -208,6 +208,13 @@
         { "id": "Y4", "text": "The portal Home reads one row per year", "device": "phone + laptop" },
         { "id": "Y5", "text": "Ops reads two returns, each at its own stage, under one engagement", "device": "phone + laptop" }
       ]
+    },
+    "Z": {
+      "title": "The Trello cutover facts on the business page (R90)",
+      "steps": [
+        { "id": "Z1", "text": "An imported \"books current through\" from a card untouched since before 2026-09-21 reads unconfirmed; the bookkeeper corrects it; the badge, the door and the confirm task clear", "device": "phone + laptop" },
+        { "id": "Z2", "text": "A client who files their own ST-1 reads so on the Sales tax line, with no sales-tax engagement", "device": "phone + laptop" }
+      ]
     }
   }
 }

@@ -16,6 +16,7 @@
  * Synthetic data only; the accounts and the hold die with the harness database.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { opsSignOut } from './ops-sign-out';
 import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -51,10 +52,7 @@ async function signIn(page: Page, who: Persona): Promise<void> {
   expect(status, `${who.email} signs in`).toBe(200);
 }
 async function signOut(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
-    sessionStorage.removeItem('saos_staff_authed');
-  });
+  await opsSignOut(page);
 }
 function keepScreenshot(name: string, passed: boolean, file: string): string {
   const dir = passed ? resolve(here, '..', '.artifacts', today) : resolve(root, 'tasks', 'walks', today);

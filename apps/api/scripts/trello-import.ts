@@ -80,7 +80,7 @@ import { applyNewReturnDefaults, transitionStage, type TaxStage } from '../src/m
 import { isOneActivePerPeriodViolation } from '../src/modules/engagements/period.ts';
 import { assertImportPreconditions, declareImportedJurisdictions, setImportedStage } from '../src/modules/tax/import.ts';
 import { declareImported8879Sent } from '../src/modules/tax/f8879-sent.ts';
-import { applyRecurringServiceFact, isLiveServiceFact, type RecurringFactType } from '../src/modules/engagements/import-facts.ts';
+import { applyBooksCurrentThrough, applyRecurringServiceFact, isLiveServiceFact, type RecurringFactType } from '../src/modules/engagements/import-facts.ts';
 import { runImportModeProbe, type ProbeResult } from './trello-probe.ts';
 import { createTask } from '../src/modules/tasks/service.ts';
 import { createSession } from '../src/modules/auth/service.ts';
@@ -445,10 +445,12 @@ interface FileTally { recordsCreated: number; returnsCreated: number; attested: 
   /** R21: 04b rows read but not applied because SAOS has nowhere to put them yet. */
   deferred: number;
   /** R33: sales-tax and payroll engagements this pass created, rows that named a closed service, and live rows deferred for want of a contact to bill. */
-  serviceEngagements: number; closedServices: number; noContact: number }
+  serviceEngagements: number; closedServices: number; noContact: number;
+  /** R90: sales-tax cards the client files themselves (recorded, nothing created), those that met a live engagement (a task to Rene), and bookkeeping months written unconfirmed. */
+  selfFiles: number; selfFilesConflicts: number; booksUnconfirmed: number }
 const emptyTally = (): FileTally => ({ recordsCreated: 0, returnsCreated: 0, attested: 0, tasks: 0, skipped: 0, refused: 0, facts: 0,
   preparerDefaulted: 0, letterInherited: 0, declaredByDefault: 0, notifyTasks: 0, completedSilently: 0, declaredPaper: 0, f8879SentDeclared: 0, deferred: 0,
-  serviceEngagements: 0, closedServices: 0, noContact: 0 });
+  serviceEngagements: 0, closedServices: 0, noContact: 0, selfFiles: 0, selfFilesConflicts: 0, booksUnconfirmed: 0 });
 type Tallies = Record<string, FileTally>;
 const FILES = ['01_tax_wip.csv', '02_tax_ar_worklist.csv', '03_tax_completed_roster.csv', '04_business_services.csv', '04b_service_facts.csv'] as const;
 /** One imported return at ready_to_file, kept for proof D. */
@@ -751,6 +753,9 @@ async function runImport(pass: 'first' | 'rerun'): Promise<Tallies> {
     const sourceId = (row.trello_source_id ?? '').trim();
     const key = (row.match_key ?? '').trim();
     const asOf = (row.as_of ?? '').trim() || BUNDLE_DATE;
+    // R90: the card's last activity day, per fact, when the bundle carries the column; absent reads as today's import.
+    const activity = (row.card_last_activity ?? '').trim();
+    const cardLastActivity = /^\d{4}-\d{2}-\d{2}$/.test(activity) ? activity : null;
     if (!factType || !sourceId) { t.refused++; continue; }
     if (factType === 'qbo_paid_by_2022_DO_NOT_IMPORT') { t.refused++; continue; }
     if (!HAS_A_HOME.has(factType)) { t.deferred++; continue; }
@@ -815,10 +820,12 @@ async function runImport(pass: 'first' | 'rerun'): Promise<Tallies> {
       const got = await applyRecurringServiceFact(app, actorStaff, {
         factType: factType as RecurringFactType,
         sourceId, matchKey: key, asOf, appliedBy: APPLIED_BY, sourceTag: SOURCE_TAG,
-        contactId, businessId, values,
+        contactId, businessId, values, cardLastActivity,
       });
       if (got.outcome === 'already_applied') { t.skipped++; continue; }
       if (got.outcome === 'closed') t.closedServices++;
+      if (got.outcome === 'self_files') t.selfFiles++;
+      if (got.outcome === 'self_files_conflict') { t.selfFilesConflicts++; t.tasks++; }
       if (got.engagementCreated) t.serviceEngagements++;
       t.facts += got.rowsWritten;
       continue; // the module wrote the ledger row
@@ -829,12 +836,13 @@ async function runImport(pass: 'first' | 'rerun'): Promise<Tallies> {
     if (factType === 'bookkeeping') {
       const through = monthEnd(String(values.books_current_through ?? ''));
       if (through) {
-        const r = await app.db.query(
-          `UPDATE businesses SET books_current_through = $2, books_current_through_as_of = $3
-            WHERE id = $1 AND books_current_through IS DISTINCT FROM $2::date`,
-          [businessId, through, asOf]
-        );
-        wrote += r.rowCount ?? 0;
+        // R90: a card last touched before 2026-09-21 writes the month unconfirmed, with a task to confirm it.
+        const b = await applyBooksCurrentThrough(app, {
+          businessId, through, asOf, cardLastActivity, sourceId, contactId: primaryMember.get(businessId) ?? null,
+        });
+        wrote += b.written;
+        if (b.unconfirmed) t.booksUnconfirmed++;
+        if (b.taskRaised) t.tasks++;
       }
       // ONLY A TRUE IS A FACT. `false` here means the card carried no such label, not that the firm
       // lacks access, and a row asserting the negative would be a claim nobody made.
@@ -880,10 +888,10 @@ async function runImport(pass: 'first' | 'rerun'): Promise<Tallies> {
     }
 
     await app.db.query(
-      `INSERT INTO service_fact_imports (source, trello_source_id, fact_type, business_id, match_key, as_of, applied_by, rows_written)
-       VALUES ('trello', $1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO service_fact_imports (source, trello_source_id, fact_type, business_id, match_key, as_of, applied_by, rows_written, card_last_activity)
+       VALUES ('trello', $1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (source, trello_source_id, fact_type) DO NOTHING`,
-      [sourceId, factType, businessId, key, asOf, APPLIED_BY, wrote]
+      [sourceId, factType, businessId, key, asOf, APPLIED_BY, wrote, cardLastActivity]
     );
     t.facts += wrote;
   }
@@ -947,7 +955,8 @@ console.log(
   `  R22: ${sumOf('preparerDefaulted')} return(s) took the default preparer, ${sumOf('letterInherited')} inherited a standing letter. ` +
     `R23: ${sumOf('declaredByDefault')} filed-awaiting-ack (R31: ${sumOf('declaredPaper')} of them in the paper lane), ${sumOf('notifyTasks')} accepted-not-notified, ${sumOf('completedSilently')} paper-filed. R53: ${sumOf('f8879SentDeclared')} awaiting-signature (client_review, 8879 declared sent, method unsaid). ` +
     `R21: ${await ledgerCount()} ledger row(s), ${sumOf('deferred')} row(s) deferred for want of a home. ` +
-    `R33: ${sumOf('serviceEngagements')} sales-tax/payroll engagement(s) created, ${sumOf('closedServices')} closed service row(s) applied with nothing created, ${sumOf('noContact')} live row(s) deferred for want of a contact.`
+    `R33: ${sumOf('serviceEngagements')} sales-tax/payroll engagement(s) created, ${sumOf('closedServices')} closed service row(s) applied with nothing created, ${sumOf('noContact')} live row(s) deferred for want of a contact. ` +
+    `R90: ${sumOf('selfFiles')} client-self-files row(s) recorded with nothing created, ${sumOf('selfFilesConflicts')} met a live engagement (task to Rene), ${sumOf('booksUnconfirmed')} books-current-through month(s) written unconfirmed.`
 );
 
 // ── C: THE RERUN ───────────────────────────────────────────────────────────

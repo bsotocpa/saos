@@ -10,6 +10,12 @@
  * says: the standing rule is that nothing touches those records; Brian merges them himself if ever.
  * A name-only pair Brian marked merge carries his decision as the identity reason the merge requires.
  *
+ * ONLY "merge proposed" (Brian, 2026-09-29, R92 decisions): "Merge only the 2 pairs marked yes under
+ * 'merge proposed' ... Nothing else in the file merges." The file carries a yes on the name-only and
+ * protected rows too; those are R97's (the banner and Compare, or the empty-record archive), never this
+ * script's. A row whose decision reads "other: ..." is Brian's instruction for a person to carry out,
+ * counted here and never merged.
+ *
  * Prints counts only. The decision column is "decision (merge / keep)"; the first file's header,
  * "Brian rules (yes / no / other)", is read the same way (yes = merge, no = keep).
  *
@@ -36,7 +42,7 @@ const decisionOf = (r: Record<string, string>): 'merge' | 'keep' | 'blank' => {
 const config = loadConfig(process.env);
 const app = buildServer(config);
 await app.ready();
-const counts = { pairs: rows.length, contact_pairs: 0, marked_merge: 0, marked_keep: 0, blank: 0, protected_skipped: 0, merged: 0, refused: 0, business_pairs_skipped: 0 };
+const counts = { pairs: rows.length, contact_pairs: 0, not_merge_proposed: 0, marked_merge: 0, marked_keep: 0, marked_other: 0, blank: 0, protected_skipped: 0, merged: 0, refused: 0, business_pairs_skipped: 0 };
 const refusals: Record<string, number> = {};
 try {
   const ceo = await app.db.query<{ id: string }>(
@@ -49,6 +55,8 @@ try {
     for (const r of rows) {
       if (r['kind'] !== 'contact') { counts.business_pairs_skipped++; continue; }
       counts.contact_pairs++;
+      if ((r['proposal'] ?? '').trim() !== 'merge proposed') { counts.not_merge_proposed++; continue; }
+      if (norm(r['decision (merge / keep)'] ?? r['Brian rules (yes / no / other)'] ?? '').startsWith('other')) { counts.marked_other++; continue; }
       const d = decisionOf(r);
       if (d === 'keep') { counts.marked_keep++; continue; }
       if (d === 'blank') { counts.blank++; continue; }

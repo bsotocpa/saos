@@ -45,7 +45,7 @@ interface Aggregate {
   engagements: Refused | Rows<Record<string, unknown>>;
   returns: Refused | Rows<Record<string, unknown>>;
   serviceFacts: {
-    books: { currentThrough: string | null; asOf: string | null };
+    books: { currentThrough: string | null; asOf: string | null; unconfirmed: boolean; canConfirm: boolean };
     qbo: { paidBy: string; asOf: string | null };
     annualReport: Record<string, unknown> | null;
     accessFacts: Array<{ fact: string; as_of: string; source: string }>;
@@ -186,7 +186,8 @@ test('the CEO reads the whole aggregate: entity with the full EIN, two owners wi
   assert.equal(body.returns.rows[0]!.preparer_name, ana.fullName);
   assert.equal(body.returns.rows[0]!.contact_id, owner.id);
 
-  assert.deepEqual(body.serviceFacts.books, { currentThrough: '2026-06-30', asOf: '2026-08-01' });
+  // R90: a month a person or a recent card vouches for is not unconfirmed; the CEO holds the confirm door.
+  assert.deepEqual(body.serviceFacts.books, { currentThrough: '2026-06-30', asOf: '2026-08-01', unconfirmed: false, canConfirm: true });
   assert.deepEqual(body.serviceFacts.qbo, { paidBy: 'client', asOf: '2026-08-01' });
   assert.equal(body.serviceFacts.annualReport?.annual_report_due_date, '2027-03-01');
   assert.equal(body.serviceFacts.annualReport?.anniversary_mmdd, '03/01');
@@ -222,7 +223,7 @@ test('a return the tax create path attaches to an existing engagement of the bus
   assert.ok(!isRefused(body.documents) && body.documents.rows.length === 0);
   assert.equal(body.serviceFacts.annualReport, null);
   assert.deepEqual(body.serviceFacts.qbo, { paidBy: 'unknown', asOf: null });
-  assert.deepEqual(body.serviceFacts.books, { currentThrough: null, asOf: null });
+  assert.deepEqual(body.serviceFacts.books, { currentThrough: null, asOf: null, unconfirmed: false, canConfirm: true });
   assert.equal(body.members.length, 1);
   assert.equal(body.members[0]!.is_primary, false, 'the owner already has a primary business');
 });
@@ -239,7 +240,7 @@ test('per-card refusals: the bookkeeper reads entity, owners, service facts and 
   assert.deepEqual(body.invoices, { refused: true, permission: 'billing.manage' });
   assert.ok(!isRefused(body.documents), 'documents.read.all: every category');
   assert.equal(body.documents.rows.length, 2);
-  assert.deepEqual(body.serviceFacts.books, { currentThrough: '2026-06-30', asOf: '2026-08-01' });
+  assert.deepEqual(body.serviceFacts.books, { currentThrough: '2026-06-30', asOf: '2026-08-01', unconfirmed: false, canConfirm: true }, 'the bookkeeper holds the confirm door (R90)');
   assert.equal(body.serviceFacts.accessFacts.length, 1);
   const viewed = await app.db.query<{ details: { ein_shown: string; cards_refused: string[] } }>(
     `SELECT details FROM audit_log WHERE action = 'business.viewed' AND object_id = $1 AND actor_id = $2`, [businessId, marian.id]);

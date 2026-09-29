@@ -758,6 +758,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
               b.il_sos_status::text AS il_sos_status, b.il_sos_checked_at,
               b.is_test, b.test_note, b.unverified_import_source::text AS unverified_import_source,
               b.books_current_through::text AS books_current_through, b.books_current_through_as_of::text AS books_current_through_as_of,
+              b.books_current_through_unconfirmed, b.sales_tax_filed_by::text AS sales_tax_filed_by, b.sales_tax_filed_by_as_of::text AS sales_tax_filed_by_as_of,
               b.qbo_paid_by::text AS qbo_paid_by, b.qbo_paid_by_as_of::text AS qbo_paid_by_as_of,
               b.created_at
          FROM businesses b WHERE b.id = $1 AND NOT b.is_archived`,
@@ -765,7 +766,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
     );
     const row = biz.rows[0];
     if (!row) throw new AppError(404, 'not_found', 'Business not found.');
-    const { ein, books_current_through, books_current_through_as_of, qbo_paid_by, qbo_paid_by_as_of, ...entity } = row;
+    const { ein, books_current_through, books_current_through_as_of, books_current_through_unconfirmed, sales_tax_filed_by, sales_tax_filed_by_as_of, qbo_paid_by, qbo_paid_by_as_of, ...entity } = row;
     const digits = (ein ?? '').replace(/\D/g, '');
     const business: Record<string, unknown> = {
       ...entity,
@@ -854,7 +855,12 @@ export function registerCrmRoutes(app: FastifyInstance): void {
       [id]
     );
     const serviceFacts = {
-      books: { currentThrough: books_current_through ?? null, asOf: books_current_through_as_of ?? null },
+      // R90: an unconfirmed month is shown flagged, with the confirm door for bookkeeping.assigned.manage.
+      books: {
+        currentThrough: books_current_through ?? null, asOf: books_current_through_as_of ?? null,
+        unconfirmed: books_current_through_unconfirmed === true, canConfirm: holds(actor, 'bookkeeping.assigned.manage'),
+      },
+      salesTaxFiledBy: { by: sales_tax_filed_by ?? 'unknown', asOf: sales_tax_filed_by_as_of ?? null },
       qbo: { paidBy: qbo_paid_by ?? 'unknown', asOf: qbo_paid_by_as_of ?? null },
       annualReport: compliance.rows[0] ?? null,
       accessFacts: access.rows,
@@ -918,6 +924,67 @@ export function registerCrmRoutes(app: FastifyInstance): void {
 
     return { business, members: members.rows, engagements, returns, serviceFacts, invoices, documents };
   });
+
+  /*
+   * BOOKS CURRENT THROUGH: CONFIRM OR CORRECT (approved 2026-09-27; R90). A month the Trello import
+   * wrote from a card untouched since before 2026-09-21 is unconfirmed; the person who keeps the books
+   * confirms it as it stands or corrects it to the month the client's QBO file is reconciled through.
+   * Either clears the flag, is audited with who, when, before and after, and completes the confirm task.
+   */
+  app.post<{ Params: { id: string } }>('/businesses/:id/books-current-through',
+    { preHandler: [app.authenticate, requirePermission('bookkeeping.assigned.manage')] },
+    async (request) => {
+      const id = z.uuid().parse(request.params.id);
+      const b = z.discriminatedUnion('action', [
+        z.object({ action: z.literal('confirm') }),
+        z.object({ action: z.literal('correct'), month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'A month, YYYY-MM.') }),
+      ]).parse(request.body);
+      const actor = request.staff!;
+      const cur = await app.db.query<{ through: string | null; as_of: string | null; unconfirmed: boolean }>(
+        `SELECT books_current_through::text AS through, books_current_through_as_of::text AS as_of,
+                books_current_through_unconfirmed AS unconfirmed
+           FROM businesses WHERE id = $1 AND NOT is_archived`,
+        [id]
+      );
+      const before = cur.rows[0];
+      if (!before) throw new AppError(404, 'not_found', 'Business not found.');
+      if (b.action === 'confirm' && (!before.through || !before.unconfirmed)) {
+        throw new AppError(409, 'nothing_to_confirm', 'There is no unconfirmed month on this business to confirm.');
+      }
+      const today = todayChicago();
+      const through = b.action === 'correct'
+        ? new Date(Date.UTC(Number(b.month.slice(0, 4)), Number(b.month.slice(5, 7)), 0)).toISOString().slice(0, 10)
+        : before.through!;
+      if (b.action === 'correct' && through > today) {
+        throw new AppError(400, 'future_month', 'Books cannot be current through a month that has not ended.');
+      }
+      const asOf = b.action === 'correct' ? today : before.as_of ?? today;
+      await withTransaction(app.db, async () => {
+        await app.db.query(
+          `UPDATE businesses SET books_current_through = $2, books_current_through_as_of = $3, books_current_through_unconfirmed = false WHERE id = $1`,
+          [id, through, asOf]
+        );
+        await writeAudit(app.db, {
+          actorType: 'staff', actorId: actor.id, actorLabel: actor.fullName,
+          action: b.action === 'confirm' ? 'business.books_current_through_confirmed' : 'business.books_current_through_corrected',
+          objectType: 'business', objectId: id, ...meta(request),
+          details: {
+            before: { through: before.through, as_of: before.as_of, unconfirmed: before.unconfirmed },
+            after: { through, as_of: asOf, unconfirmed: false },
+          },
+        });
+        const { closeTasksForSource } = await import('../tasks/service.ts');
+        const open = await app.db.query<{ source_id: string }>(
+          `SELECT DISTINCT source_id FROM tasks WHERE business_id = $1 AND source_type = 'trello_confirm_books_through'
+             AND status NOT IN ('completed', 'cancelled') AND source_id IS NOT NULL`,
+          [id]
+        );
+        for (const t of open.rows) {
+          await closeTasksForSource(app, 'trello_confirm_books_through', t.source_id, `books current through ${b.action === 'confirm' ? 'confirmed' : 'corrected'} by ${actor.fullName}`);
+        }
+      });
+      return { through, asOf, unconfirmed: false };
+    });
 
   /** Archive a business (2026-09-12): never a delete; a primary that goes clears the flag and nothing is promoted. */
   app.post<{ Params: { id: string } }>('/businesses/:id/archive', write, async (request) => {

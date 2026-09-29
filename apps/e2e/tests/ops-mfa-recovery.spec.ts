@@ -24,6 +24,7 @@
  * Nothing here is a secret: the accounts are synthetic and the codes die with the harness database.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { opsSignOut } from './ops-sign-out';
 import * as OTPAuth from 'otpauth';
 import jsQR from 'jsqr';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
@@ -86,10 +87,7 @@ async function typeSignIn(page: Page, email: string, password: string, secondFac
 /** The inline refusal under the form: the page's own words, never Next's empty route announcer. */
 const fieldError = (page: Page) => page.locator('p.field-error[role=alert]');
 async function signOut(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
-    sessionStorage.removeItem('saos_staff_authed');
-  });
+  await opsSignOut(page);
 }
 async function ceoToken(): Promise<string> {
   const { email, password, totpSecret } = fixtures.staff;

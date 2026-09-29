@@ -17,6 +17,7 @@
   ],
   "actions": [
     "POST /tax-engagements/:id/checklist-backfill",
+    "POST /businesses/:id/books-current-through",
     "POST /contacts/merge-pair",
     "POST /admin/price-book/items/:code/confirm",
     "POST /admin/templates/:key/es-approve",

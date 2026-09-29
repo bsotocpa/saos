@@ -128,6 +128,29 @@ export function rollToBusinessDay(date: string): string {
   return d; // unreachable in practice
 }
 
+/** A weekday that is not an observed federal holiday. */
+export function isBusinessDay(date: string): boolean {
+  const dow = new Date(`${calendarDay(date)}T00:00:00Z`).getUTCDay();
+  return dow !== 0 && dow !== 6 && !federalHolidays(Number(date.slice(0, 4))).has(date);
+}
+
+/** The business day n business days after `date` (R90: an internal task is due in five). */
+export function addBusinessDays(date: string, n: number): string {
+  let d = calendarDay(date) as string;
+  for (let left = n; left > 0;) {
+    d = addDays(d, 1);
+    if (isBusinessDay(d)) left--;
+  }
+  return d;
+}
+
+/** Business days after `from` up to and including `to`; 0 when `to` is not after `from`. */
+export function businessDaysAfter(from: string, to: string): number {
+  let n = 0;
+  for (let d = addDays(from, 1); d <= to; d = addDays(d, 1)) if (isBusinessDay(d)) n++;
+  return n;
+}
+
 // ── derivation ───────────────────────────────────────────────────────────────
 
 function fifteenthOf(year: number, monthOffsetFromJan1: number): string {

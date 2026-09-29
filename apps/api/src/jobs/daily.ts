@@ -106,6 +106,8 @@ export const DAILY_JOBS: DailyJob[] = [
   { name: 'outbox_drain', run: async (app) => { const { drainOutbox } = await import('../outbox.ts'); const r = await drainOutbox(app); return { ...r, skipped: r.considered === 0 }; } },
   // Notice escalations run EVERY tick (48h precision matters); idempotent per notice.
   { name: 'notice_escalations', run: async (app) => { const r = await runNoticeEscalations(app); return { ...r, skipped: !Object.values(r).some((v) => typeof v === 'number' && v > 0) }; } },
+  // R90 (2026-09-29): the internal task ladder's CEO alert, three business days past due; never a client.
+  { name: 'internal_task_ladder', run: async (app, today) => { const { runInternalTaskLadderJob } = await import('../modules/tasks/service.ts'); return runInternalTaskLadderJob(app, today); } },
   { name: 'task_reminder_sweep', run: async (app) => { const r = await runTaskReminderSweep(app); return { ...r, skipped: !Object.values(r).some((v) => typeof v === 'number' && v > 0) }; } },
   // DEPENDENCY PROBE, every tick: can the API reach the scanner right now — the question nobody
   // was asking while ClamAV sat wedged for twelve hours.

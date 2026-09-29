@@ -15,7 +15,7 @@ import { AppError } from '../../types.ts';
 import { notifyOnce, firstActiveByRole, alertRecipientForRole } from '../../staffing.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { sendSms } from '../comms/send-sms.ts';
-import { addDays, daysBetween } from '../tax/deadlines.ts';
+import { addBusinessDays, addDays, businessDaysAfter, daysBetween, todayChicago } from '../tax/deadlines.ts';
 import { sopLinkForTaskType } from '../sops/service.ts';
 
 export type TaskStatus = 'not_started' | 'in_progress' | 'waiting_for_input' | 'completed' | 'deferred' | 'cancelled';
@@ -116,6 +116,13 @@ export async function createTask(app: FastifyInstance, input: CreateTaskInput): 
   // a task finds the procedure without anyone remembering to paste a URL — and
   // an unwritten SOP resolves to null rather than a dead link.
   const sopLink = input.sopLink ?? (await sopLinkForTaskType(app, input.sourceType));
+  /*
+   * THE INTERNAL TASK LADDER (Brian, 2026-09-29, R90): every internal task type is due in five
+   * business days unless its source names a day (a filing deadline does). A client to-do is on the
+   * client ladder instead, and a person's own untyped to-do keeps the date they gave it or none.
+   * Three business days overdue raises a CEO alert (runInternalTaskLadderJob); never a client contact.
+   */
+  const dueDate = input.dueDate ?? (input.sourceType && !input.clientVisible ? addBusinessDays(todayChicago(), INTERNAL_TASK_DUE_BUSINESS_DAYS) : null);
 
   const { rows } = await app.db.query<{ id: string }>(
     `INSERT INTO tasks
@@ -126,7 +133,7 @@ export async function createTask(app: FastifyInstance, input: CreateTaskInput): 
      RETURNING id`,
     [
       input.title, input.description ?? null, input.assignedStaffId ?? null, input.contactId ?? null,
-      input.businessId ?? null, input.engagementId ?? null, input.dueDate ?? null, input.priority ?? 0,
+      input.businessId ?? null, input.engagementId ?? null, dueDate, input.priority ?? 0,
       input.source ?? 'system', input.sourceType ?? null, input.sourceId ?? null,
       input.clientVisible ?? false, sopLink, input.createdByStaffId ?? null,
       input.boardColumnId ?? null, input.tags ?? [], input.remindAt ?? null,
@@ -859,4 +866,38 @@ export async function runTaskReminderSweep(app: FastifyInstance): Promise<{ remi
     });
   }
   return { reminded: rows.length };
+}
+
+/** R90: an internal task is due this many business days after it is raised, unless its source names a day. */
+export const INTERNAL_TASK_DUE_BUSINESS_DAYS = 5;
+/** R90: this many business days past due, an open internal task raises one CEO alert. */
+export const INTERNAL_TASK_ALERT_BUSINESS_DAYS = 3;
+
+/*
+ * THE INTERNAL TASK LADDER'S ALERT (Brian, 2026-09-29, R90). Every open internal task (a typed task
+ * that is not a client to-do) three business days past its due date raises one CEO alert, once per
+ * task. It never contacts a client and is never gated: it is an internal alert (CLAUDE.md).
+ */
+export async function runInternalTaskLadderJob(app: FastifyInstance, today: string): Promise<{ considered: number; alerted: number; skipped: boolean }> {
+  const { rows } = await app.db.query<{ id: string; title: string; due_date: string; contact_id: string | null }>(
+    `SELECT id, title, due_date::text AS due_date, contact_id FROM tasks
+      WHERE source_type IS NOT NULL AND NOT client_visible AND due_date IS NOT NULL
+        AND status NOT IN ('completed', 'cancelled') AND due_date <= $1::date - 3`,
+    [today]
+  );
+  const late = rows.filter((t) => businessDaysAfter(t.due_date, today) >= INTERNAL_TASK_ALERT_BUSINESS_DAYS);
+  if (late.length === 0) return { considered: rows.length, alerted: 0, skipped: true };
+  const ceo = await alertRecipientForRole(app.db, 'ceo', 'internal_task_ladder');
+  let alerted = 0;
+  if (ceo) {
+    for (const t of late) {
+      const fired = await notifyOnce(app.db, {
+        staffId: ceo, type: 'internal_task_overdue', severity: 'warning',
+        title: `${INTERNAL_TASK_ALERT_BUSINESS_DAYS} business days overdue: ${t.title}`,
+        contactId: t.contact_id, relatedObjectType: 'task', relatedObjectId: t.id,
+      });
+      if (fired) alerted++;
+    }
+  }
+  return { considered: rows.length, alerted, skipped: alerted === 0 };
 }

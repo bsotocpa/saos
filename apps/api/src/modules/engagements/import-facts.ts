@@ -89,10 +89,26 @@ export interface RecurringFactInput {
   businessId: string | null;
   /** The row's values_json, parsed. */
   values: Record<string, unknown>;
+  /** R90: the card's last activity day, when the bundle carries it; recorded on the ledger row. */
+  cardLastActivity?: string | null | undefined;
+}
+
+/*
+ * WHO FILES THE ST-1 (Brian, 2026-09-27 batch 8 approval; R90). A sales_tax row's values_json may
+ * carry `sales_tax_status`: `firm_files` (the default when absent, so today's rows import unchanged)
+ * or `client_self_files`. A closed card still wins. Any other value is refused, never read as a near one.
+ */
+export type SalesTaxStatus = 'firm_files' | 'client_self_files';
+export function salesTaxStatusOf(values: Record<string, unknown>): SalesTaxStatus {
+  const raw = values.sales_tax_status;
+  if (raw === undefined || raw === null || String(raw).trim() === '') return 'firm_files';
+  const v = String(raw).trim().toLowerCase();
+  if (v === 'firm_files' || v === 'client_self_files') return v;
+  throw new AppError(422, 'unknown_sales_tax_status', `Refusing: '${String(raw)}' is not a sales_tax_status (firm_files, client_self_files).`);
 }
 
 export interface RecurringFactResult {
-  outcome: 'applied' | 'already_applied' | 'closed';
+  outcome: 'applied' | 'already_applied' | 'closed' | 'self_files' | 'self_files_conflict';
   engagementId: string | null;
   engagementCreated: boolean;
   /** Rows this call wrote: the engagement (1 if created) plus the column (1 if it was NULL and is now set). */
@@ -147,9 +163,12 @@ export async function applyRecurringServiceFact(
   }
 
   const line = input.factType;
+  const stStatus = line === 'sales_tax' ? salesTaxStatusOf(input.values) : null;
+  const selfFiles = stStatus === 'client_self_files' && isLiveServiceFact(line, input.values);
   const frequency = line === 'sales_tax' ? normalizeFilingFrequency(input.values.frequency) : null;
   const provider = line === 'payroll' ? String(input.values.provider ?? '').trim() : '';
-  if (line === 'sales_tax' && !frequency) {
+  // A self-filer's frequency is the card's to record, not a column this import writes: none required.
+  if (line === 'sales_tax' && !frequency && !selfFiles) {
     throw new AppError(
       422,
       'unknown_filing_frequency',
@@ -160,10 +179,10 @@ export async function applyRecurringServiceFact(
 
   const ledger = async (engagementId: string | null, rowsWritten: number): Promise<void> => {
     await app.db.query(
-      `INSERT INTO service_fact_imports (source, trello_source_id, fact_type, business_id, match_key, as_of, applied_by, rows_written)
-       VALUES ('trello', $1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO service_fact_imports (source, trello_source_id, fact_type, business_id, match_key, as_of, applied_by, rows_written, card_last_activity)
+       VALUES ('trello', $1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (source, trello_source_id, fact_type) DO NOTHING`,
-      [input.sourceId, input.factType, input.businessId, input.matchKey, input.asOf, input.appliedBy, rowsWritten]
+      [input.sourceId, input.factType, input.businessId, input.matchKey, input.asOf, input.appliedBy, rowsWritten, input.cardLastActivity ?? null]
     );
     await writeAudit(app.db, {
       actorType: 'staff',
@@ -178,6 +197,8 @@ export async function applyRecurringServiceFact(
         trello_source_id: input.sourceId,
         as_of: input.asOf,
         live: isLiveServiceFact(line, input.values),
+        ...(stStatus ? { sales_tax_status: stStatus } : {}),
+        ...(input.values.frequency !== undefined ? { card_frequency: String(input.values.frequency) } : {}),
         ...(frequency ? { filing_frequency: frequency } : {}),
         ...(provider ? { payroll_provider: provider } : {}),
         rows_written: rowsWritten,
@@ -191,6 +212,43 @@ export async function applyRecurringServiceFact(
   if (!isLiveServiceFact(line, input.values)) {
     await ledger(null, 0);
     return { outcome: 'closed', engagementId: null, engagementCreated: false, rowsWritten: 0 };
+  }
+
+  /*
+   * THE CLIENT FILES THEIR OWN ST-1 (approved 2026-09-27; batch 9 answers 1 and 2). No sales-tax
+   * engagement, no billing hold, no filing_frequency: an active engagement is a claim the firm files
+   * it. The fact goes on the business (or, for a person with no business row, the contact) in
+   * qbo_paid_by's shape, never over a value a person set. When SAOS already holds a live sales-tax
+   * engagement the card contradicts, nothing changes on it and one task goes to Rene to decide.
+   */
+  if (selfFiles) {
+    const live = await liveEngagementFor(app, input.contactId, input.businessId, line);
+    if (live) {
+      const { createTask } = await import('../tasks/service.ts');
+      const { alertRecipientForRole } = await import('../../staffing.ts');
+      const owner = await alertRecipientForRole(app.db, 'comms_billing', 'trello_sales_tax_filer_conflict');
+      await createTask(app, {
+        title: 'Sales tax: the Trello card says the client files their own ST-1, and SAOS has a live sales-tax engagement',
+        description: `The cutover import changed nothing on the engagement. Card ${input.sourceId}, as of ${input.asOf}. Decide which is true.`,
+        assignedStaffId: owner, contactId: input.contactId, businessId: input.businessId, engagementId: live,
+        priority: 1, source: 'automation', sourceType: 'trello_sales_tax_filer_conflict', sourceId: input.sourceId,
+      });
+      await ledger(live, 0);
+      return { outcome: 'self_files_conflict', engagementId: live, engagementCreated: false, rowsWritten: 0 };
+    }
+    const r = input.businessId
+      ? await app.db.query(
+          `UPDATE businesses SET sales_tax_filed_by = 'client', sales_tax_filed_by_as_of = $2
+            WHERE id = $1 AND sales_tax_filed_by = 'unknown'`,
+          [input.businessId, input.asOf]
+        )
+      : await app.db.query(
+          `UPDATE contacts SET sales_tax_filed_by = 'client', sales_tax_filed_by_as_of = $2
+            WHERE id = $1 AND sales_tax_filed_by = 'unknown'`,
+          [input.contactId, input.asOf]
+        );
+    await ledger(null, r.rowCount ?? 0);
+    return { outcome: 'self_files', engagementId: null, engagementCreated: false, rowsWritten: r.rowCount ?? 0 };
   }
 
   let engagementId = await liveEngagementFor(app, input.contactId, input.businessId, line);
@@ -247,4 +305,58 @@ export async function applyRecurringServiceFact(
   const rowsWritten = (created ? 1 : 0) + columnRows;
   await ledger(engagementId, rowsWritten);
   return { outcome: 'applied', engagementId, engagementCreated: created, rowsWritten };
+}
+
+/*
+ * BOOKS CURRENT THROUGH, AND WHETHER ANYONE HAS CONFIRMED IT (approved 2026-09-27; R90, 2026-09-29).
+ *
+ * A bookkeeping fact whose card was last touched before 2026-09-21 is UNCONFIRMED: the month is
+ * written with its as-of as today, the flag is set, and one task per business goes to the bookkeeper
+ * role (the CEO when the role is empty) to confirm or correct it. An unconfirmed import never replaces
+ * a value that is not itself unconfirmed. A card touched on or after that day, or a bundle that carries
+ * no activity day, imports as it always has and leaves the value confirmed. Nothing may compute from a
+ * flagged value; every future reader filters on the flag.
+ */
+export const BOOKS_CONFIRMED_SINCE = '2026-09-21';
+
+export function booksUnconfirmed(cardLastActivity: string | null | undefined): boolean {
+  return typeof cardLastActivity === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cardLastActivity) && cardLastActivity < BOOKS_CONFIRMED_SINCE;
+}
+
+export async function applyBooksCurrentThrough(
+  app: FastifyInstance,
+  input: { businessId: string; through: string; asOf: string; cardLastActivity: string | null; sourceId: string; contactId: string | null }
+): Promise<{ written: number; unconfirmed: boolean; taskRaised: boolean }> {
+  const unconfirmed = booksUnconfirmed(input.cardLastActivity);
+  if (!unconfirmed) {
+    const r = await app.db.query(
+      `UPDATE businesses SET books_current_through = $2, books_current_through_as_of = $3, books_current_through_unconfirmed = false
+        WHERE id = $1 AND (books_current_through IS DISTINCT FROM $2::date OR books_current_through_unconfirmed)`,
+      [input.businessId, input.through, input.asOf]
+    );
+    return { written: r.rowCount ?? 0, unconfirmed: false, taskRaised: false };
+  }
+  const r = await app.db.query(
+    `UPDATE businesses SET books_current_through = $2, books_current_through_as_of = $3, books_current_through_unconfirmed = true
+      WHERE id = $1 AND (books_current_through IS NULL OR books_current_through_unconfirmed)
+        AND (books_current_through IS DISTINCT FROM $2::date OR NOT books_current_through_unconfirmed)`,
+    [input.businessId, input.through, input.asOf]
+  );
+  const flagged = await app.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM businesses WHERE id = $1 AND books_current_through_unconfirmed`, [input.businessId]
+  );
+  let taskRaised = false;
+  if (flagged.rows[0]!.n > 0) {
+    const { createTask } = await import('../tasks/service.ts');
+    const { alertRecipientForRole } = await import('../../staffing.ts');
+    const owner = await alertRecipientForRole(app.db, 'bookkeeper', 'trello_confirm_books_through');
+    const t = await createTask(app, {
+      title: 'Confirm "books current through" from the Trello import',
+      description: `The import wrote the month from card ${input.sourceId}, last touched before ${BOOKS_CONFIRMED_SINCE}. Confirm or correct it on the business page.`,
+      assignedStaffId: owner, businessId: input.businessId, contactId: input.contactId,
+      source: 'automation', sourceType: 'trello_confirm_books_through', sourceId: input.sourceId,
+    });
+    taskRaised = t.created;
+  }
+  return { written: r.rowCount ?? 0, unconfirmed: true, taskRaised };
 }

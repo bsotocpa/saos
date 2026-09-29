@@ -63,6 +63,20 @@ and raises this task instead.
 4. If the address they tried is better than the one on file, update the contact
    FIRST, then grant — the account is created from the contact's email.
 `),
+  sop('rene-trello-sales-tax-filer-conflict', 'Sales tax: the card says the client files their own ST-1', 'comms_billing', 'Billing', `
+## Why you have this task
+The Trello cutover import read a sales-tax card that says the client files their own ST-1,
+and this client already has a live sales-tax engagement in SAOS. The import changed nothing:
+the engagement, its frequency and its billing hold are as they were. A person decides which
+is true.
+
+1. Ask the client, or check your notes, who files the ST-1 now.
+2. If the client files it: withdraw the sales-tax engagement from the client page with that
+   reason. No ST-1 task and no invoice follows a withdrawn engagement.
+3. If Soto files it: leave the engagement, and note on this task why the card was wrong.
+4. This task is due in five business days; three business days past that, the CEO is alerted.
+   Nothing here contacts the client by itself.
+`),
   sop('rene-dunning-call', 'Overdue invoice call', 'comms_billing', 'Billing', `
 ## Why you have this task
 An invoice has been unpaid past the reminder window, or three dunning emails have
@@ -594,6 +608,18 @@ A resolution case needs transcript access before any document work starts.
 `),
 
   // ── Marian (books) ─────────────────────────────────────────────────────────
+  sop('marian-trello-confirm-books-through', 'Confirm "books current through" from the Trello import', 'bookkeeper', 'Bookkeeping', `
+## Why you have this task
+The Trello cutover import wrote this business's "books current through" month from a card
+that was last touched before 2026-09-21, so the value is marked **unconfirmed**. Nothing in
+SAOS computes from an unconfirmed month: no catch-up scope, no billing period, no close cycle.
+
+1. Open the client's QBO file and find the last month that is reconciled.
+2. On the business page, Service facts, press **Confirm** if the month is right, or
+   **Correct** and choose the right month.
+3. Either clears the unconfirmed mark, records who and when, and completes this task.
+4. This task is due in five business days; three business days past that, the CEO is alerted.
+`),
   sop('marian-month-end-close', 'Month-end close', 'bookkeeper', 'Bookkeeping', `
 ## The four steps, in order
 1. **Categorize** every transaction.
