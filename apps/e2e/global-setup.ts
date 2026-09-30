@@ -115,12 +115,16 @@ async function buildAndStart(
   return server;
 }
 
+/** The harness API's connect-phase retries (the Docker Desktop relay), counted for this run's summary. */
+export const HARNESS_RETRY_LOG = resolve(artifacts, 'connect-retries.log');
+
 export default async function globalSetup(): Promise<void> {
   mkdirSync(artifacts, { recursive: true });
+  writeFileSync(HARNESS_RETRY_LOG, '');
 
   const api = spawn(process.execPath, ['scripts/e2e-boot.ts'], {
     cwd: resolve(root, 'apps', 'api'),
-    env: { ...process.env, E2E_API_PORT: String(API_PORT), NODE_ENV: 'test' },
+    env: { ...process.env, E2E_API_PORT: String(API_PORT), NODE_ENV: 'test', SAOS_TEST_RETRY_LOG: HARNESS_RETRY_LOG },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const ready = JSON.parse(await waitForLine(api, 'E2E_READY ', 120_000));

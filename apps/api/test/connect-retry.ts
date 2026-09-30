@@ -19,11 +19,18 @@ export const CONNECT_TIMEOUT_MS = 10_000;
 export const MAX_CONNECT_RETRIES_PER_SUITE = 20;
 /** Where this checkout's test processes record their retries for the current suite. */
 export function retryLogPath(tag: string): string {
-  return join(tmpdir(), `saos-test-connect-retries-${tag}.log`);
+  // The harness sets its own file for its own summary (apps/e2e/global-setup.ts).
+  return process.env.SAOS_TEST_RETRY_LOG ?? join(tmpdir(), `saos-test-connect-retries-${tag}.log`);
 }
 
 let retries = 0;
 let logPath: string | null = null;
+
+/** Count one connect-phase retry, database or object store, into the suite's summary. */
+export function recordConnectRetry(kind: string): void {
+  retries++;
+  try { if (logPath) appendFileSync(logPath, `${process.pid} ${kind}\n`); } catch { /* the count is still printed on exit */ }
+}
 /** A failure the relay causes while a connection is being made: a reset, a timeout, a stream cut before the handshake. */
 export const isConnectReset = (err: unknown): boolean => {
   const code = (err as { code?: string } | null)?.code;
@@ -51,8 +58,7 @@ export function installConnectRetry(tag: string): void {
           settled = true;
           if (timer) clearTimeout(timer);
           if (err && !isRetry && isConnectReset(err)) {
-            retries++;
-            try { appendFileSync(logPath!, `${process.pid} ${(err as { code?: string }).code ?? 'timeout'}\n`); } catch { /* the count is still printed on exit */ }
+            recordConnectRetry((err as { code?: string }).code ?? 'timeout');
             attempt(true);
             return;
           }

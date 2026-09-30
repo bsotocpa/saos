@@ -4,7 +4,8 @@ import { createServer } from 'node:net';
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { restoreNextFiles } from './global-setup.ts';
+import { HARNESS_RETRY_LOG, restoreNextFiles } from './global-setup.ts';
+import { MAX_CONNECT_RETRIES_PER_SUITE } from '../api/test/connect-retry.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pidsFile = resolve(here, '.artifacts', 'pids.json');
@@ -60,4 +61,13 @@ export default async function globalTeardown(): Promise<void> {
     }
   }
   if (restoreError) throw restoreError;
+  // The bounded connect retry (Brian, 2026-09-29): the harness API's count, under the suite's limit.
+  const lines = existsSync(HARNESS_RETRY_LOG) ? readFileSync(HARNESS_RETRY_LOG, 'utf8').split('\n').filter(Boolean) : [];
+  const byKind: Record<string, number> = {};
+  for (const l of lines) { const k = l.split(' ').slice(1).join(' '); byKind[k] = (byKind[k] ?? 0) + 1; }
+  const detail = Object.entries(byKind).map(([k, n]) => `${k} ${n}`).join(', ');
+  console.log(`harness: ${lines.length} connect retr${lines.length === 1 ? 'y' : 'ies'} this run${detail ? ` (${detail})` : ''}; the limit is ${MAX_CONNECT_RETRIES_PER_SUITE}.`);
+  if (lines.length > MAX_CONNECT_RETRIES_PER_SUITE) {
+    throw new Error(`harness: RED. ${lines.length} connect retries is over the limit of ${MAX_CONNECT_RETRIES_PER_SUITE}; the relay needs a look before the next receipt.`);
+  }
 }

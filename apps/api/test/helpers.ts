@@ -9,11 +9,12 @@ import { fileURLToPath } from 'node:url';
 import argon2 from 'argon2';
 import pg from 'pg';
 import { migrate, seedAll } from '@saos/db';
-import { loadConfig, type Config } from '../src/config.ts';
+import type { Config } from '../src/config.ts';
 import type { Db } from '../src/db.ts';
 import { encryptSecret } from '../src/crypto.ts';
-import { CONNECT_TIMEOUT_MS, installConnectRetry, isConnectReset, retryLogPath } from './connect-retry.ts';
-import { appendFileSync } from 'node:fs';
+import { CONNECT_TIMEOUT_MS, installConnectRetry, isConnectReset, recordConnectRetry } from './connect-retry.ts';
+import { addMinioTarget } from './minio-connect-retry.ts';
+import { testConfig } from './test-targets.ts';
 
 /**
  * Each spec FILE gets its own database (node --test runs files in parallel
@@ -34,8 +35,10 @@ export function checkoutTag(root: string): string {
 const CHECKOUT_TAG = checkoutTag(fileURLToPath(new URL('../../..', import.meta.url)));
 /** This checkout's tag, for the per-suite files the test tooling keeps (the connect-retry count). */
 export const TEST_CHECKOUT_TAG = CHECKOUT_TAG;
-// The bounded connect-phase retry for the Docker Desktop relay (Brian, 2026-09-29): test processes only.
+// The bounded connect-phase retry for the Docker Desktop relay (Brian, 2026-09-29): test processes only,
+// for the test databases and (receipt run 47) the test object store.
 installConnectRetry(CHECKOUT_TAG);
+{ const base = testConfig(); addMinioTarget(base.MINIO_ENDPOINT, base.MINIO_PORT); }
 
 /** The test database a spec's createTestConfig(suffix) creates, in this checkout. */
 export function testDatabaseName(dbSuffix: string): string {
@@ -74,7 +77,7 @@ export function templateDatabaseName(): string {
 }
 
 function databaseUrl(name: string): string {
-  const url = new URL(loadConfig({ NODE_ENV: 'test' }).DATABASE_URL);
+  const url = new URL(testConfig().DATABASE_URL);
   url.pathname = `/${name}`;
   return url.toString();
 }
@@ -89,7 +92,7 @@ export async function adminClient(): Promise<pg.Client> {
     } catch (err) {
       await admin.end().catch(() => undefined);
       if (attempt > 0 || !isConnectReset(err)) throw err;
-      try { appendFileSync(retryLogPath(CHECKOUT_TAG), `${process.pid} admin ${(err as { code?: string }).code ?? 'timeout'}\n`); } catch { /* the suite still fails loudly if the retry does too */ }
+      recordConnectRetry(`admin ${(err as { code?: string }).code ?? 'timeout'}`);
     }
   }
 }
@@ -159,7 +162,9 @@ export async function createTestConfig(dbSuffix: string): Promise<Config> {
   } finally {
     await admin.end();
   }
-  return loadConfig({ NODE_ENV: 'test', DATABASE_URL: databaseUrl(testDb) });
+  // Every outward adapter is a stub or a test target, whatever the local .env says (test-targets.ts;
+  // receipt run 47: PUSH_MODE=ntfy sent the alert-center sweep to the local ntfy through the relay).
+  return testConfig(process.env, databaseUrl(testDb));
 }
 
 export interface TestStaff {
