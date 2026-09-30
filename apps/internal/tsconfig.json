@@ -28,10 +28,9 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "..\\..\\..\\..\\..\\AppData\\Local\\saos-e2e\\next/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    "..\\..\\..\\AppData\\Local\\saos-e2e\\next/types/**/*.ts"
+    "..\\..\\..\\..\\..\\AppData\\Local\\saos-e2e\\next/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
