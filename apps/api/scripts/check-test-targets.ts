@@ -7,6 +7,7 @@
  *                 live (SES relay, Stripe live, ntfy, Whisper, the summarizer API, Twilio, a remote
  *                 scanner, a remote object store) comes out with no live target;
  *   2. refused    what cannot be forced, a database that is not local, stops the test process;
+ *      and over process.env itself, every other setting kept (receipt run 48);
  *   3. in the open  a spec or harness file that sets an adapter live on its own config after the
  *                 fact is named below with what makes it safe (a fake it intercepts, a pure function,
  *                 Stripe's own test mode). A new one is red until it is named here.
@@ -41,8 +42,20 @@ try {
 } catch (e) {
   problems.push(`the test configuration refused a hostile environment it should have forced: ${(e as Error).message}`);
 }
-// And over this machine's own .env, as every test process sees it.
-try { testConfig(); } catch (e) { problems.push(`this machine's .env: ${(e as Error).message}`); }
+// And over this machine's own .env, as every test process sees it, keeping what is not an adapter:
+// the harness boot sets its portal and Ops addresses in process.env before it reads its config.
+{
+  const saved = process.env.PORTAL_BASE_URL;
+  process.env.PORTAL_BASE_URL = 'http://localhost:3999';
+  try {
+    const own = testConfig();
+    if (own.PORTAL_BASE_URL !== 'http://localhost:3999') problems.push(`the test configuration over process.env lost a setting that is not an adapter (PORTAL_BASE_URL read ${own.PORTAL_BASE_URL})`);
+  } catch (e) {
+    problems.push(`this machine's .env: ${(e as Error).message}`);
+  } finally {
+    if (saved === undefined) delete process.env.PORTAL_BASE_URL; else process.env.PORTAL_BASE_URL = saved;
+  }
+}
 
 // 2. Refused: a remote database cannot be forced local, so the test process must not start.
 try {

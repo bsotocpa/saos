@@ -37,10 +37,13 @@ export const TEST_OUTWARD_OVERRIDES = {
 /** A test process's base configuration, over whatever environment it is given. */
 export function testConfig(env: Record<string, string | undefined> = process.env, databaseUrl?: string): Config {
   const saved = { ...process.env };
+  // A copy first: the environment given is usually process.env itself, which is emptied next
+  // (receipt run 48: without the copy the harness boot lost its own PORTAL_BASE_URL and OPS_URL).
+  const source = { ...env };
   try {
     // loadConfig reads process.env under its overrides; the environment under test stands in for it.
     for (const k of Object.keys(process.env)) delete process.env[k];
-    Object.assign(process.env, env);
+    Object.assign(process.env, source);
     const config = loadConfig({ NODE_ENV: 'test', ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}), ...TEST_OUTWARD_OVERRIDES });
     // What cannot be forced (the database lives wherever the local .env says) is refused instead.
     const live = liveTargets(config);

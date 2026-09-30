@@ -59,6 +59,14 @@ export const items = [
     expectRed: /dashboards\.spec\.ts:\d+ sets an outward adapter live/,
   },
   {
+    item: 'test targets: the environment no longer copied before process.env is emptied (receipt run 48)',
+    file: 'apps/api/test/test-targets.ts',
+    change: 'Object.assign(process.env, source) back to Object.assign(process.env, env): over process.env itself the harness settings are lost',
+    test: { kind: 'guard', spec: 'check:test-targets' },
+    apply: (t) => { const a = 'Object.assign(process.env, source);'; must(t, a); return t.replace(a, 'Object.assign(process.env, env);'); },
+    expectRed: /lost a setting that is not an adapter/,
+  },
+  {
     item: 'MinIO connect retry: a reset new connection no longer replaced',
     file: 'apps/api/test/minio-connect-retry.ts',
     change: 'the one fresh connection removed: a reset before MinIO answers goes straight to the request',
