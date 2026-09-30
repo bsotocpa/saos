@@ -229,6 +229,21 @@
         { "id": "C1", "text": "A same-name pair's banner opens Compare; a reason and Merge (the R92 door) join them; the banner goes and the other record redirects", "device": "phone + laptop" },
         { "id": "C2", "text": "Compare, a reason and Not a duplicate: the banner goes from both records", "device": "phone + laptop" }
       ]
+    },
+    "O": {
+      "title": "The handover doc, walked by a new tax_preparer (R99)",
+      "steps": [
+        { "id": "O1", "text": "First sign-in as the doc says: temporary password, the QR code and Secret, the six-digit code, eight recovery codes, the own password on Account security; the temporary password refused after", "device": "phone + laptop" },
+        { "id": "O1b", "text": "A recovery code signs in once and Brian is emailed; Issue new recovery codes on Account needs a current code and replaces the set", "device": "phone + laptop" },
+        { "id": "O2", "text": "She lands on My queue; the top bar is exactly the doc's list", "device": "phone + laptop" },
+        { "id": "O3a", "text": "Engage from Clients: the paper engagement letter, Assign preparer, Lock estimate, Schedule", "device": "phone + laptop" },
+        { "id": "O3b", "text": "Prepare from My Queue: Request documents, Start preparation, Internal review", "device": "phone + laptop" },
+        { "id": "O3c", "text": "Sign: Deliver Return, Record 8879 sent, the signed 8879 uploaded", "device": "phone + laptop" },
+        { "id": "O3d", "text": "File: Set final fee, Ready to file, Mark filed with federal e-filed and a state on paper", "device": "phone + laptop" },
+        { "id": "O3e", "text": "The ATX report: uploaded, Hold, Unhold, Release", "device": "phone + laptop" },
+        { "id": "O3f", "text": "Record mailing for the paper state; the return completes; the final-fee invoice issued", "device": "phone + laptop" },
+        { "id": "O4", "text": "A 990: Record extension on 8868, the 8879-TE, federal alone, accepted through the ATX report", "device": "phone + laptop" }
+      ]
     }
   }
 }
