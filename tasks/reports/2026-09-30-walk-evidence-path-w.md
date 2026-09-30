@@ -1,11 +1,11 @@
 # walk-evidence-path-w (2026-09-30)
 
-Generated 2026-09-30T19:40:13.446Z by scripts/report-table.mjs from the log walk-w.log; 4 row(s).
+Generated 2026-09-30T22:14:24.571Z by scripts/report-table.mjs from the log walk-w.log; 4 row(s).
 
 Past deadlines (R93, 2026-09-29): ops-batch10.spec.ts at 390 and 1280 as the CEO fixture, on a return the batch-10 fixture opens by hand 20 days past its original deadline with no extension; W1 reads "Overdue since <date>" on the Ops row, the queue and the client’s portal card (signed in by the link they were emailed); W2 records the extension on the row and reads the overdue line gone from all three.
 
 ```sql
-node scripts/walk-evidence.mjs W  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 135 passed, 0 failed)
+node scripts/walk-evidence.mjs W  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 137 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |

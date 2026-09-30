@@ -1,11 +1,11 @@
 # edit-doors (2026-09-30)
 
-Generated 2026-09-30T19:40:16.069Z by scripts/report-table.mjs from the log edit-doors.log; 38 row(s).
+Generated 2026-09-30T22:14:26.487Z by scripts/report-table.mjs from the log edit-doors.log; 38 row(s).
 
 Every entity with a create control has an edit control tapped at both viewports, or an explicit "immutable because" entry (R38); the guard scripts/check-edit-doors.mjs fails the root chain when a create route has no update route with a UI caller and the entity is not marked immutable.
 
 ```sql
-node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/modules joined with scripts/edit-doors.json; tapped columns from apps/e2e/.artifacts/last-run.json, the full harness run of 2026-09-30: 135 passed, 0 failed)
+node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/modules joined with scripts/edit-doors.json; tapped columns from apps/e2e/.artifacts/last-run.json, the full harness run of 2026-09-30: 137 passed, 0 failed)
 ```
 
 | entity | create route | update route | UI caller (file) | tapped phone | tapped desk | immutable because |

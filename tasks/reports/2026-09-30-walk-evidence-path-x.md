@@ -1,11 +1,11 @@
 # walk-evidence-path-x (2026-09-30)
 
-Generated 2026-09-30T19:40:13.664Z by scripts/report-table.mjs from the log walk-x.log; 2 row(s).
+Generated 2026-09-30T22:14:24.718Z by scripts/report-table.mjs from the log walk-x.log; 2 row(s).
 
 Duplicate merges (R92, 2026-09-29): ops-batch10.spec.ts at 390 and 1280 as the CEO fixture, on a synthetic pair the batch-10 fixture enters twice with one phone, one record holding a portal sign-in; X1 merges them through POST /contacts/merge-pair, reads the survivor rule, opens the retired record by its own address and lands on the survivor, and finds the survivor alone in search.
 
 ```sql
-node scripts/walk-evidence.mjs X  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 135 passed, 0 failed)
+node scripts/walk-evidence.mjs X  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 137 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |

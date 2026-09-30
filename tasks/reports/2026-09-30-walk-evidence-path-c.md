@@ -1,11 +1,11 @@
 # walk-evidence-path-c (2026-09-30)
 
-Generated 2026-09-30T19:40:14.453Z by scripts/report-table.mjs from the log walk-c.log; 4 row(s).
+Generated 2026-09-30T22:14:25.313Z by scripts/report-table.mjs from the log walk-c.log; 4 row(s).
 
 Same-name pairs (R97, 2026-09-29): ops-same-name.spec.ts at 390 and 1280 as the CEO fixture, on two synthetic same-name pairs per viewport, each record holding a task, with the open suggestion the pass leaves (apps/api/scripts/e2e-fixtures/same-name.ts; the pass itself is proven in same-name.spec.ts). Every answer is a tap.
 
 ```sql
-node scripts/walk-evidence.mjs C  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 135 passed, 0 failed)
+node scripts/walk-evidence.mjs C  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 137 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
