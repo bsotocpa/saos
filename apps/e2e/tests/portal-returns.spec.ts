@@ -47,7 +47,9 @@ test('the delivered 1120S is under My Returns for the owner', async ({ page }, t
     await signIn(page, owner.portalMagicTokens[1]!);
     await page.goto('/returns');
     await expect(page.getByRole('heading', { name: 'My Returns' })).toBeVisible();
-    await page.waitForTimeout(1200);
+    // The heading is server-rendered; the list arrives only after hydration fetches /portal/returns,
+    // which WebKit at 390 has started 1.8 s after the heading (receipt run 49). Wait for the row itself.
+    await expect(page.getByText(owner.markers.returnFile), 'the delivered return is listed').toBeVisible();
     const text = await page.evaluate(() => document.body.innerText);
     expect(text, 'the delivered return is listed').toContain(owner.markers.returnFile);
     expect(text, 'with its year').toContain(String(owner.taxYear));

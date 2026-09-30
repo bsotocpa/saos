@@ -1,6 +1,6 @@
 # batch-10-11-receipts-and-deploys (2026-09-30)
 
-Generated 2026-09-30T19:02:48.573Z by scripts/report-table.mjs from the log receipts-deploys.log; 18 row(s).
+Generated 2026-09-30T19:23:03.726Z by scripts/report-table.mjs from the log receipts-deploys.log; 19 row(s).
 
 ```sql
 the receipt run logs and deploy.sh logs of batches 10 and 11
@@ -26,3 +26,4 @@ the receipt run logs and deploy.sh logs of batches 10 and 11
 | deploy | 3fa030c | R97 (0136); pushed fb87d25..3fa030c |
 | receipt run 47 | 86feed9 | red: 1 API (the alert-center push reached the local ntfy), 1 harness (a MinIO upload reset by the relay), 8 connect retries; both fixed (forced test targets, MinIO connect retry), lesson |
 | receipt run 48 | f54315d | red: 39 harness walks (the test configuration lost the harness boot's own settings), API 957 (15 connect retries); fixed, check and sabotage extended, lesson |
+| receipt run 49 | 079ac4d | red: 1 harness walk (portal-returns at 390 read the page before hydration fetched the list), API 957 (0 retries), harness 134; fixed, lesson |
