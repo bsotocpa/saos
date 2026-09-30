@@ -227,15 +227,17 @@ test.describe('Ops → the handover doc, walked (R99)', () => {
       // ── O2. MY QUEUE ────────────────────────────────────────────────────────────────────
       await typeSignIn(page, email, ownPassword, totp(secret));
       await page.waitForURL(/\/queue$/);
-      await expect(page.getByRole('heading', { name: says('My queue'), exact: true }), 'DOC 2: the queue page is headed My queue').toBeVisible();
-      await expect(page.getByTestId('top-nav').getByRole('link', { name: says('My Queue'), exact: true }), 'DOC 2: and reads My Queue in the top bar').toBeVisible();
+      // R100: one label, the page heading and the top bar alike.
+      states('You land on **My Queue**.');
+      await expect(page.getByRole('heading', { name: says('My Queue'), exact: true }), 'DOC 2: the queue page is headed My Queue').toBeVisible();
+      await expect(page.getByTestId('top-nav').getByRole('link', { name: 'My Queue', exact: true }), 'DOC 2: as the top bar reads').toBeVisible();
       const barLine = /Your top bar has \*\*([^*]+)\*\*\./.exec(DOC);
       expect(barLine, 'the doc lists the top bar').toBeTruthy();
       const docBar = barLine![1]!.split(',').map((s) => s.trim());
       const nav = page.getByTestId('top-nav');
       await expect(nav).toHaveAttribute('data-ready', 'yes');
       expect(await nav.locator('a').allInnerTexts(), 'DOC 2: the top bar, item by item').toEqual(docBar);
-      steps.push(`O2|/ → /queue, heading "My Queue"; nav[data-testid=top-nav] equals the doc's list (${docBar.length} items)|${ROLES}|tap`);
+      steps.push(`O2|/ → /queue, heading "My Queue" (R100: as the top bar reads); nav[data-testid=top-nav] equals the doc's list (${docBar.length} items)|${ROLES}|tap`);
 
       // ── SETUP BY THE CEO: the clients and the returns she does not open herself. With two active
       // tax_preparers the 1120-S has no default preparer: the doc's Engage phase assigns one.

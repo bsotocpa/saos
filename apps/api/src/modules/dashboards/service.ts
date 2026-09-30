@@ -11,6 +11,7 @@ import { deadlineDashboard } from '../tax/extension.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import { retirementReadiness } from '../admin/dubsado-retirement.ts';
 import { pipelineMetrics } from '../pricing/pipeline.ts';
+import { NO_PREPARER_SQL } from '../tax/queue.ts';
 
 /**
  * The returns behind one "Open returns by stage" row (R52, 2026-09-26): client, business, form,
@@ -34,6 +35,27 @@ export async function openReturnsInStage(app: FastifyInstance, stage: string) {
      WHERE te.stage = $1::tax_stage AND te.stage NOT IN ('completed', 'withdrawn') AND NOT c.is_test
      ORDER BY days_in_stage DESC, c.last_name, c.first_name`,
     [stage, todayChicago()]
+  );
+  return rows;
+}
+
+/**
+ * R102 (2026-09-30): the open returns that name no preparer — the list behind the executive view's
+ * "Returns with no preparer" count, with the days since each was opened (the alert's clock).
+ */
+export async function openReturnsWithNoPreparer(app: FastifyInstance) {
+  const { rows } = await app.db.query(
+    `SELECT te.id, te.tax_year, te.return_type::text AS return_type, te.stage::text AS stage,
+            e.contact_id, c.first_name, c.last_name, b.name AS business_name,
+            te.preparer_id, NULL::text AS preparer_name,
+            GREATEST(0, $1::date - (te.created_at AT TIME ZONE 'America/Chicago')::date)::int AS days_in_stage
+     FROM tax_engagements te
+     JOIN engagements e ON e.id = te.engagement_id
+     JOIN contacts c ON c.id = e.contact_id
+     LEFT JOIN businesses b ON b.id = e.business_id
+     WHERE ${NO_PREPARER_SQL}
+     ORDER BY te.created_at, c.last_name, c.first_name`,
+    [todayChicago()]
   );
   return rows;
 }
@@ -129,9 +151,16 @@ export async function executiveDashboard(app: FastifyInstance) {
     ),
   ]);
   const money = await moneyLineToday(app, todayChicago());
+  // R102: the open returns naming no preparer; the count opens the list (openReturnsWithNoPreparer).
+  const noPreparer = await app.db.query<{ count: number }>(
+    `SELECT count(*)::int AS count FROM tax_engagements te
+       JOIN engagements e ON e.id = te.engagement_id JOIN contacts c ON c.id = e.contact_id
+      WHERE ${NO_PREPARER_SQL}`
+  );
 
   return {
     openReturnsByStage: byStage.rows,
+    returnsWithNoPreparer: { count: noPreparer.rows[0]!.count },
     revenue: { mtdCents: Number(revenue.rows[0]!.mtd_cents), ytdCents: Number(revenue.rows[0]!.ytd_cents) },
     // Ruling 10 (2026-09-12), item 5 (2026-09-19): today's money actions by human staff other
     // than the CEO, live; and the Stripe refunds that moved with no SAOS initiator, on their own.

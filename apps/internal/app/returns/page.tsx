@@ -8,6 +8,9 @@
  * lists the returns in it: the client, the business, the form and year, the preparer, and the days
  * the return has sat in the stage. The same grant as the view it opens from (dashboards.executive);
  * test clients are left out of both, so the count and the list agree.
+ *
+ * R102 (2026-09-30): the same list for the returns naming no preparer (?preparer=none), behind the
+ * executive view's "Returns with no preparer" count; the days column counts from when each opened.
  */
 
 import Link from 'next/link';
@@ -32,18 +35,21 @@ export default function OpenReturnsPage() {
   // after the first render, so a render-time read still sees the page the link was on. `undefined`
   // is "not read yet"; null is "no stage in the address".
   const [stage, setStage] = useState<string | null | undefined>(undefined);
+  const [noPreparer, setNoPreparer] = useState(false);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthed()) { router.replace('/login'); return; }
-    const wanted = new URLSearchParams(window.location.search).get('stage');
-    setStage(wanted && /^[a-z_]+$/.test(wanted) ? wanted : null);
+    const params = new URLSearchParams(window.location.search);
+    const wanted = params.get('stage');
+    setNoPreparer(params.get('preparer') === 'none');
+    setStage(params.get('preparer') === 'none' ? 'no_preparer' : wanted && /^[a-z_]+$/.test(wanted) ? wanted : null);
   }, [router]);
 
   useEffect(() => {
     if (!stage) return;
-    api<{ returns: Row[] }>(`/dashboards/open-returns?stage=${encodeURIComponent(stage)}`)
+    api<{ returns: Row[] }>(stage === 'no_preparer' ? '/dashboards/open-returns?preparer=none' : `/dashboards/open-returns?stage=${encodeURIComponent(stage)}`)
       .then((r) => setRows(r.returns))
       .catch((err: unknown) => setError(err instanceof Error && err.message ? err.message : 'The list could not be read.'));
   }, [stage]);
@@ -68,20 +74,20 @@ export default function OpenReturnsPage() {
   }
   return (
     <>
-      <h1>Open returns — {taxStageLabel(stage)}</h1>
+      <h1>{noPreparer ? 'Returns with no preparer' : `Open returns — ${taxStageLabel(stage)}`}</h1>
       <p className="muted small"><Link href="/">← Executive view</Link></p>
       {error ? <p className="alert error" role="alert">{error}</p> : null}
       {rows === null ? (
         error ? null : <section className="card"><p className="muted">Loading…</p></section>
       ) : rows.length === 0 ? (
-        <section className="card"><p className="muted" data-testid="open-returns-empty">No open returns in this stage.</p></section>
+        <section className="card"><p className="muted" data-testid="open-returns-empty">{noPreparer ? 'Every open return names a preparer.' : 'No open returns in this stage.'}</p></section>
       ) : (
         <>
           {/* Desktop: table. */}
           <section className="card desk-only">
             <table data-testid="open-returns-table">
               <thead>
-                <tr><th>Client</th><th>Business</th><th>Form</th><th>Preparer</th><th>Days in stage</th></tr>
+                <tr><th>Client</th><th>Business</th><th>Form</th><th>{noPreparer ? 'Stage' : 'Preparer'}</th><th>{noPreparer ? 'Days open' : 'Days in stage'}</th></tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
@@ -89,7 +95,7 @@ export default function OpenReturnsPage() {
                     <td><Link href={`/clients/${r.contact_id}`}>{r.first_name} {r.last_name}</Link></td>
                     <td className="muted small">{r.business_name ?? '—'}</td>
                     <td>{formLabel(r)}</td>
-                    <td className="muted small">{r.preparer_name ?? 'Unassigned'}</td>
+                    <td className="muted small">{noPreparer ? taxStageLabel(r.stage) : r.preparer_name ?? 'Unassigned'}</td>
                     <td>{daysLabel(r.days_in_stage)}</td>
                   </tr>
                 ))}
@@ -103,7 +109,7 @@ export default function OpenReturnsPage() {
                 <strong>{r.first_name} {r.last_name}</strong>
                 {r.business_name ? <><br /><span className="small">{r.business_name}</span></> : null}
                 <br />
-                <span className="muted small">{formLabel(r)} · {r.preparer_name ?? 'Unassigned'} · {daysLabel(r.days_in_stage)} in stage</span>
+                <span className="muted small">{formLabel(r)} · {noPreparer ? `${taxStageLabel(r.stage)} · open ${daysLabel(r.days_in_stage)}` : `${r.preparer_name ?? 'Unassigned'} · ${daysLabel(r.days_in_stage)} in stage`}</span>
               </Link>
             ))}
           </section>

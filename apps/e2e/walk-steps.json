@@ -235,7 +235,7 @@
       "steps": [
         { "id": "O1", "text": "First sign-in as the doc says: temporary password, the QR code and Secret, the six-digit code, eight recovery codes, the own password on Account security; the temporary password refused after", "device": "phone + laptop" },
         { "id": "O1b", "text": "A recovery code signs in once and Brian is emailed; Issue new recovery codes on Account needs a current code and replaces the set", "device": "phone + laptop" },
-        { "id": "O2", "text": "She lands on My queue; the top bar is exactly the doc's list", "device": "phone + laptop" },
+        { "id": "O2", "text": "She lands on My Queue, the heading as the top bar reads it (R100); the top bar is exactly the doc's list", "device": "phone + laptop" },
         { "id": "O3a", "text": "Engage from Clients: the paper engagement letter, Assign preparer, Lock estimate, Schedule", "device": "phone + laptop" },
         { "id": "O3b", "text": "Prepare from My Queue: Request documents, Start preparation, Internal review", "device": "phone + laptop" },
         { "id": "O3c", "text": "Sign: Deliver Return, Record 8879 sent, the signed 8879 uploaded", "device": "phone + laptop" },
@@ -243,6 +243,14 @@
         { "id": "O3e", "text": "The ATX report: uploaded, Hold, Unhold, Release", "device": "phone + laptop" },
         { "id": "O3f", "text": "Record mailing for the paper state; the return completes; the final-fee invoice issued", "device": "phone + laptop" },
         { "id": "O4", "text": "A 990: Record extension on 8868, the 8879-TE, federal alone, accepted through the ATX report", "device": "phone + laptop" }
+      ]
+    },
+    "J": {
+      "title": "Returns with no preparer are visible (R102)",
+      "steps": [
+        { "id": "J1", "text": "The executive view counts the open returns with no preparer; the count opens their list", "device": "phone + laptop" },
+        { "id": "J2", "text": "Two business days after a return opened with no preparer, the CEO has one alert naming it", "device": "phone + laptop" },
+        { "id": "J3", "text": "Assigned from the list, the return leaves the count and the list", "device": "phone + laptop" }
       ]
     }
   }

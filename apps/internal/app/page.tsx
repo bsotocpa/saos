@@ -17,6 +17,8 @@ interface MoneyActionRow {
 
 interface Executive {
   openReturnsByStage: Array<{ stage: string; count: number; value_cents: string }>;
+  /** R102: open returns naming no preparer (absent from an API older than this page). */
+  returnsWithNoPreparer?: { count: number };
   revenue: { mtdCents: number; ytdCents: number };
   /** Item 5 (2026-09-19): class 'staff' only — human staff other than the CEO. */
   moneyActionsToday: MoneyActionRow[];
@@ -410,6 +412,19 @@ export default function ExecutivePage() {
               </>
             );
           })()}
+        </section>
+
+        {/* R102 (2026-09-30): a return assigned to nobody is in no queue; the count opens the list. */}
+        <section className="card" data-testid="no-preparer-card">
+          <h2>Returns with no preparer</h2>
+          <div className="stat-row">
+            <div>
+              <Link href="/returns?preparer=none" data-testid="no-preparer-count" className="stat" style={{ color: (data.returnsWithNoPreparer?.count ?? 0) > 0 ? 'var(--danger)' : 'var(--ok)' }}>
+                {data.returnsWithNoPreparer?.count ?? 0}
+              </Link>
+              <div className="muted small">Open, assigned to nobody</div>
+            </div>
+          </div>
         </section>
 
         <section className="card span">

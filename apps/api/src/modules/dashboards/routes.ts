@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../../plugins/auth.ts';
 import { AppError } from '../../types.ts';
-import { executiveDashboard, hiloDashboard, openReturnsInStage } from './service.ts';
+import { executiveDashboard, hiloDashboard, openReturnsInStage, openReturnsWithNoPreparer } from './service.ts';
 import { TAX_STAGES } from '../tax/pipeline.ts';
 import { makePusher, runPushSweep } from '../../notify/push.ts';
 
@@ -16,8 +16,13 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
 
   app.get('/dashboards/executive', leadership, async () => executiveDashboard(app));
   // The list behind one "Open returns by stage" row (R52): the same grant as the view it opens from.
+  // R102 (2026-09-30): or the returns naming no preparer (?preparer=none), behind that count.
   app.get('/dashboards/open-returns', leadership, async (request) => {
-    const q = z.object({ stage: z.enum(TAX_STAGES) }).parse(request.query);
+    const q = z.union([
+      z.object({ stage: z.enum(TAX_STAGES) }),
+      z.object({ preparer: z.literal('none') }),
+    ]).parse(request.query);
+    if ('preparer' in q) return { preparer: 'none', returns: await openReturnsWithNoPreparer(app) };
     return { stage: q.stage, returns: await openReturnsInStage(app, q.stage) };
   });
   app.get('/dashboards/hilo', hilo, async () => hiloDashboard(app));

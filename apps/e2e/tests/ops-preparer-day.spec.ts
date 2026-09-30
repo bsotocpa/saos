@@ -135,13 +135,13 @@ test.describe('Ops → the preparer\'s day', () => {
       await signIn(page, fixtures.wall.anamaria);
       await page.goto('/');
       await page.waitForURL(/\/queue$/);
-      await expect(page.getByRole('heading', { name: 'My queue' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'My Queue', exact: true })).toBeVisible();
       await expect(page.getByText('You see only the returns assigned to you.')).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Executive' }), 'the Executive view never renders for her').toHaveCount(0);
       await expect(page.getByText('Loading…'), 'nothing is left loading').toHaveCount(0);
       const me = await read(page, '/auth/me');
       expect(me.home, 'the API names the queue as her home').toBe('/queue');
-      steps.push(`T1|/ → /queue by the shell from GET /auth/me home; heading "My queue", "You see only the returns assigned to you."|${ROLES}|tap`);
+      steps.push(`T1|/ → /queue by the shell from GET /auth/me home; heading "My Queue", "You see only the returns assigned to you."|${ROLES}|tap`);
 
       // ── T2. THE NAVIGATION IS HERS: the count and the names equal the R42 record's tax_preparer row.
       const recorded = recordedNav('tax_preparer');

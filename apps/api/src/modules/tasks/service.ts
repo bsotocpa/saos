@@ -17,6 +17,7 @@ import { sendTemplatedEmail } from '../templates/service.ts';
 import { sendSms } from '../comms/send-sms.ts';
 import { addBusinessDays, addDays, businessDaysAfter, daysBetween, todayChicago } from '../tax/deadlines.ts';
 import { sopLinkForTaskType } from '../sops/service.ts';
+import { NO_PREPARER_ALERT_BUSINESS_DAYS, NO_PREPARER_SQL } from '../tax/queue.ts';
 
 export type TaskStatus = 'not_started' | 'in_progress' | 'waiting_for_input' | 'completed' | 'deferred' | 'cancelled';
 /** Non-terminal statuses — what "open work" means across every view/query. */
@@ -878,7 +879,11 @@ export const INTERNAL_TASK_ALERT_BUSINESS_DAYS = 3;
  * that is not a client to-do) three business days past its due date raises one CEO alert, once per
  * task. It never contacts a client and is never gated: it is an internal alert (CLAUDE.md).
  */
-export async function runInternalTaskLadderJob(app: FastifyInstance, today: string): Promise<{ considered: number; alerted: number; skipped: boolean }> {
+export async function runInternalTaskLadderJob(
+  app: FastifyInstance,
+  today: string
+): Promise<{ considered: number; alerted: number; noPreparerConsidered: number; noPreparerAlerted: number; skipped: boolean }> {
+  const noPreparer = await alertReturnsWithNoPreparer(app, today);
   const { rows } = await app.db.query<{ id: string; title: string; due_date: string; contact_id: string | null }>(
     `SELECT id, title, due_date::text AS due_date, contact_id FROM tasks
       WHERE source_type IS NOT NULL AND NOT client_visible AND due_date IS NOT NULL
@@ -886,7 +891,7 @@ export async function runInternalTaskLadderJob(app: FastifyInstance, today: stri
     [today]
   );
   const late = rows.filter((t) => businessDaysAfter(t.due_date, today) >= INTERNAL_TASK_ALERT_BUSINESS_DAYS);
-  if (late.length === 0) return { considered: rows.length, alerted: 0, skipped: true };
+  if (late.length === 0) return { considered: rows.length, alerted: 0, ...noPreparer, skipped: noPreparer.noPreparerAlerted === 0 };
   const ceo = await alertRecipientForRole(app.db, 'ceo', 'internal_task_ladder');
   let alerted = 0;
   if (ceo) {
@@ -899,5 +904,38 @@ export async function runInternalTaskLadderJob(app: FastifyInstance, today: stri
       if (fired) alerted++;
     }
   }
-  return { considered: rows.length, alerted, skipped: alerted === 0 };
+  return { considered: rows.length, alerted, ...noPreparer, skipped: alerted + noPreparer.noPreparerAlerted === 0 };
+}
+
+/*
+ * THE LADDER'S SECOND RUNG: A RETURN WITH NO PREPARER (Brian, 2026-09-30, R102). A return assigned
+ * to nobody is in no queue (the R99 rehearsal). Two business days after it opened with no preparer,
+ * the CEO is alerted once, through the same job and recipient as the internal ladder. Internal: never
+ * a client contact, never gated. The predicate is the executive count's own (NO_PREPARER_SQL).
+ */
+async function alertReturnsWithNoPreparer(app: FastifyInstance, today: string): Promise<{ noPreparerConsidered: number; noPreparerAlerted: number }> {
+  const { rows } = await app.db.query<{ id: string; tax_year: number; return_type: string; opened_on: string; contact_id: string; first_name: string; last_name: string }>(
+    `SELECT te.id, te.tax_year, te.return_type::text AS return_type,
+            (te.created_at AT TIME ZONE 'America/Chicago')::date::text AS opened_on,
+            e.contact_id, c.first_name, c.last_name
+       FROM tax_engagements te
+       JOIN engagements e ON e.id = te.engagement_id
+       JOIN contacts c ON c.id = e.contact_id
+      WHERE ${NO_PREPARER_SQL}`
+  );
+  const late = rows.filter((r) => businessDaysAfter(r.opened_on, today) >= NO_PREPARER_ALERT_BUSINESS_DAYS);
+  if (late.length === 0) return { noPreparerConsidered: rows.length, noPreparerAlerted: 0 };
+  const ceo = await alertRecipientForRole(app.db, 'ceo', 'internal_task_ladder');
+  let noPreparerAlerted = 0;
+  if (ceo) {
+    for (const r of late) {
+      const fired = await notifyOnce(app.db, {
+        staffId: ceo, type: 'return_no_preparer', severity: 'warning',
+        title: `${NO_PREPARER_ALERT_BUSINESS_DAYS} business days with no preparer: ${r.tax_year} ${r.return_type.toUpperCase()} for ${r.first_name} ${r.last_name}`,
+        contactId: r.contact_id, relatedObjectType: 'tax_engagement', relatedObjectId: r.id,
+      });
+      if (fired) noPreparerAlerted++;
+    }
+  }
+  return { noPreparerConsidered: rows.length, noPreparerAlerted };
 }

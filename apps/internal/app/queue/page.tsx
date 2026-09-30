@@ -84,7 +84,8 @@ export default function QueuePage() {
 
   return (
     <>
-      <h1>{scoped ? 'My queue' : everyone ? 'Every open return' : 'My queue'}</h1>
+      {/* R100 (2026-09-30): the heading reads as the top bar does. */}
+      <h1>{scoped ? 'My Queue' : everyone ? 'Every open return' : 'My Queue'}</h1>
       {!scoped ? (
         <p className="small">
           <label><input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} /> Everyone&apos;s returns, not only mine</label>

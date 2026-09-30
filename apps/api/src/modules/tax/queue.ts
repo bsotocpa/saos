@@ -15,6 +15,17 @@ import { daysBetween, overdueSince } from './deadlines.ts';
 import { getSetting } from './extension.ts';
 import { F8879_SENT_METHOD_LABEL, type F8879SentMethod } from './f8879-sent.ts';
 
+/*
+ * A RETURN WITH NO PREPARER (Brian, 2026-09-30, R102). One predicate for the executive count, the
+ * list it opens and the CEO alert, so the three can never disagree: an OPEN return (the queue's own
+ * meaning: neither completed nor withdrawn; a withdrawn return is not open, batch 13's lesson) that
+ * names no preparer, on a client that is not a test record (D2: a flagged record leaves every report).
+ * Aliases: te = tax_engagements, c = contacts.
+ */
+export const NO_PREPARER_SQL = `te.stage NOT IN ('completed', 'withdrawn') AND te.preparer_id IS NULL AND NOT c.is_test`;
+/** R102: this many business days after a return opens with no preparer, the CEO is alerted once. */
+export const NO_PREPARER_ALERT_BUSINESS_DAYS = 2;
+
 export interface QueueRow {
   /** R93: the day the return went overdue (its deadline passed, not filed), or null. */
   overdueSince: string | null;

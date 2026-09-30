@@ -39,6 +39,8 @@ import { buildCutoverFixture } from './e2e-fixtures/cutover.ts';
 import { buildCountsAsFixture } from './e2e-fixtures/counts-as.ts';
 import { buildSameNameFixture } from './e2e-fixtures/same-name.ts';
 import { buildBillingHoldFixture } from './e2e-fixtures/billing-hold.ts';
+import { buildNoPreparerFixture } from './e2e-fixtures/no-preparer.ts';
+import { runInternalTaskLadderJob } from '../src/modules/tasks/service.ts';
 
 const PORT = Number(process.env.E2E_API_PORT ?? 3101);
 const TOTP_SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
@@ -187,6 +189,16 @@ app.post<{ Body: { state?: unknown } }>('/harness/return-stepper', async (reques
 });
 // The business page (R40), flipped the same way: ops-business-page.spec.ts taps off (the sentence, no
 // links) and on (the page) from one API process, and leaves it on for the specs after it.
+/*
+ * THE INTERNAL LADDER, RUN FOR A DAY (R102, 2026-09-30). The harness API runs no scheduler; path J
+ * runs the daily internal_task_ladder job as the box would on the day it names (two business days
+ * after its fixture return opened), and then reads the CEO's Alerts page.
+ */
+app.post<{ Body: { today?: unknown } }>('/harness/internal-ladder', async (request) => {
+  const today = (request.body as { today?: unknown } | null)?.today;
+  if (typeof today !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(today)) throw new Error('today must be YYYY-MM-DD');
+  return runInternalTaskLadderJob(app, today);
+});
 app.post<{ Body: { state?: unknown } }>('/harness/business-page', async (request) => {
   const state = (request.body as { state?: unknown } | null)?.state;
   if (state !== 'on' && state !== 'off') throw new Error('state must be on or off');
@@ -561,6 +573,8 @@ const sameName = await buildSameNameFixture(app);
 const billingHold = await buildBillingHoldFixture(app, { actor });
 // The 990 variant of Path B (R66): an exempt organization's return at ready to file, one per viewport.
 const path990 = await buildPath990(app, { staffToken, preparer: { id: anamaria.id, name: anamaria.fullName }, taxYear: scorpTaxYear });
+// R102 (2026-09-30): path J, one open return per viewport assigned to nobody.
+const noPreparer = await buildNoPreparerFixture(app, { staffToken, taxYear: scorpTaxYear });
 await app.listen({ port: PORT, host: '127.0.0.1' });
 // The harness API runs no scheduler (that is index.ts's job). The outbox fast lane is what a person
 // waits on after a release, so the harness drains it every two seconds, the way the box does every minute.
@@ -603,6 +617,7 @@ console.log('E2E_READY ' + JSON.stringify({
   amend: { invoiceId: acc1.depositInvoiceId },
   pathB,
   path990,
+  noPreparer,
   documents,
   signing,
   consentNew,

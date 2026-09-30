@@ -2200,3 +2200,7 @@ Run 48 was red on 39 harness walks and green on the API. testConfig(env) emptied
 ## A fixed wait after a static heading races hydration (2026-09-30, receipt run 49, R7)
 Run 49 was red on one walk: portal-returns at 390 read the page 1.2 s after the My Returns heading showed and found no rows. The trace shows why: the heading is server-rendered, and WebKit started the page's /portal/returns fetch 1.8 s after it, 240 ms after the walk had read the text. The Ops walks with the same fixed wait anchor on "Documents (n)", which renders only from loaded data, so they do not race.
 **Rule:** a walk waits for the thing it asserts (the row, with an auto-retrying expect), never for a fixed time after an anchor that renders before the data. Before trusting a waitForTimeout, ask whether its anchor is server-rendered.
+
+## "Open" is the queue's definition, not "not filed" (2026-09-30, batch 12 report, corrected in batch 13)
+The batch 12 report said 2 of the 3 open returns in production had no preparer. The count was stage NOT IN ('filed','completed'), which includes withdrawn: the 2 unassigned rows were withdrawn returns, and the only open return had a preparer. Brian ruled R101 and R102 on that figure.
+**Rule:** an "open return" count uses the same predicate the product uses (the queue: stage NOT IN ('completed','withdrawn')), read from the code, never improvised in a one-off query; and every count in a report names its predicate next to the number.
