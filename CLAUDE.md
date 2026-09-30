@@ -97,5 +97,8 @@
 ### The deploy order (Brian, 2026-09-29, standing rule)
 - **Build → preflight (migrations and seeds on the production copy) → migrate → seed → swap.** No seed runs after the swap. `scripts/check-deploy-order.mjs` refuses a deploy.sh that breaks this order, first thing in every deploy and in the root `npm test`.
 
+### The October change freeze (Brian, 2026-09-30, dated rule R98: 2026-10-08 through 2026-10-16)
+- **From 2026-10-08 through 2026-10-16, deploy only fixes to defects that block filing work** — a return that can't advance, a portal that can't sign or upload, an ack that can't release, an invoice that can't be paid — each with Brian's written go. Everything else is built and receipted but waits for 2026-10-17.
+
 ### The design plugin (Brian, 2026-09-20, standing rule R26)
 - **Never authorize the design plugin's servers** (Asana, Figma, Intercom, Linear) in a SAOS session. The project settings file disables the plugin; if a session still lists them, they stay unauthenticated and no restart is spent on it.
