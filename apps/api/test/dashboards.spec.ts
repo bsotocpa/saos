@@ -159,6 +159,25 @@ test('executive dashboard aggregates trace to the scenario rows; leadership-only
   assert.ok(d.dubsadoRetirement.migratedLoginTarget > 0, 'the target is stated, not implied');
 });
 
+test('MTD and YTD count from the first instant of the month in Chicago, not in UTC (receipt run 54)', async () => {
+  const mtd = async () => ((await app.inject({ method: 'GET', url: '/dashboards/executive', headers: auth(brian) })).json().revenue.mtdCents as number);
+  const before = await mtd();
+  const contact = await app.db.query<{ id: string }>(
+    `INSERT INTO contacts (first_name, last_name, email, soto_status) VALUES ('Synthetic', 'Dashboundary', 'dash-boundary@example.test', 'active') RETURNING id`
+  );
+  // A minute before and a minute after the month began in Chicago. Under a UTC month the first is
+  // counted all month long (it is after UTC midnight on the 1st), and in the last evening of a Chicago
+  // month the second is not.
+  const start = `(date_trunc('month', now() AT TIME ZONE 'America/Chicago') AT TIME ZONE 'America/Chicago')`;
+  await app.db.query(
+    `INSERT INTO invoices (invoice_number, contact_id, status, subtotal_cents, total_cents, amount_paid_cents, sent_at, paid_at)
+     VALUES ('SA-2026-8101', $1, 'paid', 1100, 1100, 1100, ${start} - interval '1 day', ${start} - interval '1 minute'),
+            ('SA-2026-8102', $1, 'paid', 2300, 2300, 2300, ${start}, ${start} + interval '1 minute')`,
+    [contact.rows[0]!.id]
+  );
+  assert.equal((await mtd()) - before, 2300, 'only the invoice paid after the month began in Chicago');
+});
+
 test('hilo dashboard: statuses, sessions, queues, summaries, funder metrics (pro bono valued from the price book)', async () => {
   // 2026-09-12: dashboards.executive is CEO-only by omission; Jackson's Hilo dashboard access is a phase-2 grant question.
   const res = await app.inject({ method: 'GET', url: '/dashboards/hilo', headers: auth(brian) });

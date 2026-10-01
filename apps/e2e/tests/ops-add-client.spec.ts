@@ -73,11 +73,16 @@ test.describe('Add a client from the directory', () => {
       await expect(page.getByRole('heading', { name: 'Clients' })).toBeVisible();
 
       // ── The first one: added, and the browser lands on the new record.
+      // Receipt run 54: the directory's own list load landed mid-typing and the form lost the names typed
+      // before it. The list first, then the form; every field is read back before the next step.
+      await expect(page.getByText('Loading…'), 'the directory has loaded').toHaveCount(0);
       await page.getByRole('button', { name: 'Add a client' }).click();
       const form = page.locator('#add-client-form');
       await expect(form).toBeVisible();
       await form.getByLabel(/First name/).fill('Synthetic');
+      await expect(form.getByLabel(/First name/)).toHaveValue('Synthetic');
       await form.getByLabel(/Last name/).fill(lastName);
+      await expect(form.getByLabel(/Last name/)).toHaveValue(lastName);
       // CREATED WITH THE OPTIONAL FIELDS SKIPPED (2026-09-20): no email, no phone — filled in by editing the record below.
       await form.getByLabel(/Language/).selectOption('es');
       await page.getByRole('button', { name: 'Add client' }).click();
@@ -100,12 +105,19 @@ test.describe('Add a client from the directory', () => {
 
       // ── The same person again: the warning, with a link to the record she already has.
       await page.goto('/clients');
+      // Receipt run 54: the directory's own list load landed mid-typing and the form lost the names typed
+      // before it. The list first, then the form; every field is read back before the next step.
+      await expect(page.getByText('Loading…'), 'the directory has loaded').toHaveCount(0);
       await page.getByRole('button', { name: 'Add a client' }).click();
       await expect(form).toBeVisible();
       await form.getByLabel(/First name/).fill('Synthetic');
+      await expect(form.getByLabel(/First name/)).toHaveValue('Synthetic');
       await form.getByLabel(/Last name/).fill(lastName);
+      await expect(form.getByLabel(/Last name/)).toHaveValue(lastName);
       await form.getByLabel(/Email/).fill(email);
+      await expect(form.getByLabel(/Email/)).toHaveValue(email);
       await form.getByLabel(/Phone/).fill(phone);
+      await expect(form.getByLabel(/Phone/)).toHaveValue(phone);
       const warning = form.locator('[data-testid="duplicate-warning"]');
       await expect(warning, 'the duplicate renders inside the modal').toBeVisible();
       await expect(warning, "with the server's words").toContainText('the same name, the same email address and the same phone number');

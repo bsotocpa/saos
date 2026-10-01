@@ -13,6 +13,10 @@ import { retirementReadiness } from '../admin/dubsado-retirement.ts';
 import { pipelineMetrics } from '../pricing/pipeline.ts';
 import { NO_PREPARER_SQL } from '../tax/queue.ts';
 
+/** The first instant of the current month and year in Chicago, as timestamptz (the database clock is UTC). */
+const CHICAGO_MONTH_START = `(date_trunc('month', now() AT TIME ZONE 'America/Chicago') AT TIME ZONE 'America/Chicago')`;
+const CHICAGO_YEAR_START = `(date_trunc('year', now() AT TIME ZONE 'America/Chicago') AT TIME ZONE 'America/Chicago')`;
+
 /**
  * The returns behind one "Open returns by stage" row (R52, 2026-09-26): client, business, form,
  * preparer and the days the return has sat in that stage. Days count from the latest history row
@@ -81,8 +85,10 @@ export async function executiveDashboard(app: FastifyInstance) {
       // Net of refunds (2026-09-09): money that went back was not collected. A partially
       // refunded invoice still collected the rest; a fully refunded one collected nothing
       // and is not 'paid' any more.
-      `SELECT COALESCE(sum(amount_paid_cents - amount_refunded_cents) FILTER (WHERE paid_at >= date_trunc('month', now())), 0)::bigint AS mtd_cents,
-              COALESCE(sum(amount_paid_cents - amount_refunded_cents) FILTER (WHERE paid_at >= date_trunc('year', now())), 0)::bigint AS ytd_cents
+      // The month and the year are Chicago's (receipt run 54, 2026-09-30): the database clock is UTC, and
+      // its month turned over at 19:00 Chicago on the last day, so the evening's MTD read the next month.
+      `SELECT COALESCE(sum(amount_paid_cents - amount_refunded_cents) FILTER (WHERE paid_at >= ${CHICAGO_MONTH_START}), 0)::bigint AS mtd_cents,
+              COALESCE(sum(amount_paid_cents - amount_refunded_cents) FILTER (WHERE paid_at >= ${CHICAGO_YEAR_START}), 0)::bigint AS ytd_cents
        FROM invoices i JOIN contacts c ON c.id = i.contact_id
        WHERE NOT c.is_test AND i.status IN ('paid', 'partially_refunded')`
     ),
@@ -223,7 +229,7 @@ export async function hiloDashboard(app: FastifyInstance) {
     app.db.query<{ this_month: number }>(
       `SELECT count(*)::int AS this_month
        FROM meetings m JOIN contacts c ON c.id = m.contact_id
-       WHERE c.hilo_status <> 'none' AND m.started_at >= date_trunc('month', now())`
+       WHERE c.hilo_status <> 'none' AND m.started_at >= ${CHICAGO_MONTH_START}`
     ),
     app.db.query(
       `SELECT direction::text, count(*)::int AS pending
