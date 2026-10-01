@@ -99,6 +99,7 @@
 
 ### The October change freeze (Brian, 2026-09-30, dated rule R98: 2026-10-08 through 2026-10-16)
 - **From 2026-10-08 through 2026-10-16, deploy only fixes to defects that block filing work** — a return that can't advance, a portal that can't sign or upload, an ack that can't release, an invoice that can't be paid — each with Brian's written go. Everything else is built and receipted but waits for 2026-10-17.
+- **The freeze-fix branch (Brian, 2026-09-30, R103).** During the freeze a filing-blocking fix is built on a branch cut from the deployed commit (3fa030c unless a later freeze fix moved it), receipted on its own, deployed from that branch only with Brian's written go, then merged into main. main's HEAD (which carries work waiting for 2026-10-17) is never what a freeze deploy ships.
 
 ### The design plugin (Brian, 2026-09-20, standing rule R26)
 - **Never authorize the design plugin's servers** (Asana, Figma, Intercom, Linear) in a SAOS session. The project settings file disables the plugin; if a session still lists them, they stay unauthenticated and no restart is spent on it.
