@@ -1,6 +1,6 @@
 # walk-evidence-path-v (2026-10-01)
 
-Generated 2026-10-01T06:50:37.370Z by scripts/report-table.mjs from the log walk-v.log; 24 row(s).
+Generated 2026-10-01T19:56:29.309Z by scripts/report-table.mjs from the log walk-v.log; 24 row(s).
 
 The Hilo referral discount (R75, 2026-09-27): ops-hilo-discount.spec.ts at 390 and 1280 under price book v6, which the harness boot publishes through the version door effective its own today; one Hilo-referred client per viewport (the referral on the record, no engagement, one business). V1 the CEO builds the quote (the tax-return line and a recurring line), the builder shows the discount at half the tax-return line and the server applied the same figure; V2 the emailed proposal the client opens shows it as its own row; V3 the CEO removes it with a reason on the Ops quote page; V4 the role proof, the preparer with no control and the route refused 403.
 

@@ -1,6 +1,6 @@
 # walk-evidence-path-g (2026-10-01)
 
-Generated 2026-10-01T06:50:35.207Z by scripts/report-table.mjs from the log walk-g.log; 12 row(s).
+Generated 2026-10-01T19:56:26.535Z by scripts/report-table.mjs from the log walk-g.log; 12 row(s).
 
 The portal Documents page (R49): G1 reads the three kinds of row on a fixture client (a signed engagement letter and a delivered return filed through POST /documents at boot, the client upload made by the spec through the page control); G2 forces a render failure through the harness-only /harness/documents-crash switch and reads the sentence, the Reload control, the portal_page_error task and the Ops alert through the CEO API.
 

@@ -1,6 +1,6 @@
 # walk-evidence-path-k (2026-10-01)
 
-Generated 2026-10-01T06:50:38.401Z by scripts/report-table.mjs from the log walk-k.log; 12 row(s).
+Generated 2026-10-01T19:56:30.905Z by scripts/report-table.mjs from the log walk-k.log; 12 row(s).
 
 Counts as (R96, 2026-09-29): ops-counts-as.spec.ts at 390 and 1280, the CEO fixture in Ops and the client in the portal, on a synthetic client per viewport with an accepted 1040 (its checklist open) and two files already on file (apps/api/scripts/e2e-fixtures/counts-as.ts). Every match is a tap.
 

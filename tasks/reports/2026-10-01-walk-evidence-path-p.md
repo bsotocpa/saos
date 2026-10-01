@@ -1,6 +1,6 @@
 # walk-evidence-path-p (2026-10-01)
 
-Generated 2026-10-01T06:50:36.559Z by scripts/report-table.mjs from the log walk-p.log; 30 row(s).
+Generated 2026-10-01T19:56:28.072Z by scripts/report-table.mjs from the log walk-p.log; 30 row(s).
 
 R45 to R48 (2026-09-26): P1 the contact-email change on the client page offering to move the sign-in, the confirmation link read from the harness mailer and pressed on the portal (ops-portal-email-move.spec.ts); P2 the portal home and sign page after the client signs the packet on the signing fixture (a withdrawn 1040 with its letter, two letters on the live 1120-S; portal-signing-home.spec.ts); P3 the Documents upload control on a fresh client (portal-upload-control.spec.ts); P4 Deliver a return with the return_delivered notice off and on through the admin toggle (ops-deliver-return.spec.ts); P5 My Returns on a return walked through the API doors from delivery to filed (portal-returns-next.spec.ts).
 
