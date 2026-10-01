@@ -16,6 +16,7 @@ import * as OTPAuth from 'otpauth';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
@@ -37,7 +38,7 @@ async function signIn(page: Page, who: Persona): Promise<void> {
 }
 
 test('K1–K2: a file on file counts as a checklist item, matched from Ops and by the client in the portal', async ({ page }, testInfo) => {
-  const who = testInfo.project.name === 'desk' ? fixtures.countsAs.desk : fixtures.countsAs.phone;
+  const who = viewportKey(testInfo) === 'desk' ? fixtures.countsAs.desk : fixtures.countsAs.phone;
 
   // ── K1: Ops ──
   await signIn(page, fixtures.staff);

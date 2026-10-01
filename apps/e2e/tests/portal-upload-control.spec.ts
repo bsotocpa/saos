@@ -19,6 +19,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -71,7 +72,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 }
 
 test('P3: the upload control — no capture, multiple, the category unselected and required, the empty card, two files at once', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const shot = testInfo.outputPath(`portal-upload-control-${viewport}.png`);
   let passed = false;
   try {

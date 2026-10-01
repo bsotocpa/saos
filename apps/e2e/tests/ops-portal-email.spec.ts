@@ -13,6 +13,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -69,7 +70,7 @@ async function migratedClient(token: string, tag: string): Promise<{ id: string;
 
 test.describe('the portal sign-in address and the contact email', () => {
   test('the warning, the one control, and the refusal in the server\'s words', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`ops-portal-email-${viewport}.png`);
     let passed = false;
     try {
@@ -119,7 +120,7 @@ test.describe('the portal sign-in address and the contact email', () => {
   });
 
   test('role proof: the bookkeeper reads the warning, has no control, and the route refuses her', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const token = await staffToken();
     const client = await migratedClient(token, `${viewport}-c`);
     await signIn(page, fixtures.wall.bookkeeper);

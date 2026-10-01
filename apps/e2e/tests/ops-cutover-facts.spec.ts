@@ -16,6 +16,7 @@ import * as OTPAuth from 'otpauth';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
@@ -40,7 +41,7 @@ async function read(page: Page, path: string): Promise<Record<string, unknown>> 
 }
 
 test('Z1–Z2: an unconfirmed "books current through" is corrected on the business page; a self-filer reads as one', async ({ page }, testInfo) => {
-  const pair = testInfo.project.name === 'desk' ? fixtures.cutover.desk : fixtures.cutover.phone;
+  const pair = viewportKey(testInfo) === 'desk' ? fixtures.cutover.desk : fixtures.cutover.phone;
   await signIn(page, fixtures.wall.bookkeeper);
 
   // ── Z1 ──

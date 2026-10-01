@@ -30,6 +30,7 @@ import jsQR from 'jsqr';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -106,7 +107,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 test.describe('Ops → MFA recovery codes and Reset MFA (R65)', () => {
   test('M1–M6: enrolment shows a QR code carrying the secret and the codes once, a code signs in once and alerts the CEO, the CEO resets MFA with a reason, comms_billing is refused, each staff mail links to the Ops sign-in page', async ({ page }, testInfo) => {
     test.setTimeout(300_000);
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const cap = viewport.charAt(0).toUpperCase() + viewport.slice(1);
     const legalName = `Synthetic Recover-${cap}`;
     const displayName = `Rec ${cap}`;

@@ -20,6 +20,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -91,7 +92,7 @@ async function noHorizontalScroll(page: Page, viewport: string): Promise<void> {
 
 test.describe('Path U: the business page', () => {
   test('U1 from the Businesses card: the name opens the business page; the cards render; Edit business saves and reads back', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const s = viewport === 'phone' ? fixtures.scorp : fixtures.scorpDesk;
     const shot = testInfo.outputPath(`business-page-${viewport}.png`);
     let passed = false;
@@ -139,7 +140,7 @@ test.describe('Path U: the business page', () => {
   });
 
   test('U2 from search: the clients-list "Business — owner" row opens the business page', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const s = viewport === 'phone' ? fixtures.scorp : fixtures.scorpDesk;
     const shot = testInfo.outputPath(`business-page-from-search-${viewport}.png`);
     let passed = false;
@@ -164,7 +165,7 @@ test.describe('Path U: the business page', () => {
   });
 
   test('U3 role proof: the bookkeeper reads entity, owners, service facts and documents; Engagements, Returns and Invoices say "Not available to your role"; EIN last four only; no Edit', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const s = viewport === 'phone' ? fixtures.scorp : fixtures.scorpDesk;
     const shot = testInfo.outputPath(`business-page-bookkeeper-${viewport}.png`);
     let passed = false;
@@ -205,7 +206,7 @@ test.describe('Path U: the business page', () => {
   });
 
   test('U4 switch off: the route prints "This page is not switched on."; the Businesses card name is plain text; the clients-list row opens the client', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const s = viewport === 'phone' ? fixtures.scorp : fixtures.scorpDesk;
     const shot = testInfo.outputPath(`business-page-off-${viewport}.png`);
     let passed = false;

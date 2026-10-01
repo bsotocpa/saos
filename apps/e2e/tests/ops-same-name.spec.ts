@@ -11,6 +11,7 @@ import * as OTPAuth from 'otpauth';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
@@ -32,7 +33,7 @@ async function signIn(page: Page, who: Persona): Promise<void> {
 }
 
 test('C1–C2: a same-name pair is merged through Compare, another is marked not a duplicate; the banners go', async ({ page }, testInfo) => {
-  const who = testInfo.project.name === 'desk' ? fixtures.sameName.desk : fixtures.sameName.phone;
+  const who = viewportKey(testInfo) === 'desk' ? fixtures.sameName.desk : fixtures.sameName.phone;
   await signIn(page, fixtures.staff);
   const dialog = page.locator('[role=dialog]');
 

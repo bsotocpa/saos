@@ -13,6 +13,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -43,7 +44,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 
 test.describe('E-file acks, by role', () => {
   test('the tax preparer opens the page and the upload control is there; the bookkeeper gets neither the control nor the list', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`efile-role-${viewport}.png`);
     let passed = false;
     try {

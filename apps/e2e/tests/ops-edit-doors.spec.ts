@@ -20,6 +20,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -51,7 +52,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 
 test.describe('Ops → edit after create: task and staff member', () => {
   test('a task is created with its subject alone, then opened and given a description', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`edit-task-${viewport}.png`);
     const title = `HARNESS-EDIT-TASK-${viewport.toUpperCase()}`;
     const description = `Filled in after creation on the ${viewport} walk.`;
@@ -96,7 +97,7 @@ test.describe('Ops → edit after create: task and staff member', () => {
   });
 
   test('a staff member is created without a display name, the password handed over, then the row edited to add one', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`edit-staff-${viewport}.png`);
     const legalName = `Synthetic Editstaff-${viewport.charAt(0).toUpperCase()}${viewport.slice(1)}`;
     const email = `editstaff-${viewport}@example.test`;

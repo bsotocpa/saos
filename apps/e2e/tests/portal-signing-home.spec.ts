@@ -15,6 +15,7 @@ import { redeemPortalToken } from './portal-sign-in';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -41,7 +42,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 }
 
 test('P2: one row before signing, none of the withdrawn 1040, and only the §7216 consent waiting after the signature', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const person = personFor(viewport);
   const shot = testInfo.outputPath(`portal-signing-home-${viewport}.png`);
   let passed = false;

@@ -21,6 +21,7 @@ import * as OTPAuth from 'otpauth';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
@@ -54,7 +55,7 @@ async function read(page: Page, path: string): Promise<Record<string, unknown>> 
 }
 
 test('Y1–Y5: two years of one return are one engagement with two returns; the surcharge on the older year only; one deposit line per year; two portal rows', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const who = viewport === 'desk' ? fixtures.twoYear.desk : fixtures.twoYear.phone;
   const { newYear, oldYear } = fixtures.twoYear;
   const steps: string[] = [];

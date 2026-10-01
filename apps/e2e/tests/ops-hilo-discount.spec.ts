@@ -18,6 +18,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -67,7 +68,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 test.describe('Ops → the Hilo referral discount on a quote (R75)', () => {
   test('V1–V4: half off the tax-return line in the builder, its own row for the client, removed by the CEO with a reason, refused to the preparer', async ({ page }, testInfo) => {
     test.setTimeout(240_000);
-    const viewport = testInfo.project.name as 'phone' | 'desk';
+    const viewport = viewportKey(testInfo);
     const who = fixtures.hilo[viewport];
     const shots: Record<string, string> = {};
     const shot = (step: string) => (shots[step] = testInfo.outputPath(`hilo-${step}-${viewport}.png`));

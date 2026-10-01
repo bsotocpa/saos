@@ -32,6 +32,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -91,7 +92,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 
 test.describe('Ops → the void and test-client doors', () => {
   test('D1: the CEO voids a sent invoice and the row says why and who', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`void-invoice-${viewport}.png`);
     const reason = `harness walk ${viewport}: superseded deposit, never to be paid`;
     let passed = false;
@@ -153,7 +154,7 @@ test.describe('Ops → the void and test-client doors', () => {
   });
 
   test('D2: the CEO flags a contact as a test record, and a flagged record wears the TEST badge', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`test-client-flag-${viewport}.png`);
     const lastName = `Testflag-${viewport}`;
     const note = `harness walk ${viewport}: a rehearsal of the flag control, never a real person`;
@@ -215,7 +216,7 @@ test.describe('Ops → the void and test-client doors', () => {
   });
 
   test('role proof: the bookkeeper has neither control and both routes refuse her', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const token = await staffToken();
     // A live (un-archived, un-flagged) contact, so the absence of the flag control is about her role.
     const subject = await asStaff<{ id: string }>(token, '/contacts', {

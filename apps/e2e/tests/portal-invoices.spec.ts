@@ -18,6 +18,7 @@ import { redeemPortalToken } from './portal-sign-in';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -113,11 +114,11 @@ async function readsWell(page: Page, lang: Lang, viewport: string): Promise<void
 
 test.describe('portal → Invoices', () => {
   test('reads to the client in both languages, at this viewport', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name; // phone | desk
+    const viewport = viewportKey(testInfo); // phone | desk
     let passed = false;
     const shots: Array<{ lang: Lang; file: string }> = [];
     try {
-      await signIn(page, testInfo.project.name === 'phone' ? 0 : 1);
+      await signIn(page, viewportKey(testInfo) === 'phone' ? 0 : 1);
       await page.goto('/invoices');
       await expect(page.locator('h1')).toBeVisible();
       await page.waitForTimeout(1000);

@@ -17,6 +17,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as OTPAuth from 'otpauth';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -78,7 +79,7 @@ async function ceoToken(): Promise<string> {
 }
 
 test('the Documents page lists three kinds of row: the signed agreement copy, the delivered return and the client upload', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const person = personFor(viewport);
   const shot = testInfo.outputPath(`portal-documents-${viewport}.png`);
   let passed = false;
@@ -124,7 +125,7 @@ test('the Documents page lists three kinds of row: the signed agreement copy, th
 });
 
 test('a page that fails to render shows one plain sentence and a Reload control, and the firm is alerted', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const person = personFor(viewport);
   const shot = testInfo.outputPath(`portal-documents-error-${viewport}.png`);
   let passed = false;

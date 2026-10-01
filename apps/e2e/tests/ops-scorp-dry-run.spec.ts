@@ -49,6 +49,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -130,7 +131,7 @@ const dayText = (iso: string): string =>
 
 test.describe('The 1120S dry run', () => {
   test('quoted, accepted, signed, delivered, signed 8879-CORP, final fee, filed, acknowledged, paid, completed', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const scorp = scorpFor(viewport);
     test.setTimeout(900_000); // eleven walk steps across two origins, plus a wait on the outbox sweep
     const shot = testInfo.outputPath(`scorp-dry-run-acks-${viewport}.png`);
@@ -642,7 +643,7 @@ test.describe('The 1120S dry run', () => {
   });
 
   test('the client page reads the finished run: filed and accepted, the return delivered, the invoice paid, the engagement completed', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const scorp = scorpFor(viewport);
     const shot = testInfo.outputPath(`scorp-done-${viewport}.png`);
     let passed = false;

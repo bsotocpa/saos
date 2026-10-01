@@ -22,6 +22,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -100,7 +101,7 @@ async function subject(tag: string): Promise<{ contactId: string; fullName: stri
 
 test.describe('Ops → the Quotes card', () => {
   test('Q1–Q4: the CEO opens a quote, copies its link, resends the proposal and withdraws a draft from the Quotes card', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`quotes-card-${viewport}.png`);
     const steps: string[] = [];
     let passed = false;
@@ -186,7 +187,7 @@ test.describe('Ops → the Quotes card', () => {
   });
 
   test('role proof: a reader without quotes.manage sees no control on the Quotes card and every door refuses her', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const s = await subject(`Role${viewport.charAt(0).toUpperCase() + viewport.slice(1)}`);
     await signIn(page, fixtures.wall.jaqueline);
     await page.goto(`/clients/${s.contactId}`);

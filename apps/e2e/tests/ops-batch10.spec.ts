@@ -19,6 +19,7 @@ import * as OTPAuth from 'otpauth';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
@@ -46,7 +47,7 @@ async function signIn(page: Page, who: Persona): Promise<void> {
 }
 
 test('B7e and W1–W2: the checklist backfill on a pre-checklist return; a past deadline reads "Overdue since" until an extension is recorded', async ({ page, context }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const who = viewport === 'desk' ? fixtures.batch10.desk : fixtures.batch10.phone;
   await signIn(page, fixtures.staff);
 
@@ -101,7 +102,7 @@ test('B7e and W1–W2: the checklist backfill on a pre-checklist return; a past 
 });
 
 test('X1: the pair door merges a duplicate; the retired record redirects to the survivor and leaves search', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const who = viewport === 'desk' ? fixtures.batch10.desk : fixtures.batch10.phone;
   await signIn(page, fixtures.staff);
   const merged = await page.evaluate(async (m) => {

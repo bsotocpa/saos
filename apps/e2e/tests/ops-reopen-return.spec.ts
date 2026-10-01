@@ -25,6 +25,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -129,7 +130,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 
 test.describe('Ops → Reopen a completed return', () => {
   test('R1–R3: reopened with a reason, the engagement active and the count up, re-completion refused until a new acceptance', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     test.setTimeout(300_000);
     const shot = testInfo.outputPath(`reopen-return-${viewport}.png`);
     const steps: string[] = [];
@@ -205,7 +206,7 @@ test.describe('Ops → Reopen a completed return', () => {
   });
 
   test('role proof: the tax preparer has no Reopen control and the route refuses her 403', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     test.setTimeout(300_000);
     const token = await staffToken();
     const { contactId, te } = await completedReturn(token, viewport, 'wall');

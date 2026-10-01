@@ -25,6 +25,7 @@ import * as OTPAuth from 'otpauth';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
@@ -57,7 +58,7 @@ async function flip(state: 'on' | 'off'): Promise<string> {
 }
 
 test('off renders the row with its control grid; on renders the rail of five phases with one control on the current step of the open phase and a details area', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const steps: string[] = [];
   const clientPage = `/clients/${fixtures.contactId}`;
   // The harness client carries more than one return; every read is scoped to the fixture return's row.

@@ -16,6 +16,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -59,7 +60,7 @@ async function countByName(page: Page, search: string): Promise<number> {
 
 test.describe('Add a client from the directory', () => {
   test('the CEO adds a synthetic person, then types the same person again and reads the duplicate before anything is created', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`add-client-${viewport}.png`);
     // A distinct person per viewport: both projects run against the same harness database.
     const lastName = `Addclient-${viewport.charAt(0).toUpperCase()}${viewport.slice(1)}`;

@@ -44,6 +44,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -171,7 +172,7 @@ async function confirm(page: Page, name: string): Promise<void> {
 
 test.describe('Path B', () => {
   test('the 1040 on extension: quoted, deposit paid, papered, consented, prepared, delivered, wet-signed, filed, acknowledged, paid, completed', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name; // phone | desk
+    const viewport = viewportKey(testInfo); // phone | desk
     const pathB = fixtures.pathB;
     expect(pathB, 'the Path B fixture is built (apps/api/scripts/e2e-fixtures/path-b.ts)').toBeTruthy();
     const who = viewport === 'desk' ? pathB!.desk : pathB!.phone;

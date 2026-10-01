@@ -89,7 +89,10 @@ async function buildAndStart(
   const distRel = relative(appDir, distDir);
   const env = { ...process.env, API_URL: `http://localhost:${apiPort}`, NEXT_DIST_DIR: distRel };
 
-  await new Promise<void>((done, fail) => {
+  // ONE BUILD PER RECEIPT RUN (R106, 2026-09-30): run-harness.mjs runs the six projects one after
+  // another from one tree; the first builds, the rest start the same build (E2E_REUSE_BUILD=1).
+  const reuse = process.env.E2E_REUSE_BUILD === '1' && existsSync(resolve(distDir, 'BUILD_ID'));
+  if (!reuse) await new Promise<void>((done, fail) => {
     const build = spawn(process.execPath, [nextBin, 'build'], {
       cwd: appDir,
       env: { ...env, NODE_ENV: 'production' },

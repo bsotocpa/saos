@@ -9,6 +9,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -38,7 +39,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 }
 
 test('a refused amend shows the server\'s words beside the field, and the field keeps the text', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const shot = testInfo.outputPath(`inline-error-${viewport}.png`);
   let passed = false;
   try {

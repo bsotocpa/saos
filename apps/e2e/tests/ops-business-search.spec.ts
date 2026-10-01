@@ -16,6 +16,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -72,7 +73,7 @@ async function searchClients(page: Page, text: string): Promise<void> {
 
 test.describe('Path H: the business in every Ops search, and the stage row that opens', () => {
   test('H1 Deliver Return: the search matches the business legal name and shows "Business — owner"', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const s = viewport === 'phone' ? fixtures.scorp : fixtures.scorpDesk;
     const shot = testInfo.outputPath(`search-deliver-${viewport}.png`);
     let passed = false;
@@ -97,7 +98,7 @@ test.describe('Path H: the business in every Ops search, and the stage row that 
   });
 
   test('H2 New quote: the client search matches the business legal name and the chip reads "Business — owner"', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const s = viewport === 'phone' ? fixtures.scorp : fixtures.scorpDesk;
     const shot = testInfo.outputPath(`search-quote-${viewport}.png`);
     let passed = false;
@@ -124,7 +125,7 @@ test.describe('Path H: the business in every Ops search, and the stage row that 
   });
 
   test('H3 the clients list: the search matches the business legal name and the row reads "Business — owner"', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const s = viewport === 'phone' ? fixtures.scorp : fixtures.scorpDesk;
     const shot = testInfo.outputPath(`search-clients-${viewport}.png`);
     let passed = false;
@@ -147,7 +148,7 @@ test.describe('Path H: the business in every Ops search, and the stage row that 
   });
 
   test('H4 the executive view: an "Open returns by stage" row opens the list for that stage', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`stage-list-${viewport}.png`);
     const lastName = `Stagerow-${viewport}`;
     const businessName = `HARNESS STAGE ROW ${viewport.toUpperCase()} LLC`;

@@ -13,6 +13,7 @@ import { redeemPortalToken } from './portal-sign-in';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -38,7 +39,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 }
 
 test('the delivered 1120S is under My Returns for the owner', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const owner = ownerFor(viewport);
   const shot = testInfo.outputPath(`portal-returns-${viewport}.png`);
   let passed = false;

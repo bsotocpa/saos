@@ -16,6 +16,7 @@ import * as OTPAuth from 'otpauth';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
@@ -45,7 +46,7 @@ async function flip(version: 'v1' | 'v2'): Promise<string> {
 }
 
 test('v1 renders the chip builder with "Quote as a range"; v2 renders the grouped rows beside "This quote"', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const shot = testInfo.outputPath(`quote-builder-switch-${viewport}.png`);
   try {
     await signIn(page, fixtures.staff);

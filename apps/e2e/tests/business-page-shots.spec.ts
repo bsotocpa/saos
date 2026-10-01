@@ -21,6 +21,7 @@ import * as OTPAuth from 'otpauth';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
@@ -112,7 +113,7 @@ async function businessIn(token: string, state: State): Promise<{ contactId: str
 }
 
 test('the business page, with engagements and empty, at 390 and 1280', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desk', 'one project sets the two widths itself');
+  test.skip(testInfo.project.use.viewport?.width !== 1440, 'one project sets the two widths itself (in both 1440 projects: Chromium and WebKit)');
   test.setTimeout(600_000);
   mkdirSync(SHOTS, { recursive: true });
   const token = await staffToken();

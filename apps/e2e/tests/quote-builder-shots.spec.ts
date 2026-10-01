@@ -18,6 +18,7 @@ import * as OTPAuth from 'otpauth';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
@@ -44,7 +45,7 @@ async function signIn(page: Page, who: Persona): Promise<void> {
 }
 
 test('the four builder states at 390, 768 and 1280', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desk', 'one project sets the three widths itself');
+  test.skip(testInfo.project.use.viewport?.width !== 1440, 'one project sets the three widths itself (in both 1440 projects: Chromium and WebKit)');
   test.setTimeout(600_000); // twelve full-page pictures across three widths, on the production build
   mkdirSync(SHOTS, { recursive: true });
   await signIn(page, fixtures.staff);

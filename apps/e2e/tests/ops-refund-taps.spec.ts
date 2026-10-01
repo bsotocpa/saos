@@ -39,6 +39,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -142,7 +143,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 test.describe('Ops → the refund door', () => {
   test('D3: the CEO refunds part of a paid invoice, the row says how much and why and who, and Stripe reconciles to it', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`refund-invoice-${viewport}.png`);
     const reason = `harness walk ${viewport}: the client was billed for a month of bookkeeping that never started`;
     let passed = false;
@@ -258,7 +259,7 @@ test.describe('Ops → the refund door', () => {
   });
 
   test('D3b: with the Refund control off, the paid row reads one sentence, offers no Refund button, and the route refuses', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`refund-off-${viewport}.png`);
     const SENTENCE = 'Refunds are made in Stripe and recorded here.';
     let passed = false;
@@ -324,7 +325,7 @@ test.describe('Ops → the refund door', () => {
   });
 
   test('role proof: the bookkeeper has no Refund control and the route refuses her', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const token = await staffToken();
     // A PAID invoice, so the absence of the control is about her role and not about the state.
     const paid = await paidInvoice(token, viewport, 'wall');

@@ -27,6 +27,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -69,7 +70,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 
 test.describe('Path B, the 990 variant', () => {
   test('N1–N4: the 990 on extension (8868), the 8879-TE, filed federal alone, accepted through the ATX export, completed', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     test.setTimeout(300_000);
     const org = viewport === 'desk' ? fixtures.path990.desk : fixtures.path990.phone;
     const te = org.taxEngagementId;

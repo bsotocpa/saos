@@ -18,6 +18,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -66,7 +67,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 
 test.describe('Ops → returns with no preparer (R102)', () => {
   test('J1–J3: the executive count opens the list, the ladder alerts the CEO after two business days, assigning clears it', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name as 'phone' | 'desk';
+    const viewport = viewportKey(testInfo);
     const ret = fixtures.noPreparer[viewport];
     const shot = testInfo.outputPath(`no-preparer-${viewport}.png`);
     const steps: string[] = [];

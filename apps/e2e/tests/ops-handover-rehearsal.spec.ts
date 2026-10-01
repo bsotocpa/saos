@@ -31,6 +31,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { opsSignOut } from './ops-sign-out';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -130,7 +131,7 @@ test.use({ actionTimeout: 30_000 });
 test.describe('Ops → the handover doc, walked (R99)', () => {
   test('O1–O4: first sign-in, My Queue, a return through five phases, a 990 on 8868 with its 8879-TE, the ATX report', async ({ page }, testInfo) => {
     test.setTimeout(600_000);
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const side = viewport === 'desk' ? 'Desk' : 'Phone';
     const shot = testInfo.outputPath(`handover-${viewport}.png`);
     const steps: string[] = [];

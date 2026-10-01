@@ -20,6 +20,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -57,7 +58,7 @@ const plusDays = (n: number): string => { const d = new Date(); d.setUTCDate(d.g
 
 test.describe('Add a business on the client page', () => {
   test('the CEO adds a business with its EIN and makes it primary; a refusal renders beside its control', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`add-business-${viewport}.png`);
     const name = `HARNESS-ADDED-${viewport.toUpperCase()} LLC`;
     let passed = false;
@@ -174,7 +175,7 @@ test.describe('Add a business on the client page', () => {
   });
 
   test('Laura (va_entity) adds a business through businesses.write', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`add-business-laura-${viewport}.png`);
     // A distinct name per viewport: both projects run against the same harness database.
     const name = `HARNESS-LAURA-${viewport.toUpperCase()} LLC`;

@@ -12,6 +12,7 @@ import * as OTPAuth from 'otpauth';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
@@ -31,7 +32,7 @@ async function signIn(page: Page, who: Persona): Promise<void> {
 }
 
 test('B7d: Admin → Document checklist edits a row\'s words and adds a document to an item', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   await signIn(page, fixtures.staff);
   await page.goto('/admin/document-checklist');
   await expect(page.getByRole('heading', { level: 1, name: 'Document checklist' })).toBeVisible();

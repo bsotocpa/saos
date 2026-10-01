@@ -38,6 +38,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -150,7 +151,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 
 test.describe('Ops → Filed on, and the filing corrected', () => {
   test('F1–F6: filed on today, then IL removed, the PTIN holder moved with the preparer, the 8879 signed date moved earlier, the scan replaced, the filed date moved to the corrected signed day', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     test.setTimeout(300_000);
     const shot = testInfo.outputPath(`filing-corrections-${viewport}.png`);
     const steps: string[] = [];
@@ -321,7 +322,7 @@ test.describe('Ops → Filed on, and the filing corrected', () => {
   });
 
   test('role proof: the bookkeeper has no Correct the filing control and the route refuses her', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const token = await staffToken();
     const { contactId, te } = await readyToFileReturn(token, viewport, 'wall');
     // Filed through the API door with the day unsaid — the default is the subject of F1, not of this proof.
@@ -360,7 +361,7 @@ test.describe('Ops → Filed on, and the filing corrected', () => {
   test.describe('on a completed return (R86, R88)', () => {
     test.use({ timezoneId: 'America/Chicago' });
     test('F7–F9: the signed day with its scan and the filed day corrected on a completed return; an answered jurisdiction refused; the portal reads the corrected day', async ({ page }, testInfo) => {
-      const viewport = testInfo.project.name;
+      const viewport = viewportKey(testInfo);
       test.setTimeout(300_000);
       const shot = testInfo.outputPath(`filing-corrections-completed-${viewport}.png`);
       const steps: string[] = [];

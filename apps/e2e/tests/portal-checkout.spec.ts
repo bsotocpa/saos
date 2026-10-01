@@ -35,6 +35,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -108,7 +109,7 @@ const receiptCount = (log: Array<{ what: string }>): number => log.filter((r) =>
 
 test.describe('portal → Pay now', () => {
   test('two checkouts, one payment: the invoice stays payable until the event, and the second event records nothing', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const owner = ownerFor(viewport);
     test.setTimeout(240_000);
     const shot = testInfo.outputPath(`portal-checkout-${viewport}.png`);

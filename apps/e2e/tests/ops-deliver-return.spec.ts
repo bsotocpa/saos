@@ -17,6 +17,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -105,7 +106,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 }
 
 test('P4: the confirmation says the client was not emailed with the notice off, and emailed with it on', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const shot = testInfo.outputPath(`ops-deliver-return-${viewport}.png`);
   let passed = false;
   const token = await staffToken();

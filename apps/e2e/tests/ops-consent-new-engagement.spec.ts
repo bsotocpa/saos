@@ -21,6 +21,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -61,7 +62,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 test.describe('the §7216 consent for a new engagement (R87, R79)', () => {
   test('B3c–B3d: a returning client accepts a new 1040; the consent is signable from Home the moment the engagement opens', async ({ page }, testInfo) => {
     test.setTimeout(240_000);
-    const viewport = testInfo.project.name as 'phone' | 'desk';
+    const viewport = viewportKey(testInfo);
     const who = fixtures.consentNew[viewport];
     const shot = testInfo.outputPath(`consent-new-engagement-${viewport}.png`);
     const steps: string[] = [];

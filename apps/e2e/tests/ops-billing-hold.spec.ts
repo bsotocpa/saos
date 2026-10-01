@@ -21,6 +21,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -65,7 +66,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 test.describe('Ops → the billing hold on an imported engagement (R68)', () => {
   test('L1–L3: the hold shown, ed_coo and comms_billing refused, the CEO lifts it with a reason', async ({ page }, testInfo) => {
     test.setTimeout(240_000);
-    const viewport = testInfo.project.name as 'phone' | 'desk';
+    const viewport = viewportKey(testInfo);
     const held = fixtures.billingHold[viewport];
     const url = `/clients/${held.contactId}`;
     const shots: Record<string, string> = {};

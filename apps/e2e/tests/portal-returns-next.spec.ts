@@ -23,6 +23,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -82,7 +83,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 }
 
 test('P5: the block reads the return\'s state — 8879 pending, sent by Adobe Sign, on file, filed', async ({ page }, testInfo) => {
-  const viewport = testInfo.project.name;
+  const viewport = viewportKey(testInfo);
   const shot = testInfo.outputPath(`portal-returns-next-${viewport}.png`);
   let passed = false;
   try {

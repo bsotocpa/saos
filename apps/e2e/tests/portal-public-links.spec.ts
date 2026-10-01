@@ -20,6 +20,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -81,7 +82,7 @@ async function pressSignIn(page: Page, href: string): Promise<void> {
 
 test.describe('the emailed link opens what it names', () => {
   test('a proposal link renders its quote with a stale signed-in marker and no session', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`portal-public-quote-${viewport}.png`);
     let passed = false;
     try {
@@ -141,7 +142,7 @@ test.describe('the emailed link opens what it names', () => {
   });
 
   test('a sign-in link is spent by the button, not by the load', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name;
+    const viewport = viewportKey(testInfo);
     const shot = testInfo.outputPath(`portal-verify-press-${viewport}.png`);
     let passed = false;
     try {

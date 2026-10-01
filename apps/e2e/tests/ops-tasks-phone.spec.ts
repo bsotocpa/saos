@@ -14,6 +14,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -45,7 +46,7 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
 
 test.describe('Ops → Tasks', () => {
   test('is a queue a person can work at this viewport', async ({ page }, testInfo) => {
-    const viewport = testInfo.project.name; // phone | desk
+    const viewport = viewportKey(testInfo); // phone | desk
     const phone = viewport === 'phone';
     const shot = testInfo.outputPath(`tasks-${viewport}.png`);
     let passed = false;

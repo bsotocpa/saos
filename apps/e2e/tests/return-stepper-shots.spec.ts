@@ -32,6 +32,7 @@ import * as OTPAuth from 'otpauth';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 test.use({ deviceScaleFactor: 2 });
 
@@ -134,7 +135,7 @@ async function returnIn(token: string, state: State): Promise<{ contactId: strin
 }
 
 test('the three rail states at 390, 768 and 1280, at full resolution', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desk', 'one project sets the three widths itself');
+  test.skip(testInfo.project.use.viewport?.width !== 1440, 'one project sets the three widths itself (in both 1440 projects: Chromium and WebKit)');
   test.setTimeout(600_000);
   mkdirSync(SHOTS, { recursive: true });
   const token = await staffToken();

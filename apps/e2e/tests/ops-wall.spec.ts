@@ -16,6 +16,7 @@ import * as OTPAuth from 'otpauth';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -67,7 +68,7 @@ for (const [name, persona, positive, negativeToo] of [
 ] as const) {
   test.describe(`Ops → client page behind the wall, as ${name}`, () => {
     test('none of the four things are on the page, and the API says the same to this session', async ({ page }, testInfo) => {
-      const viewport = testInfo.project.name;
+      const viewport = viewportKey(testInfo);
       const shot = testInfo.outputPath(`wall-${name}-${viewport}.png`);
       let passed = false;
       try {
