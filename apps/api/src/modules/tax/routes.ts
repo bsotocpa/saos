@@ -23,6 +23,7 @@ import { todayChicago } from './deadlines.ts';
 import { itemPricesReturnType } from './return-type.ts';
 import { currentPriceBookVersion } from '../pricing/service.ts';
 import { formatUsd } from '../billing/service.ts';
+import { chicagoDayOf } from '../../chicago-day.ts';
 
 const CreateBody = z.object({
   contactId: z.uuid(),
@@ -486,7 +487,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     const id = z.uuid().parse(request.params.id);
     const { rows } = await app.db.query(
       `SELECT te.*, te.f8879_signed_at::date::text AS f8879_signed_on, te.f8879_sent_on::text AS f8879_sent_on,
-              te.engagement_letter_signed_at::date::text AS engagement_letter_signed_on,
+              ${chicagoDayOf('te.engagement_letter_signed_at')}::text AS engagement_letter_signed_on,
               f8.f8879_variant, f8.filename AS f8879_filename,
               e.contact_id, e.business_id, e.price_book_version_id, ptin.display_name AS preparer_of_record,
               sentby.display_name AS f8879_sent_recorded_by_name

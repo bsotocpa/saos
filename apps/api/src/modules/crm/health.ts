@@ -15,6 +15,7 @@ import type { Db } from '../../db.ts';
 import { has7216Consent } from '../compliance/consent.ts';
 import { writeAudit } from '../../audit.ts';
 import { createTask } from '../tasks/service.ts';
+import { CHICAGO_TODAY } from '../../chicago-day.ts';
 
 export interface HealthComponents {
   portal_logins: number;
@@ -125,7 +126,7 @@ export async function healthSignals(db: Db, contactId: string): Promise<HealthSi
     `SELECT
        EXISTS (SELECT 1 FROM document_requests
                WHERE contact_id = $1 AND status IN ('open', 'partially_received')
-                 AND due_date IS NOT NULL AND due_date < CURRENT_DATE) AS overdue_docs,
+                 AND due_date IS NOT NULL AND due_date < ${CHICAGO_TODAY}) AS overdue_docs,
        (EXISTS (SELECT 1 FROM invoices WHERE contact_id = $1 AND status = 'overdue')
         OR EXISTS (SELECT 1 FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id
                    WHERE e.contact_id = $1 AND te.payment_status = 'overdue')) AS failed_payment,
@@ -138,7 +139,7 @@ export async function healthSignals(db: Db, contactId: string): Promise<HealthSi
                  AND te.stage NOT IN ('filed', 'completed', 'withdrawn', 'on_hold')
                  AND te.docs_received_at IS NULL
                  AND COALESCE(te.extended_deadline, te.original_deadline) IS NOT NULL
-                 AND COALESCE(te.extended_deadline, te.original_deadline) < CURRENT_DATE + 14) AS red_clock`,
+                 AND COALESCE(te.extended_deadline, te.original_deadline) < ${CHICAGO_TODAY} + 14) AS red_clock`,
     [contactId]
   );
   return rows[0]!;

@@ -13,7 +13,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { firstActiveByRole, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
-import { daysBetween } from '../tax/deadlines.ts';
+import { chicagoDate, daysBetween } from '../tax/deadlines.ts';
 
 export type OnboardingStage = 'deposit' | 'questionnaire' | 'docs' | 'complete';
 
@@ -112,7 +112,7 @@ export async function runOnboardingRescueJob(
     }
 
     // Day 60: Brian decides. The deposit is a held credit, full stop.
-    const ageDays = daysBetween(row.created_at.toISOString().slice(0, 10), today);
+    const ageDays = daysBetween(chicagoDate(row.created_at), today);
     if (ageDays >= STALL_DAYS && !row.stalled_flagged_at && brian) {
       const deposit = row.deposit_amount_cents ?? 0;
       await createTask(app, {

@@ -18,6 +18,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../../db.ts';
 import { AppError } from '../../types.ts';
+import { CHICAGO_TODAY } from '../../chicago-day.ts';
 
 export type QuoteGroup = 'one_time' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
 
@@ -67,8 +68,8 @@ export async function currentPriceBookVersion(
 ): Promise<{ id: string; versionNumber: number }> {
   const { rows } = await db.query<{ id: string; version_number: number }>(
     `SELECT id, version_number FROM price_book_versions
-     WHERE effective_from <= COALESCE($1::date, CURRENT_DATE)
-       AND (effective_to IS NULL OR effective_to > COALESCE($1::date, CURRENT_DATE))
+     WHERE effective_from <= COALESCE($1::date, ${CHICAGO_TODAY})
+       AND (effective_to IS NULL OR effective_to > COALESCE($1::date, ${CHICAGO_TODAY}))
      ORDER BY version_number DESC LIMIT 1`,
     [asOf ?? null]
   );

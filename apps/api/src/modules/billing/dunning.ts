@@ -25,6 +25,7 @@ import { firstActiveByRole, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { sendTemplatedEmail } from '../templates/service.ts';
 import { addDays, daysBetween } from '../tax/deadlines.ts';
+import { priceBookInForce, chicagoDayOf } from '../../chicago-day.ts';
 
 const ATTEMPT_SPACING_DAYS = 5;   // attempts at overdue+0, +5, +10 (3 over 10 days)
 const MAX_ATTEMPTS = 3;
@@ -41,7 +42,7 @@ export async function lateFeeTerms(app: FastifyInstance): Promise<{ ratePercent:
      FROM price_book_items i
      JOIN price_book_versions v ON v.id = i.version_id
      WHERE i.item_code = 'LATE_FEE_MONTHLY' AND i.is_active
-       AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
+       AND ${priceBookInForce('v')}
      ORDER BY v.version_number DESC LIMIT 1`
   );
   const row = rows[0];
@@ -94,7 +95,7 @@ export async function runDunningJob(
             COALESCE(i.credit_cents, 0) AS credit_cents,
             i.contact_id, i.engagement_id,
             c.first_name, c.last_name, c.email, c.language,
-            COALESCE(i.overdue_since, i.due_date, i.sent_at::date)::text AS overdue_since,
+            COALESCE(i.overdue_since, i.due_date, ${chicagoDayOf('i.sent_at')})::text AS overdue_since,
             i.dunning_attempts, i.last_dunning_at::text AS last_dunning_at,
             (c.late_fee_disclosure_signed_at IS NOT NULL) AS disclosure_signed,
             c.late_fee_disclosed_rate_percent AS disclosed_rate_percent,

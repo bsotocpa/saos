@@ -22,6 +22,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { AppError } from '../../types.ts';
+import { priceBookInForce } from '../../chicago-day.ts';
 
 export type AnswerValue = string | number | boolean;
 export type InterviewAnswers = Record<string, AnswerValue>;
@@ -184,7 +185,7 @@ export async function deriveTaxQuote(
   // Price everything from the version in force.
   const version = await app.db.query<{ id: string }>(
     `SELECT id FROM price_book_versions
-     WHERE effective_from <= CURRENT_DATE AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
+     WHERE ${priceBookInForce()}
      ORDER BY version_number DESC LIMIT 1`
   );
   if (!version.rows[0]) throw new AppError(500, 'price_book_missing', 'No price book version in force.');

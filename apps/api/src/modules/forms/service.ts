@@ -14,6 +14,7 @@ import { createEnvelope, templateKeyFor } from '../signatures/service.ts';
 import { createPllcConversion } from '../entity/service.ts';
 import { requestSosVerification } from '../entity/sos.ts';
 import { currentTaxYear } from '../tax/resolution.ts';
+import { CHICAGO_TODAY } from '../../chicago-day.ts';
 
 type Answers = Record<string, unknown>;
 
@@ -388,7 +389,7 @@ export async function processHiloIntake(app: FastifyInstance, submissionId: stri
     contactId = existing.rows[0].id;
     await app.db.query(
       `UPDATE contacts SET hilo_status = CASE WHEN hilo_status = 'none' THEN 'exploring'::hilo_status ELSE hilo_status END,
-              hilo_first_contact = COALESCE(hilo_first_contact, CURRENT_DATE), language = $2,
+              hilo_first_contact = COALESCE(hilo_first_contact, ${CHICAGO_TODAY}), language = $2,
               zip = COALESCE(zip, $3), communication_consent_at = now()
        WHERE id = $1`,
       [contactId, language, a.zip ?? null]
@@ -397,7 +398,7 @@ export async function processHiloIntake(app: FastifyInstance, submissionId: stri
     const created = await app.db.query<{ id: string }>(
       `INSERT INTO contacts (first_name, last_name, email, phone, language, hilo_status, hilo_first_contact,
                              zip, sms_consent, sms_consent_at, communication_consent_at)
-       VALUES ($1,$2,$3,$4,$5,'exploring',CURRENT_DATE,$6,$7,CASE WHEN $7 THEN now() END,now())
+       VALUES ($1,$2,$3,$4,$5,'exploring',${CHICAGO_TODAY},$6,$7,CASE WHEN $7 THEN now() END,now())
        RETURNING id`,
       [a.first_name, a.last_name, email, a.mobile_phone, language, a.zip ?? null, a.sms_ok === 'yes']
     );

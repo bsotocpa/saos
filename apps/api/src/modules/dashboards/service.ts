@@ -12,10 +12,8 @@ import { todayChicago } from '../tax/deadlines.ts';
 import { retirementReadiness } from '../admin/dubsado-retirement.ts';
 import { pipelineMetrics } from '../pricing/pipeline.ts';
 import { NO_PREPARER_SQL } from '../tax/queue.ts';
+import { CHICAGO_TODAY, CHICAGO_MONTH_START, CHICAGO_YEAR_START } from '../../chicago-day.ts';
 
-/** The first instant of the current month and year in Chicago, as timestamptz (the database clock is UTC). */
-const CHICAGO_MONTH_START = `(date_trunc('month', now() AT TIME ZONE 'America/Chicago') AT TIME ZONE 'America/Chicago')`;
-const CHICAGO_YEAR_START = `(date_trunc('year', now() AT TIME ZONE 'America/Chicago') AT TIME ZONE 'America/Chicago')`;
 
 /**
  * The returns behind one "Open returns by stage" row (R52, 2026-09-26): client, business, form,
@@ -134,11 +132,11 @@ export async function executiveDashboard(app: FastifyInstance) {
          (SELECT count(*) FROM tax_engagements WHERE stage = 'rejected') AS rejects_open,
          (SELECT count(*) FROM tax_engagements
            WHERE stage = 'rejected' AND perfection_deadline IS NOT NULL
-             AND perfection_deadline <= CURRENT_DATE + 2) AS perfection_soon,
+             AND perfection_deadline <= ${CHICAGO_TODAY} + 2) AS perfection_soon,
          (SELECT count(*) FROM close_cycles WHERE closed_at IS NULL) AS close_open,
          (SELECT count(*) FROM grant_voucher_periods WHERE status IN ('due', 'in_progress')) AS vouchers_due,
          (SELECT count(*) FROM grant_voucher_periods
-           WHERE status IN ('due', 'in_progress') AND funder_due_date < CURRENT_DATE) AS vouchers_overdue,
+           WHERE status IN ('due', 'in_progress') AND funder_due_date < ${CHICAGO_TODAY}) AS vouchers_overdue,
          (SELECT count(*) FROM portal_onboarding
            WHERE completed_at IS NULL AND stalled_flagged_at IS NOT NULL) AS onboarding_stalled,
          (SELECT count(*) FROM engagements WHERE work_paused_at IS NOT NULL) AS work_paused`

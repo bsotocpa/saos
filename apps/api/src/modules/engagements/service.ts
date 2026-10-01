@@ -10,6 +10,7 @@ import { isOneActivePerPeriodViolation } from './period.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import type { AuthedStaff } from '../../types.ts';
+import { priceBookInForce } from '../../chicago-day.ts';
 
 // Service lines that impair independence for attest work. Deliberately broad
 // (management functions included) — blocking more is safe because the
@@ -52,7 +53,7 @@ export interface CreateEngagementInput {
 async function currentPriceBookVersionId(app: FastifyInstance): Promise<string | null> {
   const { rows } = await app.db.query<{ id: string }>(
     `SELECT id FROM price_book_versions
-     WHERE effective_from <= CURRENT_DATE AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
+     WHERE ${priceBookInForce()}
      ORDER BY version_number DESC LIMIT 1`
   );
   return rows[0]?.id ?? null;

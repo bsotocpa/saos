@@ -18,6 +18,7 @@ import { sendSms } from '../comms/send-sms.ts';
 import { addBusinessDays, addDays, businessDaysAfter, daysBetween, todayChicago } from '../tax/deadlines.ts';
 import { sopLinkForTaskType } from '../sops/service.ts';
 import { NO_PREPARER_ALERT_BUSINESS_DAYS, NO_PREPARER_SQL } from '../tax/queue.ts';
+import { CHICAGO_TODAY } from '../../chicago-day.ts';
 
 export type TaskStatus = 'not_started' | 'in_progress' | 'waiting_for_input' | 'completed' | 'deferred' | 'cancelled';
 /** Non-terminal statuses — what "open work" means across every view/query. */
@@ -361,7 +362,7 @@ export async function setTaskStatus(
   // Recurrence: completing a repeating task spawns the next occurrence
   // (quarterly ST-1, monthly QBO edits, annual AG990 — the live patterns).
   if (status === 'completed' && task.recur_freq && task.status !== 'completed') {
-    const baseDue = task.due_date ?? new Date().toISOString().slice(0, 10);
+    const baseDue = task.due_date ?? todayChicago();
     await createTask(app, {
       title: task.title,
       description: task.description,
@@ -496,9 +497,9 @@ export async function searchTasks(app: FastifyInstance, f: TaskFilters) {
   if (f.clientVisible !== undefined) add(`t.client_visible = $$`, f.clientVisible);
   if (f.dueFrom) add(`t.due_date >= $$`, f.dueFrom);
   if (f.dueTo) add(`t.due_date <= $$`, f.dueTo);
-  if (f.overdue) where.push(`t.due_date < CURRENT_DATE AND t.status <> 'completed' AND t.status <> 'cancelled'`);
-  if (f.dueToday) where.push(`t.due_date = CURRENT_DATE`);
-  if (f.dueThisWeek) where.push(`t.due_date >= CURRENT_DATE AND t.due_date < CURRENT_DATE + 7`);
+  if (f.overdue) where.push(`t.due_date < ${CHICAGO_TODAY} AND t.status <> 'completed' AND t.status <> 'cancelled'`);
+  if (f.dueToday) where.push(`t.due_date = ${CHICAGO_TODAY}`);
+  if (f.dueThisWeek) where.push(`t.due_date >= ${CHICAGO_TODAY} AND t.due_date < ${CHICAGO_TODAY} + 7`);
   if (f.createdBy) add(`t.created_by_staff_id = $$`, f.createdBy);
   if (f.delegatedBy) {
     add(`t.created_by_staff_id = $$ AND t.assigned_staff_id IS DISTINCT FROM t.created_by_staff_id`, f.delegatedBy);
@@ -626,7 +627,7 @@ export async function teamWorkload(app: FastifyInstance) {
             count(t.id) FILTER (WHERE t.status = 'in_progress')::int AS in_progress,
             count(t.id) FILTER (WHERE t.status = 'waiting_for_input')::int AS waiting,
             count(t.id) FILTER (WHERE t.status = 'deferred')::int AS deferred,
-            count(t.id) FILTER (WHERE t.status = ANY($1::task_status[]) AND t.due_date < CURRENT_DATE)::int AS overdue
+            count(t.id) FILTER (WHERE t.status = ANY($1::task_status[]) AND t.due_date < ${CHICAGO_TODAY})::int AS overdue
      FROM staff st
      JOIN roles r ON r.id = st.role_id
      LEFT JOIN tasks t ON t.assigned_staff_id = st.id

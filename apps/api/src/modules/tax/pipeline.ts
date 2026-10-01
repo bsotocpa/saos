@@ -18,6 +18,7 @@ import { addDays, daysBetween, todayChicago, calendarDay } from './deadlines.ts'
 import { certifiedMailFollowUp, filingLane } from './resolution.ts';
 import { invoiceForFiledEngagement } from '../billing/service.ts';
 import { assertF8879Variant, assertSignedOn, checkedAuthorizationDocument, type F8879Variant } from './signed-8879.ts';
+import { CHICAGO_TODAY } from '../../chicago-day.ts';
 
 export const TAX_STAGES = [
   'intake_started', 'scheduled', 'documents_requested', 'pending_client_response',
@@ -1161,7 +1162,7 @@ export async function stampJurisdictionAccepted(
     const stale = status.rows.find((d) => d.jurisdiction === jurisdiction)?.answerStale === true;
     await app.db.query(
       `UPDATE tax_engagement_jurisdictions
-          SET accepted_on = CASE WHEN $5 THEN COALESCE($3::date, CURRENT_DATE) ELSE COALESCE(accepted_on, $3::date, CURRENT_DATE) END,
+          SET accepted_on = CASE WHEN $5 THEN COALESCE($3::date, ${CHICAGO_TODAY}) ELSE COALESCE(accepted_on, $3::date, ${CHICAGO_TODAY}) END,
               submission_id = CASE WHEN $5 THEN $4 ELSE COALESCE(submission_id, $4) END,
               answered_at = CASE WHEN $5 THEN now() ELSE COALESCE(answered_at, now()) END,
               answer_stale = false
@@ -1171,13 +1172,13 @@ export async function stampJurisdictionAccepted(
   }
   if (jurisdiction === 'federal') {
     await app.db.query(
-      `UPDATE tax_engagements SET federal_accepted_on = COALESCE(federal_accepted_on, $2::date, CURRENT_DATE) WHERE id = $1`,
+      `UPDATE tax_engagements SET federal_accepted_on = COALESCE(federal_accepted_on, $2::date, ${CHICAGO_TODAY}) WHERE id = $1`,
       [taxEngagementId, acceptedOn]
     );
   } else {
     await app.db.query(
       `UPDATE tax_engagements
-          SET state_accepted_on = COALESCE(state_accepted_on, $2::date, CURRENT_DATE),
+          SET state_accepted_on = COALESCE(state_accepted_on, $2::date, ${CHICAGO_TODAY}),
               state_accepted_code = COALESCE(state_accepted_code, $3)
         WHERE id = $1`,
       [taxEngagementId, acceptedOn, jurisdiction]

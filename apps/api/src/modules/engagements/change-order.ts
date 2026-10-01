@@ -16,6 +16,7 @@ import { writeAudit } from '../../audit.ts';
 import { engagementLinesForQuote } from '../pricing/engagement-lines.ts';
 import { todayChicago } from '../tax/deadlines.ts';
 import { activeEngagementsFor, activeTaxEngagementsForYears, defaultTaxYear, periodKeyFor } from './period.ts';
+import { CHICAGO_TODAY } from '../../chicago-day.ts';
 
 export interface ChangeOrderTarget {
   engagementId: string;
@@ -172,7 +173,7 @@ export async function withdrawForChangeOrder(
   await withdrawUnfiledReturns(app, oldEngagementId, `superseded by change order ${quoteId}`, null);
   const { rows } = await app.db.query<{ id: string; service_line: string; period_key: string | null }>(
     `UPDATE engagements
-        SET status = 'withdrawn', ended_on = CURRENT_DATE,
+        SET status = 'withdrawn', ended_on = ${CHICAGO_TODAY},
             close_reason = 'superseded by change order ' || $2
       WHERE id = $1 AND status IN ('active', 'on_hold')
       RETURNING id, service_line::text AS service_line, period_key`,

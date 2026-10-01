@@ -9,6 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeAudit } from '../../audit.ts';
 import { withTransaction } from '../../db.ts';
 import { AppError, type AuthedStaff } from '../../types.ts';
+import { priceBookInForce } from '../../chicago-day.ts';
 
 export interface PackageLineInput {
   itemCode: string;
@@ -36,7 +37,7 @@ export async function savePackage(
   }
   const version = await app.db.query<{ id: string }>(
     `SELECT id FROM price_book_versions
-     WHERE effective_from <= CURRENT_DATE AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
+     WHERE ${priceBookInForce()}
      ORDER BY version_number DESC LIMIT 1`
   );
   const versionId = version.rows[0]?.id;

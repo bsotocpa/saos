@@ -16,6 +16,7 @@ import { requirePermission } from '../../plugins/auth.ts';
 import { writeAudit } from '../../audit.ts';
 import { AppError } from '../../types.ts';
 import { registerOpsRoutes } from './ops.ts';
+import { CHICAGO_TODAY } from '../../chicago-day.ts';
 
 /** The price_service_line enum, as the database holds it. */
 const PRICE_SERVICE_LINES = [
@@ -224,7 +225,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.get('/admin/price-book', pricing, async () => {
     const version = await app.db.query(
       `SELECT id, version_number, effective_from, effective_to, note,
-              (effective_from > CURRENT_DATE) AS pending
+              (effective_from > ${CHICAGO_TODAY}) AS pending
        FROM price_book_versions
        ORDER BY version_number DESC LIMIT 1`
     );

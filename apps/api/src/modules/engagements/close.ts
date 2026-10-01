@@ -21,6 +21,7 @@ import { refreshContactStatus } from '../crm/lifecycle.ts';
 import { formatUsd } from '../billing/service.ts';
 import { withTransaction } from '../../db.ts';
 import { retirePayableInvoices } from './retire-invoices.ts';
+import { CHICAGO_TODAY } from '../../chicago-day.ts';
 
 export type CloseOutcome = 'completed' | 'withdrawn';
 
@@ -178,7 +179,7 @@ async function closeEngagementInTransaction(
   await app.db.query(
     `UPDATE engagements
         SET status = $2::engagement_status,
-            ended_on = COALESCE($3::date, CURRENT_DATE),
+            ended_on = COALESCE($3::date, ${CHICAGO_TODAY}),
             close_reason = $4
       WHERE id = $1`,
     [engagementId, input.outcome, input.endedOn ?? null, input.reason?.trim() ?? null]

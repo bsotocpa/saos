@@ -12,6 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { AppError } from '../../types.ts';
 import { surchargeApplies } from '../tax/resolution.ts';
 import type { DeadlineReturnType } from '../tax/deadlines.ts';
+import { priceBookInForce } from '../../chicago-day.ts';
 
 export const SURCHARGE_ITEM = 'PRIOR_YEAR_SURCHARGE';
 
@@ -49,7 +50,7 @@ export interface ComposedBundle {
 async function currentVersionId(app: FastifyInstance): Promise<string> {
   const { rows } = await app.db.query<{ id: string }>(
     `SELECT id FROM price_book_versions
-     WHERE effective_from <= CURRENT_DATE AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
+     WHERE ${priceBookInForce()}
      ORDER BY version_number DESC LIMIT 1`
   );
   if (!rows[0]) throw new AppError(500, 'price_book_missing', 'No price book version in force.');

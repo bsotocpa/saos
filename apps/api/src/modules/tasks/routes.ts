@@ -13,6 +13,7 @@ import {
   removeTaskDependency, searchTasks, setTaskStatus, TASK_SELECT, teamWorkload,
 } from './service.ts';
 import type { TaskFilters, TaskStatus } from './service.ts';
+import { CHICAGO_TODAY } from '../../chicago-day.ts';
 
 const StatusEnum = z.enum(['not_started', 'in_progress', 'waiting_for_input', 'completed', 'deferred', 'cancelled']);
 const RecurEnum = z.enum(['daily', 'weekly', 'monthly', 'quarterly', 'annually', 'custom']);
@@ -615,7 +616,7 @@ export function registerTaskRoutes(app: FastifyInstance): void {
     const b = TimeBody.parse(request.body);
     const { rows } = await app.db.query<{ id: string }>(
       `INSERT INTO time_entries (staff_id, contact_id, task_id, engagement_id, hours, entry_date, rate_item_code, is_pro_bono, notes)
-       VALUES ($1, $2, $3, $4, $5, COALESCE($6, CURRENT_DATE), $7, $8, $9) RETURNING id`,
+       VALUES ($1, $2, $3, $4, $5, COALESCE($6, ${CHICAGO_TODAY}), $7, $8, $9) RETURNING id`,
       [
         request.staff!.id, b.contactId ?? null, b.taskId ?? null, b.engagementId ?? null,
         b.hours, b.entryDate ?? null, b.rateItemCode ?? null, b.isProBono ?? false, b.notes ?? null,

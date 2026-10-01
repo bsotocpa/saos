@@ -17,6 +17,7 @@ import {
 import { pipelineBoard, pipelineMetrics, setLeadStage } from './pipeline.ts';
 import { CATALOG_GROUPS, CUSTOM_LINE_SERVICE_LINES, SERVICE_LINE_LABEL } from './groups.ts';
 import { savePackage } from './packages.ts';
+import { priceBookInForce } from '../../chicago-day.ts';
 
 /*
  * A LINE ON THE QUOTE (2026-09-20): a book item by code, or a custom line written by hand. The
@@ -127,7 +128,7 @@ export function registerQuoteRoutes(app: FastifyInstance): void {
   app.get('/quotes/catalog', read, async () => {
     const version = await app.db.query<{ id: string; version_number: number }>(
       `SELECT id, version_number FROM price_book_versions
-       WHERE effective_from <= CURRENT_DATE AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
+       WHERE ${priceBookInForce()}
        ORDER BY version_number DESC LIMIT 1`
     );
     const v = version.rows[0];

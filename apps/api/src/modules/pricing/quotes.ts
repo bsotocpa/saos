@@ -41,6 +41,7 @@ import {
   schedulesImpliedByQuote,
   type DuplicateIntent,
 } from './quote-coverage.ts';
+import { priceBookInForce } from '../../chicago-day.ts';
 
 /** Range width for one-time work — a SETTING, never a literal (⚠ Brian tunes). */
 export async function estimateBandPercent(app: FastifyInstance): Promise<number> {
@@ -79,7 +80,7 @@ export interface ChangedLine {
 async function currentVersion(app: FastifyInstance): Promise<{ id: string }> {
   const { rows } = await app.db.query<{ id: string }>(
     `SELECT id FROM price_book_versions
-     WHERE effective_from <= CURRENT_DATE AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
+     WHERE ${priceBookInForce()}
      ORDER BY version_number DESC LIMIT 1`
   );
   if (!rows[0]) throw new AppError(500, 'price_book_missing', 'No price book version in force.');

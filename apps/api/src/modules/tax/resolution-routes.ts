@@ -14,6 +14,7 @@ import {
   assertRepresentationAuthorized, recordF2848, recordPaperMailing, resolutionCaseView, spawnResolutionCase,
 } from './resolution-case.ts';
 import { composeBundle, composeYearGrid } from '../pricing/bundles.ts';
+import { priceBookInForce } from '../../chicago-day.ts';
 
 const RETURN_TYPES = [
   '1040', '1065', '1120s', '1120', '990', '990ez', '990pf', '990t', '1120c', '1120f', '1120h', '1120pol',
@@ -140,7 +141,7 @@ export function registerResolutionRoutes(app: FastifyInstance): void {
        FROM bundles b
        JOIN price_book_versions v ON v.id = b.version_id
        WHERE b.is_active
-         AND v.effective_from <= CURRENT_DATE AND (v.effective_to IS NULL OR v.effective_to > CURRENT_DATE)
+         AND ${priceBookInForce('v')}
        ORDER BY b.name_en`
     );
     return { bundles: rows };

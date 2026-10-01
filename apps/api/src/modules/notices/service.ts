@@ -10,6 +10,7 @@ import { writeAudit } from '../../audit.ts';
 import { allActiveByRoles, notifyOnce, ownerForRole } from '../../staffing.ts';
 import { createTask } from '../tasks/service.ts';
 import { addDays } from '../tax/deadlines.ts';
+import { CHICAGO_TODAY } from '../../chicago-day.ts';
 
 export interface CreateNoticeInput {
   contactId: string;
@@ -139,7 +140,7 @@ export async function runNoticeEscalations(
      WHERE escalated_at IS NULL
        AND status NOT IN ('resolved', 'response_sent')
        AND response_deadline IS NOT NULL
-       AND response_deadline <= CURRENT_DATE + $1::int`,
+       AND response_deadline <= ${CHICAGO_TODAY} + $1::int`,
     [deadlineDays]
   );
   let deadline = 0;
