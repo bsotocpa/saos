@@ -265,21 +265,28 @@ export default function PricingAdminPage() {
                 <td>{priceLabel(i)}</td>
                 <td>{i.deposit_cents === null ? <span className="muted">—</span> : formatMoney(i.deposit_cents)}</td>
                 <td style={{ width: 110 }}>
-                  <input
-                    type="number" step="0.01" min="0" inputMode="decimal"
-                    value={priceEdits[i.item_code] ?? ''}
-                    onChange={(e) => setEdit(setPriceEdits, i.item_code, e.target.value, false)}
-                  />
+                  {/* R113: the field's label carries its 44px hit area. */}
+                  <label className="tap-field">
+                    <input
+                      aria-label={`New price for ${i.name_en}`}
+                      type="number" step="0.01" min="0" inputMode="decimal"
+                      value={priceEdits[i.item_code] ?? ''}
+                      onChange={(e) => setEdit(setPriceEdits, i.item_code, e.target.value, false)}
+                    />
+                  </label>
                 </td>
                 <td style={{ width: 110 }}>
                   {i.pricing_mode === 'percent' ? (
                     <span className="muted small">n/a</span>
                   ) : (
-                    <input
-                      type="number" step="0.01" min="0" inputMode="decimal"
-                      value={depositEdits[i.item_code] ?? ''}
-                      onChange={(e) => setEdit(setDepositEdits, i.item_code, e.target.value, true)}
-                    />
+                    <label className="tap-field">
+                      <input
+                        aria-label={`New deposit for ${i.name_en}`}
+                        type="number" step="0.01" min="0" inputMode="decimal"
+                        value={depositEdits[i.item_code] ?? ''}
+                        onChange={(e) => setEdit(setDepositEdits, i.item_code, e.target.value, true)}
+                      />
+                    </label>
                   )}
                 </td>
               </tr>

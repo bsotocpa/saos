@@ -1075,7 +1075,7 @@ export default function ClientPacketPage() {
             packet.businesses.map((b) => (
               <div className="lead-card" key={b.id}>
                 {/* R40: the name opens the business page when OPS_BUSINESS_PAGE is on; plain text otherwise. */}
-                <strong>{businessPage === 'on' ? <Link href={`/businesses/${b.id}`} data-testid={`business-link-${b.id}`}>{b.name}</Link> : b.name}</strong>
+                <strong>{businessPage === 'on' ? <Link className="tap" href={`/businesses/${b.id}`} data-testid={`business-link-${b.id}`}>{b.name}</Link> : b.name}</strong>
                 {b.is_primary ? <span className="badge">primary</span> : null}
                 {b.is_test ? <span className="badge warn test-client-badge" title={b.test_note ?? undefined}>TEST</span> : null}
                 {b.unverified_import_source ? (
@@ -1188,17 +1188,19 @@ export default function ClientPacketPage() {
                   <span className="muted" data-testid={`document-counts-as-${d.id}`}> · counts as {(d.counts_as ?? []).map((c) => c.labelEn).join(', ')}</span>
                 ) : canWriteDocs && checklistItems.length > 0 && !d.superseded_at ? (
                   <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginLeft: 6 }}>
-                    <select
-                      aria-label={`Counts as, for ${d.original_filename}`}
-                      data-testid={`counts-as-select-${d.id}`}
-                      value={countsAsPick[d.id] ?? ''}
-                      onChange={(e) => setCountsAsPick((prev) => ({ ...prev, [d.id]: e.target.value }))}
-                    >
-                      <option value="">Counts as…</option>
-                      {checklistItems.map((it) => (
-                        <option key={it.id} value={it.id}>{it.tax_year} {it.return_type.toUpperCase()}: {it.label_en}</option>
-                      ))}
-                    </select>
+                    <label className="tap-field">
+                      <select
+                        aria-label={`Counts as, for ${d.original_filename}`}
+                        data-testid={`counts-as-select-${d.id}`}
+                        value={countsAsPick[d.id] ?? ''}
+                        onChange={(e) => setCountsAsPick((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                      >
+                        <option value="">Counts as…</option>
+                        {checklistItems.map((it) => (
+                          <option key={it.id} value={it.id}>{it.tax_year} {it.return_type.toUpperCase()}: {it.label_en}</option>
+                        ))}
+                      </select>
+                    </label>
                     <button
                       type="button"
                       className="btn ghost small"

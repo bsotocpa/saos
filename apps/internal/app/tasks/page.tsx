@@ -371,11 +371,11 @@ export default function TasksPage() {
 
         {views.map((v) => (
           <span key={v.id} className={`chip ${activeViewId === v.id ? 'active' : ''}`} style={{ display: 'inline-flex', alignItems: 'center' }}>
-            <button type="button" style={{ all: 'unset', cursor: 'pointer' }} onClick={() => applyView(v)}>
+            <button type="button" className="text-button" onClick={() => applyView(v)}>
               {v.name}{v.shared ? ' ·shared' : ''}
             </button>
             {v.owner_staff_id === me.id ? (
-              <button type="button" className="x" style={{ all: 'unset', cursor: 'pointer', marginLeft: 6, opacity: 0.6 }}
+              <button type="button" className="x text-button" style={{ marginLeft: 6, opacity: 0.6 }}
                 title="Delete view" onClick={() => void deleteView(v.id)}>×</button>
             ) : null}
             {errAt(`view:${v.id}`)}
@@ -846,9 +846,9 @@ function ListView(props: {
         <thead>
           <tr>
             <th className="nosort" style={{ width: 26 }}>
-              <input type="checkbox" style={{ width: 'auto', margin: 0 }}
+<label className="tap-field" aria-label="Select every task"><input type="checkbox" style={{ width: 'auto', margin: 0 }}
                 checked={props.tasks.length > 0 && props.selected.size === props.tasks.length}
-                onChange={(e) => toggleAll(e.target.checked)} />
+                onChange={(e) => toggleAll(e.target.checked)} /></label>
             </th>
             <th onClick={() => props.sortBy('title')}>Subject{arrow('title')}</th>
             {cols.includes('status') ? <th onClick={() => props.sortBy('status')}>Status{arrow('status')}</th> : null}
@@ -869,11 +869,13 @@ function ListView(props: {
           {props.tasks.map((t) => (
             <tr key={t.id} className={props.selected.has(t.id) ? 'selected' : ''}>
               <td>
-                <input type="checkbox" style={{ width: 'auto', margin: 0 }}
-                  checked={props.selected.has(t.id)} onChange={(e) => toggleOne(t.id, e.target.checked)} />
+                <label className="tap-field">
+                  <input type="checkbox" aria-label="Select this task" style={{ width: 'auto', margin: 0 }}
+                    checked={props.selected.has(t.id)} onChange={(e) => toggleOne(t.id, e.target.checked)} />
+                </label>
               </td>
               <td className="title-cell">
-                <button type="button" style={{ all: 'unset', cursor: 'pointer', fontWeight: 600 }} title={t.description ?? t.title} onClick={() => props.onEdit(t)}>
+                <button type="button" className="text-button" style={{ fontWeight: 600 }} title={t.description ?? t.title} onClick={() => props.onEdit(t)}>
                   {t.title}
                 </button>
                 {t.open_blockers > 0 ? <span className="badge warn" style={{ marginLeft: 6 }} title={`Blocked by ${t.open_blockers} open task${t.open_blockers === 1 ? '' : 's'}`}>⛔ blocked</span> : null}

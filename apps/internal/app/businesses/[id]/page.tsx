@@ -179,7 +179,7 @@ export default function BusinessPage() {
             {data.members.map((m, i) => (
               <span key={m.contact_id}>
                 {i > 0 ? ', ' : ''}
-                <Link href={`/clients/${m.contact_id}`}>{m.first_name} {m.last_name}</Link>
+                <Link className="tap" href={`/clients/${m.contact_id}`}>{m.first_name} {m.last_name}</Link>
               </span>
             ))}
           </>
@@ -233,7 +233,7 @@ export default function BusinessPage() {
           ) : (
             data.members.map((m) => (
               <div className="lead-card" key={m.contact_id}>
-                <strong><Link href={`/clients/${m.contact_id}`} data-testid={`owner-link-${m.contact_id}`}>{m.first_name} {m.last_name}</Link></strong>
+                <strong><Link className="tap" href={`/clients/${m.contact_id}`} data-testid={`owner-link-${m.contact_id}`}>{m.first_name} {m.last_name}</Link></strong>
                 {m.is_primary ? <span className="badge" title="This business is this person's primary business (one per person)">primary for this person</span> : null}
                 {m.contact_archived ? <span className="badge warn">archived contact</span> : null}
                 <br />
@@ -451,7 +451,7 @@ export default function BusinessPage() {
             <p className="muted small">+{data.documents.rows.length - 12} more filed to this business</p>
           ) : null}
           {!isRefused(data.documents) && primaryOwner ? (
-            <p className="muted small"><a href={`/documents?contactId=${primaryOwner.contact_id}`}>Every document for the owner</a></p>
+            <p className="muted small"><a className="tap" href={`/documents?contactId=${primaryOwner.contact_id}`}>Every document for the owner</a></p>
           ) : null}
         </section>
       </div>

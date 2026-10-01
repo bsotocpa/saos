@@ -30,15 +30,9 @@ const OPS = `http://localhost:${fixtures.opsPort ?? 3105}`;
 const PORTAL = `http://localhost:${fixtures.portalPort ?? 3106}`;
 const SHOTS = process.env.LAYOUT_SHOTS ?? 'C:\\Users\\brian\\saos-shots\\layout-r105';
 const LOG = resolve(here, '..', '.artifacts', 'layout-failures.jsonl');
+const PAGES_LOG = resolve(here, '..', '.artifacts', 'layout-pages.jsonl');
 const REPORT_ONLY = process.env.LAYOUT_AUDIT === 'report';
-/*
- * THE PAGES HELD TO THE CHECK (R106, staged): a page joins this list in the commit that fixes it, and the
- * list ends as every page (step 5 of batch 15), when it is removed. A failure on a listed page fails the
- * project; every other page's failures are recorded in the log and the tables all the same.
- */
-export const ENFORCED = new Set<string>([
-  'portal-documents', // batch 15 step 3: R105, R110
-]);
+/* Every page is held to the check (batch 15 step 5, 2026-10-01): the staged list it grew from is gone. */
 
 const OPS_PAGES = (p: LayoutPerson): Array<[string, string]> => [
   ['executive', '/'], ['account', '/account'], ['admin-automations', '/admin/automations'],
@@ -103,6 +97,8 @@ async function audit(page: Page, project: string, app: string, key: string, url:
   if (height > 16_000) await page.screenshot({ path: shot, fullPage: true, clip: { x: 0, y: 0, width: page.viewportSize()!.width, height: 16_000 } });
   else await page.screenshot({ path: shot, fullPage: true });
   const failures = await checkLayout(page);
+  // Every page audited, failing or not, so the table lists each page with its count (zero included).
+  appendFileSync(PAGES_LOG, JSON.stringify({ key: `${app}-${key}`, viewport: width, browser, failures: failures.length }) + '\n');
   for (const f of failures) {
     appendFileSync(LOG, JSON.stringify({ page: `${app} ${new URL(page.url()).pathname}${new URL(page.url()).search}`, key: `${app}-${key}`, viewport: width, browser, ...f }) + '\n');
   }
@@ -134,7 +130,7 @@ test.describe('R106 layout audit', () => {
     const failing = pages.filter((p) => p.failures > 0);
     testInfo.annotations.push({ type: 'layout', description: `${pages.length} pages, ${failing.length} with failures, ${failing.reduce((n, p) => n + p.failures, 0)} failures` });
     if (!REPORT_ONLY) {
-      expect(failing.filter((p) => ENFORCED.has(`${p.app}-${p.key}`)).map((p) => `${p.app}-${p.key} (${p.failures})`), 'pages held to the layout check that fail it').toEqual([]);
+      expect(failing.map((p) => `${p.app}-${p.key} (${p.failures})`), 'pages failing the layout check').toEqual([]);
     }
   });
 });

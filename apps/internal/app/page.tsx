@@ -419,7 +419,7 @@ export default function ExecutivePage() {
           <h2>Returns with no preparer</h2>
           <div className="stat-row">
             <div>
-              <Link href="/returns?preparer=none" data-testid="no-preparer-count" className="stat" style={{ color: (data.returnsWithNoPreparer?.count ?? 0) > 0 ? 'var(--danger)' : 'var(--ok)' }}>
+              <Link href="/returns?preparer=none" data-testid="no-preparer-count" className="stat tap" style={{ color: (data.returnsWithNoPreparer?.count ?? 0) > 0 ? 'var(--danger)' : 'var(--ok)' }}>
                 {data.returnsWithNoPreparer?.count ?? 0}
               </Link>
               <div className="muted small">Open, assigned to nobody</div>

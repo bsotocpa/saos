@@ -187,7 +187,7 @@ export default function DocumentsPage() {
                   <strong>{d.filename}</strong>
                 </div>
                 <div>
-                  <Link href={`/clients/${d.contact_id}`}>{d.contact_name ?? 'Unknown client'}</Link>
+                  <Link className="tap" href={`/clients/${d.contact_id}`}>{d.contact_name ?? 'Unknown client'}</Link>
                   {d.contact_is_test ? <span className="badge"> test</span> : null}
                 </div>
                 <div className="muted small">

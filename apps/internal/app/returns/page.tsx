@@ -75,7 +75,7 @@ export default function OpenReturnsPage() {
   return (
     <>
       <h1>{noPreparer ? 'Returns with no preparer' : `Open returns — ${taxStageLabel(stage)}`}</h1>
-      <p className="muted small"><Link href="/">← Executive view</Link></p>
+      <p className="muted small"><Link className="tap" href="/">← Executive view</Link></p>
       {error ? <p className="alert error" role="alert">{error}</p> : null}
       {rows === null ? (
         error ? null : <section className="card"><p className="muted">Loading…</p></section>

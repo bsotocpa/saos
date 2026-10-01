@@ -205,7 +205,10 @@ main:has(.task-layout) { max-width: 1500px; }
   .builder-summary { position: sticky; bottom: 0; z-index: 2; box-shadow: 0 -4px 12px rgba(9, 42, 40, 0.08); }
 }
 
-.viewtabs { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+/* No overflow: hidden (R113, 2026-10-01): it clipped the buttons' hit areas; the end buttons carry the corners. */
+.viewtabs { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; }
+.viewtabs button:first-child { border-radius: 8px 0 0 8px; }
+.viewtabs button:last-child { border-radius: 0 8px 8px 0; }
 .viewtabs button { border: none; background: var(--card); padding: 6px 14px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--muted); }
 .viewtabs button.active { background: var(--forest); color: #fff; }
 
@@ -286,8 +289,10 @@ table.dense .title-cell { max-width: 340px; overflow: hidden; text-overflow: ell
   .cards > *, .card, .lead-card, .stat-row > * { min-width: 0; }
 
   /* Data text — emails, URLs, invoice numbers, file names — wraps rather than widening
-     the page. `anywhere` because these have no useful break opportunities. */
-  .card, .list li, td, th { overflow-wrap: anywhere; }
+     the page. R105 rule 2 (2026-09-30): `break-word`, never `anywhere`. "anywhere" let every table
+     cell shrink below its longest word, which is the letter-per-line text in Brian's screenshots;
+     break-word breaks only a token too long for a line of its own, and a cell keeps its words whole. */
+  .card, .list li, td, th { overflow-wrap: break-word; }
 
   /* Task workspace: the rail NEVER renders inline at phone width — it lives
      in the bottom sheet (kills the interleaving/stacking defect wholesale). */
@@ -404,7 +409,9 @@ label.inline-check input[type='checkbox'],
    above (CLAUDE.md: dense table on desktop, cards on a phone). */
 .phone-only { display: none; }
 @media (max-width: 767px) {
-  .desk-only { display: none; }
+  /* !important (R106, 2026-10-01): `section.card > table { display: block }` above is more specific and
+     showed every desk-only table on a phone beside its phone-only cards (Pricing at 375). */
+  .desk-only { display: none !important; }
   .phone-only { display: block; }
 }
 
@@ -574,10 +581,21 @@ button, a.btn, .nav a, .wordmark, .chip, .tap, [role=button], [role=tab], summar
 button::after, a.btn::after, .nav a::after, .wordmark::after, .chip::after, .tap::after, [role=button]::after, [role=tab]::after, summary:not(.qb-group > summary)::after {
   content: '';
   position: absolute;
-  top: min(0px, calc((100% - 44px) / 2));
-  bottom: min(0px, calc((100% - 44px) / 2));
-  left: min(0px, calc((100% - 44px) / 2));
-  right: min(0px, calc((100% - 44px) / 2));
+  top: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
+  bottom: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
+  left: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
+  right: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
+}
+/* A field with no label of its own (a cell in an editable table) sits in a label.tap-field: the label's
+   extension is part of the field's target, since a tap anywhere on a label focuses its field. */
+label.tap-field { display: block; position: relative; margin: 0; }
+label.tap-field::after {
+  content: '';
+  position: absolute;
+  top: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
+  bottom: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
+  left: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
+  right: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
 }
 /* The nav strip gives its links the room their extension needs, so the strip does not clip it. */
 .nav { padding-top: 8px; padding-bottom: 8px; }
@@ -595,3 +613,41 @@ button::after, a.btn::after, .nav a::after, .wordmark::after, .chip::after, .tap
   table.stack td[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); }
   table.stack td:empty { display: none; }
 }
+
+/*
+ * R114 (Brian, 2026-10-01): dense tables. Below 1024 (phones, and 768 is iPad portrait, a touch width) a
+ * table row that holds a control is at least 44px tall and its controls reach 44px. At 1024 and wider the
+ * tables stay as dense as they were and a control inside a row reaches 24px (WCAG 2.5.8): --tap is the
+ * size every hit-area extension above grows to.
+ */
+td a { position: relative; }
+td a::after {
+  content: '';
+  position: absolute;
+  top: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
+  bottom: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
+  left: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
+  right: min(0px, calc((100% - var(--tap, 44px)) / 2 - 1px));
+}
+@media (min-width: 1024px) {
+  td, th { --tap: 24px; }
+}
+@media (max-width: 1023px) {
+  tr:has(a, button, select, input, textarea, summary) > td { height: 44px; }
+  td select, td input:not([type=checkbox]):not([type=radio]):not([type=file]),
+  table.dense td select, table.dense td input:not([type=checkbox]):not([type=radio]):not([type=file]) { min-height: 44px; }
+}
+
+/* R114 (2026-10-01): a dense table's select or field is 24px at 1024 and wider (it was 23). */
+table.dense select, table.dense input:not([type=checkbox]):not([type=radio]) { min-height: 24px; }
+/* R106/R113 (2026-10-01): the Tasks filter rail is a form, not a table: its fields and its tick rows are
+   44px targets at every width (the one place 1440 looks different; flagged to Brian). */
+.rail input:not([type=checkbox]):not([type=radio]), .rail select { min-height: 44px; }
+.rail label.check { min-height: 44px; display: flex; align-items: center; }
+/* A tick with its words (SOPs' "include drafts", the queue's "everyone's returns"): the row is the 44px target. */
+label.inline-check { display: flex; align-items: center; gap: 6px; min-height: 44px; }
+/* A small label around a field or a tick (Admin → Document checklist): a block, so its extension is whole. */
+label.small.tap-field { display: inline-block; }
+
+/* A button that reads as text (a task's title in the list): unset, but positioned, so its hit area extends. */
+.text-button { all: unset; position: relative; cursor: pointer; }

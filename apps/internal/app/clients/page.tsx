@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../lib/api';
 import { AddClientModal } from '../../components/add-client';
 import { clientSearchLabel } from '../../lib/labels';
+import { Breakable } from '../../lib/breakable';
 
 interface ClientRow {
   id: string;
@@ -199,8 +200,8 @@ export default function ClientsPage() {
                       {r.is_test ? <span className="badge warn">TEST</span> : null}
                     </td>
                     <td className="muted small">{r.business_name ?? '—'}</td>
-                    <td className="muted small" style={{ overflowWrap: 'anywhere' }}>
-                      {r.email ?? 'no email'}
+                    <td className="muted small">
+                      {r.email ? <Breakable text={r.email} /> : 'no email'}
                       {r.phone ? <><br />{r.phone}</> : null}
                     </td>
                     <td>

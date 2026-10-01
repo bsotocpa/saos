@@ -72,8 +72,17 @@ for (const s of items) {
   const f = resolve(root, s.file);
   const original = readFileSync(f, 'utf8');
   let red;
+  // before/evidence (batch 15, the layout check's sabotages): one test covers every page, so its title
+  // cannot say why it went red. An item may clear a log before the red run and then name what must be in
+  // it (evidence() returns a description, or null when the expected failure is absent): red for another
+  // reason is not the sabotage caught.
+  s.before?.();
   try { writeFileSync(f, s.apply(original)); red = run(s.test); } finally { writeFileSync(f, original); }
-  const hit = red.failed.some((n) => s.expectRed.test(n)) || (s.test.kind === 'harness' && red.fail !== '0' && s.expectRed.test(red.failed.join('\n')));
+  const evidence = s.evidence ? s.evidence() : '';
+  const titled = red.failed.some((n) => s.expectRed.test(n)) || (s.test.kind === 'harness' && red.fail !== '0' && s.expectRed.test(red.failed.join('\n')));
+  const hit = titled && evidence !== null;
+  if (evidence) red.failed.unshift(evidence);
+  if (titled && evidence === null) red.failed.unshift('red, but not with the expected failure');
   const green = run(s.test);
   const restored = readFileSync(f, 'utf8') === original;
   log([s.item, s.file, s.change, `${s.test.kind}: ${s.test.spec}`, s.test.kind === 'harness' ? 'yes' : 'no',

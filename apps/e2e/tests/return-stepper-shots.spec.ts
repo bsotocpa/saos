@@ -1,6 +1,6 @@
 /*
  * THE RAIL OF FIVE PHASES, FOR BRIAN'S APPROVAL (2026-09-26 R50; re-shot 2026-09-28 for R50 v3). Three
- * states of the rail at three widths — 390, 768 and 1280 — saved as full-page PNGs at full resolution
+ * states of the rail at three widths — 375, 768 and 1440 — saved as full-page PNGs at full resolution
  * under C:\Users\brian\saos-shots\stepper-v3\<state>-<width>.png:
  *
  *   mid-preparation      Engage done (one line, dated by "scheduled"); Prepare open with documents
@@ -24,8 +24,8 @@
  * the ATX acceptance and the Stripe event), then photographed at each width. Beside the pictures the
  * spec reads what a person would: which phase is open and which step in it is current, that it alone
  * carries a control, that a done phase is one line with its date and a future phase its name alone,
- * that a done step names its day and its person, no page-level horizontal scroll, 44px targets at 390
- * and the current phase in view at 390.
+ * that a done step names its day and its person, no page-level horizontal scroll, 44px targets at 375
+ * and the current phase in view at 375.
  */
 import { expect, test, type Page } from '@playwright/test';
 import * as OTPAuth from 'otpauth';
@@ -46,9 +46,9 @@ const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixt
 const API = `http://127.0.0.1:${fixtures.port}`;
 const SHOTS = 'C:\\Users\\brian\\saos-shots\\stepper-v3';
 const WIDTHS: Array<{ width: number; height: number }> = [
-  { width: 390, height: 844 },
+  { width: 375, height: 812 },
   { width: 768, height: 1024 },
-  { width: 1280, height: 800 },
+  { width: 1440, height: 900 },
 ];
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
 const PDF = { mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 synthetic harness document — no real client data\n%%EOF') };
@@ -134,7 +134,7 @@ async function returnIn(token: string, state: State): Promise<{ contactId: strin
   return { contactId: contact.id, te };
 }
 
-test('the three rail states at 390, 768 and 1280, at full resolution', async ({ page }, testInfo) => {
+test('the three rail states at 375, 768 and 1440, at full resolution', async ({ page }, testInfo) => {
   test.skip(testInfo.project.use.viewport?.width !== 1440, 'one project sets the three widths itself (in both 1440 projects: Chromium and WebKit)');
   test.setTimeout(600_000);
   mkdirSync(SHOTS, { recursive: true });
@@ -202,11 +202,11 @@ test('the three rail states at 390, 768 and 1280, at full resolution', async ({ 
         await expect(card.getByText(/Extended · Form 7004 · deadline/), 'the extension lives in the details area').toBeVisible();
         await expect(card.getByText('extended', { exact: true }), 'and the badge on the header before filing').toBeVisible();
         await expect(card.getByTestId(`return-amount-${te}`), 'fix 3: the amount is labelled').toHaveText('Estimate up to $800.00');
-        if (size.width === 390) {
-          await expect(open, 'the current phase is in view when the row opens at 390').toBeInViewport();
+        if (size.width === 375) {
+          await expect(open, 'the current phase is in view when the row opens at 375').toBeInViewport();
           for (const target of [stepper.getByTestId('current-step-control').getByRole('button', { name: 'Internal review', exact: true }), card.getByTestId('assign-preparer')]) {
             const box = await target.boundingBox();
-            expect(box && box.height >= 44, `a 44px target at 390 (got ${box?.height})`).toBeTruthy();
+            expect(box && box.height >= 44, `a 44px target at 375 (got ${box?.height})`).toBeTruthy();
           }
         }
       }
@@ -237,7 +237,7 @@ test('the three rail states at 390, 768 and 1280, at full resolution', async ({ 
         await expect(card.getByTestId('correct-filing'), 'the correction sits in the details area at filed').toBeVisible();
         await expect(card.getByTestId(`return-amount-${te}`)).toHaveText('Final fee $700.00');
         await expect(card.getByText('not filed'), 'the summary line does not repeat the steps').toHaveCount(0);
-        if (size.width === 390) await expect(open, 'the current phase is in view at 390').toBeInViewport();
+        if (size.width === 375) await expect(open, 'the current phase is in view at 375').toBeInViewport();
       }
       if (state === 'completed') {
         await expect(stepper.locator('li.phase.done'), 'five done lines').toHaveCount(5);

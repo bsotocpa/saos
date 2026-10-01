@@ -1,6 +1,6 @@
 /*
  * THE QUOTE BUILDER, FOR BRIAN'S APPROVAL (2026-09-20). Four states of the redesigned builder at
- * three widths — 390, 768 and 1280 — saved as full-page PNGs under C:\Users\brian\saos-shots\
+ * three widths — 375, 768 and 1440 — saved as full-page PNGs under C:\Users\brian\saos-shots\
  * quote-builder\<state>-<width>.png:
  *
  *   empty     the builder as it opens
@@ -11,7 +11,7 @@
  *
  * One project sets the three widths itself (the other project skips), signed in as the CEO
  * fixture. Nothing is created: the one submit is the refused one. Beside the pictures, the spec
- * reads what a person would: the error's words, the kept text, and 44px targets at 390.
+ * reads what a person would: the error's words, the kept text, and 44px targets at 375.
  */
 import { expect, test, type Page } from '@playwright/test';
 import * as OTPAuth from 'otpauth';
@@ -28,9 +28,9 @@ const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixt
 };
 const SHOTS = 'C:\\Users\\brian\\saos-shots\\quote-builder';
 const WIDTHS: Array<{ width: number; height: number }> = [
-  { width: 390, height: 844 },
+  { width: 375, height: 812 },
   { width: 768, height: 1024 },
-  { width: 1280, height: 800 },
+  { width: 1440, height: 900 },
 ];
 
 async function signIn(page: Page, who: Persona): Promise<void> {
@@ -44,7 +44,7 @@ async function signIn(page: Page, who: Persona): Promise<void> {
   expect(status, `${who.email} signs in`).toBe(200);
 }
 
-test('the four builder states at 390, 768 and 1280', async ({ page }, testInfo) => {
+test('the four builder states at 375, 768 and 1440', async ({ page }, testInfo) => {
   test.skip(testInfo.project.use.viewport?.width !== 1440, 'one project sets the three widths itself (in both 1440 projects: Chromium and WebKit)');
   test.setTimeout(600_000); // twelve full-page pictures across three widths, on the production build
   mkdirSync(SHOTS, { recursive: true });
@@ -89,7 +89,7 @@ test('the four builder states at 390, 768 and 1280', async ({ page }, testInfo) 
     await filter.fill('');
     const lines = builder.locator('table.qb-lines tbody tr');
     await expect(lines).toHaveCount(4);
-    if (size.width === 390) {
+    if (size.width === 375) {
       // Every target at least 44px tall on the phone: the first Add, a Remove, the amount box, the group header.
       // The first rows are already "Added"; the first row still offering Add is the target.
       for (const target of [
@@ -99,7 +99,7 @@ test('the four builder states at 390, 768 and 1280', async ({ page }, testInfo) 
         builder.locator('.qb-group > summary').first(),
       ]) {
         const box = await target.boundingBox();
-        expect(box && box.height >= 44, `a 44px target at 390 (got ${box?.height})`).toBeTruthy();
+        expect(box && box.height >= 44, `a 44px target at 375 (got ${box?.height})`).toBeTruthy();
       }
     }
     const stateAmount = builder.getByLabel('Unit amount for Additional state return (business)');

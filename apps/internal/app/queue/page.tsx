@@ -88,7 +88,7 @@ export default function QueuePage() {
       <h1>{scoped ? 'My Queue' : everyone ? 'Every open return' : 'My Queue'}</h1>
       {!scoped ? (
         <p className="small">
-          <label><input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} /> Everyone&apos;s returns, not only mine</label>
+          <label className="inline-check"><input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} /> Everyone&apos;s returns, not only mine</label>
         </p>
       ) : null}
       {error ? <div className="alert error">{error}</div> : null}

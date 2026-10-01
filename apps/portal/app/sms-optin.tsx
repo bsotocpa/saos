@@ -90,7 +90,7 @@ export function SmsOptIn({
           placeholder="(312) 555-0100"
         />
       </label>
-      <label className="field" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontWeight: 400 }}>
+      <label className="field" style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 400, minHeight: 44 }}>
         <input
           type="checkbox"
           className="tickbox"

@@ -41,7 +41,10 @@ export async function checkLayout(page: Page): Promise<LayoutFailure[]> {
         ? el.selectedOptions[0]?.textContent ?? ''
         : (el as HTMLElement).innerText ?? el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
       const id = testid ? `[data-testid=${testid}]` : aria ? `[aria-label="${aria.slice(0, 30)}"]` : '';
-      return `${tag}${id}${text ? ` "${text}"` : ''}`;
+      // Where it is: the heading of the card or section it sits in, so a row in the report can be found.
+      const box = el.closest('section, .card, details, dialog, [role=dialog]');
+      const where = box?.querySelector('h1, h2, h3, summary')?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 30);
+      return `${tag}${id}${text ? ` "${text}"` : ''}${where ? ` in "${where}"` : ''}`;
     };
 
     // overflow: the page scrolls sideways.
@@ -64,7 +67,9 @@ export async function checkLayout(page: Page): Promise<LayoutFailure[]> {
       const parent = n.parentElement;
       if (!parent || seen.has(parent) || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'OPTION', 'TEXTAREA'].includes(parent.tagName)) continue;
       const text = n.textContent ?? '';
-      const re = /[^\s \-–—/]{2,}/g;
+      // A word ends at a space or a dash or a slash, and (R105, 2026-10-01) at a token's own seams: an email
+      // or a dotted key may wrap after @ . _ (lib/breakable.tsx offers the browser exactly those breaks).
+      const re = /[^\s \-–—/@._]{2,}/g;
       for (let m = re.exec(text); m; m = re.exec(text)) {
         words++;
         const range = document.createRange();
@@ -100,6 +105,35 @@ export async function checkLayout(page: Page): Promise<LayoutFailure[]> {
       }
     }
 
+    /*
+     * R113: an element's hit area — its box grown by an invisible extension (an absolutely positioned
+     * ::after with negative insets), clipped by any ancestor that hides its overflow (a scroll container
+     * only across its scroll axis: what is scrolled out of view along it is reached by scrolling).
+     */
+    const hitRect = (el: Element): DOMRect => {
+      const r = el.getBoundingClientRect();
+      const after = getComputedStyle(el, '::after');
+      if (after.content === 'none' || after.content === 'normal' || after.position !== 'absolute') return r;
+      const px = (v: string) => (v.endsWith('px') ? parseFloat(v) : 0);
+      let box = {
+        top: Math.min(r.top, r.top + px(after.top)), bottom: Math.max(r.bottom, r.bottom - px(after.bottom)),
+        left: Math.min(r.left, r.left + px(after.left)), right: Math.max(r.right, r.right - px(after.right)),
+      };
+      const scrolls = (v: string) => v === 'auto' || v === 'scroll';
+      for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+        const ar = a.getBoundingClientRect();
+        if (!scrolls(cs.overflowX)) box = { ...box, left: Math.max(box.left, ar.left), right: Math.min(box.right, ar.right) };
+        if (!scrolls(cs.overflowY)) box = { ...box, top: Math.max(box.top, ar.top), bottom: Math.min(box.bottom, ar.bottom) };
+      }
+      return new DOMRect(box.left, box.top, box.right - box.left, box.bottom - box.top);
+    };
+    const union = (a: DOMRect, b: DOMRect) => {
+      const left = Math.min(a.left, b.left), top = Math.min(a.top, b.top);
+      return new DOMRect(left, top, Math.max(a.right, b.right) - left, Math.max(a.bottom, b.bottom) - top);
+    };
+
     // tap-target: every control at least minTap × minTap, links in running text excepted.
     const controls = Array.from(document.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab]'));
     for (const el of controls) {
@@ -110,49 +144,17 @@ export async function checkLayout(page: Page): Promise<LayoutFailure[]> {
         const blockText = (block?.textContent ?? '').trim();
         if (block && blockText.length > linkText.length + 12 && getComputedStyle(el).display === 'inline') continue;
       }
-      let r = el.getBoundingClientRect();
-      if (el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio')) {
-        const label = el.closest('label') ?? (el.id ? document.querySelector(`label[for="${el.id}"]`) : null);
-        if (label) r = label.getBoundingClientRect();
+      let r = hitRect(el);
+      // A checkbox, a radio or a file picker counts its label; any other field inside its label counts the
+      // label too (a tap on the label's words, or its extension, focuses the field).
+      const label = el.closest('label') ?? (el instanceof HTMLInputElement && el.id ? document.querySelector(`label[for="${el.id}"]`) : null);
+      if (label && (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) {
+        r = union(r, hitRect(label));
       }
-      if (el instanceof HTMLInputElement && el.type === 'file') {
-        const label = el.closest('label');
-        if (label) r = label.getBoundingClientRect();
-      }
-      // A field inside its label: tapping the label's words focuses the field, so the label is the target.
-      if ((el instanceof HTMLInputElement && !['checkbox', 'radio', 'file'].includes(el.type)) || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
-        const label = el.closest('label');
-        if (label) {
-          const lr = label.getBoundingClientRect();
-          r = new DOMRect(Math.min(r.left, lr.left), Math.min(r.top, lr.top), Math.max(r.right, lr.right) - Math.min(r.left, lr.left), Math.max(r.bottom, lr.bottom) - Math.min(r.top, lr.top));
-        }
-      }
-      // R113: a hit area enlarged by an invisible extension (an absolutely positioned ::after with
-      // negative insets) is the target, as the browser hit-tests it; clipped by any ancestor that hides
-      // its overflow, because a tap there lands on nothing.
-      const after = getComputedStyle(el, '::after');
-      let box = { top: r.top, right: r.right, bottom: r.bottom, left: r.left };
-      if (after.content !== 'none' && after.content !== 'normal' && after.position === 'absolute') {
-        const px = (v: string) => (v.endsWith('px') ? parseFloat(v) : 0);
-        box = {
-          top: Math.min(box.top, r.top + px(after.top)),
-          bottom: Math.max(box.bottom, r.bottom - px(after.bottom)),
-          left: Math.min(box.left, r.left + px(after.left)),
-          right: Math.max(box.right, r.right - px(after.right)),
-        };
-        // A scroll container clips only across its scroll axis: what is scrolled out of view along it is
-        // reached by scrolling (the portal's nav strip), so it is measured whole along that axis.
-        const scrolls = (v: string) => v === 'auto' || v === 'scroll';
-        for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
-          const cs = getComputedStyle(a);
-          if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
-          const ar = a.getBoundingClientRect();
-          if (!scrolls(cs.overflowX)) box = { ...box, left: Math.max(box.left, ar.left), right: Math.min(box.right, ar.right) };
-          if (!scrolls(cs.overflowY)) box = { ...box, top: Math.max(box.top, ar.top), bottom: Math.min(box.bottom, ar.bottom) };
-        }
-      }
-      r = new DOMRect(box.left, box.top, box.right - box.left, box.bottom - box.top);
-      if (r.width < minTap - 0.5 || r.height < minTap - 0.5) {
+      // R114 (2026-10-01): at 1024 and wider a control inside a table row is held to 24px (dense desk tables,
+      // WCAG 2.5.8); everywhere else, and in every table below 1024, to 44px.
+      const need = vw >= 1024 && el.closest('td, th') ? 24 : minTap;
+      if (r.width < need - 0.5 || r.height < need - 0.5) {
         out.push({ check: 'tap-target', element: name(el), detail: `${Math.round(r.width)}×${Math.round(r.height)}px` });
       }
     }

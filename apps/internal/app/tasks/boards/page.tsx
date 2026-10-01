@@ -107,7 +107,7 @@ export default function BoardsPage() {
             onSubmit={(e) => { e.preventDefault(); void createBoard(); }}
             style={{ display: 'flex', gap: 6 }}
           >
-            <input placeholder="New board…" value={newBoard} onChange={(e) => setNewBoard(e.target.value)} />
+            <label className="tap-field"><input aria-label="New board" placeholder="New board…" value={newBoard} onChange={(e) => setNewBoard(e.target.value)} /></label>
             <button className="btn ghost" type="submit">Create</button>
           </form>
         </div>
@@ -121,7 +121,7 @@ export default function BoardsPage() {
               onSubmit={(e) => { e.preventDefault(); void addCard(); }}
               style={{ display: 'flex', gap: 8 }}
             >
-              <input placeholder="New card…" value={newCard} onChange={(e) => setNewCard(e.target.value)} style={{ flex: 1 }} />
+              <label className="tap-field" style={{ flex: 1 }}><input aria-label="New card" placeholder="New card…" value={newCard} onChange={(e) => setNewCard(e.target.value)} /></label>
               <button className="btn" type="submit">Add card</button>
             </form>
             {errAt('card')}

@@ -2228,3 +2228,15 @@ Run 57 (the first six-project receipt) was red in every project on four walks: R
 ## A fixture dated "two days ago" is not "this month" (2026-10-01, receipt run 57, R7)
 The same run's API red: dashboards.spec paid an invoice "now() - 2 days" and expected it in MTD; run just after midnight on October 1 in Chicago, two days ago was September, and MTD (rightly, since R104) left it out. The test now pays it now().
 **Rule:** a fixture that must fall inside today's month, week or year is dated now (or the boundary instant itself), never a fixed offset that crosses a boundary near the start of the period.
+
+## overflow-wrap: anywhere is what made words break a letter at a time (2026-10-01, batch 15 step 5)
+The Staff buttons and phone cells that broke "a letter per line" carried overflow-wrap: anywhere. Unlike break-word, anywhere lowers the element's min-content width to one character, so a flex or grid track squeezed it to a sliver and every letter wrapped. break-word wraps a long token only when it truly cannot fit, and keeps the track at least a word wide.
+**Rule:** wrap with overflow-wrap: break-word (plus min-width: 0 on the flex or grid child), never anywhere; a token with no spaces (an email, a dotted key) gets break opportunities at its own seams (Breakable: a <wbr> after @ . _).
+
+## A hit extension is lost to the first thing that clips or unsets it (2026-10-01, batch 15 step 5)
+R113's 44px came from an absolutely positioned ::after on each control. It was lost three ways: a strip with overflow: hidden (the view tabs) cut it; inline style all: unset on a text-like button removed position: relative, so the extension sized to the page; and WebKit's rounding left it at 43px. Each surfaced only because the check measures the extension clipped by its ancestors, not the drawn box.
+**Rule:** a container of controls never hides its overflow (round its end children instead); a text-like button uses .text-button, never inline all: unset; the extension's insets carry a 1px margin for rounding. The check measures the hit area the browser will actually route, ancestors' clipping included.
+
+## A rule inside a media query loses to a more specific rule outside it (2026-10-01, batch 15 step 5)
+Two narrow-width rules did nothing: .desk-only tables still showed on phones because section.card > table set display with higher specificity, and table.dense select kept its 24px height below 1024 over the media query's td select. A media query adds no specificity.
+**Rule:** a narrow-width override is written with at least the specificity of the widest rule it overrides (or !important for a pure show/hide utility), and the check, not the stylesheet, is the proof it took.

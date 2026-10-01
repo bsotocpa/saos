@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, isAuthed } from '../../../lib/api';
 import { useAsk } from '../../../components/ask';
+import { Breakable } from '../../../lib/breakable';
 
 interface Automation {
   key: string;
@@ -115,7 +116,7 @@ export default function AutomationsPage() {
                 </span>
               ) : null}
               <br />
-              <span className="muted small" style={{ overflowWrap: 'anywhere' }}>{a.description}</span>
+              <span className="muted small"><Breakable text={a.description} /></span>
               <br />
               <span className="muted small">
                 <code>{a.key}</code>

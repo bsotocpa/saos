@@ -133,10 +133,12 @@ export default function StaffAdminPage() {
       ) : null}
 
       <div className="cards">
-        <section className="card span-narrow">
+        {/* The Team table spans the row at every width (2026-10-01): at 1440 half a row clipped "Change role…" to 34px. */}
+        <section className="card span">
           <h2>Team</h2>
           <div className="tablewrap">
-          <table>
+          {/* R105/R113 (2026-10-01): stacked cards below 768, the table at 768 and wider. */}
+          <table className="stack">
             <thead><tr><th>Name</th><th>Role</th><th>MFA</th><th>Status</th><th /></tr></thead>
             <tbody>
               {staff.map((s) => (
@@ -162,32 +164,34 @@ export default function StaffAdminPage() {
                       </>
                     )}
                   </td>
-                  <td>
+                  <td data-label="Role">
                     <span data-testid="role-name">{roleName(s.role)}</span>
                     {isLastActiveCeo(s) ? (
                       <><br /><span className="muted small">the only active CEO</span></>
                     ) : (
-                      <select
-                        aria-label={`Change role for ${s.display_name}`}
-                        value=""
-                        onChange={(e) => act(`role:${s.id}`, async () => {
-                          const next = e.target.value;
-                          if (!next) return;
-                          await api(`/staff/${s.id}`, { method: 'PATCH', body: { roleKey: next } });
-                          setMessage(`${s.display_name} → ${roleName(next)} (audited as permission.change).`);
-                          await load();
-                        })}
-                      >
-                        <option value="">Change role…</option>
-                        {holdable.filter((r) => r.key !== s.role).map((r) => (
-                          <option key={r.key} value={r.key}>{r.name}</option>
-                        ))}
-                      </select>
+                      <label className="tap-field">
+                        <select
+                          aria-label={`Change role for ${s.display_name}`}
+                          value=""
+                          onChange={(e) => act(`role:${s.id}`, async () => {
+                            const next = e.target.value;
+                            if (!next) return;
+                            await api(`/staff/${s.id}`, { method: 'PATCH', body: { roleKey: next } });
+                            setMessage(`${s.display_name} → ${roleName(next)} (audited as permission.change).`);
+                            await load();
+                          })}
+                        >
+                          <option value="">Change role…</option>
+                          {holdable.filter((r) => r.key !== s.role).map((r) => (
+                            <option key={r.key} value={r.key}>{r.name}</option>
+                          ))}
+                        </select>
+                      </label>
                     )}
                     {errAt(`role:${s.id}`)}
                   </td>
-                  <td>{s.totp_enabled ? <span className="badge ok">on</span> : <span className="badge warn">pending</span>}</td>
-                  <td>{s.is_active ? <span className="badge ok">active</span> : <span className="badge danger">off</span>}</td>
+                  <td data-label="MFA">{s.totp_enabled ? <span className="badge ok">on</span> : <span className="badge warn">pending</span>}</td>
+                  <td data-label="Status">{s.is_active ? <span className="badge ok">active</span> : <span className="badge danger">off</span>}</td>
                   <td style={{ width: 180 }}>
                     <div style={{ display: 'grid', gap: 4 }}>
                       <button className="btn ghost" type="button" onClick={() => (editing === s.id ? setEditing(null) : startEdit(s))}>

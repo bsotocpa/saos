@@ -92,10 +92,10 @@ export default function DocumentChecklistAdminPage() {
                   <textarea rows={2} value={d.labelEs} onChange={(e) => setDraft(r, { labelEs: e.target.value })} />
                 </label>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <label className="small">Order
+                  <label className="small tap-field">Order
                     <input type="number" style={{ width: 90 }} value={d.sortOrder} onChange={(e) => setDraft(r, { sortOrder: e.target.value })} />
                   </label>
-                  <label className="small"><input type="checkbox" checked={d.active} onChange={(e) => setDraft(r, { active: e.target.checked })} /> Asked for</label>
+                  <label className="small tap-field"><input type="checkbox" checked={d.active} onChange={(e) => setDraft(r, { active: e.target.checked })} /> Asked for</label>
                   {drafts[r.id] ? <button className="btn" type="button" onClick={() => void save(r)}>Save</button> : null}
                 </div>
                 {errAt(r.id)}

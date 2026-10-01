@@ -53,7 +53,8 @@ export default function SettingsAdminPage() {
       <h1>Settings</h1>
       {message ? <p className="alert info">{message}</p> : null}
       <section className="card">
-        <table>
+        {/* R105/R113 (2026-10-01): stacked cards below 768; the value field's label is its 44px target. */}
+        <table className="stack">
           <thead><tr><th>Setting</th><th>Value</th><th style={{ width: 80 }} /></tr></thead>
           <tbody>
             {settings.map((s) => (
@@ -63,11 +64,14 @@ export default function SettingsAdminPage() {
                   <br />
                   <span className="muted small">{s.description}</span>
                 </td>
-                <td style={{ width: 260 }}>
-                  <input
-                    value={drafts[s.key] ?? JSON.stringify(s.value)}
-                    onChange={(e) => setDrafts({ ...drafts, [s.key]: e.target.value })}
-                  />
+                <td style={{ width: 260 }} data-label="Value">
+                  <label className="tap-field">
+                    <input
+                      aria-label={`Value for ${s.key}`}
+                      value={drafts[s.key] ?? JSON.stringify(s.value)}
+                      onChange={(e) => setDrafts({ ...drafts, [s.key]: e.target.value })}
+                    />
+                  </label>
                 </td>
                 <td>
                   {drafts[s.key] !== undefined ? (

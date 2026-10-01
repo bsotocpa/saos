@@ -109,6 +109,8 @@ Done means 375, 768 and 1440 in Chromium and WebKit, every step screenshotted an
 - **Selects and inputs take the full width of their container below 768** and never truncate their label.
 - **An action group of more than two buttons below 768** shows the primary action and a "More" menu.
 - **Portal checklist items:** the item name on its own full-width line, its status chip beside or under it, the upload control full width beneath.
+- **44px by hit area, not by size (R113, 2026-10-01).** A control reaches 44px through padding or an invisible extension of its target (`::after`), never by drawing every button bigger. At 1440 Ops looks as it did; at 375 the controls get room. Pricing, Templates and Settings are stacked cards below 768 only.
+- **Table rows (R114, 2026-10-01).** Below 1024 a table row with controls is at least 44px tall and its controls reach 44px. At 1024 and wider tables stay dense: a control inside a table cell needs 24px (WCAG 2.5.8); every other control 44px.
 
 ### The design plugin (Brian, 2026-09-20, standing rule R26)
 - **Never authorize the design plugin's servers** (Asana, Figma, Intercom, Linear) in a SAOS session. The project settings file disables the plugin; if a session still lists them, they stay unauthenticated and no restart is spent on it.

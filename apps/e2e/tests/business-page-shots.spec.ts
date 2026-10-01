@@ -33,8 +33,9 @@ const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixt
 const API = `http://127.0.0.1:${fixtures.port}`;
 const SHOTS = 'C:\\Users\\brian\\saos-shots\\business-page';
 const WIDTHS: Array<{ width: number; height: number }> = [
-  { width: 390, height: 844 },
-  { width: 1280, height: 800 },
+  { width: 375, height: 812 },
+  { width: 768, height: 1024 },
+  { width: 1440, height: 900 },
 ];
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
 const PDF = { mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 synthetic harness document — no real client data\n%%EOF') };
@@ -112,7 +113,7 @@ async function businessIn(token: string, state: State): Promise<{ contactId: str
   return { contactId: contact.id, businessId: business.id, name };
 }
 
-test('the business page, with engagements and empty, at 390 and 1280', async ({ page }, testInfo) => {
+test('the business page, with engagements and empty, at 375, 768 and 1440', async ({ page }, testInfo) => {
   test.skip(testInfo.project.use.viewport?.width !== 1440, 'one project sets the two widths itself (in both 1440 projects: Chromium and WebKit)');
   test.setTimeout(600_000);
   mkdirSync(SHOTS, { recursive: true });

@@ -153,10 +153,10 @@ export default function TemplatesAdminPage() {
           {t.name} {kindBadge(t)}
           <div className="muted small">{t.key}</div>
         </td>
-        <td className="muted small">{t.channel}</td>
-        <td>{t.is_placeholder ? <span className="badge danger">PLACEHOLDER</span> : <span className="badge ok">live</span>}</td>
-        <td title={es.note}><span className={es.className}>{es.badge}</span></td>
-        <td className="muted small">{t.version}</td>
+        <td className="muted small" data-label="Channel">{t.channel}</td>
+        <td data-label="Status">{t.is_placeholder ? <span className="badge danger">PLACEHOLDER</span> : <span className="badge ok">live</span>}</td>
+        <td title={es.note} data-label="Spanish"><span className={es.className}>{es.badge}</span></td>
+        <td className="muted small" data-label="Version">{t.version}</td>
         <td style={{ width: 190 }}>
           <button className="btn ghost" type="button" onClick={() => setEditing(t)}>Edit</button>{' '}
           {t.needs_es_review && t.body_es ? (
@@ -170,8 +170,9 @@ export default function TemplatesAdminPage() {
     );
   };
 
+  // R105/R113 (2026-10-01): stacked cards below 768, the table it was at 768 and wider.
   const table = (rows: Template[]) => (
-    <table>
+    <table className="stack">
       <thead>
         <tr><th>Template</th><th>Channel</th><th>Status</th><th>Spanish</th><th>v</th><th /></tr>
       </thead>
