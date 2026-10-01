@@ -2220,3 +2220,11 @@ Run 54 ran across 19:00 Chicago on the last day of September (00:16 UTC on 2026-
 ## Wait for the page before typing into it (2026-09-30, receipt run 54, R7)
 Run 54's ops-add-client at 390 sent the duplicate check with the email and phone but no name: the walk opened Add a client 77 ms after navigating, and the directory's own list load landed between the first-name and last-name fills; the names were lost from the form's state, the fields typed after the load survived. The exact React mechanism was not pinned down (the modal does not remount on the list load).
 **Rule:** a walk opens a form after the page's own load has finished (no "Loading…") and reads every field back with toHaveValue before the next step.
+
+## A new control's words are read by every walk that reads the old one's (2026-10-01, receipt run 57, R7)
+Run 57 (the first six-project receipt) was red in every project on four walks: R107's note in Details read "Current $200.00", and Playwright's getByText matches case-insensitively, so the walks' getByText('current $200.00') (the stepper's own line) found two elements. The note now reads "Fee on file: $X".
+**Rule:** before adding a control or a sentence beside an existing one, grep the walks for the existing words; a new line never repeats words a walk already uses to find another.
+
+## A fixture dated "two days ago" is not "this month" (2026-10-01, receipt run 57, R7)
+The same run's API red: dashboards.spec paid an invoice "now() - 2 days" and expected it in MTD; run just after midnight on October 1 in Chicago, two days ago was September, and MTD (rightly, since R104) left it out. The test now pays it now().
+**Rule:** a fixture that must fall inside today's month, week or year is dated now (or the boundary instant itself), never a fixed offset that crosses a boundary near the start of the period.

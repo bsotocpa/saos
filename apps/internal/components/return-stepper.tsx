@@ -220,7 +220,7 @@ function StepperBody({ taxEngagementId, contactId, stage, detail, canManage, err
             <div>
               <button type="button" className="btn small ghost" data-testid="details-set-final-fee" onClick={() => void actions.setFinalFee()}>Set final fee</button>
               <p className="muted small">
-                {te.final_fee_cents !== null && te.final_fee_cents !== undefined ? `Current ${formatMoney(te.final_fee_cents)}. ` : ''}
+                {te.final_fee_cents !== null && te.final_fee_cents !== undefined ? `Fee on file: ${formatMoney(te.final_fee_cents)}. ` : ''}
                 {CONTROL_SENTENCES.fee}
               </p>
             </div>

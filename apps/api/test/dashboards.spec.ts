@@ -77,10 +77,11 @@ before(async () => {
     );
   }
 
-  // Invoices: one paid this month, one unpaid aged 45 days.
+  // Invoices: one paid this month, one unpaid aged 45 days. Paid NOW, not "two days ago" (receipt run 57,
+  // 2026-10-01): on the first two days of a month two days ago is last month, and MTD rightly leaves it out.
   await app.db.query(
     `INSERT INTO invoices (invoice_number, contact_id, status, subtotal_cents, total_cents, amount_paid_cents, sent_at, paid_at)
-     VALUES ('SA-2026-8001', $1, 'paid', 38000, 38000, 38000, now() - interval '3 days', now() - interval '2 days'),
+     VALUES ('SA-2026-8001', $1, 'paid', 38000, 38000, 38000, now() - interval '3 days', now()),
             ('SA-2026-8002', $2, 'sent', 25000, 25000, 0, now() - interval '45 days', NULL)`,
     [green, red]
   );

@@ -143,8 +143,8 @@ test('I1–I5: the Documents page by return, a withdrawn return in one line, the
     await dialog.getByLabel('Reason').fill('Synthetic: the client added two rental properties after the quote.');
     await dialog.getByRole('button', { name: 'Set final fee', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(details).toContainText('Current $99,999.00');
-    steps.push(`I5|Ops /clients/:id stepper Details: data-testid details-set-final-fee "Set final fee" on a return in Engage — outside the quoted range the modal refuses without a reason, with one the fee is set ("Current $99,999.00")|${ROLES}|tap`);
+    await expect(details).toContainText('Fee on file: $99,999.00');
+    steps.push(`I5|Ops /clients/:id stepper Details: data-testid details-set-final-fee "Set final fee" on a return in Engage — outside the quoted range the modal refuses without a reason, with one the fee is set ("Fee on file: $99,999.00")|${ROLES}|tap`);
 
     await page.screenshot({ path: shot, fullPage: true });
     passed = true;
