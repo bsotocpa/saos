@@ -169,7 +169,13 @@ main:has(.task-layout) { max-width: 1500px; }
    column stretches the COLUMN instead of scrolling inside it, and the whole page goes sideways
    (harness page three, 2026-09-10: 1351px of document in a 1280px window). */
 .task-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 14px; align-items: start; }
-@media (max-width: 900px) { .task-layout { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .task-layout { grid-template-columns: minmax(0, 1fr); } }
+/* R105 rule 2 (2026-09-30): a grid child never takes its content's minimum width; the table scrolls in
+   its own wrapper instead of widening the page (Tasks at 768 was 1,136px wide). */
+.task-layout > * { min-width: 0; }
+/* R105 (2026-09-30): a card that holds a table spans the row below 1024, so the table is not squeezed
+   into half a row and spilled over the card beside it (Staff at 768). */
+@media (max-width: 1023px) { .cards > .card.span-narrow { grid-column: 1 / -1; } }
 
 .rail { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; position: sticky; top: 90px; max-height: calc(100vh - 110px); overflow-y: auto; }
 .rail h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 12px 0 4px; }

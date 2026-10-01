@@ -334,3 +334,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--electric); 
 .list li.withdrawn-row { display: block; }
 .withdrawn-line > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; list-style-position: inside; }
 .withdrawn-line > p { margin: 4px 0 0; }
+
+/* R113 (2026-09-30): a field is a 44px target too; the text fields and selects reach it by height. */
+input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), select { min-height: 44px; }

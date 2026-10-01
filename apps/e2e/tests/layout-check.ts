@@ -132,11 +132,15 @@ export async function checkLayout(page: Page): Promise<LayoutFailure[]> {
           left: Math.min(box.left, r.left + px(after.left)),
           right: Math.max(box.right, r.right - px(after.right)),
         };
+        // A scroll container clips only across its scroll axis: what is scrolled out of view along it is
+        // reached by scrolling (the portal's nav strip), so it is measured whole along that axis.
+        const scrolls = (v: string) => v === 'auto' || v === 'scroll';
         for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
           const cs = getComputedStyle(a);
           if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
           const ar = a.getBoundingClientRect();
-          box = { top: Math.max(box.top, ar.top), bottom: Math.min(box.bottom, ar.bottom), left: Math.max(box.left, ar.left), right: Math.min(box.right, ar.right) };
+          if (!scrolls(cs.overflowX)) box = { ...box, left: Math.max(box.left, ar.left), right: Math.min(box.right, ar.right) };
+          if (!scrolls(cs.overflowY)) box = { ...box, top: Math.max(box.top, ar.top), bottom: Math.min(box.bottom, ar.bottom) };
         }
       }
       r = new DOMRect(box.left, box.top, box.right - box.left, box.bottom - box.top);

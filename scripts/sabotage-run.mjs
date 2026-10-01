@@ -38,17 +38,19 @@ function runApi(spec, app = 'api') {
   const failed = [...out.matchAll(/^✖ (.+?) \(/gm)].map((m) => m[1]).filter((n) => !n.startsWith('C:'));
   return { pass: /ℹ pass (\d+)/.exec(out)?.[1] ?? '?', fail: /ℹ fail (\d+)/.exec(out)?.[1] ?? '?', failed: [...new Set(failed)] };
 }
-function runHarness(spec) {
+function runHarness(spec, projects = ['webkit-375', 'chromium-1440']) {
   let out = '';
   // The harness boots two Next apps and the API on fixed ports; a run that starts before the previous
   // one's servers have let go prints no result line at all. One retry after a pause, then the truth.
   for (let attempt = 0; attempt < 2; attempt++) {
-    const r = spawnSync('npx', ['playwright', 'test', spec], { cwd: resolve(root, 'apps', 'e2e'), encoding: 'utf8', shell: true });
+    // R106 (2026-09-30): each project on its own fresh harness (run-harness.mjs); a manifest names the
+    // projects (test.projects), by default the narrow WebKit and the wide Chromium.
+    const r = spawnSync('node', ['run-harness.mjs', spec, ...projects], { cwd: resolve(root, 'apps', 'e2e'), encoding: 'utf8', shell: true });
     out = (r.stdout ?? '') + (r.stderr ?? '');
     if (/\d+ (passed|failed)/.test(out)) break;
     spawnSync('node', ['-e', 'setTimeout(() => {}, 15000)'], { shell: true });
   }
-  const failed = [...out.matchAll(/^\s+(?:x|✘)\s+\d+\s+\[(\w+)\][^\n]*›\s*([^\n]+)/gm)].map((m) => `${m[2].trim()} [${m[1]}]`);
+  const failed = [...out.matchAll(/^\s+(?:x|✘)\s+\d+\s+\[([\w-]+)\][^\n]*›\s*([^\n]+)/gm)].map((m) => `${m[2].trim()} [${m[1]}]`);
   return { pass: /(\d+) passed/.exec(out)?.[1] ?? '0', fail: /(\d+) failed/.exec(out)?.[1] ?? '0', failed: [...new Set(failed)] };
 }
 /** A build guard: an npm script that must exit non-zero once the guarded shape is back in the tree. */
@@ -59,7 +61,7 @@ function runGuard(script) {
   return { pass: r.status === 0 ? '1' : '0', fail: r.status === 0 ? '0' : String(Math.max(1, failed.length)), failed };
 }
 // 'internal' (2026-09-27): an Ops unit test, run the way the API's are, from apps/internal.
-const run = (t) => (t.kind === 'harness' ? runHarness(t.spec) : t.kind === 'guard' ? runGuard(t.spec) : t.kind === 'internal' ? runApi(t.spec, 'internal') : runApi(t.spec));
+const run = (t) => (t.kind === 'harness' ? runHarness(t.spec, t.projects) : t.kind === 'guard' ? runGuard(t.spec) : t.kind === 'internal' ? runApi(t.spec, 'internal') : runApi(t.spec));
 const cell = (s) => String(s ?? '').replace(/\|/g, '/').replace(/\s+/g, ' ').trim();
 const log = (cols) => { const line = [date, ...cols].map(cell).join(' | '); appendFileSync(logFile, line + '\n'); console.log(line); };
 
@@ -76,7 +78,8 @@ for (const s of items) {
   const restored = readFileSync(f, 'utf8') === original;
   log([s.item, s.file, s.change, `${s.test.kind}: ${s.test.spec}`, s.test.kind === 'harness' ? 'yes' : 'no',
     hit ? `RED as expected (${red.fail} failed: ${red.failed.slice(0, 3).join('; ')})` : `NOT RED (${red.fail} failed: ${red.failed.slice(0, 3).join('; ')})`,
-    restored && green.fail === '0' ? `green (${green.pass} passed)` : `NOT GREEN (${green.fail} failed: ${green.failed.slice(0, 3).join('; ')}${restored ? '' : '; file not byte-identical'})`]);
-  if (!hit || green.fail !== '0' || !restored) failedRun = true;
+    restored && green.fail === '0' && green.pass !== '0' ? `green (${green.pass} passed)` : `NOT GREEN (${green.fail} failed: ${green.failed.slice(0, 3).join('; ')}${restored ? '' : '; file not byte-identical'})`]);
+  // A run that ran nothing proves nothing (batch 15: a misrouted spec ran no walk and read "green").
+  if (!hit || green.fail !== '0' || green.pass === '0' || !restored) failedRun = true;
 }
 process.exit(failedRun ? 1 : 0);

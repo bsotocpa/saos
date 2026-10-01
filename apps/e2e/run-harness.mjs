@@ -10,6 +10,7 @@
  *
  *   node run-harness.mjs                 all six
  *   node run-harness.mjs webkit-375 ...  just those
+ *   node run-harness.mjs tests/x.spec.ts webkit-375 chromium-1440   those walks, in those projects
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -18,15 +19,17 @@ import { fileURLToPath } from 'node:url';
 
 export const PROJECTS = ['chromium-375', 'chromium-768', 'chromium-1440', 'webkit-375', 'webkit-768', 'webkit-1440'];
 const here = dirname(fileURLToPath(import.meta.url));
-const chosen = process.argv.slice(2).filter((a) => !a.startsWith('-'));
-const extra = process.argv.slice(2).filter((a) => a.startsWith('-'));
+const args = process.argv.slice(2);
+const chosen = args.filter((a) => !a.startsWith('-') && !a.endsWith('.ts'));
+// Spec files (…/x.spec.ts) narrow every project's run to those walks: a sabotage, or a rerun of a few.
+const extra = [...args.filter((a) => a.endsWith('.ts')), ...args.filter((a) => a.startsWith('-'))];
 const projects = chosen.length ? chosen : PROJECTS;
 const results = [];
 const started = Date.now();
 for (const [i, project] of projects.entries()) {
   const runFile = resolve(here, '.artifacts', `run-${project}.json`);
   const t0 = Date.now();
-  const r = spawnSync('npx', ['playwright', 'test', '--project', project, ...extra], {
+  const r = spawnSync('npx', ['playwright', 'test', ...extra, '--project', project], {
     cwd: here, stdio: 'inherit', shell: true,
     env: { ...process.env, E2E_RUN_FILE: runFile, E2E_REUSE_BUILD: i === 0 ? '0' : '1' },
   });

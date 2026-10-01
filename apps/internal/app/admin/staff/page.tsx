@@ -133,8 +133,9 @@ export default function StaffAdminPage() {
       ) : null}
 
       <div className="cards">
-        <section className="card">
+        <section className="card span-narrow">
           <h2>Team</h2>
+          <div className="tablewrap">
           <table>
             <thead><tr><th>Name</th><th>Role</th><th>MFA</th><th>Status</th><th /></tr></thead>
             <tbody>
@@ -277,6 +278,7 @@ export default function StaffAdminPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </section>
 
         <section className="card">
