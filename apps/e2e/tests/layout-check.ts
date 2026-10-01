@@ -119,6 +119,14 @@ export async function checkLayout(page: Page): Promise<LayoutFailure[]> {
         const label = el.closest('label');
         if (label) r = label.getBoundingClientRect();
       }
+      // A field inside its label: tapping the label's words focuses the field, so the label is the target.
+      if ((el instanceof HTMLInputElement && !['checkbox', 'radio', 'file'].includes(el.type)) || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
+        const label = el.closest('label');
+        if (label) {
+          const lr = label.getBoundingClientRect();
+          r = new DOMRect(Math.min(r.left, lr.left), Math.min(r.top, lr.top), Math.max(r.right, lr.right) - Math.min(r.left, lr.left), Math.max(r.bottom, lr.bottom) - Math.min(r.top, lr.top));
+        }
+      }
       // R113: a hit area enlarged by an invisible extension (an absolutely positioned ::after with
       // negative insets) is the target, as the browser hit-tests it; clipped by any ancestor that hides
       // its overflow, because a tap there lands on nothing.
