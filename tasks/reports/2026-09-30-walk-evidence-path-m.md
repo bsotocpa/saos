@@ -1,11 +1,11 @@
 # walk-evidence-path-m (2026-09-30)
 
-Generated 2026-09-30T22:14:23.939Z by scripts/report-table.mjs from the log walk-m.log; 12 row(s).
+Generated 2026-10-01T00:38:33.876Z by scripts/report-table.mjs from the log walk-m.log; 12 row(s).
 
 R65 (2026-09-26): MFA recovery codes and Reset MFA (ops-mfa-recovery.spec.ts). M1 creates a staff member through Add staff, signs in with the temporary password and reads the eight codes on the enrolment screen behind "I saved these"; M2 signs in with one code, reads the mfa_recovery_used task and the Ops alert through the CEO API, and is refused with the same code again; M3 is the CEO's Reset MFA with a reason on the row, then the member's next sign-in on the enrolment screen; M4 is the role proof, comms_billing with no control and the route refused 403; M5 (R71, 2026-09-27) reads the three staff mails the walk produced from the harness mailbox (the temporary-password notice, the recovery-code alert to the CEO, the reset notice), opens each Ops sign-in link and signs the member in to enrolment; the notice never carries the password.
 
 ```sql
-node scripts/walk-evidence.mjs M  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 137 passed, 0 failed)
+node scripts/walk-evidence.mjs M  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 139 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |

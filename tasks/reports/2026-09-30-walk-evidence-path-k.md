@@ -1,11 +1,11 @@
 # walk-evidence-path-k (2026-09-30)
 
-Generated 2026-09-30T22:14:25.154Z by scripts/report-table.mjs from the log walk-k.log; 4 row(s).
+Generated 2026-10-01T00:38:35.409Z by scripts/report-table.mjs from the log walk-k.log; 4 row(s).
 
 Counts as (R96, 2026-09-29): ops-counts-as.spec.ts at 390 and 1280, the CEO fixture in Ops and the client in the portal, on a synthetic client per viewport with an accepted 1040 (its checklist open) and two files already on file (apps/api/scripts/e2e-fixtures/counts-as.ts). Every match is a tap.
 
 ```sql
-node scripts/walk-evidence.mjs K  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 137 passed, 0 failed)
+node scripts/walk-evidence.mjs K  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 139 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |

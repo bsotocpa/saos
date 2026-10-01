@@ -1,19 +1,19 @@
 # walk-evidence-path-b (2026-09-30)
 
-Generated 2026-09-30T22:14:22.306Z by scripts/report-table.mjs from the log walk-b.log; 64 row(s).
+Generated 2026-10-01T00:38:31.495Z by scripts/report-table.mjs from the log walk-b.log; 64 row(s).
 
 The 1040 on extension with IL filed on paper, on the migrated-client fixture; B1 is the fixture person, whose Add a client tap is cleared in ops-add-client.spec.ts; how=api rows are the two Stripe events.
 
 ```sql
-node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 137 passed, 0 failed)
+node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 139 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
 |---|---|---|---|---|---|---|---|---|---|
 | B1 | Contact created | laptop | /clients button "Add a client", form#add-client-form, duplicate warning with link, button "Add client" | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:61 | phone | passed | tap | yes |
-| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:129 | phone | passed | tap | yes |
+| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:141 | phone | passed | tap | yes |
 | B1 | Contact created | laptop | /clients button "Add a client", form#add-client-form, duplicate warning with link, button "Add client" | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:61 | desk | passed | tap | yes |
-| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:129 | desk | passed | tap | yes |
+| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:141 | desk | passed | tap | yes |
 | B1 | Contact created | laptop | this walk's person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts; the "Add a client" tap is cleared in ops-add-client.spec.ts | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:173 | phone | passed | fixture | NO |
 | B1 | Contact created | laptop | this walk's person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts; the "Add a client" tap is cleared in ops-add-client.spec.ts | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:173 | desk | passed | fixture | NO |
 | B2 | Quote built and sent | laptop | /pipeline button "New quote" → "Client or lead" search + the client's chip → "Filter by name, form number or group" + the price-book rows' "Add" for the base return and its schedule → button "Create and send" | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:173 | phone | passed | tap | yes |

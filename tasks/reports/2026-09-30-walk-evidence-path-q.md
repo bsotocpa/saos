@@ -1,11 +1,11 @@
 # walk-evidence-path-q (2026-09-30)
 
-Generated 2026-09-30T22:14:22.762Z by scripts/report-table.mjs from the log walk-q.log; 16 row(s).
+Generated 2026-10-01T00:38:32.087Z by scripts/report-table.mjs from the log walk-q.log; 16 row(s).
 
 The Quotes card (R39): Q1 to Q4 are the CEO taps at 390 and 1280; the role proof is ed_coo, who reads the card and holds no quotes.manage.
 
 ```sql
-node scripts/walk-evidence.mjs Q  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 137 passed, 0 failed)
+node scripts/walk-evidence.mjs Q  (reads apps/e2e/.artifacts/last-run.json from the full harness run of 2026-09-30: 139 passed, 0 failed)
 ```
 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
