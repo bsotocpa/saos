@@ -100,6 +100,15 @@
 ### The October change freeze (Brian, 2026-09-30, dated rule R98: 2026-10-08 through 2026-10-16)
 - **From 2026-10-08 through 2026-10-16, deploy only fixes to defects that block filing work** — a return that can't advance, a portal that can't sign or upload, an ack that can't release, an invoice that can't be paid — each with Brian's written go. Everything else is built and receipted but waits for 2026-10-17.
 - **The freeze-fix branch (Brian, 2026-09-30, R103).** During the freeze a filing-blocking fix is built on a branch cut from the deployed commit (3fa030c unless a later freeze fix moved it), receipted on its own, deployed from that branch only with Brian's written go, then merged into main. main's HEAD (which carries work waiting for 2026-10-17) is never what a freeze deploy ships.
+- **Freeze branches carry test-only commits (Brian, 2026-09-30, R112).** A freeze branch may also carry every commit since its base that touches only tests, the harness, fixtures, root checks or reports, so its receipt is honest. A commit that touches anything that ships still needs Brian's written go.
+
+### Responsive layout (Brian, 2026-09-30, standing rule R105)
+Done means 375, 768 and 1440 in Chromium and WebKit, every step screenshotted and reviewed as a first-time phone user, tap targets at least 44px, the primary action visible without scrolling. The harness layout check (R106) enforces it.
+- **No fixed-width table for a list of records at narrow widths.** Below 768 a row becomes a stacked card: name and status on top, details beneath, actions in a row that wraps.
+- **Every flex or grid child that holds text has `min-width: 0` and wraps on word boundaries, never per letter.** Buttons never wrap mid-word; they wrap as whole buttons onto the next line.
+- **Selects and inputs take the full width of their container below 768** and never truncate their label.
+- **An action group of more than two buttons below 768** shows the primary action and a "More" menu.
+- **Portal checklist items:** the item name on its own full-width line, its status chip beside or under it, the upload control full width beneath.
 
 ### The design plugin (Brian, 2026-09-20, standing rule R26)
 - **Never authorize the design plugin's servers** (Asana, Figma, Intercom, Linear) in a SAOS session. The project settings file disables the plugin; if a session still lists them, they stay unauthenticated and no restart is spent on it.
