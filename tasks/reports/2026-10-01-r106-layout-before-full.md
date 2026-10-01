@@ -1,6 +1,6 @@
 # r106-layout-before-full (2026-10-01)
 
-Generated 2026-10-01T02:30:25.763Z by scripts/report-table.mjs from the log layout-before-full.log; 12294 row(s).
+Generated 2026-10-01T02:45:42.384Z by scripts/report-table.mjs from the log layout-before-full.log; 12542 row(s).
 
 ```sql
 the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report): every Ops and portal page at 375, 768 and 1440 in Chromium and WebKit through apps/e2e/tests/layout-check.ts; the failures in apps/e2e/.artifacts/layout-failures.jsonl
@@ -1683,38 +1683,38 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /approvals | 375 | chromium | tap-target | button "Approve & send" | 127×36px |
 | ops /approvals | 375 | chromium | tap-target | button "Edit" | 48×29px |
 | ops /approvals | 375 | chromium | tap-target | button "Re-draft" | 75×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Executive" | 77×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Clients" | 60×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Documents" | 87×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "My Tasks" | 76×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "My Queue" | 81×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "E-file acks" | 82×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Inbox" | 52×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Pipeline" | 67×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Reports" | 66×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Configurator" | 95×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Approvals" | 79×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Announcements" | 116×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "SOPs" | 52×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Events" | 60×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Hilo Ops" | 70×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Alerts" | 54×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Deliver Return" | 104×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Recorder" | 74×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Automations" | 94×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Pricing" | 61×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Templates" | 81×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Document checklist" | 137×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Staff" | 48×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Settings" | 68×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "WISP" | 52×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Account" | 69×29px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Synthetic LayoutChromium375" | 182×15px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | button[data-testid=edit-business-57b3425b-7e45-4654-b590-260fffaf7aa6] "Edit business" | 99×32px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a[data-testid=owner-link-54388adf-0b94-4a1f-81c7-c7f56253bde4] "Synthetic LayoutChromium375" | 197×16px |
-| ops /businesses/57b3425b-7e45-4654-b590-260fffaf7aa6 | 375 | chromium | tap-target | a "Every document for the owner" | 179×15px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Executive" | 77×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Clients" | 60×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Documents" | 87×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "My Tasks" | 76×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "My Queue" | 81×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "E-file acks" | 82×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Inbox" | 52×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Pipeline" | 67×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Reports" | 66×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Configurator" | 95×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Approvals" | 79×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Announcements" | 116×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "SOPs" | 52×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Events" | 60×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Hilo Ops" | 70×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Alerts" | 54×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Deliver Return" | 104×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Recorder" | 74×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Automations" | 94×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Pricing" | 61×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Templates" | 81×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Document checklist" | 137×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Staff" | 48×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Settings" | 68×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "WISP" | 52×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Account" | 69×29px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Synthetic LayoutChromium375" | 182×15px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | button[data-testid=edit-business-601224b5-6992-4530-ab19-6e8c9985e76e] "Edit business" | 99×32px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a[data-testid=owner-link-732cfd82-7565-45a6-8e91-fcff8d8916af] "Synthetic LayoutChromium375" | 197×16px |
+| ops /businesses/601224b5-6992-4530-ab19-6e8c9985e76e | 375 | chromium | tap-target | a "Every document for the owner" | 179×15px |
 | ops /clients | 375 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
 | ops /clients | 375 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /clients | 375 | chromium | tap-target | a "Executive" | 77×29px |
@@ -1748,57 +1748,57 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /clients | 375 | chromium | tap-target | button "Add a client" | 102×36px |
 | ops /clients | 375 | chromium | tap-target | button "← Previous" | 100×38px |
 | ops /clients | 375 | chromium | tap-target | button "Next →" | 75×38px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Executive" | 77×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Clients" | 60×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Documents" | 87×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "My Tasks" | 76×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "My Queue" | 81×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "E-file acks" | 82×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Inbox" | 52×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Pipeline" | 67×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Reports" | 66×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Configurator" | 95×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Approvals" | 79×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Announcements" | 116×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "SOPs" | 52×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Events" | 60×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Hilo Ops" | 70×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Alerts" | 54×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Deliver Return" | 104×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Recorder" | 74×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Automations" | 94×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Pricing" | 61×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Templates" | 81×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Document checklist" | 137×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Staff" | 48×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Settings" | 68×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "WISP" | 52×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Account" | 69×29px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Flag as a test record…" | 150×32px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Resend sign-in link" | 150×38px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Add a business" | 111×32px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a[data-testid=business-link-57b3425b-7e45-4654-b590-260fffaf7aa6] "Synthetic Layout LayoutChromium375 Studi" | 318×16px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button[data-testid=edit-business-57b3425b-7e45-4654-b590-260fffaf7aa6] "Edit" | 44×32px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Clear primary" | 101×32px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Archive" | 67×32px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | select[data-testid=counts-as-select-65e0cbb5-9f82-4855-865c-d18eb76e1df6] "Counts as…" | 319×35px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button[data-testid=counts-as-save-65e0cbb5-9f82-4855-865c-d18eb76e1df6] "Save" | 50×32px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | select[data-testid=counts-as-select-247ed35f-4f72-44ed-91b6-2a1e2cb85bfc] "Counts as…" | 319×35px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button[data-testid=counts-as-save-247ed35f-4f72-44ed-91b6-2a1e2cb85bfc] "Save" | 50×32px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | a "Open" | 53×32px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Create engagement packet" | 198×36px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Hold" | 49×32px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Close" | 55×32px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Withdraw" | 78×32px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | summary "send log" | 325×19px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Send reminder ($150.00)" | 186×38px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Send the pay link…" | 150×38px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Void…" | 71×38px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | select "Not specific to one" | 325×35px |
-| ops /clients/54388adf-0b94-4a1f-81c7-c7f56253bde4 | 375 | chromium | tap-target | button "Request a meeting" | 145×36px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Executive" | 77×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Clients" | 60×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Documents" | 87×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "My Tasks" | 76×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "My Queue" | 81×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "E-file acks" | 82×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Inbox" | 52×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Pipeline" | 67×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Reports" | 66×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Configurator" | 95×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Approvals" | 79×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Announcements" | 116×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "SOPs" | 52×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Events" | 60×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Hilo Ops" | 70×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Alerts" | 54×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Deliver Return" | 104×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Recorder" | 74×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Automations" | 94×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Pricing" | 61×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Templates" | 81×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Document checklist" | 137×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Staff" | 48×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Settings" | 68×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "WISP" | 52×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Account" | 69×29px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Flag as a test record…" | 150×32px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Resend sign-in link" | 150×38px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Add a business" | 111×32px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a[data-testid=business-link-601224b5-6992-4530-ab19-6e8c9985e76e] "Synthetic Layout LayoutChromium375 Studi" | 318×16px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button[data-testid=edit-business-601224b5-6992-4530-ab19-6e8c9985e76e] "Edit" | 44×32px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Clear primary" | 101×32px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Archive" | 67×32px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | select[data-testid=counts-as-select-8ebc4926-217f-4196-a535-a773a20e692b] "Counts as…" | 319×35px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button[data-testid=counts-as-save-8ebc4926-217f-4196-a535-a773a20e692b] "Save" | 50×32px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | select[data-testid=counts-as-select-ff52281c-29b4-4fc5-bd58-4825da7c0392] "Counts as…" | 319×35px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button[data-testid=counts-as-save-ff52281c-29b4-4fc5-bd58-4825da7c0392] "Save" | 50×32px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | a "Open" | 53×32px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Create engagement packet" | 198×36px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Hold" | 49×32px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Close" | 55×32px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Withdraw" | 78×32px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | summary "send log" | 325×19px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Send reminder ($150.00)" | 186×38px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Send the pay link…" | 150×38px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Void…" | 71×38px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | select "Not specific to one" | 325×35px |
+| ops /clients/732cfd82-7565-45a6-8e91-fcff8d8916af | 375 | chromium | tap-target | button "Request a meeting" | 145×36px |
 | ops /configurator | 375 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
 | ops /configurator | 375 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /configurator | 375 | chromium | tap-target | a "Executive" | 77×29px |
@@ -2081,34 +2081,34 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /queue | 375 | chromium | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 375 | chromium | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 375 | chromium | tap-target | a "Client packet" | 113×38px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Executive" | 77×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Clients" | 60×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Documents" | 87×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "My Tasks" | 76×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "My Queue" | 81×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "E-file acks" | 82×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Inbox" | 52×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Pipeline" | 67×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Reports" | 66×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Configurator" | 95×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Approvals" | 79×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Announcements" | 116×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "SOPs" | 52×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Events" | 60×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Hilo Ops" | 70×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Alerts" | 54×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Deliver Return" | 104×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Recorder" | 74×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Automations" | 94×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Pricing" | 61×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Templates" | 81×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Document checklist" | 137×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Staff" | 48×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Settings" | 68×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "WISP" | 52×29px |
-| ops /quotes/2ac4a3c5-c834-492c-afc7-73542999ea35 | 375 | chromium | tap-target | a "Account" | 69×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Executive" | 77×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Clients" | 60×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Documents" | 87×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "My Tasks" | 76×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "My Queue" | 81×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "E-file acks" | 82×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Inbox" | 52×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Pipeline" | 67×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Reports" | 66×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Configurator" | 95×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Approvals" | 79×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Announcements" | 116×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "SOPs" | 52×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Events" | 60×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Hilo Ops" | 70×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Alerts" | 54×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Deliver Return" | 104×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Recorder" | 74×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Automations" | 94×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Pricing" | 61×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Templates" | 81×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Document checklist" | 137×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Staff" | 48×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Settings" | 68×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "WISP" | 52×29px |
+| ops /quotes/372548ac-7558-4e7d-8868-5badbc506020 | 375 | chromium | tap-target | a "Account" | 69×29px |
 | ops /recorder | 375 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
 | ops /recorder | 375 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /recorder | 375 | chromium | tap-target | a "Executive" | 77×29px |
@@ -3451,38 +3451,38 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /approvals | 768 | chromium | tap-target | button "Approve & send" | 127×36px |
 | ops /approvals | 768 | chromium | tap-target | button "Edit" | 48×29px |
 | ops /approvals | 768 | chromium | tap-target | button "Re-draft" | 75×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Executive" | 77×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Clients" | 60×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Documents" | 87×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "My Tasks" | 76×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "My Queue" | 81×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "E-file acks" | 82×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Inbox" | 52×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Pipeline" | 67×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Reports" | 66×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Configurator" | 95×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Approvals" | 79×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Announcements" | 116×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "SOPs" | 52×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Events" | 60×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Hilo Ops" | 70×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Alerts" | 54×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Deliver Return" | 104×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Recorder" | 74×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Automations" | 94×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Pricing" | 61×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Templates" | 81×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Document checklist" | 137×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Staff" | 48×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Settings" | 68×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "WISP" | 52×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Account" | 69×29px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Synthetic LayoutChromium768" | 182×15px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | button[data-testid=edit-business-ecb598d6-59de-41fe-8b15-2c778e4b428a] "Edit business" | 99×32px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a[data-testid=owner-link-e2bbdeed-d8f8-4934-88b5-95dc9cc04609] "Synthetic LayoutChromium768" | 197×16px |
-| ops /businesses/ecb598d6-59de-41fe-8b15-2c778e4b428a | 768 | chromium | tap-target | a "Every document for the owner" | 179×15px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Executive" | 77×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Clients" | 60×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Documents" | 87×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "My Tasks" | 76×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "My Queue" | 81×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "E-file acks" | 82×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Inbox" | 52×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Pipeline" | 67×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Reports" | 66×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Configurator" | 95×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Approvals" | 79×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Announcements" | 116×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "SOPs" | 52×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Events" | 60×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Hilo Ops" | 70×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Alerts" | 54×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Deliver Return" | 104×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Recorder" | 74×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Automations" | 94×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Pricing" | 61×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Templates" | 81×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Document checklist" | 137×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Staff" | 48×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Settings" | 68×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "WISP" | 52×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Account" | 69×29px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Synthetic LayoutChromium768" | 182×15px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | button[data-testid=edit-business-85e61fce-b9eb-47bc-8a89-bdb946863b79] "Edit business" | 99×32px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a[data-testid=owner-link-3ab4cba8-7812-4596-ba22-9cddb5bfc457] "Synthetic LayoutChromium768" | 197×16px |
+| ops /businesses/85e61fce-b9eb-47bc-8a89-bdb946863b79 | 768 | chromium | tap-target | a "Every document for the owner" | 179×15px |
 | ops /clients | 768 | chromium | word-broken | td "backfillphone@example.test" | "backfillphone@example.test" breaks across 2 lines in a 168px box |
 | ops /clients | 768 | chromium | word-broken | td "consentdesk@example.test" | "consentdesk@example.test" breaks across 2 lines in a 168px box |
 | ops /clients | 768 | chromium | word-broken | td "consentphone@example.test" | "consentphone@example.test" breaks across 2 lines in a 168px box |
@@ -3546,60 +3546,60 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /clients | 768 | chromium | tap-target | a "Synthetic NoprepDesk" | 138×16px |
 | ops /clients | 768 | chromium | tap-target | button "← Previous" | 100×38px |
 | ops /clients | 768 | chromium | tap-target | button "Next →" | 75×38px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Executive" | 77×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Clients" | 60×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Documents" | 87×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "My Tasks" | 76×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "My Queue" | 81×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "E-file acks" | 82×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Inbox" | 52×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Pipeline" | 67×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Reports" | 66×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Configurator" | 95×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Approvals" | 79×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Announcements" | 116×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "SOPs" | 52×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Events" | 60×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Hilo Ops" | 70×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Alerts" | 54×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Deliver Return" | 104×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Recorder" | 74×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Automations" | 94×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Pricing" | 61×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Templates" | 81×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Document checklist" | 137×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Staff" | 48×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Settings" | 68×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "WISP" | 52×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Account" | 69×29px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Flag as a test record…" | 150×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Resend sign-in link" | 150×38px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Add a business" | 111×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a[data-testid=business-link-ecb598d6-59de-41fe-8b15-2c778e4b428a] "Synthetic Layout LayoutChromium768 Studi" | 319×16px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button[data-testid=edit-business-ecb598d6-59de-41fe-8b15-2c778e4b428a] "Edit" | 44×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Clear primary" | 101×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Archive" | 67×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | select[data-testid=counts-as-select-88477a2c-c60c-4424-88b0-54a5ed6faa3d] "Counts as…" | 326×35px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button[data-testid=counts-as-save-88477a2c-c60c-4424-88b0-54a5ed6faa3d] "Save" | 50×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | select[data-testid=counts-as-select-ba1b8b0c-8c71-4ffc-a184-c0c1a3d2a6b2] "Counts as…" | 326×35px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button[data-testid=counts-as-save-ba1b8b0c-8c71-4ffc-a184-c0c1a3d2a6b2] "Save" | 50×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | a "Open" | 53×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Create engagement packet" | 198×36px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Hold" | 49×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Close" | 55×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Withdraw" | 78×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | input | 214×39px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button[data-testid=assign-preparer] "Change preparer" | 120×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button[data-testid=record-extension] "Record extension" | 123×32px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | summary "send log" | 269×19px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Send reminder ($150.00)" | 186×38px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Send the pay link…" | 150×38px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Void…" | 71×38px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | select "Not specific to one" | 706×35px |
-| ops /clients/e2bbdeed-d8f8-4934-88b5-95dc9cc04609 | 768 | chromium | tap-target | button "Request a meeting" | 145×36px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Executive" | 77×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Clients" | 60×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Documents" | 87×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "My Tasks" | 76×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "My Queue" | 81×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "E-file acks" | 82×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Inbox" | 52×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Pipeline" | 67×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Reports" | 66×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Configurator" | 95×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Approvals" | 79×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Announcements" | 116×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "SOPs" | 52×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Events" | 60×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Hilo Ops" | 70×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Alerts" | 54×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Deliver Return" | 104×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Recorder" | 74×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Automations" | 94×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Pricing" | 61×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Templates" | 81×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Document checklist" | 137×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Staff" | 48×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Settings" | 68×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "WISP" | 52×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Account" | 69×29px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Flag as a test record…" | 150×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Resend sign-in link" | 150×38px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Add a business" | 111×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a[data-testid=business-link-85e61fce-b9eb-47bc-8a89-bdb946863b79] "Synthetic Layout LayoutChromium768 Studi" | 319×16px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button[data-testid=edit-business-85e61fce-b9eb-47bc-8a89-bdb946863b79] "Edit" | 44×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Clear primary" | 101×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Archive" | 67×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | select[data-testid=counts-as-select-75e8d434-efcb-4b58-b220-e3a9187a10a1] "Counts as…" | 326×35px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button[data-testid=counts-as-save-75e8d434-efcb-4b58-b220-e3a9187a10a1] "Save" | 50×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | select[data-testid=counts-as-select-b81aaf0c-686b-47a8-9ea1-c61ae1614f2a] "Counts as…" | 326×35px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button[data-testid=counts-as-save-b81aaf0c-686b-47a8-9ea1-c61ae1614f2a] "Save" | 50×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | a "Open" | 53×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Create engagement packet" | 198×36px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Hold" | 49×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Close" | 55×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Withdraw" | 78×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | input | 214×39px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button[data-testid=assign-preparer] "Change preparer" | 120×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button[data-testid=record-extension] "Record extension" | 123×32px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | summary "send log" | 269×19px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Send reminder ($150.00)" | 186×38px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Send the pay link…" | 150×38px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Void…" | 71×38px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | select "Not specific to one" | 706×35px |
+| ops /clients/3ab4cba8-7812-4596-ba22-9cddb5bfc457 | 768 | chromium | tap-target | button "Request a meeting" | 145×36px |
 | ops /configurator | 768 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
 | ops /configurator | 768 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /configurator | 768 | chromium | tap-target | a "Executive" | 77×29px |
@@ -3882,34 +3882,34 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /queue | 768 | chromium | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 768 | chromium | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 768 | chromium | tap-target | a "Client packet" | 113×38px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Executive" | 77×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Clients" | 60×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Documents" | 87×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "My Tasks" | 76×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "My Queue" | 81×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "E-file acks" | 82×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Inbox" | 52×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Pipeline" | 67×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Reports" | 66×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Configurator" | 95×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Approvals" | 79×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Announcements" | 116×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "SOPs" | 52×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Events" | 60×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Hilo Ops" | 70×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Alerts" | 54×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Deliver Return" | 104×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Recorder" | 74×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Automations" | 94×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Pricing" | 61×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Templates" | 81×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Document checklist" | 137×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Staff" | 48×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Settings" | 68×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "WISP" | 52×29px |
-| ops /quotes/34106ab5-d5e7-4351-9545-d15f5a19bebb | 768 | chromium | tap-target | a "Account" | 69×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Executive" | 77×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Clients" | 60×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Documents" | 87×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "My Tasks" | 76×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "My Queue" | 81×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "E-file acks" | 82×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Inbox" | 52×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Pipeline" | 67×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Reports" | 66×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Configurator" | 95×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Approvals" | 79×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Announcements" | 116×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "SOPs" | 52×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Events" | 60×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Hilo Ops" | 70×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Alerts" | 54×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Deliver Return" | 104×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Recorder" | 74×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Automations" | 94×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Pricing" | 61×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Templates" | 81×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Document checklist" | 137×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Staff" | 48×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Settings" | 68×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "WISP" | 52×29px |
+| ops /quotes/6e7a8ea8-ed8d-416e-8a1d-9970ee15d00c | 768 | chromium | tap-target | a "Account" | 69×29px |
 | ops /recorder | 768 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
 | ops /recorder | 768 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /recorder | 768 | chromium | tap-target | a "Executive" | 77×29px |
@@ -5281,38 +5281,38 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /approvals | 1440 | chromium | tap-target | button "Approve & send" | 127×36px |
 | ops /approvals | 1440 | chromium | tap-target | button "Edit" | 48×29px |
 | ops /approvals | 1440 | chromium | tap-target | button "Re-draft" | 75×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Executive" | 77×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Clients" | 60×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Documents" | 87×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "My Tasks" | 76×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "My Queue" | 81×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "E-file acks" | 82×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Inbox" | 52×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Pipeline" | 67×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Reports" | 66×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Configurator" | 95×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Approvals" | 79×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Announcements" | 116×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "SOPs" | 52×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Events" | 60×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Hilo Ops" | 70×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Alerts" | 54×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Deliver Return" | 104×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Recorder" | 74×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Automations" | 94×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Pricing" | 61×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Templates" | 81×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Document checklist" | 137×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Staff" | 48×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Settings" | 68×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "WISP" | 52×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Account" | 69×29px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Synthetic LayoutChromium1440" | 188×15px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | button[data-testid=edit-business-ff32d4ee-5538-43fa-816e-7d27b4b73380] "Edit business" | 99×32px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a[data-testid=owner-link-becf8974-de29-48b9-883e-5fc7fcf550b5] "Synthetic LayoutChromium1440" | 205×16px |
-| ops /businesses/ff32d4ee-5538-43fa-816e-7d27b4b73380 | 1440 | chromium | tap-target | a "Every document for the owner" | 179×15px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Executive" | 77×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Clients" | 60×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Documents" | 87×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "My Tasks" | 76×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "My Queue" | 81×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "E-file acks" | 82×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Inbox" | 52×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Pipeline" | 67×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Reports" | 66×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Configurator" | 95×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Approvals" | 79×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Announcements" | 116×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "SOPs" | 52×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Events" | 60×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Hilo Ops" | 70×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Alerts" | 54×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Deliver Return" | 104×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Recorder" | 74×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Automations" | 94×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Pricing" | 61×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Templates" | 81×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Document checklist" | 137×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Staff" | 48×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Settings" | 68×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "WISP" | 52×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Account" | 69×29px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Synthetic LayoutChromium1440" | 188×15px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | button[data-testid=edit-business-1eca297d-857a-46a0-a76b-1ecf5c9d6a7b] "Edit business" | 99×32px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a[data-testid=owner-link-b04826b9-df5a-48d2-9489-5d82c3b21220] "Synthetic LayoutChromium1440" | 205×16px |
+| ops /businesses/1eca297d-857a-46a0-a76b-1ecf5c9d6a7b | 1440 | chromium | tap-target | a "Every document for the owner" | 179×15px |
 | ops /clients | 1440 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
 | ops /clients | 1440 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /clients | 1440 | chromium | tap-target | a "Executive" | 77×29px |
@@ -5371,61 +5371,61 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /clients | 1440 | chromium | tap-target | a "Synthetic NoprepDesk" | 138×16px |
 | ops /clients | 1440 | chromium | tap-target | button "← Previous" | 100×38px |
 | ops /clients | 1440 | chromium | tap-target | button "Next →" | 75×38px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Executive" | 77×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Clients" | 60×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Documents" | 87×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "My Tasks" | 76×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "My Queue" | 81×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "E-file acks" | 82×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Inbox" | 52×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Pipeline" | 67×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Reports" | 66×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Configurator" | 95×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Approvals" | 79×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Announcements" | 116×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "SOPs" | 52×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Events" | 60×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Hilo Ops" | 70×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Alerts" | 54×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Deliver Return" | 104×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Recorder" | 74×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Automations" | 94×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Pricing" | 61×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Templates" | 81×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Document checklist" | 137×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Staff" | 48×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Settings" | 68×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "WISP" | 52×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Account" | 69×29px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Flag as a test record…" | 150×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Resend sign-in link" | 150×38px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Add a business" | 111×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a[data-testid=business-link-ff32d4ee-5538-43fa-816e-7d27b4b73380] "Synthetic Layout LayoutChromium1440 Stud" | 299×36px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button[data-testid=edit-business-ff32d4ee-5538-43fa-816e-7d27b4b73380] "Edit" | 44×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Clear primary" | 101×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Archive" | 67×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | select[data-testid=counts-as-select-f1862bd8-c580-4e31-847f-16dcbdb9068a] "Counts as…" | 305×35px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button[data-testid=counts-as-save-f1862bd8-c580-4e31-847f-16dcbdb9068a] "Save" | 50×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | select[data-testid=counts-as-select-b0e287df-3905-46cd-92f1-73580d0a3119] "Counts as…" | 305×35px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button[data-testid=counts-as-save-b0e287df-3905-46cd-92f1-73580d0a3119] "Save" | 50×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | a "Open" | 53×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Create engagement packet" | 198×36px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Hold" | 49×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Close" | 55×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Withdraw" | 78×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | input | 348×39px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button[data-testid=upload-engagement-letter] "Upload the signed engagement letter" | 237×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button[data-testid=assign-preparer] "Change preparer" | 120×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button[data-testid=record-extension] "Record extension" | 123×32px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | summary "send log" | 581×19px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Send reminder ($150.00)" | 186×38px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Send the pay link…" | 150×38px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Void…" | 71×38px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | select "Not specific to one" | 1018×35px |
-| ops /clients/becf8974-de29-48b9-883e-5fc7fcf550b5 | 1440 | chromium | tap-target | button "Request a meeting" | 145×36px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Executive" | 77×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Clients" | 60×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Documents" | 87×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "My Tasks" | 76×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "My Queue" | 81×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "E-file acks" | 82×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Inbox" | 52×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Pipeline" | 67×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Reports" | 66×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Configurator" | 95×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Approvals" | 79×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Announcements" | 116×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "SOPs" | 52×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Events" | 60×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Hilo Ops" | 70×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Alerts" | 54×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Deliver Return" | 104×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Recorder" | 74×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Automations" | 94×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Pricing" | 61×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Templates" | 81×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Document checklist" | 137×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Staff" | 48×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Settings" | 68×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "WISP" | 52×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Account" | 69×29px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Flag as a test record…" | 150×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Resend sign-in link" | 150×38px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Add a business" | 111×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a[data-testid=business-link-1eca297d-857a-46a0-a76b-1ecf5c9d6a7b] "Synthetic Layout LayoutChromium1440 Stud" | 299×36px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button[data-testid=edit-business-1eca297d-857a-46a0-a76b-1ecf5c9d6a7b] "Edit" | 44×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Clear primary" | 101×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Archive" | 67×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | select[data-testid=counts-as-select-a9795af1-ca74-4e12-92ea-26cfc1b5fa6e] "Counts as…" | 305×35px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button[data-testid=counts-as-save-a9795af1-ca74-4e12-92ea-26cfc1b5fa6e] "Save" | 50×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | select[data-testid=counts-as-select-8d41bce4-4609-4de2-b696-3a78b4f016f5] "Counts as…" | 305×35px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button[data-testid=counts-as-save-8d41bce4-4609-4de2-b696-3a78b4f016f5] "Save" | 50×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | a "Open" | 53×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Create engagement packet" | 198×36px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Hold" | 49×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Close" | 55×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Withdraw" | 78×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | input | 348×39px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button[data-testid=upload-engagement-letter] "Upload the signed engagement letter" | 237×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button[data-testid=assign-preparer] "Change preparer" | 120×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button[data-testid=record-extension] "Record extension" | 123×32px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | summary "send log" | 581×19px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Send reminder ($150.00)" | 186×38px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Send the pay link…" | 150×38px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Void…" | 71×38px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | select "Not specific to one" | 1018×35px |
+| ops /clients/b04826b9-df5a-48d2-9489-5d82c3b21220 | 1440 | chromium | tap-target | button "Request a meeting" | 145×36px |
 | ops /configurator | 1440 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
 | ops /configurator | 1440 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /configurator | 1440 | chromium | tap-target | a "Executive" | 77×29px |
@@ -5708,34 +5708,34 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /queue | 1440 | chromium | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 1440 | chromium | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 1440 | chromium | tap-target | a "Client packet" | 113×38px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Executive" | 77×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Clients" | 60×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Documents" | 87×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "My Tasks" | 76×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "My Queue" | 81×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "E-file acks" | 82×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Inbox" | 52×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Pipeline" | 67×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Reports" | 66×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Configurator" | 95×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Approvals" | 79×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Announcements" | 116×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "SOPs" | 52×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Events" | 60×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Hilo Ops" | 70×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Alerts" | 54×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Deliver Return" | 104×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Recorder" | 74×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Automations" | 94×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Pricing" | 61×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Templates" | 81×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Document checklist" | 137×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Staff" | 48×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Settings" | 68×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "WISP" | 52×29px |
-| ops /quotes/a180545b-0177-4dd7-968f-710f586addd9 | 1440 | chromium | tap-target | a "Account" | 69×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Executive" | 77×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Clients" | 60×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Documents" | 87×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "My Tasks" | 76×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "My Queue" | 81×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "E-file acks" | 82×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Inbox" | 52×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Pipeline" | 67×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Reports" | 66×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Configurator" | 95×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Approvals" | 79×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Announcements" | 116×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "SOPs" | 52×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Events" | 60×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Hilo Ops" | 70×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Alerts" | 54×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Deliver Return" | 104×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Recorder" | 74×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Automations" | 94×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Pricing" | 61×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Templates" | 81×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Document checklist" | 137×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Staff" | 48×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Settings" | 68×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "WISP" | 52×29px |
+| ops /quotes/1fa8ab25-62fb-4afb-a712-c7bbbb421644 | 1440 | chromium | tap-target | a "Account" | 69×29px |
 | ops /recorder | 1440 | chromium | tap-target | a "SOTO.OPERATIONS" | 134×27px |
 | ops /recorder | 1440 | chromium | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /recorder | 1440 | chromium | tap-target | a "Executive" | 77×29px |
@@ -7977,38 +7977,38 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /approvals | 375 | webkit | tap-target | button "Approve & send" | 127×36px |
 | ops /approvals | 375 | webkit | tap-target | button "Edit" | 48×29px |
 | ops /approvals | 375 | webkit | tap-target | button "Re-draft" | 75×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Executive" | 77×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Clients" | 60×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Documents" | 87×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "My Tasks" | 76×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "My Queue" | 81×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "E-file acks" | 82×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Inbox" | 52×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Pipeline" | 67×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Reports" | 66×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Configurator" | 95×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Approvals" | 79×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Announcements" | 116×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "SOPs" | 52×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Events" | 60×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Hilo Ops" | 70×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Alerts" | 54×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Deliver Return" | 104×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Recorder" | 74×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Automations" | 94×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Pricing" | 61×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Templates" | 81×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Document checklist" | 137×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Staff" | 48×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Settings" | 68×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "WISP" | 52×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Account" | 69×29px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Synthetic LayoutWebkit375" | 161×15px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | button[data-testid=edit-business-c3bd6340-058a-4655-af9d-8c93c7086c8d] "Edit business" | 99×32px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a[data-testid=owner-link-f99ca711-f75f-4254-8be9-8d5550c5a35d] "Synthetic LayoutWebkit375" | 176×16px |
-| ops /businesses/c3bd6340-058a-4655-af9d-8c93c7086c8d | 375 | webkit | tap-target | a "Every document for the owner" | 179×15px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Events" | 60×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Account" | 69×29px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Synthetic LayoutWebkit375" | 161×15px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | button[data-testid=edit-business-94adf2e2-d40c-4f76-91df-59ca7ddb9732] "Edit business" | 99×32px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a[data-testid=owner-link-b63617a8-5f41-489b-94a9-4dcfe0002746] "Synthetic LayoutWebkit375" | 176×16px |
+| ops /businesses/94adf2e2-d40c-4f76-91df-59ca7ddb9732 | 375 | webkit | tap-target | a "Every document for the owner" | 179×15px |
 | ops /clients | 375 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
 | ops /clients | 375 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /clients | 375 | webkit | tap-target | a "Executive" | 77×29px |
@@ -8042,57 +8042,57 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /clients | 375 | webkit | tap-target | button "Add a client" | 102×36px |
 | ops /clients | 375 | webkit | tap-target | button "← Previous" | 100×38px |
 | ops /clients | 375 | webkit | tap-target | button "Next →" | 75×38px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Executive" | 77×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Clients" | 60×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Documents" | 87×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "My Tasks" | 76×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "My Queue" | 81×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "E-file acks" | 82×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Inbox" | 52×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Pipeline" | 67×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Reports" | 66×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Configurator" | 95×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Approvals" | 79×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Announcements" | 116×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "SOPs" | 52×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Events" | 60×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Hilo Ops" | 70×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Alerts" | 54×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Deliver Return" | 104×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Recorder" | 74×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Automations" | 94×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Pricing" | 61×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Templates" | 81×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Document checklist" | 137×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Staff" | 48×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Settings" | 68×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "WISP" | 52×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Account" | 69×29px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Flag as a test record…" | 150×32px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Resend sign-in link" | 150×38px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Add a business" | 111×32px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a[data-testid=business-link-c3bd6340-058a-4655-af9d-8c93c7086c8d] "Synthetic Layout LayoutWebkit375 Studio," | 297×16px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button[data-testid=edit-business-c3bd6340-058a-4655-af9d-8c93c7086c8d] "Edit" | 44×32px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Clear primary" | 101×32px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Archive" | 67×32px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | select[data-testid=counts-as-select-6338edb5-d6a7-47fe-811b-bc238d8df55b] "Counts as…" | 319×43px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button[data-testid=counts-as-save-6338edb5-d6a7-47fe-811b-bc238d8df55b] "Save" | 50×32px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | select[data-testid=counts-as-select-ab257be3-40ad-4f12-8f83-7b71ac4a8759] "Counts as…" | 319×43px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button[data-testid=counts-as-save-ab257be3-40ad-4f12-8f83-7b71ac4a8759] "Save" | 50×32px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | a "Open" | 53×32px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Create engagement packet" | 198×36px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Hold" | 49×32px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Close" | 55×32px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Withdraw" | 78×32px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | summary "send log" | 325×19px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Send reminder ($150.00)" | 186×38px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Send the pay link…" | 150×38px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Void…" | 71×38px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | select "Not specific to one" | 325×43px |
-| ops /clients/f99ca711-f75f-4254-8be9-8d5550c5a35d | 375 | webkit | tap-target | button "Request a meeting" | 145×36px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Events" | 60×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Account" | 69×29px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Flag as a test record…" | 150×32px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Resend sign-in link" | 150×38px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Add a business" | 111×32px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a[data-testid=business-link-94adf2e2-d40c-4f76-91df-59ca7ddb9732] "Synthetic Layout LayoutWebkit375 Studio," | 297×16px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button[data-testid=edit-business-94adf2e2-d40c-4f76-91df-59ca7ddb9732] "Edit" | 44×32px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Clear primary" | 101×32px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Archive" | 67×32px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | select[data-testid=counts-as-select-692ccae8-44c7-4dc7-a6d1-9c2beba52258] "Counts as…" | 319×43px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button[data-testid=counts-as-save-692ccae8-44c7-4dc7-a6d1-9c2beba52258] "Save" | 50×32px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | select[data-testid=counts-as-select-51f47918-d359-40bd-8c0d-101934abe412] "Counts as…" | 319×43px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button[data-testid=counts-as-save-51f47918-d359-40bd-8c0d-101934abe412] "Save" | 50×32px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | a "Open" | 53×32px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Create engagement packet" | 198×36px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Hold" | 49×32px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Close" | 55×32px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Withdraw" | 78×32px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | summary "send log" | 325×19px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Send reminder ($150.00)" | 186×38px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Send the pay link…" | 150×38px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Void…" | 71×38px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | select "Not specific to one" | 325×43px |
+| ops /clients/b63617a8-5f41-489b-94a9-4dcfe0002746 | 375 | webkit | tap-target | button "Request a meeting" | 145×36px |
 | ops /configurator | 375 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
 | ops /configurator | 375 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /configurator | 375 | webkit | tap-target | a "Executive" | 77×29px |
@@ -8375,34 +8375,34 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /queue | 375 | webkit | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 375 | webkit | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 375 | webkit | tap-target | a "Client packet" | 113×38px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Executive" | 77×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Clients" | 60×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Documents" | 87×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "My Tasks" | 76×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "My Queue" | 81×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "E-file acks" | 82×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Inbox" | 52×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Pipeline" | 67×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Reports" | 66×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Configurator" | 95×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Approvals" | 79×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Announcements" | 116×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "SOPs" | 52×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Events" | 60×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Hilo Ops" | 70×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Alerts" | 54×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Deliver Return" | 104×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Recorder" | 74×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Automations" | 94×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Pricing" | 61×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Templates" | 81×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Document checklist" | 137×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Staff" | 48×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Settings" | 68×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "WISP" | 52×29px |
-| ops /quotes/6a394dcc-3725-4b1a-8f9a-ef60df1b7de8 | 375 | webkit | tap-target | a "Account" | 69×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Events" | 60×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /quotes/5919cfa9-9db4-4682-aa3b-213d838b641a | 375 | webkit | tap-target | a "Account" | 69×29px |
 | ops /recorder | 375 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
 | ops /recorder | 375 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /recorder | 375 | webkit | tap-target | a "Executive" | 77×29px |
@@ -9731,38 +9731,38 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /approvals | 768 | webkit | tap-target | button "Approve & send" | 127×36px |
 | ops /approvals | 768 | webkit | tap-target | button "Edit" | 48×29px |
 | ops /approvals | 768 | webkit | tap-target | button "Re-draft" | 75×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Executive" | 77×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Clients" | 60×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Documents" | 87×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "My Tasks" | 76×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "My Queue" | 81×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "E-file acks" | 82×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Inbox" | 52×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Pipeline" | 67×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Reports" | 66×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Configurator" | 95×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Approvals" | 79×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Announcements" | 116×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "SOPs" | 52×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Events" | 60×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Hilo Ops" | 70×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Alerts" | 54×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Deliver Return" | 104×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Recorder" | 74×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Automations" | 94×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Pricing" | 61×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Templates" | 81×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Document checklist" | 137×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Staff" | 48×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Settings" | 68×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "WISP" | 52×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Account" | 69×29px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Synthetic LayoutWebkit768" | 161×15px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | button[data-testid=edit-business-7a75ff09-ba33-4a7f-b6f8-2398ff74adb4] "Edit business" | 99×32px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a[data-testid=owner-link-d41bee3a-c431-4f02-a2cf-e332331274c5] "Synthetic LayoutWebkit768" | 176×16px |
-| ops /businesses/7a75ff09-ba33-4a7f-b6f8-2398ff74adb4 | 768 | webkit | tap-target | a "Every document for the owner" | 179×15px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Events" | 60×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Account" | 69×29px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Synthetic LayoutWebkit768" | 161×15px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | button[data-testid=edit-business-cd45c8ae-8905-4f5a-886d-92fe1d46f912] "Edit business" | 99×32px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a[data-testid=owner-link-874e580a-1431-45c1-8e7d-e431985e4482] "Synthetic LayoutWebkit768" | 176×16px |
+| ops /businesses/cd45c8ae-8905-4f5a-886d-92fe1d46f912 | 768 | webkit | tap-target | a "Every document for the owner" | 179×15px |
 | ops /clients | 768 | webkit | word-broken | td "countsasphone@example.test" | "countsasphone@example.test" breaks across 2 lines in a 184px box |
 | ops /clients | 768 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
 | ops /clients | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
@@ -9822,60 +9822,60 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /clients | 768 | webkit | tap-target | a "Synthetic NoprepDesk" | 138×16px |
 | ops /clients | 768 | webkit | tap-target | button "← Previous" | 100×38px |
 | ops /clients | 768 | webkit | tap-target | button "Next →" | 75×38px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Executive" | 77×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Clients" | 60×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Documents" | 87×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "My Tasks" | 76×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "My Queue" | 81×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "E-file acks" | 82×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Inbox" | 52×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Pipeline" | 67×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Reports" | 66×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Configurator" | 95×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Approvals" | 79×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Announcements" | 116×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "SOPs" | 52×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Events" | 60×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Hilo Ops" | 70×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Alerts" | 54×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Deliver Return" | 104×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Recorder" | 74×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Automations" | 94×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Pricing" | 61×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Templates" | 81×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Document checklist" | 137×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Staff" | 48×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Settings" | 68×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "WISP" | 52×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Account" | 69×29px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Flag as a test record…" | 150×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Resend sign-in link" | 150×38px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Add a business" | 111×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a[data-testid=business-link-7a75ff09-ba33-4a7f-b6f8-2398ff74adb4] "Synthetic Layout LayoutWebkit768 Studio," | 297×16px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button[data-testid=edit-business-7a75ff09-ba33-4a7f-b6f8-2398ff74adb4] "Edit" | 44×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Clear primary" | 101×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Archive" | 67×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | select[data-testid=counts-as-select-ea9684df-4bfe-4a2e-b90b-3683df1e7510] "Counts as…" | 326×43px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button[data-testid=counts-as-save-ea9684df-4bfe-4a2e-b90b-3683df1e7510] "Save" | 50×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | select[data-testid=counts-as-select-b318705e-ede5-4a1f-a65b-cf2ebdf6ca59] "Counts as…" | 326×43px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button[data-testid=counts-as-save-b318705e-ede5-4a1f-a65b-cf2ebdf6ca59] "Save" | 50×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | a "Open" | 53×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Create engagement packet" | 198×36px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Hold" | 49×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Close" | 55×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Withdraw" | 78×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | input | 214×37px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button[data-testid=assign-preparer] "Change preparer" | 120×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button[data-testid=record-extension] "Record extension" | 123×32px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | summary "send log" | 269×19px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Send reminder ($150.00)" | 186×38px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Send the pay link…" | 150×38px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Void…" | 71×38px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | select "Not specific to one" | 706×43px |
-| ops /clients/d41bee3a-c431-4f02-a2cf-e332331274c5 | 768 | webkit | tap-target | button "Request a meeting" | 145×36px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Events" | 60×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Account" | 69×29px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Flag as a test record…" | 150×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Resend sign-in link" | 150×38px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Add a business" | 111×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a[data-testid=business-link-cd45c8ae-8905-4f5a-886d-92fe1d46f912] "Synthetic Layout LayoutWebkit768 Studio," | 297×16px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button[data-testid=edit-business-cd45c8ae-8905-4f5a-886d-92fe1d46f912] "Edit" | 44×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Clear primary" | 101×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Archive" | 67×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | select[data-testid=counts-as-select-f63c89b8-c3d4-4351-91b2-1907b6296c4b] "Counts as…" | 326×43px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button[data-testid=counts-as-save-f63c89b8-c3d4-4351-91b2-1907b6296c4b] "Save" | 50×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | select[data-testid=counts-as-select-13662b2a-6d35-4c03-88cf-910e75023af1] "Counts as…" | 326×43px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button[data-testid=counts-as-save-13662b2a-6d35-4c03-88cf-910e75023af1] "Save" | 50×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | a "Open" | 53×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Create engagement packet" | 198×36px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Hold" | 49×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Close" | 55×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Withdraw" | 78×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | input | 214×37px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button[data-testid=assign-preparer] "Change preparer" | 120×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button[data-testid=record-extension] "Record extension" | 123×32px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | summary "send log" | 269×19px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Send reminder ($150.00)" | 186×38px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Send the pay link…" | 150×38px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Void…" | 71×38px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | select "Not specific to one" | 706×43px |
+| ops /clients/874e580a-1431-45c1-8e7d-e431985e4482 | 768 | webkit | tap-target | button "Request a meeting" | 145×36px |
 | ops /configurator | 768 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
 | ops /configurator | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /configurator | 768 | webkit | tap-target | a "Executive" | 77×29px |
@@ -10158,34 +10158,34 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /queue | 768 | webkit | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 768 | webkit | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 768 | webkit | tap-target | a "Client packet" | 113×38px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Executive" | 77×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Clients" | 60×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Documents" | 87×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "My Tasks" | 76×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "My Queue" | 81×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "E-file acks" | 82×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Inbox" | 52×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Pipeline" | 67×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Reports" | 66×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Configurator" | 95×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Approvals" | 79×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Announcements" | 116×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "SOPs" | 52×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Events" | 60×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Hilo Ops" | 70×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Alerts" | 54×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Deliver Return" | 104×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Recorder" | 74×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Automations" | 94×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Pricing" | 61×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Templates" | 81×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Document checklist" | 137×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Staff" | 48×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Settings" | 68×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "WISP" | 52×29px |
-| ops /quotes/74139f40-fc12-4e58-8454-81351e36db9b | 768 | webkit | tap-target | a "Account" | 69×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Events" | 60×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /quotes/875f4674-530c-4df2-87b3-9d3bd47e6c30 | 768 | webkit | tap-target | a "Account" | 69×29px |
 | ops /recorder | 768 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
 | ops /recorder | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /recorder | 768 | webkit | tap-target | a "Executive" | 77×29px |
@@ -10525,6 +10525,33 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /tasks/boards | 768 | webkit | tap-target | a "WISP" | 52×29px |
 | ops /tasks/boards | 768 | webkit | tap-target | a "Account" | 69×29px |
 | ops /upload-return | 768 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /upload-return | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /upload-return | 768 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Events" | 60×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /upload-return | 768 | webkit | tap-target | a "Account" | 69×29px |
 | ops /upload-return | 768 | webkit | tap-target | input | 530×37px |
 | portal / | 768 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal / | 768 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
@@ -10545,12 +10572,57 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | portal / | 768 | webkit | tap-target | input | 702×21px |
 | portal /documents | 768 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal /documents | 768 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
+| portal /documents | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 77×30px |
+| portal /documents | 768 | webkit | tap-target | a "Home" | 56×32px |
+| portal /documents | 768 | webkit | tap-target | a "Documents" | 90×32px |
+| portal /documents | 768 | webkit | tap-target | a "My Returns" | 90×32px |
+| portal /documents | 768 | webkit | tap-target | a "IRS Letters" | 87×32px |
+| portal /documents | 768 | webkit | tap-target | a "Sign" | 47×32px |
+| portal /documents | 768 | webkit | tap-target | a "Invoices" | 71×32px |
+| portal /documents | 768 | webkit | tap-target | a "Messages" | 83×32px |
+| portal /documents | 768 | webkit | tap-target | a "Estimate" | 72×32px |
+| portal /documents | 768 | webkit | tap-target | a "Resources" | 85×32px |
+| portal /documents | 768 | webkit | tap-target | a "My Info" | 66×32px |
 | portal /returns | 768 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal /returns | 768 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
+| portal /returns | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 77×30px |
+| portal /returns | 768 | webkit | tap-target | a "Home" | 56×32px |
+| portal /returns | 768 | webkit | tap-target | a "Documents" | 90×32px |
+| portal /returns | 768 | webkit | tap-target | a "My Returns" | 90×32px |
+| portal /returns | 768 | webkit | tap-target | a "IRS Letters" | 87×32px |
+| portal /returns | 768 | webkit | tap-target | a "Sign" | 47×32px |
+| portal /returns | 768 | webkit | tap-target | a "Invoices" | 71×32px |
+| portal /returns | 768 | webkit | tap-target | a "Messages" | 83×32px |
+| portal /returns | 768 | webkit | tap-target | a "Estimate" | 72×32px |
+| portal /returns | 768 | webkit | tap-target | a "Resources" | 85×32px |
+| portal /returns | 768 | webkit | tap-target | a "My Info" | 66×32px |
 | portal /invoices | 768 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal /invoices | 768 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
+| portal /invoices | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 77×30px |
+| portal /invoices | 768 | webkit | tap-target | a "Home" | 56×32px |
+| portal /invoices | 768 | webkit | tap-target | a "Documents" | 90×32px |
+| portal /invoices | 768 | webkit | tap-target | a "My Returns" | 90×32px |
+| portal /invoices | 768 | webkit | tap-target | a "IRS Letters" | 87×32px |
+| portal /invoices | 768 | webkit | tap-target | a "Sign" | 47×32px |
+| portal /invoices | 768 | webkit | tap-target | a "Invoices" | 71×32px |
+| portal /invoices | 768 | webkit | tap-target | a "Messages" | 83×32px |
+| portal /invoices | 768 | webkit | tap-target | a "Estimate" | 72×32px |
+| portal /invoices | 768 | webkit | tap-target | a "Resources" | 85×32px |
+| portal /invoices | 768 | webkit | tap-target | a "My Info" | 66×32px |
+| portal /invoices | 768 | webkit | tap-target | button "Pay now" | 89×42px |
 | portal /messages | 768 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal /messages | 768 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
+| portal /messages | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 77×30px |
+| portal /messages | 768 | webkit | tap-target | a "Home" | 56×32px |
+| portal /messages | 768 | webkit | tap-target | a "Documents" | 90×32px |
+| portal /messages | 768 | webkit | tap-target | a "My Returns" | 90×32px |
+| portal /messages | 768 | webkit | tap-target | a "IRS Letters" | 87×32px |
+| portal /messages | 768 | webkit | tap-target | a "Sign" | 47×32px |
+| portal /messages | 768 | webkit | tap-target | a "Invoices" | 71×32px |
+| portal /messages | 768 | webkit | tap-target | a "Messages" | 83×32px |
+| portal /messages | 768 | webkit | tap-target | a "Estimate" | 72×32px |
+| portal /messages | 768 | webkit | tap-target | a "Resources" | 85×32px |
+| portal /messages | 768 | webkit | tap-target | a "My Info" | 66×32px |
 | portal /messages | 768 | webkit | tap-target | input | 702×42px |
 | portal /messages | 768 | webkit | tap-target | button "Send" | 67×42px |
 | portal /notices | 768 | webkit | tap-target | a "SOTO." | 65×31px |
@@ -10568,6 +10640,17 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | portal /notices | 768 | webkit | tap-target | a "My Info" | 66×32px |
 | portal /profile | 768 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal /profile | 768 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
+| portal /profile | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 77×30px |
+| portal /profile | 768 | webkit | tap-target | a "Home" | 56×32px |
+| portal /profile | 768 | webkit | tap-target | a "Documents" | 90×32px |
+| portal /profile | 768 | webkit | tap-target | a "My Returns" | 90×32px |
+| portal /profile | 768 | webkit | tap-target | a "IRS Letters" | 87×32px |
+| portal /profile | 768 | webkit | tap-target | a "Sign" | 47×32px |
+| portal /profile | 768 | webkit | tap-target | a "Invoices" | 71×32px |
+| portal /profile | 768 | webkit | tap-target | a "Messages" | 83×32px |
+| portal /profile | 768 | webkit | tap-target | a "Estimate" | 72×32px |
+| portal /profile | 768 | webkit | tap-target | a "Resources" | 85×32px |
+| portal /profile | 768 | webkit | tap-target | a "My Info" | 66×32px |
 | portal /profile | 768 | webkit | tap-target | input | 344×42px |
 | portal /profile | 768 | webkit | tap-target | input | 344×42px |
 | portal /profile | 768 | webkit | tap-target | input | 702×42px |
@@ -10577,8 +10660,30 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | portal /profile | 768 | webkit | tap-target | button "Save" | 65×42px |
 | portal /resources | 768 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal /resources | 768 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
+| portal /resources | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 77×30px |
+| portal /resources | 768 | webkit | tap-target | a "Home" | 56×32px |
+| portal /resources | 768 | webkit | tap-target | a "Documents" | 90×32px |
+| portal /resources | 768 | webkit | tap-target | a "My Returns" | 90×32px |
+| portal /resources | 768 | webkit | tap-target | a "IRS Letters" | 87×32px |
+| portal /resources | 768 | webkit | tap-target | a "Sign" | 47×32px |
+| portal /resources | 768 | webkit | tap-target | a "Invoices" | 71×32px |
+| portal /resources | 768 | webkit | tap-target | a "Messages" | 83×32px |
+| portal /resources | 768 | webkit | tap-target | a "Estimate" | 72×32px |
+| portal /resources | 768 | webkit | tap-target | a "Resources" | 85×32px |
+| portal /resources | 768 | webkit | tap-target | a "My Info" | 66×32px |
 | portal /request-service | 768 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal /request-service | 768 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
+| portal /request-service | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 77×30px |
+| portal /request-service | 768 | webkit | tap-target | a "Home" | 56×32px |
+| portal /request-service | 768 | webkit | tap-target | a "Documents" | 90×32px |
+| portal /request-service | 768 | webkit | tap-target | a "My Returns" | 90×32px |
+| portal /request-service | 768 | webkit | tap-target | a "IRS Letters" | 87×32px |
+| portal /request-service | 768 | webkit | tap-target | a "Sign" | 47×32px |
+| portal /request-service | 768 | webkit | tap-target | a "Invoices" | 71×32px |
+| portal /request-service | 768 | webkit | tap-target | a "Messages" | 83×32px |
+| portal /request-service | 768 | webkit | tap-target | a "Estimate" | 72×32px |
+| portal /request-service | 768 | webkit | tap-target | a "Resources" | 85×32px |
+| portal /request-service | 768 | webkit | tap-target | a "My Info" | 66×32px |
 | portal /request-service | 768 | webkit | tap-target | button "Send request" | 122×42px |
 | portal /questionnaire | 768 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal /questionnaire | 768 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
@@ -10620,6 +10725,17 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | portal /sign | 768 | webkit | tap-target | a "My Info" | 66×32px |
 | portal /estimate | 768 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal /estimate | 768 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
+| portal /estimate | 768 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 77×30px |
+| portal /estimate | 768 | webkit | tap-target | a "Home" | 56×32px |
+| portal /estimate | 768 | webkit | tap-target | a "Documents" | 90×32px |
+| portal /estimate | 768 | webkit | tap-target | a "My Returns" | 90×32px |
+| portal /estimate | 768 | webkit | tap-target | a "IRS Letters" | 87×32px |
+| portal /estimate | 768 | webkit | tap-target | a "Sign" | 47×32px |
+| portal /estimate | 768 | webkit | tap-target | a "Invoices" | 71×32px |
+| portal /estimate | 768 | webkit | tap-target | a "Messages" | 83×32px |
+| portal /estimate | 768 | webkit | tap-target | a "Estimate" | 72×32px |
+| portal /estimate | 768 | webkit | tap-target | a "Resources" | 85×32px |
+| portal /estimate | 768 | webkit | tap-target | a "My Info" | 66×32px |
 | portal /estimate | 768 | webkit | tap-target | input | 344×42px |
 | portal /estimate | 768 | webkit | tap-target | input | 344×42px |
 | portal /estimate | 768 | webkit | tap-target | input | 344×42px |
@@ -11338,41 +11454,125 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /admin/wisp | 1440 | webkit | tap-target | a "Account" | 69×29px |
 | ops /admin/wisp | 1440 | webkit | tap-target | button "Download for the WISP binder (.md)" | 255×38px |
 | ops /alerts | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /alerts | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /alerts | 1440 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Events" | 60×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /alerts | 1440 | webkit | tap-target | a "Account" | 69×29px |
 | ops /announcements | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /announcements | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /announcements | 1440 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Events" | 60×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /announcements | 1440 | webkit | tap-target | a "Account" | 69×29px |
 | ops /announcements | 1440 | webkit | tap-target | button "New announcement" | 154×36px |
 | ops /approvals | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Executive" | 77×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Clients" | 60×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Documents" | 87×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "My Tasks" | 76×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "My Queue" | 81×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "E-file acks" | 82×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Inbox" | 52×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Pipeline" | 67×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Reports" | 66×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Configurator" | 95×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Approvals" | 79×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Announcements" | 116×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "SOPs" | 52×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Events" | 60×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Hilo Ops" | 70×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Alerts" | 54×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Deliver Return" | 104×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Recorder" | 74×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Automations" | 94×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Pricing" | 61×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Templates" | 81×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Document checklist" | 137×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Staff" | 48×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Settings" | 68×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "WISP" | 52×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Account" | 69×29px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Synthetic LayoutWebkit1440" | 168×15px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | button[data-testid=edit-business-8596163f-a477-43b5-a465-734d64950ebb] "Edit business" | 99×32px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a[data-testid=owner-link-290071b4-f42e-4238-97d8-72d1e719100e] "Synthetic LayoutWebkit1440" | 184×16px |
-| ops /businesses/8596163f-a477-43b5-a465-734d64950ebb | 1440 | webkit | tap-target | a "Every document for the owner" | 179×15px |
+| ops /approvals | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /approvals | 1440 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Events" | 60×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /approvals | 1440 | webkit | tap-target | a "Account" | 69×29px |
+| ops /approvals | 1440 | webkit | tap-target | button "Approve & send" | 127×36px |
+| ops /approvals | 1440 | webkit | tap-target | button "Edit" | 48×29px |
+| ops /approvals | 1440 | webkit | tap-target | button "Re-draft" | 75×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Events" | 60×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Account" | 69×29px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Synthetic LayoutWebkit1440" | 168×15px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | button[data-testid=edit-business-df3ecb26-3350-460c-93b6-f70ca6b8eb5d] "Edit business" | 99×32px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a[data-testid=owner-link-3a2c7e9b-946a-4790-bf0b-4d37985c6d9c] "Synthetic LayoutWebkit1440" | 184×16px |
+| ops /businesses/df3ecb26-3350-460c-93b6-f70ca6b8eb5d | 1440 | webkit | tap-target | a "Every document for the owner" | 179×15px |
 | ops /clients | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
 | ops /clients | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /clients | 1440 | webkit | tap-target | a "Executive" | 77×29px |
@@ -11431,61 +11631,61 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /clients | 1440 | webkit | tap-target | a "Synthetic NoprepDesk" | 138×16px |
 | ops /clients | 1440 | webkit | tap-target | button "← Previous" | 100×38px |
 | ops /clients | 1440 | webkit | tap-target | button "Next →" | 75×38px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Executive" | 77×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Clients" | 60×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Documents" | 87×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "My Tasks" | 76×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "My Queue" | 81×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "E-file acks" | 82×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Inbox" | 52×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Pipeline" | 67×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Reports" | 66×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Configurator" | 95×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Approvals" | 79×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Announcements" | 116×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "SOPs" | 52×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Events" | 60×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Hilo Ops" | 70×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Alerts" | 54×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Deliver Return" | 104×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Recorder" | 74×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Automations" | 94×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Pricing" | 61×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Templates" | 81×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Document checklist" | 137×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Staff" | 48×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Settings" | 68×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "WISP" | 52×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Account" | 69×29px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Flag as a test record…" | 150×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Resend sign-in link" | 150×38px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Add a business" | 111×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a[data-testid=business-link-8596163f-a477-43b5-a465-734d64950ebb] "Synthetic Layout LayoutWebkit1440 Studio" | 305×16px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button[data-testid=edit-business-8596163f-a477-43b5-a465-734d64950ebb] "Edit" | 44×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Clear primary" | 101×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Archive" | 67×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | select[data-testid=counts-as-select-c8d680c5-f2b1-438b-84c1-3024e882ed0b] "Counts as…" | 305×43px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button[data-testid=counts-as-save-c8d680c5-f2b1-438b-84c1-3024e882ed0b] "Save" | 50×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | select[data-testid=counts-as-select-0c3d7eea-b9ce-4e8b-b35e-3f2721210bdf] "Counts as…" | 305×43px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button[data-testid=counts-as-save-0c3d7eea-b9ce-4e8b-b35e-3f2721210bdf] "Save" | 50×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | a "Open" | 53×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Create engagement packet" | 198×36px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Hold" | 49×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Close" | 55×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Withdraw" | 78×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | input | 348×37px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button[data-testid=upload-engagement-letter] "Upload the signed engagement letter" | 237×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button[data-testid=assign-preparer] "Change preparer" | 120×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button[data-testid=record-extension] "Record extension" | 123×32px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | summary "send log" | 581×19px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Send reminder ($150.00)" | 186×38px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Send the pay link…" | 150×38px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Void…" | 71×38px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | select "Not specific to one" | 1018×43px |
-| ops /clients/290071b4-f42e-4238-97d8-72d1e719100e | 1440 | webkit | tap-target | button "Request a meeting" | 145×36px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Events" | 60×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Account" | 69×29px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Flag as a test record…" | 150×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button[data-testid=edit-contact] "Edit" | 54×38px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Resend sign-in link" | 150×38px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Add a business" | 111×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a[data-testid=business-link-df3ecb26-3350-460c-93b6-f70ca6b8eb5d] "Synthetic Layout LayoutWebkit1440 Studio" | 305×16px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button[data-testid=edit-business-df3ecb26-3350-460c-93b6-f70ca6b8eb5d] "Edit" | 44×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Clear primary" | 101×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Archive" | 67×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | select[data-testid=counts-as-select-fd713a4f-e715-48e3-9dba-87db81231d9b] "Counts as…" | 305×43px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button[data-testid=counts-as-save-fd713a4f-e715-48e3-9dba-87db81231d9b] "Save" | 50×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | select[data-testid=counts-as-select-bcf02018-2884-4107-bc1f-652f7c4e4774] "Counts as…" | 305×43px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button[data-testid=counts-as-save-bcf02018-2884-4107-bc1f-652f7c4e4774] "Save" | 50×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | a "Open" | 53×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Create engagement packet" | 198×36px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Hold" | 49×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Close" | 55×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Withdraw" | 78×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | input | 348×37px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button[data-testid=upload-engagement-letter] "Upload the signed engagement letter" | 237×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button[data-testid=assign-preparer] "Change preparer" | 120×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button[data-testid=record-extension] "Record extension" | 123×32px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | summary "send log" | 581×19px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Send reminder ($150.00)" | 186×38px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Send the pay link…" | 150×38px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Void…" | 71×38px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | select "Not specific to one" | 1018×43px |
+| ops /clients/3a2c7e9b-946a-4790-bf0b-4d37985c6d9c | 1440 | webkit | tap-target | button "Request a meeting" | 145×36px |
 | ops /configurator | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
 | ops /configurator | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
 | ops /configurator | 1440 | webkit | tap-target | a "Executive" | 77×29px |
@@ -11768,36 +11968,62 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops /queue | 1440 | webkit | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 1440 | webkit | tap-target | a "Client packet" | 113×38px |
 | ops /queue | 1440 | webkit | tap-target | a "Client packet" | 113×38px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Executive" | 77×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Clients" | 60×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Documents" | 87×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "My Tasks" | 76×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "My Queue" | 81×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "E-file acks" | 82×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Inbox" | 52×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Pipeline" | 67×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Reports" | 66×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Configurator" | 95×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Approvals" | 79×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Announcements" | 116×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "SOPs" | 52×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Events" | 60×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Hilo Ops" | 70×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Alerts" | 54×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Deliver Return" | 104×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Recorder" | 74×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Automations" | 94×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Pricing" | 61×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Templates" | 81×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Document checklist" | 137×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Staff" | 48×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Settings" | 68×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "WISP" | 52×29px |
-| ops /quotes/2c3f1f76-009d-4f85-a121-9e844ee8ebcf | 1440 | webkit | tap-target | a "Account" | 69×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Events" | 60×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /quotes/0d6eae5a-218a-4362-8af1-e3d3790db932 | 1440 | webkit | tap-target | a "Account" | 69×29px |
 | ops /recorder | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
 | ops /recorder | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
+| ops /recorder | 1440 | webkit | tap-target | a "Executive" | 77×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Clients" | 60×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Documents" | 87×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "My Tasks" | 76×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "My Queue" | 81×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "E-file acks" | 82×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Inbox" | 52×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Pipeline" | 67×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Reports" | 66×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Configurator" | 95×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Approvals" | 79×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Announcements" | 116×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "SOPs" | 52×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Events" | 60×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Hilo Ops" | 70×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Alerts" | 54×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Deliver Return" | 104×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Recorder" | 74×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Automations" | 94×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Pricing" | 61×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Templates" | 81×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Document checklist" | 137×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Staff" | 48×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Settings" | 68×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "WISP" | 52×29px |
+| ops /recorder | 1440 | webkit | tap-target | a "Account" | 69×29px |
 | ops /recorder | 1440 | webkit | tap-target | input | 490×37px |
 | ops /reports | 1440 | webkit | tap-target | a "SOTO.OPERATIONS" | 135×27px |
 | ops /reports | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 73×26px |
@@ -12295,8 +12521,30 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | portal /consent | 1440 | webkit | tap-target | button "Back to my checklist" | 171×42px |
 | portal /sign | 1440 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal /sign | 1440 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
+| portal /sign | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 77×30px |
+| portal /sign | 1440 | webkit | tap-target | a "Home" | 56×32px |
+| portal /sign | 1440 | webkit | tap-target | a "Documents" | 90×32px |
+| portal /sign | 1440 | webkit | tap-target | a "My Returns" | 90×32px |
+| portal /sign | 1440 | webkit | tap-target | a "IRS Letters" | 87×32px |
+| portal /sign | 1440 | webkit | tap-target | a "Sign" | 47×32px |
+| portal /sign | 1440 | webkit | tap-target | a "Invoices" | 71×32px |
+| portal /sign | 1440 | webkit | tap-target | a "Messages" | 83×32px |
+| portal /sign | 1440 | webkit | tap-target | a "Estimate" | 72×32px |
+| portal /sign | 1440 | webkit | tap-target | a "Resources" | 85×32px |
+| portal /sign | 1440 | webkit | tap-target | a "My Info" | 66×32px |
 | portal /estimate | 1440 | webkit | tap-target | a "SOTO." | 65×31px |
 | portal /estimate | 1440 | webkit | tap-target | button[data-testid=lang-toggle] "Español" | 75×30px |
+| portal /estimate | 1440 | webkit | tap-target | button[data-testid=sign-out] "Sign out" | 77×30px |
+| portal /estimate | 1440 | webkit | tap-target | a "Home" | 56×32px |
+| portal /estimate | 1440 | webkit | tap-target | a "Documents" | 90×32px |
+| portal /estimate | 1440 | webkit | tap-target | a "My Returns" | 90×32px |
+| portal /estimate | 1440 | webkit | tap-target | a "IRS Letters" | 87×32px |
+| portal /estimate | 1440 | webkit | tap-target | a "Sign" | 47×32px |
+| portal /estimate | 1440 | webkit | tap-target | a "Invoices" | 71×32px |
+| portal /estimate | 1440 | webkit | tap-target | a "Messages" | 83×32px |
+| portal /estimate | 1440 | webkit | tap-target | a "Estimate" | 72×32px |
+| portal /estimate | 1440 | webkit | tap-target | a "Resources" | 85×32px |
+| portal /estimate | 1440 | webkit | tap-target | a "My Info" | 66×32px |
 | portal /estimate | 1440 | webkit | tap-target | input | 390×42px |
 | portal /estimate | 1440 | webkit | tap-target | input | 390×42px |
 | portal /estimate | 1440 | webkit | tap-target | input | 390×42px |

@@ -69,9 +69,25 @@ async function settle(page: Page, url: string): Promise<void> {
   await page.waitForTimeout(300);
 }
 
-async function audit(page: Page, project: string, app: string, key: string, url: string): Promise<number> {
-  await settle(page, url);
+/*
+ * A PAGE IS AUDITED SIGNED IN, OR NOT AT ALL (the first audit, 2026-09-30). WebKit dropped the session
+ * marker between pages at some widths and the shell rendered signed out (no navigation, no Sign out):
+ * those pages scored as nearly clean. "Sign out" in the header is the proof of a session; without it after
+ * one reload the page is recorded as a gap in the audit, never as a pass.
+ */
+async function audit(page: Page, project: string, app: string, key: string, url: string, signedIn: boolean): Promise<number> {
   const [browser, width] = project.split('-');
+  await settle(page, url);
+  if (signedIn) {
+    const signOut = page.getByTestId('sign-out');
+    if (!(await signOut.isVisible().catch(() => false))) {
+      await expect(signOut).toBeVisible({ timeout: 10_000 }).catch(async () => { await settle(page, url); });
+    }
+    if (!(await signOut.isVisible().catch(() => false))) {
+      appendFileSync(LOG, JSON.stringify({ page: `${app} ${url.replace(/^https?:\/\/[^/]+/, '')}`, key: `${app}-${key}`, viewport: width, browser, check: 'audit-gap', element: 'page', detail: 'the page rendered signed out; not audited' }) + '\n');
+      return 1;
+    }
+  }
   mkdirSync(SHOTS, { recursive: true });
   // A page taller than the browser can capture whole (32,767 px) is captured to 16,000 px, and said so.
   const shot = resolve(SHOTS, `${app}-${key}-${width}-${browser}.png`);
@@ -94,17 +110,17 @@ test.describe('R106 layout audit', () => {
     const pages: Array<{ app: string; key: string; failures: number }> = [];
 
     // Signed out first: the two sign-in pages.
-    pages.push({ app: 'ops', key: 'login', failures: await audit(page, project, 'ops', 'login', `${OPS}/login`) });
-    pages.push({ app: 'portal', key: 'login', failures: await audit(page, project, 'portal', 'login', `${PORTAL}/login`) });
+    pages.push({ app: 'ops', key: 'login', failures: await audit(page, project, 'ops', 'login', `${OPS}/login`, false) });
+    pages.push({ app: 'portal', key: 'login', failures: await audit(page, project, 'portal', 'login', `${PORTAL}/login`, false) });
 
     await opsSignIn(page);
     for (const [key, path] of OPS_PAGES(person!)) {
-      pages.push({ app: 'ops', key, failures: await audit(page, project, 'ops', key, `${OPS}${path}`) });
+      pages.push({ app: 'ops', key, failures: await audit(page, project, 'ops', key, `${OPS}${path}`, true) });
     }
 
     await redeemPortalToken(page, PORTAL, person!.portalMagicTokens[0]!);
     for (const [key, path] of PORTAL_PAGES) {
-      pages.push({ app: 'portal', key, failures: await audit(page, project, 'portal', key, `${PORTAL}${path}`) });
+      pages.push({ app: 'portal', key, failures: await audit(page, project, 'portal', key, `${PORTAL}${path}`, true) });
     }
 
     const failing = pages.filter((p) => p.failures > 0);

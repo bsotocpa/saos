@@ -29,7 +29,7 @@ for (const r of rows) {
   if (!groups.has(k)) groups.set(k, { key: r.key, check: r.check, n: Object.fromEntries(PROJECTS.map((p) => [p, 0])) });
   groups.get(k).n[`${r.browser}-${r.viewport}`]++;
 }
-const order = { overflow: 0, 'word-broken': 1, clipped: 2, 'tap-target': 3 };
+const order = { 'audit-gap': -1, overflow: 0, 'word-broken': 1, clipped: 2, 'tap-target': 3 };
 const summary = [...groups.values()].sort((a, b) => a.key.localeCompare(b.key) || order[a.check] - order[b.check]);
 const sumLog = resolve(root, 'apps', 'e2e', '.artifacts', `layout-${when}-summary.log`);
 writeFileSync(sumLog, ['page | check | ' + PROJECTS.join(' | ') + ' | total',

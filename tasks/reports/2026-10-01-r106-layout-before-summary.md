@@ -1,6 +1,6 @@
 # r106-layout-before-summary (2026-10-01)
 
-Generated 2026-10-01T02:30:25.677Z by scripts/report-table.mjs from the log layout-before-summary.log; 60 row(s).
+Generated 2026-10-01T02:45:42.282Z by scripts/report-table.mjs from the log layout-before-summary.log; 60 row(s).
 
 ```sql
 the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report): every Ops and portal page at 375, 768 and 1440 in Chromium and WebKit through apps/e2e/tests/layout-check.ts; the failures in apps/e2e/.artifacts/layout-failures.jsonl
@@ -24,9 +24,9 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops-admin-wisp | word-broken | 8 | 0 | 0 | 9 | 0 | 0 | 17 |
 | ops-admin-wisp | tap-target | 29 | 29 | 29 | 29 | 29 | 29 | 174 |
 | ops-alerts | word-broken | 1 | 0 | 0 | 1 | 0 | 0 | 2 |
-| ops-alerts | tap-target | 28 | 28 | 28 | 28 | 28 | 1 | 141 |
-| ops-announcements | tap-target | 29 | 29 | 29 | 29 | 29 | 2 | 147 |
-| ops-approvals | tap-target | 31 | 31 | 31 | 31 | 31 | 1 | 156 |
+| ops-alerts | tap-target | 28 | 28 | 28 | 28 | 28 | 28 | 168 |
+| ops-announcements | tap-target | 29 | 29 | 29 | 29 | 29 | 29 | 174 |
+| ops-approvals | tap-target | 31 | 31 | 31 | 31 | 31 | 31 | 186 |
 | ops-business | tap-target | 32 | 32 | 32 | 32 | 32 | 32 | 192 |
 | ops-client | tap-target | 51 | 54 | 55 | 51 | 54 | 55 | 320 |
 | ops-clients | word-broken | 0 | 5 | 0 | 0 | 1 | 0 | 6 |
@@ -43,7 +43,7 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops-pipeline | tap-target | 29 | 29 | 29 | 29 | 29 | 29 | 174 |
 | ops-queue | tap-target | 53 | 53 | 53 | 53 | 53 | 53 | 318 |
 | ops-quote | tap-target | 28 | 28 | 28 | 28 | 28 | 28 | 168 |
-| ops-recorder | tap-target | 29 | 29 | 29 | 29 | 29 | 3 | 148 |
+| ops-recorder | tap-target | 29 | 29 | 29 | 29 | 29 | 29 | 174 |
 | ops-reports | tap-target | 39 | 39 | 39 | 39 | 39 | 39 | 234 |
 | ops-returns-no-preparer | tap-target | 29 | 31 | 31 | 29 | 31 | 31 | 182 |
 | ops-returns-stage | tap-target | 29 | 29 | 29 | 29 | 29 | 29 | 174 |
@@ -52,19 +52,19 @@ the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)
 | ops-tasks | tap-target | 51 | 103 | 103 | 51 | 103 | 103 | 514 |
 | ops-tasks-boards | word-broken | 1 | 1 | 1 | 1 | 1 | 1 | 6 |
 | ops-tasks-boards | tap-target | 28 | 28 | 28 | 28 | 28 | 28 | 168 |
-| ops-upload-return | tap-target | 29 | 29 | 29 | 29 | 2 | 29 | 147 |
+| ops-upload-return | tap-target | 29 | 29 | 29 | 29 | 29 | 29 | 174 |
 | portal-consent | tap-target | 4 | 4 | 4 | 4 | 4 | 4 | 24 |
 | portal-documents | clipped | 2 | 0 | 0 | 2 | 0 | 0 | 4 |
-| portal-documents | tap-target | 17 | 17 | 17 | 15 | 2 | 13 | 81 |
-| portal-estimate | tap-target | 20 | 20 | 20 | 18 | 7 | 7 | 92 |
+| portal-documents | tap-target | 17 | 17 | 17 | 15 | 13 | 13 | 92 |
+| portal-estimate | tap-target | 20 | 20 | 20 | 18 | 18 | 18 | 114 |
 | portal-home | tap-target | 18 | 17 | 17 | 18 | 17 | 17 | 104 |
-| portal-invoices | tap-target | 14 | 14 | 14 | 14 | 2 | 14 | 72 |
+| portal-invoices | tap-target | 14 | 14 | 14 | 14 | 14 | 14 | 84 |
 | portal-login | tap-target | 4 | 4 | 4 | 4 | 4 | 4 | 24 |
-| portal-messages | tap-target | 15 | 15 | 15 | 15 | 4 | 15 | 79 |
+| portal-messages | tap-target | 15 | 15 | 15 | 15 | 15 | 15 | 90 |
 | portal-notices | tap-target | 13 | 13 | 13 | 13 | 13 | 13 | 78 |
-| portal-profile | tap-target | 22 | 22 | 22 | 20 | 9 | 20 | 115 |
+| portal-profile | tap-target | 22 | 22 | 22 | 20 | 20 | 20 | 126 |
 | portal-questionnaire | tap-target | 23 | 23 | 23 | 21 | 21 | 21 | 132 |
-| portal-request-service | tap-target | 15 | 15 | 15 | 14 | 3 | 14 | 76 |
-| portal-resources | tap-target | 13 | 13 | 13 | 13 | 2 | 13 | 67 |
-| portal-returns | tap-target | 13 | 13 | 13 | 13 | 2 | 13 | 67 |
-| portal-sign | tap-target | 13 | 13 | 13 | 13 | 13 | 2 | 67 |
+| portal-request-service | tap-target | 15 | 15 | 15 | 14 | 14 | 14 | 87 |
+| portal-resources | tap-target | 13 | 13 | 13 | 13 | 13 | 13 | 78 |
+| portal-returns | tap-target | 13 | 13 | 13 | 13 | 13 | 13 | 78 |
+| portal-sign | tap-target | 13 | 13 | 13 | 13 | 13 | 13 | 78 |
