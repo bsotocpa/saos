@@ -44,9 +44,23 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
   return target;
 }
 /** Every console error and every uncaught page error, from before the first navigation. */
+/*
+ * THE ERRORS THIS PAGE CAUSED, BY THE REQUEST THAT FAILED (receipt run 53, 2026-09-30). A failed load
+ * is counted from its response, for a request made after the watch began; WebKit's own console line
+ * for it ("Failed to load resource") is left to that count, because WebKit delivered Home's 404 on
+ * /portal/packet (by design: no packet yet) 55 ms after the walk had moved to this page and begun
+ * watching. Every other console error and every uncaught exception still counts.
+ */
 function watchErrors(page: Page): string[] {
   const errors: string[] = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+  page.on('request', (req) => {
+    void req.response().then((res) => {
+      if (res && res.status() >= 400) errors.push(`response: ${res.status()} ${req.method()} ${new URL(req.url()).pathname}`);
+    }).catch(() => undefined);
+  });
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !/^Failed to load resource: the server responded with a status of \d+/.test(m.text())) errors.push(`console: ${m.text()}`);
+  });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   return errors;
 }
