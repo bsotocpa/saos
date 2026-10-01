@@ -142,7 +142,11 @@ tr:last-child td { border-bottom: none; }
   padding: 8px 14px; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: none;
   /* Unbreakable tokens (long client emails in search results) must wrap, not
      widen the page — the Deliver Return 390px horizontal-scroll root cause. */
-  max-width: 100%; overflow-wrap: anywhere;
+  max-width: 100%;
+  /* R105 (2026-09-30): break-word, not anywhere — "anywhere" let a table cell squeeze a button below its
+     longest word, a letter per line (the Staff page). break-word still wraps a token too long for a line
+     of its own (a long client email), and a cell never sizes a button narrower than its words. */
+  overflow-wrap: break-word;
 }
 .btn.accent { background: var(--electric); color: var(--forest-deep); }
 .btn.ghost { background: transparent; color: var(--forest); border: 1px solid var(--line); }
@@ -558,3 +562,36 @@ table.qb-lines td.num { font-variant-numeric: tabular-nums; white-space: nowrap;
 .withdrawn-line { padding: 4px 0; border-bottom: 1px solid var(--line); }
 .withdrawn-line > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .withdrawn-line > p { margin: 2px 0 8px; }
+
+/*
+ * R113 (Brian, 2026-09-30): every control is a tap target of at least 44 × 44 px, met by enlarging the
+ * HIT AREA, not the control: an invisible, absolutely positioned extension that grows only the sides
+ * shorter than 44px. At 1440 Ops looks as it did; at 375 a thumb finds every control. The harness layout
+ * check counts the extension (apps/e2e/tests/layout-check.ts). A <summary> that draws its own ::after
+ * (the quote builder's +/–) keeps it; `.tap` gives the same to a standalone link or control.
+ */
+button, a.btn, .nav a, .wordmark, .chip, .tap, [role=button], [role=tab], summary:not(.qb-group > summary) { position: relative; }
+button::after, a.btn::after, .nav a::after, .wordmark::after, .chip::after, .tap::after, [role=button]::after, [role=tab]::after, summary:not(.qb-group > summary)::after {
+  content: '';
+  position: absolute;
+  top: min(0px, calc((100% - 44px) / 2));
+  bottom: min(0px, calc((100% - 44px) / 2));
+  left: min(0px, calc((100% - 44px) / 2));
+  right: min(0px, calc((100% - 44px) / 2));
+}
+/* The nav strip gives its links the room their extension needs, so the strip does not clip it. */
+.nav { padding-top: 8px; padding-bottom: 8px; }
+
+/*
+ * R105 rule 1 (2026-09-30): a list of records is never a squeezed table below 768. A `table.stack` becomes
+ * stacked cards there: each row a card, each cell on its own line under its column's name (data-label);
+ * at 768 and wider it stays the table it was.
+ */
+@media (max-width: 767px) {
+  table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: 100%; }
+  table.stack thead { display: none; }
+  table.stack tr { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: var(--card); }
+  table.stack td { border-bottom: none; padding: 3px 0; }
+  table.stack td[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+  table.stack td:empty { display: none; }
+}
