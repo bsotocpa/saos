@@ -62,7 +62,27 @@ export function restoreNextFiles(artifactsDir: string, appDir: string, prefix = 
     if (!name.startsWith(prefix)) continue;
     const bare = name.slice(prefix.length);
     if (prefix === '' && bare.includes('/')) continue; // a prefixed entry, not Ops's own
-    writeFileSync(resolve(appDir, bare), content);
+    writeNextFile(resolve(appDir, bare), content);
+  }
+}
+
+/*
+ * A WINDOWS FILE OPEN REFUSED (2026-10-01, twice in one day). Windows twice refused to open one of these
+ * two files with "UNKNOWN: unknown error, open": Next's build reading tsconfig.json, and this restore
+ * writing next-env.d.ts in a teardown after a green walk. Another process held the file a moment (an
+ * editor's TypeScript server or a scan of the just-written file; not pinned down). So a file that already
+ * holds the content is not written at all, and a transient refusal is retried four times, 250 ms apart,
+ * each retry printed in the run's output. An I/O retry of a named error, never a test rerun (R7).
+ */
+function writeNextFile(path: string, content: string): void {
+  if (existsSync(path) && readFileSync(path, 'utf8') === content) return;
+  for (let attempt = 1; ; attempt++) {
+    try { writeFileSync(path, content); return; } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code ?? '';
+      if (attempt > 4 || !['UNKNOWN', 'EBUSY', 'EPERM'].includes(code)) throw e;
+      console.warn(`harness: ${path.replace(/^.*[\/]apps[\/]/, 'apps/')} refused (${code}); retry ${attempt} of 4`);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+    }
   }
 }
 

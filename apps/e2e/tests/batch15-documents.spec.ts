@@ -80,7 +80,18 @@ test('I1–I5: the Documents page by return, a withdrawn return in one line, the
     expect(upload!.y, 'beneath the name').toBeGreaterThan(name!.y + name!.height - 1);
     const failures = await checkLayout(page);
     expect(failures, 'the Documents page passes the layout check').toEqual([]);
-    steps.push(`I1|portal /documents: data-testid checklist-item — checklist-item-name on its own line (wider than half the row), the status chip beside it, label.cl-upload "Upload" full width beneath; checkLayout() empty at ${project}|${ROLES}|tap`);
+    // The file input is hidden from sight but in the page (2026-10-01): a real tap on "Upload" opens the
+    // file chooser, the step a person takes on a phone, never only setInputFiles behind it.
+    // (Playwright counts a 1px transparent box as visible, so the walk reads what a person would see.)
+    const raw = await item.getByTestId('checklist-upload').evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { w: r.width, h: r.height, opacity: getComputedStyle(el).opacity };
+    });
+    expect(raw.w <= 1 && raw.h <= 1 && raw.opacity === '0', `no raw file box under Upload (${raw.w}x${raw.h}, opacity ${raw.opacity})`).toBe(true);
+    const chooser = page.waitForEvent('filechooser', { timeout: 10_000 });
+    await item.locator('.cl-upload').click();
+    expect((await chooser).isMultiple(), 'a tap on Upload opens the file chooser, several files at once').toBe(true);
+    steps.push(`I1|portal /documents: data-testid checklist-item — checklist-item-name on its own line (wider than half the row), the status chip beside it, label.cl-upload "Upload" full width beneath, no raw file box, and a tap on "Upload" opens the file chooser; checkLayout() empty at ${project}|${ROLES}|tap`);
 
     // ── I2. THE LIST BY RETURN ────────────────────────────────────────────────────────────
     const groups = page.getByTestId('document-group');

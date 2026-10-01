@@ -29,7 +29,7 @@ for (const r of rows) {
   if (!groups.has(k)) groups.set(k, { key: r.key, check: r.check, n: Object.fromEntries(PROJECTS.map((p) => [p, 0])) });
   groups.get(k).n[`${r.browser}-${r.viewport}`]++;
 }
-const order = { 'audit-gap': -1, overflow: 0, 'word-broken': 1, clipped: 2, 'tap-target': 3 };
+const order = { 'audit-gap': -1, overflow: 0, 'word-broken': 1, clipped: 2, spill: 3, crowded: 4, 'tap-target': 5 };
 const summary = [...groups.values()].sort((a, b) => a.key.localeCompare(b.key) || order[a.check] - order[b.check]);
 const sumLog = resolve(root, 'apps', 'e2e', '.artifacts', `layout-${when}-summary.log`);
 // From batch 15 step 5 the audit also logs every page it audits (layout-pages.jsonl). The summary is then
@@ -59,7 +59,7 @@ writeFileSync(fullLog, ['page | viewport | browser | check | element | detail',
   ...(rows.length ? rows.map((r) => [r.page, r.viewport, r.browser, r.check, r.element, r.detail].map(cell).join(' | '))
     : ['every page | 375, 768, 1440 | chromium, webkit | none | none | the check found no failure'])].join('\n') + '\n');
 
-const sql = 'the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report): every Ops and portal page at 375, 768 and 1440 in Chromium and WebKit through apps/e2e/tests/layout-check.ts; the failures in apps/e2e/.artifacts/layout-failures.jsonl';
+const sql = (when === 'before' ? 'the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report)' : 'the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, enforcing)') + ': every Ops and portal page at 375, 768 and 1440 in Chromium and WebKit through apps/e2e/tests/layout-check.ts; the failures in apps/e2e/.artifacts/layout-failures.jsonl';
 for (const [name, log] of [[`r106-layout-${when}-summary`, sumLog], [`r106-layout-${when}-full`, fullLog]]) {
   const r = spawnSync(process.execPath, [resolve(root, 'scripts', 'report-table.mjs'), '--name', name, '--from-log', log, '--sql', sql], { stdio: 'inherit' });
   if (r.status !== 0) process.exit(r.status ?? 1);

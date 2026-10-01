@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useAsk } from '../../../components/ask';
 import { HydratedFieldset } from '../../../components/hydrated-fieldset';
+import { MoreActions } from '../../../components/more-actions';
 
 interface Staff {
   id: string; full_name: string; legal_name: string; display_name: string; email: string; role: string;
@@ -193,10 +194,11 @@ export default function StaffAdminPage() {
                   <td data-label="MFA">{s.totp_enabled ? <span className="badge ok">on</span> : <span className="badge warn">pending</span>}</td>
                   <td data-label="Status">{s.is_active ? <span className="badge ok">active</span> : <span className="badge danger">off</span>}</td>
                   <td style={{ width: 180 }}>
-                    <div style={{ display: 'grid', gap: 4 }}>
+                    <div className="staff-actions">
                       <button className="btn ghost" type="button" onClick={() => (editing === s.id ? setEditing(null) : startEdit(s))}>
                         {editing === s.id ? 'Close' : 'Edit'}
                       </button>
+                      <MoreActions>
                       <button
                         className="btn ghost"
                         type="button"
@@ -276,6 +278,7 @@ export default function StaffAdminPage() {
                           {errAt(`active:${s.id}`)}
                         </>
                       )}
+                      </MoreActions>
                     </div>
                   </td>
                 </tr>

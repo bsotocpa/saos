@@ -30,6 +30,7 @@ import {
 import { describeNotice, type NoticeState } from '../../../lib/notices';
 import { badgeToneFor, invoiceStatusLine } from '../../../lib/invoice-display';
 import { WithdrawnReturnLine } from '../../../components/withdrawn-return';
+import { MoreActions } from '../../../components/more-actions';
 
 interface Contact {
   id: string; first_name: string; last_name: string; email: string | null;
@@ -1101,6 +1102,7 @@ export default function ClientPacketPage() {
                       {' · '}
                     </>
                   ) : null}
+                  <MoreActions>
                   {!b.is_primary ? (
                     <button
                       type="button"
@@ -1152,6 +1154,7 @@ export default function ClientPacketPage() {
                   >
                     Archive
                   </button>
+                  </MoreActions>
                 </span>
                 {b.il_sos_status && b.il_sos_status !== 'good_standing' ? (
                   <>
@@ -1612,6 +1615,7 @@ export default function ClientPacketPage() {
                       >
                         Hold
                       </button>
+                      <MoreActions>
                       <button
                         className="btn ghost small" type="button" disabled={busy}
                         onClick={async () => {
@@ -1681,6 +1685,7 @@ export default function ClientPacketPage() {
                       >
                         Withdraw
                       </button>
+                      </MoreActions>
                     </>
                   ) : (
                     <button
@@ -2112,6 +2117,7 @@ export default function ClientPacketPage() {
                     >
                       Send reminder ({formatMoney(inv.total_cents)})
                     </button>{' '}
+                    <MoreActions>
                     {/*
                       ITEM 14 (2026-09-09): ONE link per invoice — the tokenized pay link — and it is SENT,
                       never printed. The portal URL that used to sit here "so it could be read out on a
@@ -2182,6 +2188,7 @@ export default function ClientPacketPage() {
                         </button>
                       </>
                     ) : null}
+                    </MoreActions>
                   </>
                 ) : null}
               </li>

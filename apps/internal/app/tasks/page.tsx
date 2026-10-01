@@ -19,6 +19,7 @@ import {
 import type { Filters, SavedView, StaffEntry, Task, TaskStatus } from './lib';
 import { TaskFormModal } from './task-form';
 import type { TaskLayout } from './task-form';
+import { MoreActions } from '../../components/more-actions';
 
 type ViewType = 'list' | 'kanban' | 'calendar' | 'timeline';
 
@@ -334,8 +335,10 @@ export default function TasksPage() {
           </button>
         ) : null}
         <span style={{ flex: 1 }} />
-        <Link className="btn ghost" href="/tasks/boards">Project boards</Link>
-        <button className="btn ghost" type="button" onClick={() => setShowWorkload((s) => !s)}>Workload</button>
+        <MoreActions>
+          <Link className="btn ghost" href="/tasks/boards">Project boards</Link>
+          <button className="btn ghost" type="button" onClick={() => setShowWorkload((s) => !s)}>Workload</button>
+        </MoreActions>
         {canManage ? <button className="btn accent" type="button" onClick={() => setCreating(true)}>Create Task</button> : null}
       </div>
 
@@ -390,7 +393,7 @@ export default function TasksPage() {
         * same chip row as "My open" and "Overdue", so the row a person uses to work was mostly
         * a number they are never going to act on today. It lives below, named for what it is.
         */}
-      <p className="small muted" style={{ margin: '2px 0 10px' }}>
+      <p className="small muted" style={{ margin: '20px 0 10px' }}>
                 <button type="button" className={`chip ${activeViewId === '' && filters.sourceType === BACKLOG_SOURCE ? 'active' : ''}`}
                   onClick={() => { setActiveViewId(''); setFilters({ ...EMPTY_FILTERS, sourceType: BACKLOG_SOURCE }); }}>
                   Migration backlog{backlogCount > 0 ? ` (${backlogCount})` : ''}

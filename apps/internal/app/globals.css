@@ -612,6 +612,9 @@ label.tap-field::after {
   table.stack td { border-bottom: none; padding: 3px 0; }
   table.stack td[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); }
   table.stack td:empty { display: none; }
+  /* A stacked cell is a block, where R114's `height: 44px` (a minimum in a table) is a fixed height: the
+     Staff actions spilled out of their card over the next person (receipt run 59). Stacked, it grows. */
+  table.stack td { height: auto; }
 }
 
 /*
@@ -633,7 +636,16 @@ td a::after {
   td, th { --tap: 24px; }
 }
 @media (max-width: 1023px) {
-  tr:has(a, button, select, input, textarea, summary) > td { height: 44px; }
+  /* 46, not 44: two neighbouring rows' extensions each reach 1px past halfway (the WebKit rounding margin),
+     so a 44px row left each link 42px of its own (receipt run 59's routed check). */
+  tr:has(a, button, select, input, textarea, summary) > td,
+  tr:has(a, button, select, input, textarea, summary) > th { height: 46px; }
+  /* A tick in a table is a 44px box of its own: its column grows to hold it (a touch width). */
+  label.tap-field:has(> input[type=checkbox]) { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+  /* Two small icon chips side by side in a row (Tasks: duplicate, follow-up) far enough apart for both. */
+  td .chip + .chip { margin-left: 12px; }
+  /* A cell's own link is one box, so a name that wraps onto two lines keeps one whole extension. */
+  td > a { display: inline-block; max-width: 100%; margin-block: 4px; }
   td select, td input:not([type=checkbox]):not([type=radio]):not([type=file]),
   table.dense td select, table.dense td input:not([type=checkbox]):not([type=radio]):not([type=file]) { min-height: 44px; }
 }
@@ -651,3 +663,48 @@ label.small.tap-field { display: inline-block; }
 
 /* A button that reads as text (a task's title in the list): unset, but positioned, so its hit area extends. */
 .text-button { all: unset; position: relative; cursor: pointer; }
+
+/*
+ * A FIELD SITS ABOVE ITS OWN LABEL'S HIT EXTENSION (receipt run 59, 2026-10-01). A label's ::after
+ * extension painted over the field inside it, so a tap on the field's face reached the label (it still
+ * focuses the field, but the field is not what the finger touched, and a neighbour's label could win the
+ * same way). Every menu, overlay and sticky bar sits at z-index 2 or more.
+ */
+label input:not([type=hidden]), label select, label textarea { position: relative; z-index: 1; }
+
+/* The hidden attribute hides (2026-10-01): the base `input { display: block }` beat the browser's own
+   [hidden] rule, so the portal checklist's file input showed a raw "Choose Files" box under "Upload". */
+[hidden] { display: none !important; }
+
+/*
+ * ROWS OF CONTROLS THAT WRAP (receipt run 59, 2026-10-01). Each control's 44px hit extension needs room
+ * between wrapped rows, or the lower row's extension covers the upper row's buttons (the Reports list, the
+ * Tasks chips). A wrapping row of controls gets a row gap its extensions fit in: 44px less a button's
+ * height (about 30px) for buttons, less a chip's (about 26px) for chips. Only wrapped rows move.
+ */
+:where(div, span, p, li, td, header, form, nav, section):has(> button, > a.btn) { row-gap: 16px; }
+.chipbar { row-gap: 20px; }
+/* A link with a hit extension is one box: an inline link that wraps over two lines has no single box for
+   its extension to grow from (a long business name at 1440 reached 17px). */
+a.tap { display: inline-block; max-width: 100%; }
+
+/* R105 rule 4: the "More" menu (components/more-actions.tsx). At 768 and wider it is not there. */
+button.btn.more-toggle { display: none; }
+.more-items { display: contents; }
+@media (max-width: 767px) {
+  button.btn.more-toggle { display: inline-flex; }
+  .more-items { display: none; }
+  .more-items.open { display: flex; flex-direction: column; align-items: stretch; gap: 16px; width: 100%; padding-top: 8px; }
+}
+/* Staff's actions: a column of buttons. Below 1024 the rows sit far enough apart for their 44px reach. */
+.staff-actions { display: grid; gap: 4px; }
+@media (max-width: 1023px) { .staff-actions { gap: 16px; } }
+/* A box that scrolls sideways clips its controls' hit extensions at its own edge (the first column's
+   links and ticks reached 22px). 4px of padding inside, given back outside: the edge controls keep their
+   reach and nothing on the page moves. */
+.tablewrap, .scroll-x:not(.card) { padding: 4px; margin: -4px; }
+@media (max-width: 767px) { section.card > table { padding: 4px; margin: -4px; } }
+
+/* At 900 and below the Tasks layout is one column: the filter rail sits above the list, an ordinary block.
+   Sticky with its own scroll there, it covered the list as the page scrolled and cut off its last filters. */
+@media (max-width: 900px) { .task-layout > .rail { position: static; max-height: none; overflow: visible; } }

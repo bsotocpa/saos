@@ -2240,3 +2240,15 @@ R113's 44px came from an absolutely positioned ::after on each control. It was l
 ## A rule inside a media query loses to a more specific rule outside it (2026-10-01, batch 15 step 5)
 Two narrow-width rules did nothing: .desk-only tables still showed on phones because section.card > table set display with higher specificity, and table.dense select kept its 24px height below 1024 over the media query's td select. A media query adds no specificity.
 **Rule:** a narrow-width override is written with at least the specificity of the widest rule it overrides (or !important for a pure show/hide utility), and the check, not the stylesheet, is the proof it took.
+
+## A receipt the laptop slept through is red for a known cause (2026-10-01, receipt run 59, R7)
+Run 59's API suite failed 20 tests, each recorded at 1,448-1,454 s against a 300 s timeout: a timer that fires 24 minutes late means the process was frozen. The System log shows Modern Standby from 09:17:19 to 09:41:28 Chicago (24m09s), 2.5 minutes after the run started and right after the session's turn ended to wait on it; a second standby (09:42-09:45) slowed the harness. No assertion failed in the API suite.
+**Rule:** a receipt runs with the machine held awake (request_keep_awake) and the turn kept open on a foreground wait until it ends; a red whose durations all match a standby window in the System log is that standby, written up, and the receipt is run again whole.
+
+## A hit area is where the browser routes a tap, not where the box is (2026-10-01, receipt run 59)
+The step-5 audit read 0 failures while three walks could not click: a label's 44px ::after extension covered the neighbouring "Asked for" checkbox's face, and a Close button's extension covered the button beside it. The check had measured each extension's geometry alone. It now measures with elementFromPoint, the control scrolled to mid-screen: its centre must reach it, and the run of points reaching it through the centre must span 44 (24 in a table cell at 1024+).
+**Rule:** a tap-target check asks the browser where a tap lands (elementFromPoint) and never sums boxes; a hit extension never overlaps another control's face.
+
+## Windows refuses a file open now and then; the harness names it and does not depend on luck (2026-10-01)
+Twice in one day a harness run went red on "UNKNOWN: unknown error, open" for a file the harness itself rewrites (apps/internal/tsconfig.json in Next's build; next-env.d.ts in the restore after a green walk). Another process held the file a moment; which one was not pinned down. The restore now skips a write whose content is already there and retries a transient refusal four times, 250 ms apart, printing each retry.
+**Rule:** a harness write to a shared file is skipped when nothing changes and retried only on a named transient error, with every retry printed; a test is never rerun to get past one.

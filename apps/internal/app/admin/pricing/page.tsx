@@ -204,7 +204,7 @@ export default function PricingAdminPage() {
                 {g.note}
               </p>
               {g.items.map((i) => (
-                <div key={i.item_code} className="small" style={{ margin: '4px 0' }}>
+                <div key={i.item_code} className="small" style={{ padding: '7px 0' }}>
                   <strong>{i.name_en}</strong>
                   <span className="muted">
                     {' '}· {priceLabel(i)}

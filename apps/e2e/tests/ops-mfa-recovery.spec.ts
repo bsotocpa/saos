@@ -31,6 +31,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { viewportKey } from './viewport';
+import { openMore } from './more';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -218,6 +219,7 @@ test.describe('Ops → MFA recovery codes and Reset MFA (R65)', () => {
       const row = team.locator('tr', { hasText: email });
       await expect(row).toBeVisible();
       await expect(row.locator('.badge', { hasText: /^on$/ }), 'MFA is on before the reset').toBeVisible();
+      await openMore(row);
       await row.getByRole('button', { name: 'Reset MFA…' }).click();
       const modal = page.locator('[role=dialog]', { hasText: `Reset MFA for ${displayName}?` });
       await expect(modal).toBeVisible();

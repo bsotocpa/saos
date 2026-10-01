@@ -1,9 +1,9 @@
 # r106-layout-after-summary (2026-10-01)
 
-Generated 2026-10-01T13:48:35.439Z by scripts/report-table.mjs from the log layout-after-summary.log; 47 row(s).
+Generated 2026-10-01T17:18:53.381Z by scripts/report-table.mjs from the log layout-after-summary.log; 47 row(s).
 
 ```sql
-the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, LAYOUT_AUDIT=report): every Ops and portal page at 375, 768 and 1440 in Chromium and WebKit through apps/e2e/tests/layout-check.ts; the failures in apps/e2e/.artifacts/layout-failures.jsonl
+the R106 layout audit (apps/e2e/tests/layout-audit.spec.ts, enforcing): every Ops and portal page at 375, 768 and 1440 in Chromium and WebKit through apps/e2e/tests/layout-check.ts; the failures in apps/e2e/.artifacts/layout-failures.jsonl
 ```
 
 | page | chromium-375 | chromium-768 | chromium-1440 | webkit-375 | webkit-768 | webkit-1440 | total |

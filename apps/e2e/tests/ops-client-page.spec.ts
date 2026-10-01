@@ -11,6 +11,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { viewportKey } from './viewport';
+import { openMore } from './more';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -128,9 +129,11 @@ test.describe('Ops → client page', () => {
         .filter({ hasNot: page.getByText('Books, monthly') })
         // Page four's fixture (the wall) adds a second tax engagement to this client; it is not the one with the deposit.
         .filter({ hasNot: page.getByText('Harness wall') })
-        .filter({ has: page.getByRole('button', { name: 'Withdraw' }) })
+        // Found by its Withdraw button even while that sits closed behind More below 768 (R105).
+        .filter({ has: page.locator('button', { hasText: /^Withdraw$/ }) })
         .first();
       await expect(depositRow, 'a Withdraw control on the deposit engagement').toBeVisible();
+      await openMore(depositRow);
       await depositRow.getByRole('button', { name: 'Withdraw' }).click();
 
       const modal = page.locator('[role=dialog]');

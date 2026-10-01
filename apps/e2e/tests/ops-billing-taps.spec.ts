@@ -33,6 +33,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { viewportKey } from './viewport';
+import { openMore } from './more';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
@@ -122,6 +123,7 @@ test.describe('Ops → the void and test-client doors', () => {
       await expect(row.locator('.badge').first(), "and it reads open, the portal's word for sent").toHaveText('Open');
 
       // A real tap: scrolled into view, hit-tested, refused if anything covers it.
+      await openMore(row);
       await row.getByRole('button', { name: 'Void…' }).click();
       const modal = page.locator('[role=dialog]');
       await expect(modal).toBeVisible();

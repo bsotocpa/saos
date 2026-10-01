@@ -337,3 +337,22 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--electric); 
 
 /* R113 (2026-09-30): a field is a 44px target too; the text fields and selects reach it by height. */
 input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), select { min-height: 44px; }
+
+/*
+ * A FIELD SITS ABOVE ITS OWN LABEL'S HIT EXTENSION (receipt run 59, 2026-10-01). A label's ::after
+ * extension painted over the field inside it, so a tap on the field's face reached the label (it still
+ * focuses the field, but the field is not what the finger touched, and a neighbour's label could win the
+ * same way). Every menu, overlay and sticky bar sits at z-index 2 or more.
+ */
+label input:not([type=hidden]), label select, label textarea { position: relative; z-index: 1; }
+
+/* The hidden attribute hides (2026-10-01): the base `input { display: block }` beat the browser's own
+   [hidden] rule, so the portal checklist's file input showed a raw "Choose Files" box under "Upload". */
+[hidden] { display: none !important; }
+/* The checklist's file input stays in the page, clipped and transparent, never display: none, so a tap on
+   its "Upload" label opens the picker in every browser (older iOS Safari would not open one for an input
+   that is not rendered). Walk I taps "Upload" and waits for the file chooser at all six projects. */
+.cl-upload input[type=file] {
+  display: block !important; position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); border: 0; opacity: 0;
+}

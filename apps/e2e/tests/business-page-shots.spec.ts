@@ -168,5 +168,5 @@ test('the business page, with engagements and empty, at 375, 768 and 1440', asyn
     }
   }
   for (const p of saved) testInfo.annotations.push({ type: 'screenshot', description: p });
-  expect(saved.length, 'four pictures').toBe(4);
+  expect(saved.length, 'each state at each width').toBe(states.length * WIDTHS.length);
 });
