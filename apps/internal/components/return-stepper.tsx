@@ -214,6 +214,17 @@ function StepperBody({ taxEngagementId, contactId, stage, detail, canManage, err
               <p className="muted small">{CONTROL_SENTENCES.extension}</p>
             </div>
           ) : null}
+          {/* R107 (2026-09-30): the final fee can be set at every phase before Filed, not only when it is the
+              current step — the same modal and the same reason rule (outside the quoted range, a reason). */}
+          {preFiled && current?.key !== 'final_fee' ? (
+            <div>
+              <button type="button" className="btn small ghost" data-testid="details-set-final-fee" onClick={() => void actions.setFinalFee()}>Set final fee</button>
+              <p className="muted small">
+                {te.final_fee_cents !== null && te.final_fee_cents !== undefined ? `Current ${formatMoney(te.final_fee_cents)}. ` : ''}
+                {CONTROL_SENTENCES.fee}
+              </p>
+            </div>
+          ) : null}
           {correctionsApply(stage) ? (
             <div>
               <button type="button" className="btn small ghost" data-testid="correct-filing" onClick={() => void actions.correctFiling()}>Correct the filing</button>

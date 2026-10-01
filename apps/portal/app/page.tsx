@@ -49,6 +49,9 @@ interface Engagement {
   answer_lines?: AnswerLine[];
   /** R93: the day the return went overdue (its deadline passed, not filed); the server then sends no deadline. */
   overdue_since?: string | null;
+  /** R108: the Chicago day a withdrawn return was withdrawn, and the kind of reason the client reads. */
+  withdrawn_on?: string | null;
+  withdrawn_kind?: 'change_order' | 'closed' | null;
   /** #47 — what this engagement covers, snapshotted at acceptance, already in this language. */
   scopeName: string | null;
   scope: Array<{ itemCode: string; description: string; quantity: string; isPassThrough: boolean }>;
@@ -367,7 +370,21 @@ export default function Dashboard() {
         <section className="card" id="services">
           <h2>{t('projects_title')}</h2>
           <ul className="list">
-            {engagements.map((e) => (
+            {engagements.map((e) => e.stage === 'withdrawn' ? (
+              /* R108 (2026-09-30): a withdrawn return is one line — when it was withdrawn, and why on tap —
+                 with no phases, no deadline and nothing to act on. */
+              <li key={e.tax_engagement_id ?? e.id} className="withdrawn-row" data-testid="service-withdrawn">
+                <details className="withdrawn-line">
+                  <summary>
+                    <strong>{projectName(e, t)}</strong>
+                    <span className="muted small"> · {t('status_withdrawn_on').replace('{{date}}', formatDate(e.withdrawn_on ?? '', lang))}</span>
+                  </summary>
+                  <p className="small muted" data-testid="service-withdrawn-reason">
+                    {t(e.withdrawn_kind === 'change_order' ? 'withdrawn_reason_change_order' : 'withdrawn_reason_closed')}
+                  </p>
+                </details>
+              </li>
+            ) : (
               // R89: one row per return, so an engagement holding several years has several rows.
               <li key={e.tax_engagement_id ?? e.id}>
                 <span className="grow">

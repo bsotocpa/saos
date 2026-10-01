@@ -252,6 +252,16 @@
         { "id": "J2", "text": "Two business days after a return opened with no preparer, the CEO has one alert naming it", "device": "phone + laptop" },
         { "id": "J3", "text": "Assigned from the list, the return leaves the count and the list", "device": "phone + laptop" }
       ]
+    },
+    "I": {
+      "title": "Batch 15: documents by return, withdrawn returns, the final fee before filing",
+      "steps": [
+        { "id": "I1", "text": "Portal Documents: each checklist item names itself on its own line, status beside it, Upload full width beneath; the page passes the layout check (R105)", "device": "phone + laptop" },
+        { "id": "I2", "text": "Portal Documents lists each file under the return it belongs to, hides a superseded file, says what each counts as, and puts \"Something else\" after the list (R110)", "device": "phone + laptop" },
+        { "id": "I3", "text": "Portal Home: a withdrawn return is one line, \"Withdrawn on <date>\", its reason on tap in the client's words (R108)", "device": "phone + laptop" },
+        { "id": "I4", "text": "Ops client page: a withdrawn return is one line with the recorded reason on tap, no stepper, no controls (R108)", "device": "phone + laptop" },
+        { "id": "I5", "text": "Ops: \"Set final fee\" in Details on a return in Engage; outside the quoted range it needs a reason (R107)", "device": "phone + laptop" }
+      ]
     }
   }
 }

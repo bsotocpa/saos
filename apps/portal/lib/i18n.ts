@@ -248,6 +248,14 @@ const dict = {
   doc_counts_as_pick: ['This file is for…', 'Este archivo es para…'],
   doc_counts_as_save: ['Save', 'Guardar'],
   docs_empty: ['Nothing uploaded yet. Files you send us appear here.', 'Aún no hay archivos. Los que nos envíe aparecerán aquí.'],
+  // R110 (2026-09-30): the list groups each file under the return it belongs to; the general upload sits after it.
+  docs_list_title: ['Your documents', 'Sus documentos'],
+  docs_group_return: ['Your {{year}} Form {{form}}', 'Su Formulario {{form}} de {{year}}'],
+  docs_group_business_return: ['{{business}}, {{year}} Form {{form}}', '{{business}}, Formulario {{form}} de {{year}}'],
+  docs_group_none: ['Not tied to a return', 'Sin vincular a una declaración'],
+  docs_something_else: ['Something else', 'Algo más'],
+  docs_something_else_hint: ['For anything that is not on a checklist above.', 'Para lo que no aparece en una lista de arriba.'],
+  doc_counts_as_none: ['Not matched to a checklist item', 'Sin asignar a un punto de la lista'],
   docs_file_uploaded: ['uploaded', 'subido'],
   cat_tax_documents: ['Tax documents', 'Documentos de impuestos'],
   cat_business_records: ['Business records', 'Registros del negocio'],
@@ -315,6 +323,10 @@ const dict = {
   status_filed_line: ['Filed.', 'Presentada.'],
   // R93 (2026-09-29): a deadline that passed with no filing reads as overdue, never a bare past date.
   status_overdue_since: ['Overdue since {{date}}', 'Vencida desde el {{date}}'],
+  // R108 (2026-09-30): a withdrawn return is one line; its reason, on tap, in the client's words.
+  status_withdrawn_on: ['Withdrawn on {{date}}', 'Retirada el {{date}}'],
+  withdrawn_reason_change_order: ['Replaced by your updated agreement.', 'Reemplazada por su acuerdo actualizado.'],
+  withdrawn_reason_closed: ['Closed by Soto Accounting. Ask us if you have any questions.', 'Cerrada por Soto Accounting. Escríbanos si tiene alguna pregunta.'],
   status_filed_waiting: ['Filed. Waiting for the acceptance.', 'Presentada. En espera de la aceptación.'],
   phase_engage: ['Engage', 'Contratación'],
   phase_prepare: ['Prepare', 'Preparación'],

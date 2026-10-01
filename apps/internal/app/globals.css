@@ -547,3 +547,8 @@ table.qb-lines td.num { font-variant-numeric: tabular-nums; white-space: nowrap;
   .stepper .phase-sep { display: none; }
   .stepper .step-panel { padding-left: 30px; }
 }
+
+/* R108 (2026-09-30): a withdrawn return is one line; the reason opens on tap. The line is a 44px target. */
+.withdrawn-line { padding: 4px 0; border-bottom: 1px solid var(--line); }
+.withdrawn-line > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.withdrawn-line > p { margin: 2px 0 8px; }

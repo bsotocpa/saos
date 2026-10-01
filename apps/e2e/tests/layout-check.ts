@@ -119,6 +119,27 @@ export async function checkLayout(page: Page): Promise<LayoutFailure[]> {
         const label = el.closest('label');
         if (label) r = label.getBoundingClientRect();
       }
+      // R113: a hit area enlarged by an invisible extension (an absolutely positioned ::after with
+      // negative insets) is the target, as the browser hit-tests it; clipped by any ancestor that hides
+      // its overflow, because a tap there lands on nothing.
+      const after = getComputedStyle(el, '::after');
+      let box = { top: r.top, right: r.right, bottom: r.bottom, left: r.left };
+      if (after.content !== 'none' && after.content !== 'normal' && after.position === 'absolute') {
+        const px = (v: string) => (v.endsWith('px') ? parseFloat(v) : 0);
+        box = {
+          top: Math.min(box.top, r.top + px(after.top)),
+          bottom: Math.max(box.bottom, r.bottom - px(after.bottom)),
+          left: Math.min(box.left, r.left + px(after.left)),
+          right: Math.max(box.right, r.right - px(after.right)),
+        };
+        for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+          const cs = getComputedStyle(a);
+          if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+          const ar = a.getBoundingClientRect();
+          box = { top: Math.max(box.top, ar.top), bottom: Math.min(box.bottom, ar.bottom), left: Math.max(box.left, ar.left), right: Math.min(box.right, ar.right) };
+        }
+      }
+      r = new DOMRect(box.left, box.top, box.right - box.left, box.bottom - box.top);
       if (r.width < minTap - 0.5 || r.height < minTap - 0.5) {
         out.push({ check: 'tap-target', element: name(el), detail: `${Math.round(r.width)}×${Math.round(r.height)}px` });
       }

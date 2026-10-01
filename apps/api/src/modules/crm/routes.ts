@@ -22,6 +22,7 @@ import { scopeForEngagements, scopeName, scopeSummary } from '../engagements/sco
 
 import { createInvoice } from '../billing/service.ts';
 import { assertNotBillingHeld } from '../billing/billing-hold.ts';
+import { WITHDRAWN_ON_SQL, WITHDRAWN_REASON_SQL } from '../tax/withdrawn.ts';
 
 const ContactCreateBody = z.object({
   firstName: z.string().min(1),
@@ -819,7 +820,8 @@ export function registerCrmRoutes(app: FastifyInstance): void {
                 te.federal_accepted_on::text AS federal_accepted_on, te.state_accepted_on::text AS state_accepted_on, te.state_accepted_code,
                 te.estimated_fee_min_cents, te.estimated_fee_max_cents, te.final_fee_cents,
                 te.f8879_document_id, te.f8879_signed_at::date::text AS f8879_signed_on,
-                e.contact_id, c.first_name, c.last_name
+                e.contact_id, c.first_name, c.last_name,
+                ${WITHDRAWN_ON_SQL} AS withdrawn_on, ${WITHDRAWN_REASON_SQL} AS withdrawn_reason
            FROM tax_engagements te
            JOIN engagements e ON e.id = te.engagement_id
            JOIN contacts c ON c.id = e.contact_id

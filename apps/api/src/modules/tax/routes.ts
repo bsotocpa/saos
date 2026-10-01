@@ -24,6 +24,7 @@ import { itemPricesReturnType } from './return-type.ts';
 import { currentPriceBookVersion } from '../pricing/service.ts';
 import { formatUsd } from '../billing/service.ts';
 import { chicagoDayOf } from '../../chicago-day.ts';
+import { WITHDRAWN_ON_SQL, WITHDRAWN_REASON_SQL } from './withdrawn.ts';
 
 const CreateBody = z.object({
   contactId: z.uuid(),
@@ -203,9 +204,10 @@ function actorOf(request: FastifyRequest) {
 async function loadTaxEngagement(app: FastifyInstance, id: string) {
   const { rows } = await app.db.query<{
     id: string; engagement_id: string; tax_year: number; contact_id: string; return_type: string; stage: string;
-    estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null;
+    estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null; estimate_price_book_version_id: string | null;
   }>(
-    `SELECT te.id, te.engagement_id, te.tax_year, e.contact_id, te.return_type, te.stage, te.estimated_fee_min_cents, te.estimated_fee_max_cents
+    `SELECT te.id, te.engagement_id, te.tax_year, e.contact_id, te.return_type, te.stage, te.estimated_fee_min_cents, te.estimated_fee_max_cents,
+            te.estimate_price_book_version_id
      FROM tax_engagements te JOIN engagements e ON e.id = te.engagement_id WHERE te.id = $1`,
     [id]
   );
@@ -247,11 +249,15 @@ export interface QuotedRange { min_cents: number; max_cents: number; price_book_
  */
 export async function quotedRangeFor(
   app: FastifyInstance,
-  te: { engagement_id: string; tax_year: number; return_type: string; estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null }
+  te: { engagement_id: string; tax_year: number; return_type: string; estimated_fee_min_cents: number | null; estimated_fee_max_cents: number | null; estimate_price_book_version_id?: string | null }
 ): Promise<QuotedRange | null> {
   const version = await currentPriceBookVersion(app.db);
   if (te.estimated_fee_min_cents !== null && te.estimated_fee_max_cents !== null) {
-    return { min_cents: te.estimated_fee_min_cents, max_cents: te.estimated_fee_max_cents, price_book_version: version.versionNumber };
+    // R109: a locked range names the version it was locked under (0138), never the book in force today.
+    const locked = te.estimate_price_book_version_id
+      ? (await app.db.query<{ n: number }>(`SELECT version_number AS n FROM price_book_versions WHERE id = $1`, [te.estimate_price_book_version_id])).rows[0]?.n
+      : undefined;
+    return { min_cents: te.estimated_fee_min_cents, max_cents: te.estimated_fee_max_cents, price_book_version: locked ?? version.versionNumber };
   }
   const quoted = await acceptedQuoteRange(app, te.engagement_id, te.tax_year);
   if (quoted) return quoted;
@@ -454,6 +460,8 @@ export function registerTaxRoutes(app: FastifyInstance): void {
               te.estimated_fee_min_cents, te.estimated_fee_max_cents, te.final_fee_cents,
               te.scope_creep_flag, te.complexity_score, te.extension_filed, te.filed_date, te.reopened_at, te.reopen_reason,
               e.contact_id, c.first_name, c.last_name,
+              -- R108: a withdrawn return reads one line: the day and, on tap, the reason.
+              ${WITHDRAWN_ON_SQL} AS withdrawn_on, ${WITHDRAWN_REASON_SQL} AS withdrawn_reason,
               -- R83: the return's checklist, as the Ops row reads it (null: no checklist).
               ck.docs_received, ck.docs_missing, ck.docs_total,
               -- R91: an open return from an accepted quote with no checklist yet (the backfill door applies).
@@ -727,11 +735,15 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     const id = z.uuid().parse(request.params.id);
     const b = EstimateBody.parse(request.body);
     const te = await loadTaxEngagement(app, id);
+    // R109: the lock names the price book it was locked under — the engagement's price lock (its accepted
+    // quote's version) where there is one, otherwise the book in force today — and the label reads it after.
+    const pinned = await app.db.query<{ id: string }>(`SELECT price_book_version_id AS id FROM engagements WHERE id = $1`, [te.engagement_id]);
+    const versionId = pinned.rows[0]?.id ?? (await currentPriceBookVersion(app.db)).id;
     await app.db.query(
       `UPDATE tax_engagements
-       SET estimated_fee_min_cents = $2, estimated_fee_max_cents = $3, estimate_locked_at = now()
+       SET estimated_fee_min_cents = $2, estimated_fee_max_cents = $3, estimate_locked_at = now(), estimate_price_book_version_id = $4
        WHERE id = $1`,
-      [id, b.minCents, b.maxCents]
+      [id, b.minCents, b.maxCents, versionId]
     );
     await writeAudit(app.db, {
       actorType: 'staff', actorId: request.staff!.id, actorLabel: request.staff!.fullName,

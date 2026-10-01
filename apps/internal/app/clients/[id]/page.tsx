@@ -29,6 +29,7 @@ import {
 } from '../../../lib/return-controls';
 import { describeNotice, type NoticeState } from '../../../lib/notices';
 import { badgeToneFor, invoiceStatusLine } from '../../../lib/invoice-display';
+import { WithdrawnReturnLine } from '../../../components/withdrawn-return';
 
 interface Contact {
   id: string; first_name: string; last_name: string; email: string | null;
@@ -73,6 +74,9 @@ interface Packet {
   portalBaseUrl: string;
 }
 interface TaxEngagement {
+  /** R108: a withdrawn return's day and recorded reason (null otherwise). */
+  withdrawn_on?: string | null;
+  withdrawn_reason?: string | null;
   id: string; tax_year: number; return_type: string; stage: string;
   estimated_fee_max_cents: number | null; final_fee_cents: number | null;
   extension_filed: boolean; filed_date: string | null;
@@ -1744,7 +1748,11 @@ export default function ClientPacketPage() {
             </p>
           </>
         ) : (
-          returns.map((t) => (
+          returns.map((t) => t.stage === 'withdrawn' ? (
+            // R108 (2026-09-30): a withdrawn return is one line — the day, and the reason on tap — with no
+            // stepper and no controls: there is nothing left to do on it.
+            <WithdrawnReturnLine key={t.id} id={t.id} taxYear={t.tax_year} returnType={t.return_type} withdrawnOn={t.withdrawn_on ?? null} reason={t.withdrawn_reason ?? null} />
+          ) : (
             <div className="quote-line" key={t.id}>
               <span className="name">
                 {t.tax_year} {t.return_type.toUpperCase()}{' '}

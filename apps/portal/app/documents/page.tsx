@@ -20,6 +20,8 @@ interface Doc {
   id: string; category: string; status: string; filename: string; tax_year: number | null; uploaded_at: string;
   /** R96: the checklist items this file counts as. */
   counts_as?: Array<{ itemId: string; labelEn: string; labelEs: string | null }>;
+  /** R110: the return the file belongs to (filed against it, or answering its checklist), if any. */
+  return_id?: string | null; return_year?: number | null; return_type?: string | null; return_business?: string | null;
 }
 interface RequestItem { id: string; labelEn: string; labelEs: string | null; status: string }
 interface DocRequest { id: string; title_en: string; title_es: string | null; items: RequestItem[] }
@@ -86,20 +88,22 @@ function ChecklistCard({ c, onChanged }: { c: Checklist; onChanged: () => Promis
       </p>
       <ul className="list">
         {c.items.map((i) => (
-          <li key={i.id} data-testid="checklist-item" data-doc={i.docKey ?? ''} data-status={i.status}>
-            <span className="grow">
-              <span className="small">{lang === 'es' ? (i.labelEs ?? i.labelEn) : i.labelEn}</span>
-              {(itemResults[i.id] ?? []).map((r) => (
-                <span key={r.name} className={`small ${r.ok ? 'muted' : 'field-error'}`} style={{ display: 'block' }} data-testid="checklist-result" data-ok={r.ok ? 'true' : 'false'}>
-                  {r.name}: {r.message}
-                </span>
-              ))}
+          /* R105 (2026-09-30): the item's name on its own full-width line with its status beside it, the
+             upload control full width beneath — never squeezed into one row with the two. */
+          <li key={i.id} className="cl-item" data-testid="checklist-item" data-doc={i.docKey ?? ''} data-status={i.status}>
+            <span className="cl-head">
+              <span className="cl-name" data-testid="checklist-item-name">{lang === 'es' ? (i.labelEs ?? i.labelEn) : i.labelEn}</span>
+              <span className={`badge ${i.status === 'pending' ? 'warn' : 'ok'}`}>
+                {t(i.status === 'pending' ? 'cl_needed' : i.status === 'received' ? 'cl_received' : 'cl_waived')}
+              </span>
             </span>
-            <span className={`badge ${i.status === 'pending' ? 'warn' : 'ok'}`}>
-              {t(i.status === 'pending' ? 'cl_needed' : i.status === 'received' ? 'cl_received' : 'cl_waived')}
-            </span>
+            {(itemResults[i.id] ?? []).map((r) => (
+              <span key={r.name} className={`small ${r.ok ? 'muted' : 'field-error'}`} style={{ display: 'block' }} data-testid="checklist-result" data-ok={r.ok ? 'true' : 'false'}>
+                {r.name}: {r.message}
+              </span>
+            ))}
             {i.status === 'pending' ? (
-              <label className="btn ghost" style={{ cursor: 'pointer' }}>
+              <label className="btn ghost cl-upload" style={{ cursor: 'pointer' }}>
                 {t('cl_upload')}
                 {/* No `capture` (R47): iOS offers Photo Library, Take Photo and Files. */}
                 <input
@@ -237,14 +241,152 @@ export default function DocumentsPage() {
     }
   };
 
+  /** R110: the files by the return they belong to — individual returns, then a business's, newest year first — then the rest. */
+  type Group = { key: string; year: number | null; form: string | null; business: string | null; docs: Doc[] };
+  const groupsOf = (all: Doc[]): Group[] => {
+    const byKey = new Map<string, Group>();
+    for (const d of all) {
+      const key = d.return_id ?? 'none';
+      if (!byKey.has(key)) byKey.set(key, { key, year: d.return_year ?? null, form: d.return_type ? formNumber(d.return_type) : null, business: d.return_business ?? null, docs: [] });
+      byKey.get(key)!.docs.push(d);
+    }
+    return [...byKey.values()].sort((a, b) => {
+      if (a.key === 'none' || b.key === 'none') return a.key === 'none' ? 1 : -1;
+      if (!!a.business !== !!b.business) return a.business ? 1 : -1;
+      return (b.year ?? 0) - (a.year ?? 0) || (a.business ?? '').localeCompare(b.business ?? '');
+    });
+  };
+  const groupTitle = (g: Group): string => {
+    if (g.key === 'none' || g.year === null || g.form === null) return t('docs_group_none');
+    const fill = (k: 'docs_group_return' | 'docs_group_business_return') =>
+      t(k).replace('{{year}}', String(g.year)).replace('{{form}}', g.form ?? '').replace('{{business}}', g.business ?? '');
+    return g.business ? fill('docs_group_business_return') : fill('docs_group_return');
+  };
+
   return (
     <>
       <h1>{t('docs_title')}</h1>
       <p className="alert info">{t('docs_policy')}</p>
       {checklists.map((c) => <ChecklistCard key={c.id} c={c} onChanged={load} />)}
 
-      <section className="card">
-        <h2>{t('docs_upload')}</h2>
+      {/*
+        THE LIST, BY RETURN (Brian, 2026-09-30, R110). Each file sits under the return it belongs to —
+        "Your 2025 Form 1040", "Soto Accounting LLC, 2025 Form 1120-S" — or under "Not tied to a return".
+        Superseded files never reach this list (the API leaves them in Ops). The checklists above stay the
+        way documents come in; the general upload follows the list as "Something else".
+      */}
+      <section className="card" data-testid="documents-list">
+        <h2>{t('docs_list_title')}</h2>
+        {/* R47: the list never sits empty without a word. */}
+        {loaded && docs.length === 0 ? <p className="muted" data-testid="docs-empty">{t('docs_empty')}</p> : null}
+        {groupsOf(docs).map((g) => (
+          <div key={g.key} className="doc-group" data-testid="document-group" data-return={g.key}>
+            <h3 className="doc-group-title">{groupTitle(g)}</h3>
+            <ul className="list">
+              {g.docs.map((d) => (
+                /* R105 (2026-09-30): a stacked row at every width — the name and its status on top, what it is
+                   and what it counts as beneath (in words, R110), the match control full width below 768, and
+                   the actions in a row that wraps. Nothing shares a line it has to be squeezed to fit. */
+                <li key={d.id} className="doc-row" data-testid="document-row" data-category={d.category}>
+                  <span className="doc-head">
+                    <strong className="doc-name">{d.filename ?? ''}</strong>
+                    <span className={`badge ${docStatusTone(d.status)}`}>{docStatusLabel(lang, d.status)}</span>
+                  </span>
+                  <span className="muted small doc-line">
+                    {docCategoryLabel(lang, d.category)}
+                    {d.tax_year ? ` · ${d.tax_year}` : ''}
+                  </span>
+                  {(d.counts_as ?? []).length > 0 ? (
+                    <span className="small doc-line" data-testid="doc-counts-as">
+                      {t('doc_counts_as')}: {(d.counts_as ?? []).map((c) => (lang === 'es' ? c.labelEs || c.labelEn : c.labelEn)).join(', ')}
+                    </span>
+                  ) : (
+                    <span className="muted small doc-line" data-testid="doc-counts-as-none">{t('doc_counts_as_none')}</span>
+                  )}
+                  {(d.counts_as ?? []).length === 0 && checklistOpenItems.length > 0 ? (
+                    <span className="doc-match">
+                      <select
+                        aria-label={t('doc_counts_as_pick')}
+                        data-testid="doc-counts-as-select"
+                        value={countsPick[d.id] ?? ''}
+                        onChange={(e) => setCountsPick((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                      >
+                        <option value="">{t('doc_counts_as_pick')}</option>
+                        {checklistOpenItems.map((it) => (
+                          <option key={it.id} value={it.id}>{it.year} {it.form}: {lang === 'es' ? it.labelEs || it.labelEn : it.labelEn}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        data-testid="doc-counts-as-save"
+                        disabled={!countsPick[d.id]}
+                        onClick={async () => {
+                          setCountsErr(null);
+                          try {
+                            await api(`/portal/documents/${d.id}/counts-as`, { method: 'POST', body: { itemId: countsPick[d.id] } });
+                            await load();
+                          } catch (err) {
+                            setCountsErr({ id: d.id, message: err instanceof Error && err.message ? err.message : t('error_generic') });
+                          }
+                        }}
+                      >
+                        {t('doc_counts_as_save')}
+                      </button>
+                      {countsErr?.id === d.id ? <p className="field-error" role="alert" style={{ flexBasis: '100%' }}>{countsErr.message}</p> : null}
+                    </span>
+                  ) : null}
+                  <span className="doc-actions">
+                    <a
+                      className="btn ghost"
+                      href={`/api/portal/documents/${d.id}/download`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        void download(d);
+                      }}
+                    >
+                      {t('download')}
+                    </a>
+                    {/* REMOVE = WITHDRAW, never delete (Brian's ruling, 2026-08-13). A client
+                        who uploads the wrong file needs an undo; the record needs to keep the
+                        fact that they sent it. So this hides the file, un-fulfils whatever it
+                        was answering — the chase resumes — and leaves the row stamped with
+                        who withdrew it. The confirm says exactly that, because "Remove" on its
+                        own implies a deletion we are not doing.
+
+                        The modal does the work (`run`): a refusal renders verbatim inside it
+                        and it stays open; the row reloads only after the withdraw succeeded. */}
+                    <button
+                      className="btn ghost"
+                      type="button"
+                      disabled={busy}
+                      onClick={async () => {
+                        const r = await ask({
+                          lang,
+                          title: t('doc_withdraw_confirm'),
+                          choices: [{ key: 'withdraw', label: t('doc_withdraw'), tone: 'danger' }],
+                          run: async () => {
+                            await api(`/portal/documents/${d.id}/withdraw`, { method: 'POST' });
+                          },
+                        });
+                        if (!r) return;
+                        await load();
+                      }}
+                    >
+                      {t('doc_withdraw')}
+                    </button>
+                  </span>
+                  {downloadError?.id === d.id ? <p className="field-error" role="alert">{downloadError.message}</p> : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </section>
+
+      <section className="card" data-testid="something-else">
+        <h2>{t('docs_something_else')}</h2>
+        <p className="muted small">{t('docs_something_else_hint')}</p>
         {uploaded ? <p className="alert info">{t('docs_uploaded')}</p> : null}
         <label className="field">
           {t('docs_category')}
@@ -304,109 +446,6 @@ export default function DocumentsPage() {
         ) : null}
       </section>
 
-      <section className="card">
-        {/* R47: the card below the upload never sits empty without a word. */}
-        {loaded && docs.length === 0 ? <p className="muted" data-testid="docs-empty">{t('docs_empty')}</p> : null}
-        <ul className="list">
-          {docs.map((d) => (
-            <li key={d.id} data-testid="document-row" data-category={d.category}>
-              <span className="grow">
-                <strong className="small">{d.filename ?? ''}</strong>
-                <br />
-                <span className="muted small">
-                  {docCategoryLabel(lang, d.category)}
-                  {d.tax_year ? ` · ${d.tax_year}` : ''}
-                </span>
-                {/* R96: a file sent before the checklist, or under a general category, is matched to the item it is for. */}
-                {(d.counts_as ?? []).length > 0 ? (
-                  <>
-                    <br />
-                    <span className="muted small" data-testid="doc-counts-as">
-                      {t('doc_counts_as')}: {(d.counts_as ?? []).map((c) => (lang === 'es' ? c.labelEs || c.labelEn : c.labelEn)).join(', ')}
-                    </span>
-                  </>
-                ) : checklistOpenItems.length > 0 ? (
-                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                    <select
-                      aria-label={t('doc_counts_as_pick')}
-                      data-testid="doc-counts-as-select"
-                      value={countsPick[d.id] ?? ''}
-                      onChange={(e) => setCountsPick((prev) => ({ ...prev, [d.id]: e.target.value }))}
-                    >
-                      <option value="">{t('doc_counts_as_pick')}</option>
-                      {checklistOpenItems.map((it) => (
-                        <option key={it.id} value={it.id}>{it.year} {it.form}: {lang === 'es' ? it.labelEs || it.labelEn : it.labelEn}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className="btn ghost"
-                      data-testid="doc-counts-as-save"
-                      disabled={!countsPick[d.id]}
-                      onClick={async () => {
-                        setCountsErr(null);
-                        try {
-                          await api(`/portal/documents/${d.id}/counts-as`, { method: 'POST', body: { itemId: countsPick[d.id] } });
-                          await load();
-                        } catch (err) {
-                          setCountsErr({ id: d.id, message: err instanceof Error && err.message ? err.message : t('error_generic') });
-                        }
-                      }}
-                    >
-                      {t('doc_counts_as_save')}
-                    </button>
-                    {countsErr?.id === d.id ? <p className="field-error" role="alert" style={{ flexBasis: '100%' }}>{countsErr.message}</p> : null}
-                  </span>
-                ) : null}
-              </span>
-              <span className={`badge ${docStatusTone(d.status)}`}>
-                {docStatusLabel(lang, d.status)}
-              </span>
-              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                <a
-                  className="btn ghost"
-                  href={`/api/portal/documents/${d.id}/download`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    void download(d);
-                  }}
-                >
-                  {t('download')}
-                </a>
-                {downloadError?.id === d.id ? <p className="field-error" role="alert">{downloadError.message}</p> : null}
-              </span>
-              {/* REMOVE = WITHDRAW, never delete (Brian's ruling, 2026-08-13). A client
-                  who uploads the wrong file needs an undo; the record needs to keep the
-                  fact that they sent it. So this hides the file, un-fulfils whatever it
-                  was answering — the chase resumes — and leaves the row stamped with
-                  who withdrew it. The confirm says exactly that, because "Remove" on its
-                  own implies a deletion we are not doing.
-
-                  The modal does the work (`run`): a refusal renders verbatim inside it
-                  and it stays open; the row reloads only after the withdraw succeeded. */}
-              <button
-                className="btn ghost"
-                type="button"
-                disabled={busy}
-                onClick={async () => {
-                  const r = await ask({
-                    lang,
-                    title: t('doc_withdraw_confirm'),
-                    choices: [{ key: 'withdraw', label: t('doc_withdraw'), tone: 'danger' }],
-                    run: async () => {
-                      await api(`/portal/documents/${d.id}/withdraw`, { method: 'POST' });
-                    },
-                  });
-                  if (!r) return;
-                  await load();
-                }}
-              >
-                {t('doc_withdraw')}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
     </>
   );
 }

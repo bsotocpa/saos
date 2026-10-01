@@ -45,9 +45,9 @@ export function registerPricingRoutes(app: FastifyInstance): void {
 
     await app.db.query(
       `UPDATE tax_engagements
-       SET estimated_fee_min_cents = $2, estimated_fee_max_cents = $3, estimate_locked_at = now()
+       SET estimated_fee_min_cents = $2, estimated_fee_max_cents = $3, estimate_locked_at = now(), estimate_price_book_version_id = $4
        WHERE id = $1`,
-      [id, quote.revenue.one_time.minCents, quote.revenue.one_time.maxCents]
+      [id, quote.revenue.one_time.minCents, quote.revenue.one_time.maxCents, quote.priceBookVersionId]
     );
     // Pin the version in force at estimate time (grandfathering root).
     await app.db.query(`UPDATE engagements SET price_book_version_id = $2 WHERE id = $1`, [

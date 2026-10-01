@@ -32,6 +32,7 @@ import { EditBusinessModal } from '../../../components/edit-business';
 import { engagementStatusSentence, invoiceStatusLabel, taxStageLabel } from '../../../lib/labels';
 import { badgeToneFor, invoiceStatusLine } from '../../../lib/invoice-display';
 import { amountLabel, showExtendedBadge } from '../../../lib/return-stepper';
+import { WithdrawnReturnLine } from '../../../components/withdrawn-return';
 
 interface Entity {
   id: string; name: string; status: string | null; entity_type: string | null;
@@ -53,6 +54,9 @@ interface EngagementRow {
   open_balance_cents: number; scopeName: string | null; scopeSummary: { count: number; totalCents: number };
 }
 interface ReturnRow {
+  /** R108: a withdrawn return's day and recorded reason (null otherwise). */
+  withdrawn_on?: string | null;
+  withdrawn_reason?: string | null;
   id: string; tax_year: number; return_type: string; stage: string;
   preparer_name: string | null; preparer_of_record: string | null;
   extension_filed: boolean; filed_date: string | null;
@@ -281,7 +285,10 @@ export default function BusinessPage() {
           ) : data.returns.rows.length === 0 ? (
             <p className="muted small">No tax return names this business. Returns are worked from the owner&apos;s client page.</p>
           ) : (
-            data.returns.rows.map((t) => (
+            data.returns.rows.map((t) => t.stage === 'withdrawn' ? (
+              // R108: a withdrawn return is one line, its reason on tap; nothing else to read or do.
+              <WithdrawnReturnLine key={t.id} id={t.id} taxYear={t.tax_year} returnType={t.return_type} withdrawnOn={t.withdrawn_on ?? null} reason={t.withdrawn_reason ?? null} extra={`${t.first_name} ${t.last_name}`} />
+            ) : (
               <div className="quote-line" key={t.id}>
                 <span className="name">
                   {t.tax_year} {t.return_type.toUpperCase()}{' '}

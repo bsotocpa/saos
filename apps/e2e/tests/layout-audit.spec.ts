@@ -36,7 +36,9 @@ const REPORT_ONLY = process.env.LAYOUT_AUDIT === 'report';
  * list ends as every page (step 5 of batch 15), when it is removed. A failure on a listed page fails the
  * project; every other page's failures are recorded in the log and the tables all the same.
  */
-export const ENFORCED = new Set<string>([]);
+export const ENFORCED = new Set<string>([
+  'portal-documents', // batch 15 step 3: R105, R110
+]);
 
 const OPS_PAGES = (p: LayoutPerson): Array<[string, string]> => [
   ['executive', '/'], ['account', '/account'], ['admin-automations', '/admin/automations'],

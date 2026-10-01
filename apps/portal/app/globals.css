@@ -290,3 +290,47 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--electric); 
 
 /* A refusal, beside the control that caused it (2026-09-19). */
 .field-error { color: var(--danger); font-size: 13px; margin: 6px 0 0; }
+
+/*
+ * R113 (Brian, 2026-09-30): every control is a tap target of at least 44 × 44 px, met by enlarging the
+ * HIT AREA, not the control: an invisible, absolutely positioned extension that grows only the sides
+ * shorter than 44px and leaves the look as it was. The harness layout check counts it (layout-check.ts).
+ */
+.btn, .lang-toggle, .nav a, .wordmark, .chip, .tap { position: relative; }
+.btn::after, .lang-toggle::after, .nav a::after, .wordmark::after, .tap::after {
+  content: '';
+  position: absolute;
+  top: min(0px, calc((100% - 44px) / 2));
+  bottom: min(0px, calc((100% - 44px) / 2));
+  left: min(0px, calc((100% - 44px) / 2));
+  right: min(0px, calc((100% - 44px) / 2));
+}
+/* The nav strip gives its links the room their extension needs, so the strip does not clip it. */
+.nav { padding-top: 6px; padding-bottom: 6px; }
+
+/*
+ * R105 (Brian, 2026-09-30): the Documents page at every width. A checklist item is its name on a full
+ * line with its status beside it and its Upload control full width beneath; a document is a stacked
+ * row — name and status on top, what it is and what it counts as beneath, the match control full width
+ * below 768, the actions in a row that wraps. Words wrap at word boundaries, never a letter at a time.
+ */
+.list li.cl-item, .list li.doc-row { display: block; padding: 12px 0; }
+.cl-head, .doc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.cl-name { flex: 1 1 12em; min-width: 0; font-size: 14px; overflow-wrap: break-word; }
+.cl-upload { display: block; width: 100%; text-align: center; margin-top: 8px; }
+.doc-name { flex: 1 1 12em; min-width: 0; font-size: 14px; overflow-wrap: break-word; }
+.doc-line { display: block; margin-top: 2px; }
+.doc-match { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: center; }
+.doc-match select { flex: 1 1 260px; min-width: 0; margin-top: 0; }
+.doc-match .btn { flex: 0 0 auto; }
+.doc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.doc-group + .doc-group { margin-top: 14px; }
+.doc-group-title { font-size: 14px; font-weight: 700; color: var(--forest); margin: 10px 0 2px; }
+@media (max-width: 767px) {
+  .doc-match select { flex-basis: 100%; }
+}
+
+/* R108 (2026-09-30): a withdrawn return is one line; the reason opens on tap. The summary is a 44px target. */
+.list li.withdrawn-row { display: block; }
+.withdrawn-line > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; list-style-position: inside; }
+.withdrawn-line > p { margin: 4px 0 0; }

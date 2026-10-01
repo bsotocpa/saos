@@ -12,6 +12,7 @@ import { refreshEnrichmentGaps } from '../crm/service.ts';
 import { cascadeUnblock, createTask } from '../tasks/service.ts';
 import { computeQuote } from '../pricing/service.ts';
 import { addDays, overdueSince, todayChicago, upcomingEstimateDates } from '../tax/deadlines.ts';
+import { WITHDRAWN_KIND_SQL, WITHDRAWN_ON_SQL } from '../tax/withdrawn.ts';
 
 /**
  * A FILED RETURN'S ANSWERS, PER JURISDICTION (R48, 2026-09-26; R84, 2026-09-27): one line per row the
@@ -349,9 +350,23 @@ export function registerPortalRoutes(app: FastifyInstance): void {
       // see withdrawDocument(). A client who uploaded the wrong thing should not keep
       // seeing it; an auditor should still be able to.
       // R96: each row says which checklist item it counts as, so an unmatched one can be matched here.
-      `SELECT d.id, d.category, d.status, d.filename, d.tax_year, d.uploaded_at, ${(await import('../documents/counts-as.ts')).COUNTS_AS_SQL} AS counts_as
+      //
+      // R110 (Brian, 2026-09-30): each file names the return it belongs to, so the page can group it:
+      // the return it was filed against, or the return whose checklist item it answers. A superseded
+      // file (a signed authorization replaced by its correction) is hidden from the client and stays in Ops.
+      `SELECT d.id, d.category, d.status, d.filename, d.tax_year, d.uploaded_at, ${(await import('../documents/counts-as.ts')).COUNTS_AS_SQL} AS counts_as,
+              rt.id AS return_id, rt.tax_year AS return_year, rt.return_type AS return_type, rb.name AS return_business
        FROM documents d
-       WHERE d.contact_id = $1 AND d.archived_at IS NULL AND d.withdrawn_at IS NULL
+       LEFT JOIN LATERAL (
+         SELECT te.id, te.tax_year, te.return_type::text AS return_type, te.engagement_id
+           FROM tax_engagements te
+          WHERE te.id = COALESCE(d.tax_engagement_id, (
+                  SELECT dr.tax_engagement_id FROM document_request_items ri JOIN document_requests dr ON dr.id = ri.request_id
+                   WHERE ri.document_id = d.id AND dr.tax_engagement_id IS NOT NULL ORDER BY ri.id LIMIT 1))
+       ) rt ON true
+       LEFT JOIN engagements re ON re.id = rt.engagement_id
+       LEFT JOIN businesses rb ON rb.id = re.business_id
+       WHERE d.contact_id = $1 AND d.archived_at IS NULL AND d.withdrawn_at IS NULL AND d.superseded_by IS NULL
        ORDER BY d.uploaded_at DESC`,
       [client.contactId]
     );
@@ -545,12 +560,15 @@ export function registerPortalRoutes(app: FastifyInstance): void {
               te.id AS tax_engagement_id,
               te.federal_accepted_on::text AS federal_accepted_on,
               te.state_accepted_on::text AS state_accepted_on,
-              te.state_accepted_code
+              te.state_accepted_code,
+              -- R108 (2026-09-30): a withdrawn return is listed as one line, with the day and a reason in
+              -- the client's words (never the staff's note). A withdrawn engagement with no return stays out.
+              ${WITHDRAWN_ON_SQL} AS withdrawn_on, ${WITHDRAWN_KIND_SQL} AS withdrawn_kind
          FROM engagements e
          LEFT JOIN tax_engagements te ON te.engagement_id = e.id
         WHERE e.contact_id = $1
-          AND e.status NOT IN ('withdrawn', 'draft')
-          AND (te.id IS NULL OR te.stage <> 'withdrawn')
+          AND e.status <> 'draft'
+          AND (e.status <> 'withdrawn' OR te.stage = 'withdrawn')
         ORDER BY te.tax_year DESC NULLS LAST, e.service_line, e.created_at`,
       [client.contactId]
     );
@@ -585,7 +603,7 @@ export function registerPortalRoutes(app: FastifyInstance): void {
         const overdue = r.stage ? overdueSince(r.deadline ?? null, todayChicago(), { stage: String(r.stage) }) : null;
         return {
           ...r,
-          deadline: isFiled || overdue ? null : r.deadline,
+          deadline: isFiled || overdue || r.stage === 'withdrawn' ? null : r.deadline,
           overdue_since: overdue,
           answer_lines: isFiled ? (answers.get(String(r.tax_engagement_id)) ?? []) : [],
           scopeName: scopeName(items, lang),
