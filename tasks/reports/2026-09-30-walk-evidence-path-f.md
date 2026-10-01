@@ -1,6 +1,6 @@
 # walk-evidence-path-f (2026-09-30)
 
-Generated 2026-10-01T00:38:32.523Z by scripts/report-table.mjs from the log walk-f.log; 20 row(s).
+Generated 2026-10-01T01:59:42.607Z by scripts/report-table.mjs from the log walk-f.log; 20 row(s).
 
 Filed on and the filing corrected: F1 to F6 are the CEO taps at 390 and 1280 on a synthetic 1120S each viewport opens through the API doors and files from the row (R69, 2026-09-27: F5 moves the 8879 signed date earlier to the day on the paper, F6 replaces the scan and reads the old row as superseded, then F4 moves the filed date to the CORRECTED signed day — the refusal names that day, the rule is inclusive); the role proof is the bookkeeper, who has no Correct the filing control and is refused 403.
 

@@ -1,6 +1,6 @@
 # walk-evidence-path-b (2026-09-30)
 
-Generated 2026-10-01T00:38:31.495Z by scripts/report-table.mjs from the log walk-b.log; 64 row(s).
+Generated 2026-10-01T01:59:41.764Z by scripts/report-table.mjs from the log walk-b.log; 64 row(s).
 
 The 1040 on extension with IL filed on paper, on the migrated-client fixture; B1 is the fixture person, whose Add a client tap is cleared in ops-add-client.spec.ts; how=api rows are the two Stripe events.
 

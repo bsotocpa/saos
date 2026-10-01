@@ -1,6 +1,6 @@
 # walk-evidence-path-c (2026-09-30)
 
-Generated 2026-10-01T00:38:35.631Z by scripts/report-table.mjs from the log walk-c.log; 4 row(s).
+Generated 2026-10-01T01:59:45.075Z by scripts/report-table.mjs from the log walk-c.log; 4 row(s).
 
 Same-name pairs (R97, 2026-09-29): ops-same-name.spec.ts at 390 and 1280 as the CEO fixture, on two synthetic same-name pairs per viewport, each record holding a task, with the open suggestion the pass leaves (apps/api/scripts/e2e-fixtures/same-name.ts; the pass itself is proven in same-name.spec.ts). Every answer is a tap.
 

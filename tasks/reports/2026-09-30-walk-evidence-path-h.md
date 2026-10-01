@@ -1,6 +1,6 @@
 # walk-evidence-path-h (2026-09-30)
 
-Generated 2026-10-01T00:38:33.206Z by scripts/report-table.mjs from the log walk-h.log; 10 row(s).
+Generated 2026-10-01T01:59:43.108Z by scripts/report-table.mjs from the log walk-h.log; 10 row(s).
 
 The business in every Ops search and the stage row that opens (R51, R52, R54): H1 to H3 type the S corp fixture's legal name into Deliver Return, New quote and the clients list and read "Business — owner" (ops-business-search.spec.ts); H4 opens a return by hand on a fresh synthetic client through the API doors and taps its stage row on the executive view; H5 is the duplicate-EIN warning, the refusal beside the EIN, Create anyway and Save anyway with a reason (ops-add-business.spec.ts).
 

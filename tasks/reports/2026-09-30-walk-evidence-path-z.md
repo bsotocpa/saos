@@ -1,6 +1,6 @@
 # walk-evidence-path-z (2026-09-30)
 
-Generated 2026-10-01T00:38:35.220Z by scripts/report-table.mjs from the log walk-z.log; 4 row(s).
+Generated 2026-10-01T01:59:44.726Z by scripts/report-table.mjs from the log walk-z.log; 4 row(s).
 
 The Trello cutover facts (R90, 2026-09-29): ops-cutover-facts.spec.ts at 390 and 1280 as the bookkeeper fixture, on two synthetic businesses per viewport whose facts the importer’s own functions wrote in the cutover fixture (apps/api/scripts/e2e-fixtures/cutover.ts): an unconfirmed month and a client who files their own ST-1. Everything read or pressed is the business page.
 
