@@ -37,7 +37,18 @@ export default defineConfig({
      * green five runs out of five while the Withdraw button was dead in his hand. The iPhone
      * preset's own engine is WebKit; it stays WebKit.
      */
-    { name: 'phone', use: { ...devices['iPhone 14'], viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 } },
-    { name: 'desk', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
+    { name: 'phone', testIgnore: /layout-audit\.spec\.ts/, use: { ...devices['iPhone 14'], viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 } },
+    { name: 'desk', testIgnore: /layout-audit\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
+    /*
+     * THE LAYOUT PROJECTS (Brian, 2026-09-30, R106): 375, 768 and 1440 in Chromium and WebKit, Brian's
+     * definition of done. The layout audit (every Ops and portal page through the layout check) runs here.
+     * The narrow WebKit is a phone (touch, mobile user agent); the others are desktop browsers at width.
+     */
+    { name: 'chromium-375', testMatch: /layout-audit\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 375, height: 812 } } },
+    { name: 'chromium-768', testMatch: /layout-audit\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 768, height: 1024 } } },
+    { name: 'chromium-1440', testMatch: /layout-audit\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
+    { name: 'webkit-375', testMatch: /layout-audit\.spec\.ts/, use: { ...devices['iPhone 14'], viewport: { width: 375, height: 812 }, deviceScaleFactor: 1 } },
+    { name: 'webkit-768', testMatch: /layout-audit\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 768, height: 1024 } } },
+    { name: 'webkit-1440', testMatch: /layout-audit\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1440, height: 900 } } },
   ],
 });
