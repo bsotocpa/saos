@@ -25,7 +25,7 @@ import { viewportKey } from './viewport';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
 interface Persona { email: string; password: string; totpSecret: string }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as { staff: Persona };
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as { staff: Persona };
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
 const TASK_CONTROL = '/tasks button "Create Task", form#task-form (Subject), button "Save"; then the task opened from the list, Description filled, button "Save"';
 const TASK_ROLES = 'ceo, tax_preparer, comms_billing, va_entity, bookkeeper, ed_coo (tasks.manage)';

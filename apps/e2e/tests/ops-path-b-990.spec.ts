@@ -33,7 +33,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
 interface Persona { email: string; password: string; totpSecret: string }
 interface Org { contactId: string; businessId: string; taxEngagementId: string; taxYear: number; orgName: string; einLast4: string; einDigits: string; state: string }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   port: number;
   staff: Persona;
   path990: { phone: Org; desk: Org; preparer: { id: string; name: string } };

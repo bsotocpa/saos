@@ -45,6 +45,7 @@
     "deploy:dry-run": "bash scripts/deploy.sh --preflight-only",
     "check:test-targets": "node --experimental-strip-types apps/api/scripts/check-test-targets.ts",
     "check:walk-paths": "node scripts/walk-evidence-reports.mjs --check",
+    "check:harness-lanes": "node scripts/harness-lanes-check.mjs",
     "check:chicago-dates": "node scripts/check-chicago-dates.mjs"
   },
   "devDependencies": {

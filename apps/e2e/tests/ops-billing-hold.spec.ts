@@ -27,7 +27,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
 interface Persona { email: string; password: string; totpSecret: string }
 interface Held { contactId: string; engagementId: string; holdReason: string }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   staff: Persona;
   billingHold: { phone: Held; desk: Held };
   wall: { jaqueline: Persona; rene: Persona };

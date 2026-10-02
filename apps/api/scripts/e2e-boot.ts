@@ -72,7 +72,8 @@ process.env.OPS_BUSINESS_PAGE = 'on';
 process.env.PORTAL_BASE_URL = `http://localhost:${process.env.E2E_PORTAL_PORT ?? 3106}`;
 // R71 (2026-09-27): staff mail links to the Ops sign-in page; in the harness that is the harness Ops app.
 process.env.OPS_URL = `http://localhost:${process.env.E2E_OPS_PORT ?? 3105}`;
-const config = await createTestConfig('e2e');
+// R115: each harness lane its own test database (e2e, e2e_lane1).
+const config = await createTestConfig(process.env.E2E_LANE && process.env.E2E_LANE !== '0' ? `e2e_lane${process.env.E2E_LANE}` : 'e2e');
 if (!/localhost|127\.0\.0\.1/.test(config.DATABASE_URL)) throw new Error('refusing: the harness database is not local');
 /*
  * The mailer sends nothing and REMEMBERS the sign-in link. Page two walks the portal, and the

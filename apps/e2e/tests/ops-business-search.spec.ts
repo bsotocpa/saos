@@ -22,7 +22,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
 interface Persona { email: string; password: string; totpSecret: string }
 interface Scorp { contactId: string; businessId: string; entityName: string; markers: { business: string }; preparer: { id: string; name: string } }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   staff: Persona; scorp: Scorp; scorpDesk: Scorp;
 };
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());

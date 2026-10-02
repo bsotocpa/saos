@@ -18,7 +18,7 @@ import { viewportKey } from './viewport';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
 interface ScorpOwner { portalMagicTokens: string[]; markers: { returnFile: string }; taxYear: number }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   portalPort?: number;
   scorp: ScorpOwner; scorpDesk: ScorpOwner;
 };

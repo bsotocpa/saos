@@ -53,7 +53,7 @@ interface PathBPerson {
   contactId: string; ownerEmail: string; firstName: string; lastName: string;
   ssnLast4: string; state: string; portalMagicTokens: string[]; portalMagicLinks: string[];
 }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   port?: number;
   staff: Persona;
   portalPort?: number;

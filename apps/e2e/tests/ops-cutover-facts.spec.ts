@@ -21,7 +21,7 @@ import { viewportKey } from './viewport';
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
 interface Pair { unconfirmed: { businessId: string; name: string }; selfFiler: { businessId: string; name: string } }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   wall: { bookkeeper: Persona }; cutover: { phone: Pair; desk: Pair };
 };
 const ROLE = 'bookkeeper (bookkeeping.assigned.manage)';

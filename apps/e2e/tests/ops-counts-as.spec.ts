@@ -21,7 +21,7 @@ import { viewportKey } from './viewport';
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
 interface Person { contactId: string; fullName: string; opsDocId: string; portalDocId: string; portalMagicTokens: string[] }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   staff: Persona; portalPort?: number; countsAs: { phone: Person; desk: Person };
 };
 const PORTAL = `http://localhost:${fixtures.portalPort ?? 3106}`;

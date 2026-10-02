@@ -24,7 +24,7 @@ const root = resolve(here, '..', '..', '..');
 interface Persona { email: string; password: string; totpSecret: string }
 interface Side { engagementId: string; returnId: string; year: number; fileName: string }
 interface Person { contactId: string; portalMagicTokens: string[]; dup: Side; kept: Side }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   staff: Persona; opsPort?: number; portalPort?: number; batch16: Record<'phone' | 'desk', Person>;
 };
 const OPS = `http://localhost:${fixtures.opsPort ?? 3105}`;

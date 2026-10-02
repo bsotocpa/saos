@@ -31,7 +31,7 @@ interface Person {
   files: { on1040: string; on1120s: string; countsAs: string; loose: string; superseded: string };
   countsAsLabel: string; withdrawnReason: string;
 }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   staff: Persona; opsPort?: number; portalPort?: number; batch15: Record<'phone' | 'desk', Person>;
 };
 const OPS = `http://localhost:${fixtures.opsPort ?? 3105}`;

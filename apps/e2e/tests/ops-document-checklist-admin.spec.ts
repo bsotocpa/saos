@@ -16,7 +16,7 @@ import { viewportKey } from './viewport';
 
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as { staff: Persona };
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as { staff: Persona };
 const ROLES = 'ceo (admin.settings)';
 const CONTROL = '/admin/document-checklist: a row\'s "English" textarea + "Save"; the "Add a document to an item" form ("Price-book item code", "Document key", "English", "Spanish", "Add document"), then the new row\'s "Asked for" checkbox off + "Save"';
 

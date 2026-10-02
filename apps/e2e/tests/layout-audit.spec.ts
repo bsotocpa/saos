@@ -20,7 +20,7 @@ import { redeemPortalToken } from './portal-sign-in';
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
 interface LayoutPerson { contactId: string; businessId: string; quoteId: string; taxEngagementId: string | null; portalMagicTokens: string[] }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   staff: Persona;
   portalPort?: number;
   opsPort?: number;
@@ -29,8 +29,8 @@ const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixt
 const OPS = `http://localhost:${fixtures.opsPort ?? 3105}`;
 const PORTAL = `http://localhost:${fixtures.portalPort ?? 3106}`;
 const SHOTS = process.env.LAYOUT_SHOTS ?? 'C:\\Users\\brian\\saos-shots\\layout-r105';
-const LOG = resolve(here, '..', '.artifacts', 'layout-failures.jsonl');
-const PAGES_LOG = resolve(here, '..', '.artifacts', 'layout-pages.jsonl');
+const LOG = resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'layout-failures.jsonl');
+const PAGES_LOG = resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'layout-pages.jsonl');
 const REPORT_ONLY = process.env.LAYOUT_AUDIT === 'report';
 /* Every page is held to the check (batch 15 step 5, 2026-10-01): the staged list it grew from is gone. */
 

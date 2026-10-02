@@ -4,11 +4,12 @@ import { createServer } from 'node:net';
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HARNESS_RETRY_LOG, restoreNextFiles } from './global-setup.ts';
+import { HARNESS_RETRY_LOG, LANE_PORTS, artifacts, restoreNextFiles } from './global-setup.ts';
 import { MAX_CONNECT_RETRIES_PER_SUITE } from '../api/test/connect-retry.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const pidsFile = resolve(here, '.artifacts', 'pids.json');
+// R115: each lane's own artifacts folder and ports (global-setup.ts).
+const pidsFile = resolve(artifacts, 'pids.json');
 
 function kill(pid: number | undefined): void {
   if (!pid) return;
@@ -50,12 +51,15 @@ export default async function globalTeardown(): Promise<void> {
       kill(pids.ops);
       kill(pids.api);
       unlinkSync(pidsFile);
-      await waitForPorts([3101, 3105, 3106], 15_000);
+      await waitForPorts(LANE_PORTS, 15_000);
     }
   } finally {
     try {
-      restoreNextFiles(resolve(here, '.artifacts'), resolve(here, '..', 'internal'));
-      restoreNextFiles(resolve(here, '.artifacts'), resolve(here, '..', 'portal'), 'portal/');
+      // Under run-harness.mjs the runner restores Next's files once, after every lane (R115).
+      if (process.env.E2E_NEXT_FILES_BY_RUNNER !== '1') {
+        restoreNextFiles(resolve(here, '.artifacts'), resolve(here, '..', 'internal'));
+        restoreNextFiles(resolve(here, '.artifacts'), resolve(here, '..', 'portal'), 'portal/');
+      }
     } catch (err) {
       restoreError = err;
     }

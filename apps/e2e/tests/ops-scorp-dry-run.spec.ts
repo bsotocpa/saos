@@ -61,7 +61,7 @@ interface Scorp {
   ownerEmail: string; portalMagicTokens: string[]; portalMagicLinks: string[];
   webhookSecret: string; apiPort: number;
 }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   staff: Persona;
   wall: { jaqueline: Persona };
   portalPort?: number;

@@ -23,7 +23,8 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [['list'], ['json', { outputFile: process.env.E2E_RUN_FILE ?? '.artifacts/last-run.json' }]],
-  outputDir: '.artifacts/runs',
+  // R115: each lane its own output folder (Playwright empties it as a run starts).
+  outputDir: process.env.E2E_LANE && process.env.E2E_LANE !== '0' ? `.artifacts/lane-${process.env.E2E_LANE}/runs` : '.artifacts/runs',
   use: {
     baseURL: 'http://localhost:3105',
     screenshot: 'off', // the spec takes its own, named by viewport, so a pass leaves a picture too

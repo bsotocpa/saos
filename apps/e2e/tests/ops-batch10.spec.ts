@@ -28,7 +28,7 @@ interface Batch10Person {
   overdue: { contactId: string; fullName: string; taxEngagementId: string; engagementId: string; overdueSince: string; portalMagicTokens: string[] };
   merge: { lastName: string; withPortal: string; withoutPortal: string };
 }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   staff: Persona; portalPort?: number; batch10: { phone: Batch10Person; desk: Batch10Person };
 };
 const PORTAL = `http://localhost:${fixtures.portalPort ?? 3106}`;

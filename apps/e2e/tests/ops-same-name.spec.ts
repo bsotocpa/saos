@@ -16,7 +16,7 @@ import { viewportKey } from './viewport';
 const here = dirname(fileURLToPath(import.meta.url));
 interface Persona { email: string; password: string; totpSecret: string }
 interface Pair { a: string; b: string; name: string }
-const fixtures = JSON.parse(readFileSync(resolve(here, '..', '.artifacts', 'fixtures.json'), 'utf8')) as {
+const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ARTIFACTS ?? '.artifacts', 'fixtures.json'), 'utf8')) as {
   staff: Persona; sameName: { phone: { merge: Pair; dismiss: Pair }; desk: { merge: Pair; dismiss: Pair } };
 };
 const ROLE = 'ceo (contacts.merge for Merge; contacts.write for Not a duplicate)';

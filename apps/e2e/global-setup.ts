@@ -6,16 +6,26 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { existsSync, mkdirSync, readFileSync, readlinkSync, rmdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, rmdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..');
-const artifacts = resolve(here, '.artifacts');
-const API_PORT = 3101;
-const OPS_PORT = 3105;
-const PORTAL_PORT = 3106;
+/*
+ * LANES (Brian, 2026-10-02, R115). run-harness.mjs runs a Chromium lane and a WebKit lane at the same
+ * time; E2E_LANE (0 or 1) gives each its own ports (+10 a lane), test database, Next build folders,
+ * artifacts folder and Playwright output folder. Lane 0 is exactly the single harness it always was.
+ */
+export const LANE = Number(process.env.E2E_LANE ?? '0');
+if (!Number.isInteger(LANE) || LANE < 0 || LANE > 1) throw new Error(`E2E_LANE must be 0 or 1, not ${process.env.E2E_LANE}`);
+const API_PORT = 3101 + LANE * 10;
+const OPS_PORT = 3105 + LANE * 10;
+const PORTAL_PORT = 3106 + LANE * 10;
+export const LANE_PORTS = [API_PORT, OPS_PORT, PORTAL_PORT];
+/** Set by run-harness.mjs: it snapshots and restores Next's two rewritten files once for every lane. */
+const NEXT_FILES_BY_RUNNER = process.env.E2E_NEXT_FILES_BY_RUNNER === '1';
+export const artifacts = LANE ? resolve(here, '.artifacts', `lane-${LANE}`) : resolve(here, '.artifacts');
 
 function waitForLine(child: ChildProcess, prefix: string, timeoutMs: number): Promise<string> {
   return new Promise((resolveLine, reject) => {
@@ -112,7 +122,9 @@ async function buildAndStart(
   // ONE BUILD PER RECEIPT RUN (R106, 2026-09-30): run-harness.mjs runs the six projects one after
   // another from one tree; the first builds, the rest start the same build (E2E_REUSE_BUILD=1).
   const reuse = process.env.E2E_REUSE_BUILD === '1' && existsSync(resolve(distDir, 'BUILD_ID'));
-  if (!reuse) await new Promise<void>((done, fail) => {
+  // R115: one app builds in one lane at a time. A build rewrites the app's tsconfig.json and
+  // next-env.d.ts in the shared source tree; two at once would race on them.
+  if (!reuse) await withBuildLock(label, () => new Promise<void>((done, fail) => {
     const build = spawn(process.execPath, [nextBin, 'build'], {
       cwd: appDir,
       env: { ...env, NODE_ENV: 'production' },
@@ -126,7 +138,7 @@ async function buildAndStart(
     build.stdout?.on('data', keep);
     build.stderr?.on('data', keep);
     build.on('exit', (code) => (code === 0 ? done() : fail(new Error(`${label} failed to build (${code}):\n${tail}`))));
-  });
+  }));
 
   const server = spawn(process.execPath, [nextBin, 'start', '-p', String(port)], {
     cwd: appDir,
@@ -136,6 +148,32 @@ async function buildAndStart(
   server.stdout?.on('data', (c: Buffer) => { if (process.env.E2E_VERBOSE) process.stderr.write(`[${label}] ${c.toString()}`); });
   server.stderr?.on('data', (c: Buffer) => process.stderr.write(`[${label}] ${c.toString()}`));
   return server;
+}
+
+/**
+ * THE BUILD LOCK (R115). A directory beside the builds, made atomically (mkdir fails when it exists):
+ * the lane that makes it builds, the other waits. A lock older than 20 minutes is a dead run's and is
+ * taken over, said so on stderr.
+ */
+async function withBuildLock<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const e2eHome = resolve(process.platform === 'win32' ? (process.env.LOCALAPPDATA ?? tmpdir()) : tmpdir(), 'saos-e2e');
+  mkdirSync(e2eHome, { recursive: true });
+  const lock = resolve(e2eHome, `build-${label}.lock`);
+  const started = Date.now();
+  for (;;) {
+    try { mkdirSync(lock); break; } catch {
+      let age = 0;
+      try { age = Date.now() - statSync(lock).mtimeMs; } catch { continue; }
+      if (age > 20 * 60_000) {
+        process.stderr.write(`[harness lane ${LANE}] the ${label} build lock is ${Math.round(age / 60_000)} min old; taking it over\n`);
+        rmSync(lock, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() - started > 30 * 60_000) throw new Error(`lane ${LANE}: waited 30 minutes for the ${label} build lock`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+  try { return await fn(); } finally { rmSync(lock, { recursive: true, force: true }); }
 }
 
 /** The harness API's connect-phase retries (the Docker Desktop relay), counted for this run's summary. */
@@ -159,7 +197,7 @@ export default async function globalSetup(): Promise<void> {
   // runtime. The developer's .next is never touched.
   const opsDir = resolve(root, 'apps', 'internal');
   const e2eHome = resolve(process.platform === 'win32' ? (process.env.LOCALAPPDATA ?? tmpdir()) : tmpdir(), 'saos-e2e');
-  const distDir = resolve(e2eHome, 'next');
+  const distDir = resolve(e2eHome, LANE ? `next-lane${LANE}` : 'next');
   mkdirSync(distDir, { recursive: true });
   /*
    * THE JUNCTION FOLLOWS THE CHECKOUT (2026-09-20). It was created once, by the first harness run on
@@ -195,7 +233,7 @@ export default async function globalSetup(): Promise<void> {
   try {
     await Promise.race([waitForHttp(`http://localhost:${OPS_PORT}/login`, 240_000), opsExited]);
   } catch (err) {
-    restoreNextFiles(artifacts, opsDir);
+    if (!NEXT_FILES_BY_RUNNER) restoreNextFiles(artifacts, opsDir);
     ops.kill(); api.kill();
     throw err;
   }
@@ -203,7 +241,7 @@ export default async function globalSetup(): Promise<void> {
   // PAGE TWO (2026-09-10): the portal, on its own port and its own build directory, so the two
   // dev servers never share a manifest.
   const portalDir = resolve(root, 'apps', 'portal');
-  const portalDist = resolve(e2eHome, 'next-portal');
+  const portalDist = resolve(e2eHome, LANE ? `next-portal-lane${LANE}` : 'next-portal');
   mkdirSync(portalDist, { recursive: true });
   for (const name of NEXT_TOUCHED_FILES) snapshot[`portal/${name}`] = readFileSync(resolve(portalDir, name), 'utf8');
   writeFileSync(resolve(artifacts, 'next-files.json'), JSON.stringify(snapshot));
@@ -213,8 +251,10 @@ export default async function globalSetup(): Promise<void> {
   try {
     await Promise.race([waitForHttp(`http://localhost:${PORTAL_PORT}/login`, 240_000), portalExited]);
   } catch (err) {
-    restoreNextFiles(artifacts, opsDir);
-    restoreNextFiles(artifacts, portalDir, 'portal/');
+    if (!NEXT_FILES_BY_RUNNER) {
+      restoreNextFiles(artifacts, opsDir);
+      restoreNextFiles(artifacts, portalDir, 'portal/');
+    }
     portal.kill(); ops.kill(); api.kill();
     throw err;
   }
