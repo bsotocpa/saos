@@ -14,6 +14,7 @@ import { alertRecipientForRole } from '../../staffing.ts';
 import { canReadCategory, readableCategories } from './wall.ts';
 import { COUNTS_AS_SQL, countDocumentAs, openChecklistItemsFor } from './counts-as.ts';
 import { todayChicago } from '../tax/deadlines.ts';
+import { HIDDEN_FROM_PORTAL_SQL } from '../tax/withdrawn.ts';
 
 const CLIENT_CATEGORIES = ['tax_documents', 'business_records', 'id_verification', 'irs_notices', 'other'] as const;
 // entity_filings (0094): formation papers, SOS filings, EIN letters, annual reports — Laura's category.
@@ -214,6 +215,8 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
        FROM document_requests dr
        LEFT JOIN document_request_items i ON i.request_id = dr.id
        WHERE dr.contact_id = $1 AND dr.status IN ('open', 'partially_received')
+         -- R117 (2026-10-02): nothing is asked for on a return withdrawn as the firm's own record.
+         AND NOT EXISTS (SELECT 1 FROM tax_engagements te WHERE te.id = dr.tax_engagement_id AND ${HIDDEN_FROM_PORTAL_SQL})
        GROUP BY dr.id
        ORDER BY dr.created_at DESC`,
       [client.contactId]

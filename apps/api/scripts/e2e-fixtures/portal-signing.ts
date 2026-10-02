@@ -101,7 +101,7 @@ export async function buildSigningFixture(app: FastifyInstance, deps: SigningDep
     });
     const withdrawnEngagementId = (await app.db.query<{ engagement_id: string }>(`SELECT engagement_id FROM tax_engagements WHERE id = $1`, [withdrawnReturn.id])).rows[0]!.engagement_id;
     await post('/signature-envelopes', { contactId: contact.id, type: 'engagement_letter', engagementId: withdrawnEngagementId, taxEngagementId: withdrawnReturn.id, serviceLine: 'tax' });
-    await post(`/engagements/${withdrawnEngagementId}/close`, { outcome: 'withdrawn', reason: 'Harness fixture: the client did not proceed with this year' }, 200);
+    await post(`/engagements/${withdrawnEngagementId}/close`, { outcome: 'withdrawn', withdrawalKind: 'client', reason: 'Harness fixture: the client did not proceed with this year' }, 200);
 
     // The accepted 1120-S quote: the live engagement, its scope (Schedule B) and its return.
     const quote = await createQuote(app, { contactId: contact.id, businessId: biz.id, lines: [{ itemCode: bizItem.item_code }] }, actor);

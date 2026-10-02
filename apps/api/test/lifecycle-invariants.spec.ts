@@ -159,7 +159,7 @@ test('2c: withdrawing an engagement withdraws its unfiled returns, and the datab
   // THE ROUTE, the way a person withdraws: the return goes with the engagement, on the record.
   const withdrawn = await app.inject({
     method: 'POST', url: `/engagements/${engagementId}/close`, headers: auth(brian),
-    payload: { outcome: 'withdrawn', reason: 'The client decided to stay with their current preparer this year' },
+    payload: { outcome: 'withdrawn', withdrawalKind: 'client', reason: 'The client decided to stay with their current preparer this year' },
   });
   assert.equal(withdrawn.statusCode, 200, withdrawn.body);
   const te = await app.db.query<{ stage: string }>(`SELECT stage::text AS stage FROM tax_engagements WHERE id = $1`, [teId]);

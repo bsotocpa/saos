@@ -75,7 +75,7 @@ after(async () => {
 test('7a: withdrawing an engagement that holds a paid, unapplied deposit is refused, and says which deposit', async () => {
   const x = await clientWithPaidDeposit();
   await assert.rejects(
-    closeEngagement(app, x.engagementId, { outcome: 'withdrawn', reason: 'duplicate accept' }, { type: 'system', label: 'test' }),
+    closeEngagement(app, x.engagementId, { outcome: 'withdrawn', withdrawalKind: 'firm_record', reason: 'duplicate accept' }, { type: 'system', label: 'test' }),
     (err: { code?: string; message: string }) => err.code === 'deposit_would_strand' && err.message.includes(x.depositNumber)
   );
   const st = await app.db.query<{ status: string }>(`SELECT status::text AS status FROM engagements WHERE id = $1`, [x.engagementId]);
@@ -84,7 +84,7 @@ test('7a: withdrawing an engagement that holds a paid, unapplied deposit is refu
 
 test('7a: "refund" withdraws and raises ONE billing task through the one door; Stripe is not touched', async () => {
   const x = await clientWithPaidDeposit();
-  const r = await closeEngagement(app, x.engagementId, { outcome: 'withdrawn', reason: 'client walked away', depositAction: 'refund' }, { type: 'system', label: 'test' });
+  const r = await closeEngagement(app, x.engagementId, { outcome: 'withdrawn', withdrawalKind: 'client', reason: 'client walked away', depositAction: 'refund' }, { type: 'system', label: 'test' });
   assert.equal(r.outcome, 'withdrawn');
   assert.ok(r.refundTaskId, 'a task was raised');
   const task = await app.db.query<{ title: string; source_type: string }>(`SELECT title, source_type FROM tasks WHERE id = $1`, [r.refundTaskId]);
@@ -98,7 +98,7 @@ test('7a/7b: "transfer" moves the deposit to the named open engagement; credit f
   const x = await clientWithPaidDeposit();
   const successor = await createEngagement(app, actor(), { contactId: x.contactId, serviceLine: 'bookkeeping', title: 'Successor', status: 'active' }, {});
   const r = await closeEngagement(app, x.engagementId, {
-    outcome: 'withdrawn', reason: 'Superseded by the engagement that remains open.', depositAction: 'transfer', transferToEngagementId: successor.id,
+    outcome: 'withdrawn', withdrawalKind: 'client', reason: 'Superseded by the engagement that remains open.', depositAction: 'transfer', transferToEngagementId: successor.id,
   }, { type: 'system', label: 'test' });
   assert.equal(r.depositsMoved, 1);
   assert.deepEqual((await availableDepositCredit(app, x.engagementId)), [], 'the old engagement has no credit');

@@ -8,6 +8,7 @@ import { scopeForEngagements, scopeName, scopeSummary } from './scope.ts';
 import { closeEngagement } from './close.ts';
 import { pauseEngagement, resumeEngagement } from './pause.ts';
 import { liftBillingHold } from '../billing/billing-hold.ts';
+import { CHOSEN_WITHDRAWAL_KINDS } from '../tax/withdrawn.ts';
 
 const PREP = ['weekly', 'monthly', 'quarterly', 'semi_annual'] as const;
 const SESSION = ['weekly', 'biweekly', 'monthly', 'quarterly', 'semi_annual', 'annual'] as const;
@@ -25,6 +26,8 @@ const CloseBody = z.object({
   transferToEngagementId: z.uuid().nullable().optional(),
   reason: reasonText(1, 2000).optional(),
   endedOn: z.iso.date().optional(),
+  /** R117: required on 'withdrawn' (the service says so in words). */
+  withdrawalKind: z.enum(CHOSEN_WITHDRAWAL_KINDS).optional(),
 });
 
 const ConfigureBody = z.object({
@@ -193,6 +196,7 @@ export function registerEngagementRoutes(app: FastifyInstance): void {
         endedOn: b.endedOn ?? null,
         depositAction: b.depositAction,
         transferToEngagementId: b.transferToEngagementId ?? null,
+        withdrawalKind: b.withdrawalKind,
       },
       { type: 'staff', id: request.staff!.id, label: request.staff!.fullName }
     );

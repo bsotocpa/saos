@@ -217,6 +217,12 @@ export async function transitionStage(
      * on the signed 8879 — both refused here, in words the modal renders beside the field.
      */
     filedOn?: string | undefined;
+    /**
+     * R117 (2026-10-02). Only read at 'withdrawn', and required there: 'client' when the client's work
+     * ended, 'firm_record' for the firm's own record (a duplicate, a migration leftover, an import
+     * error), which the client's portal never shows.
+     */
+    withdrawalKind?: 'client' | 'firm_record' | undefined;
   } = {}
 ): Promise<{ from: TaxStage; to: TaxStage; jurisdictions?: string[]; filedOn?: string }> {
   const { rows } = await app.db.query<GateRow>(
@@ -327,6 +333,13 @@ export async function transitionStage(
    * day sent with the re-file is refused by name rather than dropped, and the correction door is
    * where a wrong first day is put right.
    */
+  if (toStage === 'withdrawn' && !opts.withdrawalKind) {
+    throw new AppError(
+      400,
+      'withdrawal_kind_required',
+      "Say what kind of withdrawal this is: the client's work ended, or the firm's own record (a duplicate, a migration leftover, an import error), which the client's portal never shows."
+    );
+  }
   let filedOn: string | null = null;
   if (toStage === 'filed') {
     filedOn = assertFiledOn(opts.filedOn ?? todayChicago(), row.f8879_signed_on);
@@ -342,9 +355,10 @@ export async function transitionStage(
     `UPDATE tax_engagements
      SET stage = $2::tax_stage,
          filed_date = CASE WHEN $2 = 'filed' THEN COALESCE(filed_date, $4::date) ELSE filed_date END,
-         preparer_ptin_holder_id = CASE WHEN $2 = 'filed' THEN COALESCE(preparer_ptin_holder_id, $3::uuid) ELSE preparer_ptin_holder_id END
+         preparer_ptin_holder_id = CASE WHEN $2 = 'filed' THEN COALESCE(preparer_ptin_holder_id, $3::uuid) ELSE preparer_ptin_holder_id END,
+         withdrawal_kind = CASE WHEN $2 = 'withdrawn' THEN $5 ELSE NULL END
      WHERE id = $1`,
-    [taxEngagementId, toStage, opts.preparerPtinHolderId ?? null, filedOn]
+    [taxEngagementId, toStage, opts.preparerPtinHolderId ?? null, filedOn, toStage === 'withdrawn' ? opts.withdrawalKind : null]
   );
   /*
    * THE JURISDICTIONS ARE DECLARED WITH THE FILING (Brian, 2026-09-19 evening, ruling 2). The

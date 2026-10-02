@@ -51,7 +51,7 @@ test('an engagement closed today carries ended_on >= started_on as calendar days
   const c = await makeContact(app.db, { firstName: 'Synthetic', lastName: 'Calendar', email: 'calendar@example.test' });
   const eng = await createEngagement(app, actor(), { contactId: c.id, serviceLine: 'tax', title: 'Synthetic day test', status: 'active' }, {});
   await app.db.query(`UPDATE engagements SET started_on = DATE '2026-09-09' WHERE id = $1`, [eng.id]);
-  await closeEngagement(app, eng.id, { outcome: 'withdrawn', reason: 'calendar test', endedOn: '2026-09-09' }, { type: 'system', label: 'test' });
+  await closeEngagement(app, eng.id, { outcome: 'withdrawn', withdrawalKind: 'client', reason: 'calendar test', endedOn: '2026-09-09' }, { type: 'system', label: 'test' });
 
   const { rows } = await app.db.query<{ started_on: string; ended_on: string }>(`SELECT started_on, ended_on FROM engagements WHERE id = $1`, [eng.id]);
   assert.equal(rows[0]!.started_on, '2026-09-09');

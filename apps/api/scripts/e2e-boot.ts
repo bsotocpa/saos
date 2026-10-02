@@ -42,6 +42,7 @@ import { buildBillingHoldFixture } from './e2e-fixtures/billing-hold.ts';
 import { buildNoPreparerFixture } from './e2e-fixtures/no-preparer.ts';
 import { buildLayoutAuditFixture } from './e2e-fixtures/layout-audit.ts';
 import { buildBatch15Fixture } from './e2e-fixtures/batch15.ts';
+import { buildBatch16Fixture } from './e2e-fixtures/batch16.ts';
 import { runInternalTaskLadderJob } from '../src/modules/tasks/service.ts';
 
 const PORT = Number(process.env.E2E_API_PORT ?? 3101);
@@ -573,6 +574,7 @@ const countsAs = await buildCountsAsFixture(app, { staffToken, actor, magicToken
 const layoutAudit = await buildLayoutAuditFixture(app, { staffToken, actor, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app) });
 // Batch 15 (2026-09-30): path I, documents by return (R110), a withdrawn return (R108), the final fee in Details (R107).
 const batch15 = await buildBatch15Fixture(app, { staffToken, actor, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app) });
+const batch16 = await buildBatch16Fixture(app, { staffToken, magicTokens, magicLinks, drainOutbox: () => drainOutbox(app) });
 // R97 (2026-09-29): path C, same-name pairs merged and dismissed through Compare.
 const sameName = await buildSameNameFixture(app);
 // The billing hold the importer places (R68): one held client per viewport, made through the importer's own function.
@@ -633,6 +635,7 @@ console.log('E2E_READY ' + JSON.stringify({
   countsAs,
   layoutAudit,
   batch15,
+  batch16,
   sameName,
   billingHold,
   hilo,

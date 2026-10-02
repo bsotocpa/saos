@@ -79,7 +79,7 @@ test('R110: each file names its return — filed against it or answering its che
 test('R108: a withdrawn return carries its day and reason for Ops, and its day and the kind of reason for the client', async () => {
   const c = await client('Withdrawnapi');
   const te = (await app.inject({ method: 'POST', url: '/tax-engagements', headers: auth(), payload: { contactId: c.contactId, taxYear: 2024, returnType: '1040', clientType: 'individual', reason: 'Synthetic: a prior year.' } })).json().id as string;
-  const t = await app.inject({ method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(), payload: { toStage: 'withdrawn', note: 'Synthetic staff note: filed elsewhere.' } });
+  const t = await app.inject({ method: 'POST', url: `/tax-engagements/${te}/transition`, headers: auth(), payload: { toStage: 'withdrawn', withdrawalKind: 'client', note: 'Synthetic staff note: filed elsewhere.' } });
   assert.equal(t.statusCode, 200, t.body);
 
   const ops = await app.inject({ method: 'GET', url: `/tax-engagements?contactId=${c.contactId}`, headers: auth() });

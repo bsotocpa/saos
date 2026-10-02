@@ -22,6 +22,7 @@ import { formatUsd } from '../billing/service.ts';
 import { withTransaction } from '../../db.ts';
 import { retirePayableInvoices } from './retire-invoices.ts';
 import { CHICAGO_TODAY } from '../../chicago-day.ts';
+import type { WithdrawalKind } from '../tax/withdrawn.ts';
 
 export type CloseOutcome = 'completed' | 'withdrawn';
 
@@ -54,13 +55,15 @@ export async function withdrawUnfiledReturns(
   app: FastifyInstance,
   engagementId: string,
   note: string,
-  changedByStaffId: string | null
+  changedByStaffId: string | null,
+  /** R117: the kind every return withdrawn here records (a change order passes 'change_order'). */
+  kind: WithdrawalKind
 ): Promise<string[]> {
   const { rows } = await app.db.query<{ id: string; stage: string }>(
-    `UPDATE tax_engagements SET stage = 'withdrawn'
+    `UPDATE tax_engagements SET stage = 'withdrawn', withdrawal_kind = $3
       WHERE engagement_id = $1 AND stage = ANY($2::tax_stage[])
       RETURNING id, stage`,
-    [engagementId, [...PRE_FILED_STAGES]]
+    [engagementId, [...PRE_FILED_STAGES], kind]
   );
   for (const r of rows) {
     await app.db.query(
@@ -90,6 +93,12 @@ export async function closeEngagement(
     depositAction?: 'transfer' | 'refund' | undefined;
     /** With depositAction 'transfer': the engagement that takes the deposit. */
     transferToEngagementId?: string | null | undefined;
+    /**
+     * R117 (2026-10-02): required on 'withdrawn'. 'client' when the client's work ended; 'firm_record'
+     * for the firm's own record (a duplicate, a migration leftover, an import error), which the portal
+     * never shows. Its unfiled returns record the same kind.
+     */
+    withdrawalKind?: 'client' | 'firm_record' | undefined;
   },
   actor: { type: 'staff' | 'system'; id?: string | null; label: string }
 ): Promise<{ engagementId: string; contactId: string; outcome: CloseOutcome; depositsMoved: number; refundTaskId: string | null; invoicesVoided: string[]; draftsDeleted: string[] }> {
@@ -123,6 +132,13 @@ async function closeEngagementInTransaction(
       400,
       'reason_required',
       'Withdrawing needs a reason — work that ended without being delivered is the case someone will have to explain later.'
+    );
+  }
+  if (input.outcome === 'withdrawn' && !input.withdrawalKind) {
+    throw new AppError(
+      400,
+      'withdrawal_kind_required',
+      "Say what kind of withdrawal this is: the client's work ended, or the firm's own record (a duplicate, a migration leftover, an import error), which the client's portal never shows."
     );
   }
 
@@ -172,7 +188,8 @@ async function closeEngagementInTransaction(
   if (input.outcome === 'withdrawn') {
     retired = await retirePayableInvoices(app, engagementId, input.reason?.trim() ?? '', actor);
     returnsWithdrawn = await withdrawUnfiledReturns(
-      app, engagementId, `engagement withdrawn: ${input.reason?.trim() ?? ''}`, actor.type === 'staff' ? actor.id ?? null : null
+      app, engagementId, `engagement withdrawn: ${input.reason?.trim() ?? ''}`, actor.type === 'staff' ? actor.id ?? null : null,
+      input.withdrawalKind ?? 'client'
     );
   }
 

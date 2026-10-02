@@ -114,7 +114,7 @@ test('the refusals: a quarantined file, someone else\'s item, a closed return', 
   const aDoc = await docOnFile(a.contactId);
   const r2 = await app.inject({ method: 'POST', url: `/documents/${aDoc}/counts-as`, headers: auth(ceo), payload: { itemId: bInfo.items[0]!.id } });
   assert.equal(r2.statusCode, 404, 'another client\'s item');
-  await app.db.query(`UPDATE tax_engagements SET stage = 'withdrawn' WHERE id = $1`, [bInfo.te]);
+  await app.db.query(`UPDATE tax_engagements SET stage = 'withdrawn', withdrawal_kind = 'client' WHERE id = $1`, [bInfo.te]);
   const bDoc = await docOnFile(b.contactId);
   const r3 = await app.inject({ method: 'POST', url: `/documents/${bDoc}/counts-as`, headers: auth(ceo), payload: { itemId: bInfo.items[1]!.id } });
   assert.equal(r3.json().error, 'return_closed');

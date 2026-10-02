@@ -14,8 +14,23 @@ const latestWithdrawn = (col: string) =>
 export const WITHDRAWN_ON_SQL = `CASE WHEN te.stage = 'withdrawn' THEN COALESCE(${latestWithdrawn(`${chicagoDayOf('h.entered_at')}::text`)}, e.ended_on::text) END`;
 /** The reason recorded with the withdrawal (staff words: Ops only), or null. */
 export const WITHDRAWN_REASON_SQL = `CASE WHEN te.stage = 'withdrawn' THEN COALESCE(NULLIF(${latestWithdrawn('h.note')}, ''), e.close_reason) END`;
+/*
+ * WHAT KIND OF WITHDRAWAL IT WAS (Brian, 2026-10-02, R117; migration 0139). Recorded with the
+ * withdrawal, never guessed from the staff's words:
+ *   client        the client's work ended (they stopped, filed elsewhere): the portal shows it;
+ *   change_order  an updated agreement replaced it (set by supersession, never chosen): shown;
+ *   firm_record   the firm's own record (a duplicate, a migration leftover, an import error): hidden
+ *                 from the portal entirely; Ops still shows it.
+ */
+export const WITHDRAWAL_KINDS = ['client', 'change_order', 'firm_record'] as const;
+export type WithdrawalKind = (typeof WITHDRAWAL_KINDS)[number];
+/** The two a person chooses when withdrawing (a change order sets its own). */
+export const CHOSEN_WITHDRAWAL_KINDS = ['client', 'firm_record'] as const;
+
 /**
  * What the client reads as the reason (R108, the portal): never the staff's words, which are written
  * for the firm. 'change_order' when an updated agreement replaced the return, 'closed' otherwise.
  */
-export const WITHDRAWN_KIND_SQL = `CASE WHEN te.stage = 'withdrawn' THEN CASE WHEN COALESCE(${latestWithdrawn('h.note')}, e.close_reason, '') ILIKE 'superseded by change order%' THEN 'change_order' ELSE 'closed' END END`;
+export const WITHDRAWN_KIND_SQL = `CASE WHEN te.stage = 'withdrawn' THEN CASE WHEN te.withdrawal_kind = 'change_order' THEN 'change_order' ELSE 'closed' END END`;
+/** R117: a return the portal never shows, the firm's own record withdrawn. True/false SQL on te. */
+export const HIDDEN_FROM_PORTAL_SQL = `(te.stage = 'withdrawn' AND te.withdrawal_kind = 'firm_record')`;

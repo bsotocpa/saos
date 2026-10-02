@@ -61,7 +61,7 @@ test('withdrawing voids the attached sent invoice with the withdrawal reason, de
     `INSERT INTO invoices (invoice_number, contact_id, engagement_id, status, subtotal_cents, total_cents, amount_paid_cents)
      VALUES ($1, $2, $3, 'draft', 5000, 5000, 0) RETURNING id`, [`SYN-WV-D${seq}`, x.contactId, x.engagementId]);
 
-  const r = await closeEngagement(app, x.engagementId, { outcome: 'withdrawn', reason: 'duplicate of the real engagement' }, { type: 'staff', id: ceoId, label: 'Synthetic CEO' });
+  const r = await closeEngagement(app, x.engagementId, { outcome: 'withdrawn', withdrawalKind: 'firm_record', reason: 'duplicate of the real engagement' }, { type: 'staff', id: ceoId, label: 'Synthetic CEO' });
   assert.equal(r.outcome, 'withdrawn');
   assert.equal(r.invoicesVoided.length, 1, 'the sent deposit invoice was voided');
   assert.deepEqual(r.draftsDeleted.length, 1, 'the draft was deleted');
@@ -97,13 +97,13 @@ test('the invariant is the database\'s: a raw status change to withdrawn with a 
       ((err.constraint === 'engagements_withdrawn_no_payable' && /payable invoices point at it/.test(err.message)) || /^return_without_engagement:/.test(err.message))
   );
   // The invoice rule on its own, once the return has been withdrawn the way the route would.
-  await app.db.query(`UPDATE tax_engagements SET stage = 'withdrawn' WHERE engagement_id = $1`, [x.engagementId]);
+  await app.db.query(`UPDATE tax_engagements SET stage = 'withdrawn', withdrawal_kind = 'client' WHERE engagement_id = $1`, [x.engagementId]);
   await assert.rejects(
     app.db.query(`UPDATE engagements SET status = 'withdrawn' WHERE id = $1`, [x.engagementId]),
     (err: { constraint?: string; message: string }) => err.constraint === 'engagements_withdrawn_no_payable' && /payable invoices point at it/.test(err.message)
   );
   // Through the route it succeeds, because the route retires the invoice first.
-  await closeEngagement(app, x.engagementId, { outcome: 'withdrawn', reason: 'invariant test' }, { type: 'system', label: 'test' });
+  await closeEngagement(app, x.engagementId, { outcome: 'withdrawn', withdrawalKind: 'client', reason: 'invariant test' }, { type: 'system', label: 'test' });
   await assert.rejects(
     app.db.query(
       `INSERT INTO invoices (invoice_number, contact_id, engagement_id, status, subtotal_cents, total_cents, amount_paid_cents)
@@ -117,7 +117,7 @@ test('the invariant is the database\'s: a raw status change to withdrawn with a 
 
 test('7d is the guard: after withdrawals, no payable invoice sits on any non-active engagement', async () => {
   const x = await acceptedUnpaid();
-  await closeEngagement(app, x.engagementId, { outcome: 'withdrawn', reason: 'guard test' }, { type: 'system', label: 'test' });
+  await closeEngagement(app, x.engagementId, { outcome: 'withdrawn', withdrawalKind: 'client', reason: 'guard test' }, { type: 'system', label: 'test' });
   const rows = await invoicesOnNonActiveEngagements(app);
   const payable = rows.filter((r) => r.status === 'draft' || r.status === 'sent' || r.status === 'overdue');
   assert.deepEqual(payable, [], `payable invoices on non-active engagements: ${JSON.stringify(payable)}`);
@@ -149,7 +149,7 @@ test('a cascade names itself and the person behind it — never "unknown"', asyn
   // A system actor: no staff id, the way the overnight batch and the change-order path run.
   await closeEngagement(
     app, x.engagementId,
-    { outcome: 'withdrawn', reason: 'superseded by the engagement that remains open' },
+    { outcome: 'withdrawn', withdrawalKind: 'client', reason: 'superseded by the engagement that remains open' },
     { type: 'system', label: 'Brian Soto' }
   );
 

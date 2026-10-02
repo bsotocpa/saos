@@ -75,7 +75,7 @@ export async function buildBatch15Fixture(
       reason: 'Harness fixture (batch 15): a prior-year return opened, then withdrawn.',
     });
     const withdrawnReason = 'Opened by mistake: the client filed this year with another preparer.';
-    await post(`/tax-engagements/${prior.id}/transition`, { toStage: 'withdrawn', note: withdrawnReason });
+    await post(`/tax-engagements/${prior.id}/transition`, { toStage: 'withdrawn', withdrawalKind: 'client', note: withdrawnReason });
 
     const files = {
       on1040: await doc(c.id, `synthetic-w2-employer-${key}.pdf`, te1040.id),

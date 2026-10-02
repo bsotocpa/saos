@@ -78,6 +78,7 @@ interface TaxEngagement {
   /** R108: a withdrawn return's day and recorded reason (null otherwise). */
   withdrawn_on?: string | null;
   withdrawn_reason?: string | null;
+  withdrawal_kind?: string | null;
   id: string; tax_year: number; return_type: string; stage: string;
   estimated_fee_max_cents: number | null; final_fee_cents: number | null;
   extension_filed: boolean; filed_date: string | null;
@@ -1523,7 +1524,7 @@ export default function ClientPacketPage() {
           {/* The result reports HERE, beside the button that caused it — #40's lesson:
               a message at the far end of the page reads as nothing having happened. */}
           {engagements.map((e) => (
-            <div className="quote-line" key={e.id}>
+            <div className="quote-line" key={e.id} data-testid={`engagement-row-${e.id}`}>
               <span className="name">
                 {e.scopeName ?? e.title ?? e.service_line}{' '}
                 {/* R52 (2026-09-26): the status in plain words — "On hold since Sep 20, 2026", "Withdrawn on Sep 18, 2026". */}
@@ -1633,9 +1634,21 @@ export default function ClientPacketPage() {
                           let strand = false;
                           const first0 = await ask({
                             title: 'Withdraw this engagement?',
-                            body: <p>Any sent invoice on it is cancelled and the client is told; drafts are deleted. This is the record.</p>,
+                            body: (
+                              <>
+                                <p>Any sent invoice on it is cancelled and the client is told; drafts are deleted. This is the record.</p>
+                                {/* R117 (2026-10-02): the kind is chosen here, never guessed from the words. */}
+                                <p className="small muted">
+                                  Our own record (a duplicate, a migration leftover or an import error) is hidden from the
+                                  client&apos;s portal entirely. When the client&apos;s work ended, the portal shows it as closed.
+                                </p>
+                              </>
+                            ),
                             reason: { label: 'Why is it being withdrawn?', required: true },
-                            choices: [{ key: 'withdraw', label: 'Withdraw', tone: 'danger' }],
+                            choices: [
+                              { key: 'client', label: "Withdraw: the client's work ended", tone: 'danger' },
+                              { key: 'firm_record', label: 'Withdraw: our own record', tone: 'danger' },
+                            ],
                             /*
                              * STRANDED DEPOSITS (item 7a, 2026-09-09). The server refuses a withdrawal
                              * that would leave a paid deposit on dead work. That one refusal is not an
@@ -1644,7 +1657,7 @@ export default function ClientPacketPage() {
                              */
                             run: async (r) => {
                               try {
-                                await api(`/engagements/${e.id}/close`, { method: 'POST', body: { outcome: 'withdrawn', reason: r.reason } });
+                                await api(`/engagements/${e.id}/close`, { method: 'POST', body: { outcome: 'withdrawn', withdrawalKind: r.choice, reason: r.reason } });
                                 strand = false;
                               } catch (err) {
                                 if ((err as { code?: string }).code === 'deposit_would_strand') { strand = true; return; }
@@ -1654,6 +1667,7 @@ export default function ClientPacketPage() {
                           });
                           if (!first0) return;
                           const reason = first0.reason;
+                          const withdrawalKind = first0.choice;
                           if (!strand) { setActionMsg('Withdrawn.'); await load(); return; }
                           const open = engagements.filter((o) => o.id !== e.id && (o.status === 'active' || o.status === 'on_hold'));
                           const choice = await ask({
@@ -1671,14 +1685,14 @@ export default function ClientPacketPage() {
                           });
                           if (!choice) return;
                           if (choice.choice === 'refund') {
-                            await runEngagementAction(e.id, 'close', { outcome: 'withdrawn', reason, depositAction: 'refund' }, 'Withdrawn — a refund task was raised for billing.');
+                            await runEngagementAction(e.id, 'close', { outcome: 'withdrawn', withdrawalKind, reason, depositAction: 'refund' }, 'Withdrawn — a refund task was raised for billing.');
                             return;
                           }
                           const target = open.find((o) => `transfer:${o.id}` === choice.choice);
                           if (!target) { setInlineErr({ key: `eng:${e.id}`, message: 'That engagement is no longer open. Nothing changed.' }); return; }
                           await runEngagementAction(
                             e.id, 'close',
-                            { outcome: 'withdrawn', reason, depositAction: 'transfer', transferToEngagementId: target.id },
+                            { outcome: 'withdrawn', withdrawalKind, reason, depositAction: 'transfer', transferToEngagementId: target.id },
                             `Withdrawn — the deposit moved to ${target.scopeName ?? target.title ?? target.service_line}.`
                           );
                         }}
@@ -1758,7 +1772,7 @@ export default function ClientPacketPage() {
           returns.map((t) => t.stage === 'withdrawn' ? (
             // R108 (2026-09-30): a withdrawn return is one line — the day, and the reason on tap — with no
             // stepper and no controls: there is nothing left to do on it.
-            <WithdrawnReturnLine key={t.id} id={t.id} taxYear={t.tax_year} returnType={t.return_type} withdrawnOn={t.withdrawn_on ?? null} reason={t.withdrawn_reason ?? null} />
+            <WithdrawnReturnLine kind={t.withdrawal_kind ?? null} key={t.id} id={t.id} taxYear={t.tax_year} returnType={t.return_type} withdrawnOn={t.withdrawn_on ?? null} reason={t.withdrawn_reason ?? null} />
           ) : (
             <div className="quote-line" key={t.id}>
               <span className="name">

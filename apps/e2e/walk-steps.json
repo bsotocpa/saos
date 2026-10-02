@@ -260,7 +260,9 @@
         { "id": "I2", "text": "Portal Documents lists each file under the return it belongs to, hides a superseded file, says what each counts as, and puts \"Something else\" after the list (R110)", "device": "phone + laptop" },
         { "id": "I3", "text": "Portal Home: a withdrawn return is one line, \"Withdrawn on <date>\", its reason on tap in the client's words (R108)", "device": "phone + laptop" },
         { "id": "I4", "text": "Ops client page: a withdrawn return is one line with the recorded reason on tap, no stepper, no controls (R108)", "device": "phone + laptop" },
-        { "id": "I5", "text": "Ops: \"Set final fee\" in Details on a return in Engage; outside the quoted range it needs a reason (R107)", "device": "phone + laptop" }
+        { "id": "I5", "text": "Ops: \"Set final fee\" in Details on a return in Engage; outside the quoted range it needs a reason (R107)", "device": "phone + laptop" },
+        { "id": "I6", "text": "Ops: a duplicate withdrawn as the firm's own record and another withdrawn as the client's decision, each by its own button; the duplicate's line says it is not on the client's portal (R117)", "device": "phone + laptop" },
+        { "id": "I7", "text": "Portal: only the client's withdrawal is listed, one line with the fixed sentence; the firm's own record is nowhere, its file not tied to a return (R117)", "device": "phone + laptop" }
       ]
     }
   }

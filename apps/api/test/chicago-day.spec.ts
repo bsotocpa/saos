@@ -151,7 +151,7 @@ for (const { zone, tag } of ZONES) {
 
     await t.test('(c) an engagement closed or superseded without a day ends on the Chicago day', async () => {
       const closed = await engagementFor(a, tag, 'Closeday');
-      await closeEngagement(a, closed.engagementId, { outcome: 'withdrawn', reason: 'R104 spec: withdrawn without a day.' }, { type: 'system', label: 'R104 spec' });
+      await closeEngagement(a, closed.engagementId, { outcome: 'withdrawn', withdrawalKind: 'client', reason: 'R104 spec: withdrawn without a day.' }, { type: 'system', label: 'R104 spec' });
       const c1 = await a.db.query<{ d: string }>(`SELECT ended_on::text AS d FROM engagements WHERE id = $1`, [closed.engagementId]);
       assert.equal(c1.rows[0]!.d, T);
       const superseded = await engagementFor(a, tag, 'Changeday');

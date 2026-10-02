@@ -169,9 +169,11 @@ test.describe('Ops → client page', () => {
       expect(modalHealth!.coversViewport, 'the backdrop covers the whole viewport').toBe(true);
       expect(modalHealth!.hitTestReachesPanelOrBackdrop, 'nothing behind the backdrop can be tapped').toBe(true);
       expect(modalHealth!.bodyOverflow, 'the page behind is scroll-locked').toBe('hidden');
-      await expect(modal.getByRole('button', { name: 'Withdraw' })).toBeDisabled();
+      // R117 (2026-10-02): two kinds of withdrawal, each its own button; a duplicate is the firm's own record.
+      await expect(modal.getByRole('button', { name: "Withdraw: the client's work ended" })).toBeDisabled();
+      await expect(modal.getByRole('button', { name: 'Withdraw: our own record' })).toBeDisabled();
       await modal.locator('textarea').fill('harness walk: duplicate engagement');
-      await modal.getByRole('button', { name: 'Withdraw' }).click();
+      await modal.getByRole('button', { name: 'Withdraw: our own record' }).click();
       await expect(modal.getByRole('heading', { name: 'This engagement holds a paid deposit' })).toBeVisible();
       await expect(modal.getByRole('button', { name: 'Move to Books, monthly' })).toBeVisible();
       await expect(modal.getByRole('button', { name: 'Raise the refund' })).toBeVisible();

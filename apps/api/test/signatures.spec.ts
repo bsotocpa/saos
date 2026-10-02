@@ -157,7 +157,7 @@ test('portal list: an envelope on a withdrawn engagement is left out; a live one
     assert.equal(r.statusCode, 201, r.body);
   }
   // The return first, then the engagement (0100: an engagement cannot be withdrawn over an unfiled return), with the reason 0064 requires.
-  await app.db.query(`UPDATE tax_engagements SET stage = 'withdrawn' WHERE id = $1`, [gone]);
+  await app.db.query(`UPDATE tax_engagements SET stage = 'withdrawn', withdrawal_kind = 'client' WHERE id = $1`, [gone]);
   await app.db.query(`UPDATE engagements SET status = 'withdrawn', ended_on = CURRENT_DATE, close_reason = 'Synthetic: withdrawn for the fixture' WHERE id = $1`, [goneEng]);
 
   const user = await app.db.query<{ id: string }>(

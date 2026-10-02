@@ -233,8 +233,9 @@ test('R46: schedules come from the accepted quote\'s lines; a withdrawn 1040 con
       [e.rows[0]!.id, versionId, code]
     );
     await app.db.query(
-      `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, stage, original_deadline)
-       VALUES ($1, 2025, $2::return_type, $3::tax_stage, '2026-03-15')`,
+      // R117 (0139): a withdrawn return carries the kind of its withdrawal.
+      `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, stage, original_deadline, withdrawal_kind)
+       VALUES ($1, 2025, $2::return_type, $3::tax_stage, '2026-03-15', CASE WHEN $3 = 'withdrawn' THEN 'client' END)`,
       [e.rows[0]!.id, returnType, stage]
     );
     return e.rows[0]!.id;

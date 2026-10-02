@@ -12,7 +12,7 @@ import { refreshEnrichmentGaps } from '../crm/service.ts';
 import { cascadeUnblock, createTask } from '../tasks/service.ts';
 import { computeQuote } from '../pricing/service.ts';
 import { addDays, overdueSince, todayChicago, upcomingEstimateDates } from '../tax/deadlines.ts';
-import { WITHDRAWN_KIND_SQL, WITHDRAWN_ON_SQL } from '../tax/withdrawn.ts';
+import { WITHDRAWN_KIND_SQL, HIDDEN_FROM_PORTAL_SQL, WITHDRAWN_ON_SQL } from '../tax/withdrawn.ts';
 
 /**
  * A FILED RETURN'S ANSWERS, PER JURISDICTION (R48, 2026-09-26; R84, 2026-09-27): one line per row the
@@ -363,6 +363,9 @@ export function registerPortalRoutes(app: FastifyInstance): void {
           WHERE te.id = COALESCE(d.tax_engagement_id, (
                   SELECT dr.tax_engagement_id FROM document_request_items ri JOIN document_requests dr ON dr.id = ri.request_id
                    WHERE ri.document_id = d.id AND dr.tax_engagement_id IS NOT NULL ORDER BY ri.id LIMIT 1))
+            -- R117 (2026-10-02): a return withdrawn as the firm's own record does not exist for the
+            -- client; a file of theirs that sat on it is listed as not tied to a return.
+            AND NOT ${HIDDEN_FROM_PORTAL_SQL}
        ) rt ON true
        LEFT JOIN engagements re ON re.id = rt.engagement_id
        LEFT JOIN businesses rb ON rb.id = re.business_id
@@ -491,7 +494,8 @@ export function registerPortalRoutes(app: FastifyInstance): void {
               te.state_accepted_on::text AS state_accepted_on,
               te.state_accepted_code
          FROM documents d
-         LEFT JOIN tax_engagements te ON te.id = d.tax_engagement_id
+         -- R117: a return withdrawn as the firm's own record is not shown; its file is, with no return.
+         LEFT JOIN tax_engagements te ON te.id = d.tax_engagement_id AND NOT ${HIDDEN_FROM_PORTAL_SQL}
         WHERE d.contact_id = $1 AND d.category = 'return_deliverable' AND d.archived_at IS NULL
         ORDER BY d.tax_year DESC NULLS LAST, d.uploaded_at DESC`,
       [client.contactId]
@@ -569,6 +573,9 @@ export function registerPortalRoutes(app: FastifyInstance): void {
         WHERE e.contact_id = $1
           AND e.status <> 'draft'
           AND (e.status <> 'withdrawn' OR te.stage = 'withdrawn')
+          -- R117 (2026-10-02): a withdrawal of the firm's own record (a duplicate, a migration leftover,
+          -- an import error) is hidden from the portal entirely; Ops still shows it.
+          AND NOT COALESCE(${HIDDEN_FROM_PORTAL_SQL}, false)
         ORDER BY te.tax_year DESC NULLS LAST, e.service_line, e.created_at`,
       [client.contactId]
     );

@@ -121,7 +121,7 @@ test('a second close is refused rather than overwriting the first', async () => 
 
   const again = await app.inject({
     method: 'POST', url: `/engagements/${engagementId}/close`, headers: auth(brian),
-    payload: { outcome: 'withdrawn', reason: 'changed my mind' },
+    payload: { outcome: 'withdrawn', withdrawalKind: 'client', reason: 'changed my mind' },
   });
   assert.equal(again.statusCode, 409, 'a re-click cannot rewrite the outcome someone recorded');
   assert.match(again.json().message, /already closed/i);

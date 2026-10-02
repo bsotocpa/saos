@@ -2253,3 +2253,7 @@ The step-5 audit read 0 failures while three walks could not click: a label's 44
 ## Windows refuses a file open now and then; the harness names it and does not depend on luck (2026-10-01)
 Twice in one day a harness run went red on "UNKNOWN: unknown error, open" for a file the harness itself rewrites (apps/internal/tsconfig.json in Next's build; next-env.d.ts in the restore after a green walk). Another process held the file a moment; which one was not pinned down. The restore now skips a write whose content is already there and retries a transient refusal four times, 250 ms apart, printing each retry.
 **Rule:** a harness write to a shared file is skipped when nothing changes and retried only on a named transient error, with every retry printed; a test is never rerun to get past one.
+
+## A registry the reports read from needs a guard against what is missing from it (2026-10-02, batch 16)
+The walk-evidence script wrote one table per path it listed, and three walked paths (O, J, I) were never listed: receipts walked them at six projects and no table said so, and the batch 15 report's tap rows had to be written after the receipt. check:walk-paths now runs in the root suite and refuses a path in walk-steps.json with no entry.
+**Rule:** when a script produces one output per entry of a list it keeps itself, a root check compares that list with the source of truth (here walk-steps.json) and goes red on the difference.

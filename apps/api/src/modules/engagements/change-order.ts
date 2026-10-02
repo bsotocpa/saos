@@ -170,7 +170,7 @@ export async function withdrawForChangeOrder(
   await retirePayableInvoices(app, oldEngagementId, `superseded by change order ${quoteId}`, { id: null, label: 'change order accepted by the client' });
   // The returns go first: migration 0100 refuses an engagement closing over an unfiled return.
   const { withdrawUnfiledReturns } = await import('./close.ts');
-  await withdrawUnfiledReturns(app, oldEngagementId, `superseded by change order ${quoteId}`, null);
+  await withdrawUnfiledReturns(app, oldEngagementId, `superseded by change order ${quoteId}`, null, 'change_order');
   const { rows } = await app.db.query<{ id: string; service_line: string; period_key: string | null }>(
     `UPDATE engagements
         SET status = 'withdrawn', ended_on = ${CHICAGO_TODAY},

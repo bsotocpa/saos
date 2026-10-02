@@ -43,8 +43,9 @@ async function openReturn(last: string, opts: { openedOn: string; stage?: string
     [c.rows[0]!.id, status, opts.openedOn]
   );
   const te = await app.db.query<{ id: string }>(
-    `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, stage, preparer_id, original_deadline, created_at)
-     VALUES ($1, 2025, '1040', $2::tax_stage, $3, '2026-10-15', ($4::date + time '12:00') AT TIME ZONE 'America/Chicago')
+    `INSERT INTO tax_engagements (engagement_id, tax_year, return_type, stage, preparer_id, original_deadline, created_at, withdrawal_kind)
+     VALUES ($1, 2025, '1040', $2::tax_stage, $3, '2026-10-15', ($4::date + time '12:00') AT TIME ZONE 'America/Chicago',
+             CASE WHEN $2 = 'withdrawn' THEN 'client' END)
      RETURNING id`,
     [e.rows[0]!.id, stage, opts.preparerId ?? null, opts.openedOn]
   );

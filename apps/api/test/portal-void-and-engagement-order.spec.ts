@@ -119,7 +119,7 @@ test('F: engagements list active, then on hold, then closed — newest first wit
   const activeNew = await mk('active, new', 'advisory', 2);
   const closedOld = await mk('closed, old', 'tax', 30);
   await closeEngagement(app, closedNew, { outcome: 'completed' }, { type: 'system', label: 'test' });
-  await closeEngagement(app, closedOld, { outcome: 'withdrawn', reason: 'order test' }, { type: 'system', label: 'test' });
+  await closeEngagement(app, closedOld, { outcome: 'withdrawn', withdrawalKind: 'client', reason: 'order test' }, { type: 'system', label: 'test' });
   await pauseEngagement(app, held, { reason: 'order test' }, { type: 'system', label: 'test' });
 
   const list = await app.inject({ method: 'GET', url: `/engagements?contactId=${c.contactId}`, headers: auth(ceo) });

@@ -52,7 +52,7 @@ const NOTES = {
 // A path walked with no entry here writes no table, and nothing said so (O, J and I, until 2026-10-02).
 const walked = Object.keys(JSON.parse(readFileSync(resolve(root, 'apps', 'e2e', 'walk-steps.json'), 'utf8')).paths);
 const unlisted = walked.filter((p) => !(p in NOTES));
-if (unlisted.length) { console.error(`walk-evidence-reports: path(s) ${unlisted.join(', ')} in walk-steps.json have no entry here; add one`); process.exit(1); }
+if (unlisted.length) { for (const p of unlisted) console.error(`RED walk path ${p} is in walk-steps.json with no entry in scripts/walk-evidence-reports.mjs: no evidence table would be written for it`); process.exit(1); }
 // --check (npm run check:walk-paths, in the root suite): the listing alone, no run record read, nothing written.
 if (process.argv.includes('--check')) { console.log(`walk-evidence-reports: all ${walked.length} paths in walk-steps.json are listed`); process.exit(0); }
 

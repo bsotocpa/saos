@@ -821,7 +821,7 @@ export function registerCrmRoutes(app: FastifyInstance): void {
                 te.estimated_fee_min_cents, te.estimated_fee_max_cents, te.final_fee_cents,
                 te.f8879_document_id, te.f8879_signed_at::date::text AS f8879_signed_on,
                 e.contact_id, c.first_name, c.last_name,
-                ${WITHDRAWN_ON_SQL} AS withdrawn_on, ${WITHDRAWN_REASON_SQL} AS withdrawn_reason
+                ${WITHDRAWN_ON_SQL} AS withdrawn_on, ${WITHDRAWN_REASON_SQL} AS withdrawn_reason, te.withdrawal_kind
            FROM tax_engagements te
            JOIN engagements e ON e.id = te.engagement_id
            JOIN contacts c ON c.id = e.contact_id

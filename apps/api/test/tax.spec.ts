@@ -578,7 +578,7 @@ test('withdrawing needs a reason, and closing twice is refused', async () => {
     'work that ended without being delivered has to say why'
   );
 
-  await closeEngagement(app, eng.rows[0]!.id, { outcome: 'withdrawn', reason: 'Client sold the business.' }, actor);
+  await closeEngagement(app, eng.rows[0]!.id, { outcome: 'withdrawn', withdrawalKind: 'client', reason: 'Client sold the business.' }, actor);
 
   await assert.rejects(
     closeEngagement(app, eng.rows[0]!.id, { outcome: 'completed', reason: 'oops' }, actor),

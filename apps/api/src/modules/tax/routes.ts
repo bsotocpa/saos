@@ -52,6 +52,8 @@ const CreateBody = z.object({
 
 const TransitionBody = z.object({
   toStage: z.enum(TAX_STAGES),
+  /** R117: required when toStage is 'withdrawn' (the pipeline says so in words). */
+  withdrawalKind: z.enum(['client', 'firm_record']).optional(),
   note: z.string().optional(),
   /** Required when toStage is 'filed': the staff member whose PTIN is on the filing. */
   preparerPtinHolderId: z.uuid().optional(),
@@ -461,7 +463,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
               te.scope_creep_flag, te.complexity_score, te.extension_filed, te.filed_date, te.reopened_at, te.reopen_reason,
               e.contact_id, c.first_name, c.last_name,
               -- R108: a withdrawn return reads one line: the day and, on tap, the reason.
-              ${WITHDRAWN_ON_SQL} AS withdrawn_on, ${WITHDRAWN_REASON_SQL} AS withdrawn_reason,
+              ${WITHDRAWN_ON_SQL} AS withdrawn_on, ${WITHDRAWN_REASON_SQL} AS withdrawn_reason, te.withdrawal_kind,
               -- R83: the return's checklist, as the Ops row reads it (null: no checklist).
               ck.docs_received, ck.docs_missing, ck.docs_total,
               -- R91: an open return from an accepted quote with no checklist yet (the backfill door applies).
@@ -612,7 +614,7 @@ export function registerTaxRoutes(app: FastifyInstance): void {
     const b = TransitionBody.parse(request.body);
     const result = await transitionStage(app, actorOf(request), id, b.toStage, {
       note: b.note, preparerPtinHolderId: b.preparerPtinHolderId, jurisdictions: b.jurisdictions,
-      filingMethods: b.filingMethods, filedOn: b.filedOn, ...meta(request),
+      filingMethods: b.filingMethods, filedOn: b.filedOn, withdrawalKind: b.withdrawalKind, ...meta(request),
     });
     /*
      * "REQUEST DOCUMENTS" (R83): the press records that documents were asked for and sends the
