@@ -2257,3 +2257,11 @@ Twice in one day a harness run went red on "UNKNOWN: unknown error, open" for a 
 ## A registry the reports read from needs a guard against what is missing from it (2026-10-02, batch 16)
 The walk-evidence script wrote one table per path it listed, and three walked paths (O, J, I) were never listed: receipts walked them at six projects and no table said so, and the batch 15 report's tap rows had to be written after the receipt. check:walk-paths now runs in the root suite and refuses a path in walk-steps.json with no entry.
 **Rule:** when a script produces one output per entry of a list it keeps itself, a root check compares that list with the source of truth (here walk-steps.json) and goes red on the difference.
+
+## A receipt runs outside the session's tool limits (2026-10-02, receipt run 62)
+Receipt run 62 was started as a background tool command and stopped by the tool's own time limit about 30 minutes in (205 walks ok, 0 failed by then): a run killed from outside proves nothing either way and was voided. Receipts now start as a detached process (scratchpad run-receipt.sh through Start-Process, a script file, never a quoted -c string, which Start-Process split at its spaces and so never ran), with the display hold beside it, and the session watches the log.
+**Rule:** a run longer than the tool's background limit (a receipt, a full harness) is started detached, from a script file, and only watched by the session; a run the tool stopped is void, and said so.
+
+## A fixed wait reads a page before its data on a loaded machine (2026-10-02, receipt run 63, R7)
+Run 63 was red on one walk: portal-invoices at webkit-1440 read the page's text one second after the heading and found only the heading. The machine was paging (free memory reached 0 with Chrome holding 5.6 GB), and the invoices arrived later than the second. The walk now waits for the first invoice row; the same pattern (a fixed wait, then one read of loaded content) was fixed in four more walks, and the absence checks that follow fixed waits are a flagged follow-up.
+**Rule:** a walk waits for the content it is about to read (an auto-retrying expect on a row, a file name, a word), never for a length of time; an absence check first waits for a positive sign that the page has loaded.

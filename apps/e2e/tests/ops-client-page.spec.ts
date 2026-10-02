@@ -53,7 +53,8 @@ test.describe('Ops → client page', () => {
       await page.goto(`/clients/${fixtures.contactId}`);
       await expect(page.getByRole('heading', { name: /Invoices \(/ })).toBeVisible();
       // Let the send logs and notices settle.
-      await page.waitForTimeout(1500);
+      // Receipt run 63 (2026-10-02): a fixed wait read a page before its data; wait for what is read.
+      await expect(page.locator('section.card', { has: page.getByRole('heading', { name: /Invoices \(/ }) }).locator('ul.list > li').first()).toBeVisible();
 
       // 1. No text on the page is a raw ISO timestamp.
       const text = await page.evaluate(() => document.body.innerText);

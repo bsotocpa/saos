@@ -721,7 +721,9 @@ test.describe('Path B', () => {
       // ── B15. THE COMPLETED ENGAGEMENT ─────────────────────────────────────────────────
       await page.goto(clientPage);
       await expect(page.getByRole('heading', { name: /Documents \(/ })).toBeVisible();
-      await page.waitForTimeout(1500);
+      // Receipt run 63 (2026-10-02): a fixed wait read a page before its data; wait for what is read.
+      await expect(page.locator('body')).toContainText(returnFile);
+      await expect(page.locator('body')).toContainText(clientDoc);
       const done = await page.evaluate(() => document.body.innerText);
       expect(done, 'the return reads completed').toMatch(/completed/i);
       expect(done, 'the delivered return is on the record').toContain(returnFile);

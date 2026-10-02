@@ -75,7 +75,8 @@ for (const [name, persona, positive, negativeToo] of [
         await signIn(page, persona);
         await page.goto(`/clients/${fixtures.contactId}`);
         await expect(page.getByRole('heading', { name: /Documents \(/ })).toBeVisible();
-        await page.waitForTimeout(1500);
+        // Receipt run 63 (2026-10-02): a fixed wait read a page before its data; wait for what is read.
+        await expect(page.locator('body'), `${positive} IS on ${name}'s page`).toContainText(positive);
 
         const text = await page.evaluate(() => document.body.innerText);
         for (const marker of behindTheWall) expect(text, `${marker} is not on ${name}'s page`).not.toContain(marker);

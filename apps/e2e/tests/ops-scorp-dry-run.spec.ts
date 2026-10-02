@@ -651,7 +651,9 @@ test.describe('The 1120S dry run', () => {
       await signIn(page, fixtures.staff);
       await page.goto(`/clients/${scorp.contactId}`);
       await expect(page.getByRole('heading', { name: /Documents \(/ })).toBeVisible();
-      await page.waitForTimeout(1500);
+      // Receipt run 63 (2026-10-02): a fixed wait read a page before its data; wait for what is read.
+      await expect(page.locator('body')).toContainText(scorp.markers.returnFile);
+      await expect(page.locator('body')).toContainText(scorp.markers.document);
       const text = await page.evaluate(() => document.body.innerText);
       expect(text, 'the entity is on the page').toContain(scorp.markers.business);
       expect(text, 'the delivered return is filed under the client').toContain(scorp.markers.returnFile);

@@ -121,7 +121,9 @@ test.describe('portal → Invoices', () => {
       await signIn(page, viewportKey(testInfo) === 'phone' ? 0 : 1);
       await page.goto('/invoices');
       await expect(page.locator('h1')).toBeVisible();
-      await page.waitForTimeout(1000);
+      // The list draws when the invoices arrive (receipt run 63: a fixed second read a page with only its
+      // heading, on a machine paging under memory pressure). Wait for the rows, never for a time.
+      await expect(page.locator('ul.list > li').first()).toBeVisible({ timeout: 20_000 });
       await ensureLang(page, 'en');
 
       /*
@@ -139,7 +141,7 @@ test.describe('portal → Invoices', () => {
       // it — the test id is what identifies it.
       await page.getByTestId('lang-toggle').click();
       await expect(page.getByRole('heading', { name: COPY.es.title })).toBeVisible();
-      await page.waitForTimeout(500);
+      await expect(page.getByText(COPY.es.paid, { exact: false }).first()).toBeVisible();
       const esShot = testInfo.outputPath(`portal-invoices-es-${viewport}.png`);
       await page.screenshot({ path: esShot, fullPage: true });
       shots.push({ lang: 'es', file: esShot });
