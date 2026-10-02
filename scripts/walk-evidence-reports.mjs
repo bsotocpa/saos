@@ -17,16 +17,6 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
-const runFile = resolve(root, 'apps', 'e2e', '.artifacts', 'last-run.json');
-if (!existsSync(runFile)) { console.error('walk-evidence-reports: no apps/e2e/.artifacts/last-run.json; run the harness first'); process.exit(1); }
-const run = JSON.parse(readFileSync(runFile, 'utf8'));
-// Playwright's JSON reporter: stats.expected is the passed count, stats.unexpected the failed.
-const passed = Number(run.stats?.expected ?? 0);
-const failed = Number(run.stats?.unexpected ?? 0) + Number(run.stats?.flaky ?? 0);
-const now = new Date();
-const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; // the local calendar day, the way the other report files are dated
-const scratch = resolve(process.env.LOCALAPPDATA ?? process.env.TMPDIR ?? root, 'saos-e2e', 'walk-logs');
-mkdirSync(scratch, { recursive: true });
 
 const NOTES = {
   A: 'Rows come from walk-step annotations the specs push while they run, on the migrated-client fixture (a portal account on one address, the contact record on another; the proposal and sign-in links followed from the emailed hrefs); A3b is the Ops packet step and A3c the consent screen (R27); how=api is the Stripe event beside a passing Pay tap.',
@@ -52,7 +42,30 @@ const NOTES = {
   K: 'Counts as (R96, 2026-09-29): ops-counts-as.spec.ts at 390 and 1280, the CEO fixture in Ops and the client in the portal, on a synthetic client per viewport with an accepted 1040 (its checklist open) and two files already on file (apps/api/scripts/e2e-fixtures/counts-as.ts). Every match is a tap.',
   C: 'Same-name pairs (R97, 2026-09-29): ops-same-name.spec.ts at 390 and 1280 as the CEO fixture, on two synthetic same-name pairs per viewport, each record holding a task, with the open suggestion the pass leaves (apps/api/scripts/e2e-fixtures/same-name.ts; the pass itself is proven in same-name.spec.ts). Every answer is a tap.',
   L: 'The billing hold on an imported engagement (R68, 2026-09-26): ops-billing-hold.spec.ts at 390 and 1280, on a sales-tax engagement the Trello importer\'s own function (applyRecurringServiceFact) made at boot, one held client per viewport. L1 the CEO reads the badge "Billing on hold (imported)" with the importer\'s reason as its title, the status sentence "Active · billing on hold (imported)" and the Lift billing hold… control; L2 the lift with a reason (a chat-artifact reason refused under the field in the server\'s words, then the real one), the confirmation sentence and the badge gone from the re-read row; L3 the role proof: ed_coo reads the badge with no control, comms_billing has no control and POST /engagements/:id/billing-hold/lift answers 403 engagements.billing_hold.lift.',
+  // Batch 16 (2026-10-02): paths O (batch 12), J (batch 14) and I (batch 15) were walked in every receipt
+  // since but had no entry here, so no table was written for them. Every path in walk-steps.json is
+  // listed, and the guard below refuses a path that is not.
+  O: 'The handover doc walked by a new tax_preparer (R99, ops-handover-rehearsal.spec.ts): first sign-in and recovery codes, My Queue, a 1040 from Engage to Completed with a paper state, and a 990 on extension, at all six projects.',
+  I: 'Batch 15 (R105, R110, R108, R107; batch15-documents.spec.ts): the portal checklist and the Documents page by return, a withdrawn return as one line in the portal and in Ops, and "Set final fee" in Details before filing, at all six projects.',
+  J: 'Returns with no preparer (R100, R102; ops-no-preparer.spec.ts): the executive count opens the list, the CEO alert two business days on, and an assignment from the list, at all six projects.',
 };
+// A path walked with no entry here writes no table, and nothing said so (O, J and I, until 2026-10-02).
+const walked = Object.keys(JSON.parse(readFileSync(resolve(root, 'apps', 'e2e', 'walk-steps.json'), 'utf8')).paths);
+const unlisted = walked.filter((p) => !(p in NOTES));
+if (unlisted.length) { console.error(`walk-evidence-reports: path(s) ${unlisted.join(', ')} in walk-steps.json have no entry here; add one`); process.exit(1); }
+// --check (npm run check:walk-paths, in the root suite): the listing alone, no run record read, nothing written.
+if (process.argv.includes('--check')) { console.log(`walk-evidence-reports: all ${walked.length} paths in walk-steps.json are listed`); process.exit(0); }
+
+const runFile = resolve(root, 'apps', 'e2e', '.artifacts', 'last-run.json');
+if (!existsSync(runFile)) { console.error('walk-evidence-reports: no apps/e2e/.artifacts/last-run.json; run the harness first'); process.exit(1); }
+const run = JSON.parse(readFileSync(runFile, 'utf8'));
+// Playwright's JSON reporter: stats.expected is the passed count, stats.unexpected the failed.
+const passed = Number(run.stats?.expected ?? 0);
+const failed = Number(run.stats?.unexpected ?? 0) + Number(run.stats?.flaky ?? 0);
+const now = new Date();
+const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; // the local calendar day, the way the other report files are dated
+const scratch = resolve(process.env.LOCALAPPDATA ?? process.env.TMPDIR ?? root, 'saos-e2e', 'walk-logs');
+mkdirSync(scratch, { recursive: true });
 for (const which of Object.keys(NOTES)) {
   const log = resolve(scratch, `walk-${which.toLowerCase()}.log`);
   const rows = execFileSync('node', [resolve(here, 'walk-evidence.mjs'), which], { cwd: root, encoding: 'utf8' });
