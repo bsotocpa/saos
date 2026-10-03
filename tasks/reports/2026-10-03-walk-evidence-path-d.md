@@ -1,6 +1,6 @@
 # walk-evidence-path-d (2026-10-03)
 
-Generated 2026-10-03T10:56:12.493Z by scripts/report-table.mjs from the log walk-d.log; 48 row(s).
+Generated 2026-10-03T17:57:36.299Z by scripts/report-table.mjs from the log walk-d.log; 48 row(s).
 
 Void, the test-client flag, the refund door on (D3) and off (D3b, R32); how=api rows are the Stripe events.
 

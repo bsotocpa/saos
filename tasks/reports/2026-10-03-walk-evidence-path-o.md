@@ -1,6 +1,6 @@
 # walk-evidence-path-o (2026-10-03)
 
-Generated 2026-10-03T10:56:16.544Z by scripts/report-table.mjs from the log walk-o.log; 60 row(s).
+Generated 2026-10-03T17:57:39.944Z by scripts/report-table.mjs from the log walk-o.log; 60 row(s).
 
 The handover doc walked by a new tax_preparer (R99, ops-handover-rehearsal.spec.ts): first sign-in and recovery codes, My Queue, a 1040 from Engage to Completed with a paper state, and a 990 on extension, at all six projects.
 
