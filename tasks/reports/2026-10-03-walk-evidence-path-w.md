@@ -1,6 +1,6 @@
 # walk-evidence-path-w (2026-10-03)
 
-Generated 2026-10-03T09:30:48.742Z by scripts/report-table.mjs from the log walk-w.log; 12 row(s).
+Generated 2026-10-03T10:56:15.235Z by scripts/report-table.mjs from the log walk-w.log; 12 row(s).
 
 Past deadlines (R93, 2026-09-29): ops-batch10.spec.ts at 390 and 1280 as the CEO fixture, on a return the batch-10 fixture opens by hand 20 days past its original deadline with no extension; W1 reads "Overdue since <date>" on the Ops row, the queue and the client’s portal card (signed in by the link they were emailed); W2 records the extension on the row and reads the overdue line gone from all three.
 

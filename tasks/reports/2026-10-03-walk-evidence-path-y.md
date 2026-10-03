@@ -1,6 +1,6 @@
 # walk-evidence-path-y (2026-10-03)
 
-Generated 2026-10-03T09:30:49.175Z by scripts/report-table.mjs from the log walk-y.log; 30 row(s).
+Generated 2026-10-03T10:56:15.633Z by scripts/report-table.mjs from the log walk-y.log; 30 row(s).
 
 Path B, the two-year variant (R89, 2026-09-29): ops-path-b-two-year.spec.ts at 390 and 1280 as the CEO fixture and the client, on a synthetic person per viewport the two-year fixture enters with portal access (apps/api/scripts/e2e-fixtures/path-b-two-year.ts). The quote, the acceptance and every read are taps; the lines are the ones path B reads from the book in force, and no price is typed.
 
