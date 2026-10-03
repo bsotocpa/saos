@@ -88,6 +88,35 @@ book.sotoaccounting.com {
 }
 
 ntfy.sotoaccounting.com {
+	# AN ACCESS LOG FOR THIS HOST ONLY (Brian, 2026-10-03, R131). On 2026-10-03 nobody could say
+	# whether anyone but the firm's phones had ever subscribed: no log held a request. Each line
+	# is the time, the method, the path, the status and the client address, and nothing else:
+	# every header, the TLS detail and the query string (which can carry a sign-in) are dropped,
+	# and Caddy never logs a body. Kept 90 days: logrotate on the box rotates it daily
+	# (deploy/logrotate-ntfy-access), so Caddy's own rolling is off.
+	# scripts/check-public-hosts.mjs holds this block to that shape.
+	log {
+		output file /var/log/caddy/ntfy-access.log {
+			mode 0600
+			roll_disabled
+		}
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+				request>tls delete
+				request>remote_ip delete
+				request>remote_port delete
+				request>proto delete
+				request>uri regexp "\?.*$" ""
+				resp_headers delete
+				user_id delete
+				bytes_read delete
+				size delete
+				duration delete
+			}
+		}
+	}
 	reverse_proxy ntfy:80
 }
 
@@ -96,6 +125,8 @@ vault.sotoaccounting.com {
 	reverse_proxy vaultwarden:80
 }
 
-status.sotoaccounting.com {
-	reverse_proxy uptime-kuma:3001
-}
+# NO PUBLIC ADDRESS FOR UPTIME KUMA (Brian, 2026-10-03, R130). Kuma was never set up, and
+# status.sotoaccounting.com served its first-run page to anyone: whoever completed it would
+# have become its administrator. The status block is gone; Kuma is reached from inside the
+# network only (docs/RUNBOOK_OPS.md, "Uptime Kuma"). The hosts above are the whole public
+# list, and scripts/check-public-hosts.mjs fails when one is added without being named there.

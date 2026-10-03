@@ -174,5 +174,5 @@ provision: DNS records to create at the registrar (all A -> ${ip4}, AAAA -> ${ip
   book.sotoaccounting.com      (Cal.com)
   ntfy.sotoaccounting.com      (push)
   vault.sotoaccounting.com     (Vaultwarden)
-  status.sotoaccounting.com    (Uptime Kuma)
+  (status.sotoaccounting.com is NOT routed: Uptime Kuma has no public address, R130)
 provision: done.`);

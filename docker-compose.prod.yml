@@ -25,6 +25,8 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - saos_caddy_data:/data
       - saos_caddy_config:/config
+      # The ntfy host's access log (R131), on the encrypted volume; rotated by logrotate on the box.
+      - /mnt/saos-data/logs/caddy:/var/log/caddy
     depends_on:
       - api
       - portal

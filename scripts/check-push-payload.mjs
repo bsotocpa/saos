@@ -12,6 +12,7 @@
  *   - any ${…} in the file interpolates something other than the server address, the topic, the token
  *     or the response status;
  *   - the sweep reads an alert's title, body, type or related record, or hands the pusher anything;
+ *   - the audit row of a push (R131) holds anything but the server and the outcome;
  *   - any other file under apps/ or scripts/ reaches the push server on its own.
  *
  *   node scripts/check-push-payload.mjs      (npm run check:push-payload; in the root suite)
@@ -26,7 +27,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PUSH_FILE = 'apps/api/src/notify/push.ts';
 const TEXT = '1 new alert in Ops';
 // What a ${…} in the push file may hold: where to send, the token, and the status that came back.
-const MAY_INTERPOLATE = ['target.token', 'target.url', 'target.topic', 'res.status'];
+const MAY_INTERPOLATE = ['target.token', 'target.url', 'target.topic', 'res.status', 'err.status'];
 
 /**
  * The body of the function, interface or object that starts at `marker`: from the first "{" that ends
@@ -78,6 +79,14 @@ export function problemsIn(pushSrc, others = []) {
     if (/\bn\.(title|body|type|related_object_\w+)\b/.test(sweep)) out.push("the sweep reads the alert's own title, body, type or record");
     if (!/await pusher\.push\(\);/.test(sweep)) out.push('the sweep does not call pusher.push() with no argument');
   }
+  // R131: one audit row per push, holding the server and the outcome and nothing else.
+  const audit = block(src, 'async function auditPush');
+  if (!audit) out.push('auditPush, the audit row of a push, is not in the file');
+  else {
+    const d = audit.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('details:'));
+    if (d.length !== 1 || d[0] !== 'details: { server: pusher.server, outcome },') out.push('the audit row of a push holds something other than the server and the outcome');
+    if (!/server: target\.url,/.test(sender ?? '')) out.push("the pusher's server is not the bare server address");
+  }
   for (const o of others) {
     const s = noComments(o.src);
     if (/\bNTFY_(URL|TOPIC|TOKEN)\b/.test(s) && /\b(fetch|curl|wget|request)\b/.test(s)) out.push(`${o.file} reaches the push server on its own (only ${PUSH_FILE} may)`);
@@ -90,11 +99,13 @@ export const PUSH_TITLE = 'SAOS';
 export const PUSH_TEXT = '${TEXT}';
 export interface Pusher {
   readonly mode: 'stub' | 'ntfy';
+  readonly server: string;
   push(): Promise<void>;
 }
 export function ntfyPusherFor(target: { url: string; topic: string; token: string | undefined }, send: typeof fetch = fetch): Pusher {
   return {
     mode: 'ntfy',
+    server: target.url,
     async push() {
       const res = await send(\`\${target.url}/\${target.topic}\`, {
         method: 'POST',
@@ -108,6 +119,13 @@ export function ntfyPusherFor(target: { url: string; topic: string; token: strin
       if (!res.ok) throw new Error(\`ntfy push failed (\${res.status})\`);
     },
   };
+}
+async function auditPush(app: FastifyInstance, pusher: Pusher, notificationId: string, outcome: string): Promise<void> {
+  await writeAudit(app.db, {
+    action: 'notification.push',
+    objectId: notificationId,
+    details: { server: pusher.server, outcome },
+  });
 }
 export async function runPushSweep(app: FastifyInstance, pusher: Pusher): Promise<{ pushed: number }> {
   const { rows } = await app.db.query(\`SELECT n.id FROM notifications n WHERE n.severity IN ('warning', 'critical')\`);
@@ -125,6 +143,8 @@ function selfTest() {
     ['an interpolated client name', GOOD.replace("'ntfy push failed", "'x").replace('body: PUSH_TEXT,', 'body: PUSH_TEXT,\n        cache: `${n.title}`,'), [], 1],
     ['a sweep that reads the title', GOOD.replace('SELECT n.id FROM', 'SELECT n.id, n.title FROM'), [], 1],
     ['a different fixed text', GOOD.replace(`'${TEXT}'`, "'New alert: ' + name"), [], 1],
+    ['an audit row that carries the alert', GOOD.replace('details: { server: pusher.server, outcome },', 'details: { server: pusher.server, outcome, title },'), [], 1],
+    ['an audit row that names the topic', GOOD.replace('server: target.url,', 'server: target.url + target.topic,'), [], 1],
     ['a second sender elsewhere', GOOD, [{ file: 'apps/api/src/modules/x.ts', src: 'await fetch(`${config.NTFY_URL}/${config.NTFY_TOPIC}`, { body: title });' }], 1],
   ];
   const bad = cases.filter(([, src, others, min]) => (problemsIn(src, others).length >= 1) !== (min >= 1));

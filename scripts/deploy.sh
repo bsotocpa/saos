@@ -66,7 +66,12 @@ echo "deploy: [1d/5] ensuring the container-health cron is installed (every 5 mi
 # Found 2026-08-11: the host file had the new config, the container had zero of it.
 # Recreating caddy whenever the file changed makes the config actually apply.
 echo "deploy: [1e/5] recreating caddy if its config changed (single-file bind mount goes stale by inode)..."
-"${SSH[@]}" 'cd /opt/saos && NEW=$(md5sum deploy/Caddyfile | cut -d" " -f1) && OLD=$(docker exec saos-caddy-1 md5sum /etc/caddy/Caddyfile 2>/dev/null | cut -d" " -f1 || echo none) && if [ "$NEW" != "$OLD" ]; then echo "caddy config changed -> recreating"; docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate caddy; else echo "caddy config unchanged"; fi'
+# R131 (2026-10-03): the proxy's log folder sits on the encrypted volume, and logrotate keeps the
+# ntfy host's access log 90 days. Both are in place before the proxy first writes there.
+"${SSH[@]}" 'mkdir -p /mnt/saos-data/logs/caddy && chmod 700 /mnt/saos-data/logs /mnt/saos-data/logs/caddy && install -m 644 /opt/saos/deploy/logrotate-ntfy-access /etc/logrotate.d/saos-ntfy-access'
+# A changed Caddy file is validated in a throwaway container of the running proxy's own image before
+# the proxy is recreated: a file Caddy cannot load would take every public address down at this step.
+"${SSH[@]}" 'cd /opt/saos && NEW=$(md5sum deploy/Caddyfile | cut -d" " -f1) && OLD=$(docker exec saos-caddy-1 md5sum /etc/caddy/Caddyfile 2>/dev/null | cut -d" " -f1 || echo none) && if [ "$NEW" != "$OLD" ]; then IMG=$(docker inspect -f "{{.Config.Image}}" saos-caddy-1 2>/dev/null || echo caddy:2.10.2); if ! docker run --rm --network none -v /opt/saos/deploy/Caddyfile:/etc/caddy/Caddyfile:ro "$IMG" caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile >/tmp/caddy-validate.log 2>&1; then echo "deploy: REFUSED: Caddy cannot load deploy/Caddyfile; the running proxy is untouched:"; tail -5 /tmp/caddy-validate.log; exit 1; fi; echo "caddy config changed and valid -> recreating"; docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate caddy; else echo "caddy config unchanged"; fi'
 
 # MIGRATE BEFORE SWAP (Brian, 2026-09-14). The order used to be swap, then migrate: a failed
 # migration left new code running on the old schema (0103, 2026-09-13). Now the images are built

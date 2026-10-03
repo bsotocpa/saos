@@ -17,7 +17,7 @@ const push = 'apps/api/src/notify/push.ts';
 // The push as it was before R127: the sweep reads the alert's title and the pusher sends it.
 const titleAsBody = all(
   swap('push(): Promise<void>;', 'push(text?: string): Promise<void>;'),
-  swap("mode: 'ntfy',\n    async push() {", "mode: 'ntfy',\n    async push(text?: string) {"),
+  swap("server: target.url,\n    async push() {", "server: target.url,\n    async push(text?: string) {"),
   swap('body: PUSH_TEXT,', 'body: text ?? PUSH_TEXT,'),
   swap('`SELECT n.id\n', '`SELECT n.id, n.title\n'),
   swap('await pusher.push();', 'await pusher.push((n as { title?: string }).title);'),

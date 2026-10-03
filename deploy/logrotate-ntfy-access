@@ -1,0 +1,14 @@
+# The ntfy host's access log (Brian, 2026-10-03, R131): rotated daily, kept 90 days.
+# Installed by scripts/deploy.sh as /etc/logrotate.d/saos-ntfy-access. copytruncate because
+# Caddy keeps the file open and appends; the file never changes owner or mode.
+/mnt/saos-data/logs/caddy/ntfy-access.log {
+	daily
+	rotate 90
+	maxage 90
+	dateext
+	copytruncate
+	missingok
+	notifempty
+	compress
+	delaycompress
+}

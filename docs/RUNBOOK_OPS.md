@@ -23,8 +23,16 @@ Upgrading = bump the tag, `docker compose up -d`, run the test suite, commit.
 
 ## Uptime Kuma (monitoring)
 
-UI: http://localhost:3006 (prod: status subdomain, internal only). Create the
-admin account on first boot — store the credentials in Vaultwarden.
+UI: http://localhost:3006 in development. In production Kuma has NO public address
+(R130, 2026-10-03): it was never set up, and its first-run page was reachable by
+anyone at the status subdomain. Reach it from inside the network only, through an
+SSH tunnel to the container:
+
+    ssh -L 3006:$(ssh root@<box> docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' saos-uptime-kuma-1):3001 root@<box>
+
+then http://localhost:3006. Create the admin account on first boot and store the
+credentials in Vaultwarden. Setup and the monitors below are post-freeze work
+(the plan, "Uptime Kuma"): until then nothing here monitors anything.
 
 Canonical monitor list (add each as an HTTP(s)/TCP monitor, 60s interval,
 3 retries):
