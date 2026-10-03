@@ -15,7 +15,7 @@
     "migrate": "npm run migrate --workspace=@saos/db",
     "migrate:down": "npm run migrate:down --workspace=@saos/db",
     "seed": "npm run seed --workspace=@saos/db",
-    "test": "npm run check:docker-ready && npm run receipt:launched-by-runner && npm run check:sync-root && npm run check:bundle-files && npm run check:ack-identifiers && npm run check:prices && npm run check:sops && npm run check:env-merge && npm run check:role-tasks && npm run check:css-classes && npm run check:form-conditionals && npm run check:sop-steps && npm run check:no-sos-scraping && npm run check:client-sends && npm run check:flash-once && npm run check:date-rendering && npm run check:no-native-dialogs && npm run check:report-files && npm run check:inline-errors && npm run check:task-inserts && npm run check:edit-doors && npm run check:deploy-order && npm run check:test-targets && npm run check:chicago-dates && npm run check:walk-paths && npm run check:absence-waits && npm run test --workspaces --if-present && node scripts/green-run.mjs record",
+    "test": "npm run check:docker-ready && npm run receipt:launched-by-runner && npm run check:sync-root && npm run check:bundle-files && npm run check:ack-identifiers && npm run check:prices && npm run check:sops && npm run check:env-merge && npm run check:role-tasks && npm run check:css-classes && npm run check:form-conditionals && npm run check:sop-steps && npm run check:no-sos-scraping && npm run check:client-sends && npm run check:flash-once && npm run check:date-rendering && npm run check:no-native-dialogs && npm run check:report-files && npm run check:inline-errors && npm run check:task-inserts && npm run check:edit-doors && npm run check:deploy-order && npm run check:test-targets && npm run check:chicago-dates && npm run check:walk-paths && npm run check:absence-waits && npm run check:push-payload && npm run test --workspaces --if-present && node scripts/green-run.mjs record",
     "prepare": "node -e \"if(require('fs').existsSync('scripts/green-run.mjs'))require('child_process').execFileSync(process.execPath,['scripts/green-run.mjs','install-hooks'],{stdio:'inherit'})\"",
     "test:db": "npm run test:db --workspace=@saos/db",
     "check:sync-root": "node scripts/check-sync-root.mjs",
@@ -49,6 +49,7 @@
     "receipt:launched-by-runner": "node scripts/check-receipt-runner.mjs --receipt",
     "check:walk-paths": "node scripts/walk-evidence-reports.mjs --check",
     "check:absence-waits": "node scripts/check-absence-waits.mjs",
+    "check:push-payload": "node scripts/check-push-payload.mjs",
     "check:harness-lanes": "node scripts/harness-lanes-check.mjs",
     "check:chicago-dates": "node scripts/check-chicago-dates.mjs"
   },

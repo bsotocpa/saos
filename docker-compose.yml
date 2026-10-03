@@ -98,13 +98,20 @@ services:
       - saos_ollama_data:/root/.ollama
     networks: [saos]
 
-  # ntfy — self-hosted push notifications (Brian + Jackson iPhones subscribe
-  # to the alerts topic; access control configured at M23). Tiny image, so it
-  # runs in the default profile.
+  # ntfy — self-hosted push notifications. Tiny image, so it runs in the default profile.
+  # LOCKED (Brian, 2026-10-03, R127): nobody reads or writes without signing in. The API
+  # publishes with its own token (NTFY_TOKEN); each phone signs in as its own read-only user.
+  # Users, tokens and topic grants live in user.db on the volume and are made on the box with
+  # the ntfy CLI (docs/RUNBOOK_OPS.md, "ntfy"); none of them is in this file or in the repo.
   ntfy:
     image: binwiederhier/ntfy:v2.25.0
     restart: unless-stopped
     command: serve
+    environment:
+      NTFY_AUTH_FILE: /var/lib/ntfy/user.db
+      NTFY_AUTH_DEFAULT_ACCESS: deny-all
+      # Behind Caddy: without this every outside client counts as the proxy's one address.
+      NTFY_BEHIND_PROXY: "true"
     ports:
       - "${NTFY_PORT:-8093}:80"
     volumes:

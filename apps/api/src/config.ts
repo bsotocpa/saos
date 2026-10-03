@@ -122,7 +122,10 @@ const schema = z.object({
   // ntfy push (self-hosted — Brian + Jackson iPhones, MP Alert Center).
   PUSH_MODE: z.enum(['stub', 'ntfy']).default('stub'),
   NTFY_URL: z.string().default('http://localhost:8093'),
-  NTFY_TOPIC: z.string().default('saos-alerts'),
+  NTFY_TOPIC: z.string().default(''),
+  // R127 (2026-10-03): the ntfy server refuses anonymous access; the API publishes with its own token.
+  // With PUSH_MODE=ntfy and no token the pusher sends nothing (notify/push.ts).
+  NTFY_TOKEN: z.string().optional(),
   // Where scripts/backup.sh drops its machine-readable result. Read by the
   // WISP security summary and the backup-staleness check (no client data in
   // the file — timestamps, snapshot id, row counts).

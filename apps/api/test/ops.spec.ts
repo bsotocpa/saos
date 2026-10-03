@@ -10,7 +10,6 @@ import path from 'node:path';
 import * as OTPAuth from 'otpauth';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
-import { headerSafe } from '../src/notify/push.ts';
 import { runBackupStaleCheckJob, runRestoreDrillReminderJob } from '../src/modules/admin/ops.ts';
 import { MIGRATED_LOGIN_TARGET, runDubsadoRetirementCheckJob } from '../src/modules/admin/dubsado-retirement.ts';
 import { createTestConfig, makeStaff, auditRows, type TestStaff } from './helpers.ts';
@@ -70,16 +69,8 @@ after(async () => {
   await rm(statusDir, { recursive: true, force: true });
 });
 
-test('ntfy titles survive HTTP header transport (RFC 2047 for non-ASCII)', () => {
-  // Plain ASCII passes through untouched.
-  assert.equal(headerSafe('Backup is stale'), 'Backup is stale');
-  // Em-dashes and Spanish text (both appear in real alert titles) encode —
-  // fetch would otherwise throw on any codepoint above Latin-1.
-  const encoded = headerSafe('Restore drill has NEVER run — Preparación');
-  assert.match(encoded, /^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=$/);
-  const b64 = encoded.slice('=?UTF-8?B?'.length, -'?='.length);
-  assert.equal(Buffer.from(b64, 'base64').toString('utf8'), 'Restore drill has NEVER run — Preparación');
-});
+// (R127, 2026-10-03: a push no longer carries an alert's title, so the header-encoding helper and its
+// test are gone; test/push-payload.spec.ts holds the fixed text.)
 
 test('WISP summary is admin-only: preparer 403, ceo 200 with live posture (audited)', async () => {
   const anaToken = await loginToken(preparer);

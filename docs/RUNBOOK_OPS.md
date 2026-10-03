@@ -41,9 +41,31 @@ Canonical monitor list (add each as an HTTP(s)/TCP monitor, 60s interval,
 | Cal.com        | HTTP | http://calcom:3000 (when booking profile runs)|
 
 In production replace `host.docker.internal` targets with the public
-subdomains so monitoring exercises the full TLS + proxy path. Add an ntfy
-notification (server `http://ntfy:80`, topic `saos-alerts`) so downtime pushes
-to Brian's and Jackson's phones through the same channel as app alerts.
+subdomains so monitoring exercises the full TLS + proxy path. A downtime push
+through ntfy needs its own write-only ntfy user and token (see "ntfy" below):
+the server refuses anonymous publishes, and the API's token is the API's alone.
+
+## ntfy (push)
+
+Locked since 2026-10-03 (R127). The server refuses every anonymous read and
+write (`NTFY_AUTH_DEFAULT_ACCESS=deny-all`); users, tokens and topic grants live
+in `user.db` on the ntfy volume and are made on the box, never in the repo:
+
+- the API publishes as a write-only user with a token, stored as `NTFY_TOKEN`
+  in `/opt/saos/.env` and the local `.env.production`; the topic is a random
+  name stored as `NTFY_TOPIC`. Neither value is ever printed or committed;
+- each phone signs in as its own read-only user (server
+  `https://ntfy.sotoaccounting.com`, the topic, the username and password from
+  Vaultwarden);
+- a push says only "1 new alert in Ops": no client name, amount, return or
+  invoice leaves the API this way (`npm run check:push-payload`).
+
+Commands, run inside the container (`docker exec -it saos-ntfy-1 …`):
+`ntfy user add <name>`, `ntfy access <name> <topic> write-only|read-only`,
+`ntfy token add <name>`, `ntfy user list`. To rotate: `ntfy token remove`, add a
+new one, update `NTFY_TOKEN` in both env files, recreate the API container.
+With `PUSH_MODE=ntfy` and no token the API sends nothing and logs a warning
+each sweep; `PUSH_MODE=stub` switches push off (alerts still reach Ops).
 
 ## Vaultwarden (passwords)
 

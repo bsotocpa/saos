@@ -1,49 +1,51 @@
-// ntfy push (MP Alert Center: iPhone push, Brian + Jackson). Self-hosted —
-// no third-party push service. The sweep runs every minute: unpushed
-// warning/critical notifications addressed to the leadership roles go to the
-// alerts topic, then get stamped pushed_at (never re-sent).
+// ntfy push (MP Alert Center: a leadership alert reaches the phone within a minute). Self-hosted —
+// no third-party push service. The sweep runs every minute: each unpushed warning/critical
+// notification addressed to the leadership roles produces one push, then is stamped pushed_at
+// (never re-sent).
+//
+// A PUSH SAYS ONLY THAT AN ALERT EXISTS (Brian, 2026-10-03, R127). Until that day a push carried the
+// alert's own title and body ("Invoice … unpaid 30+ days: <client name>") to a server that accepted
+// anonymous subscribers on a default topic name. Now:
+//   - every push is the same fixed text, PUSH_TEXT, under the fixed title PUSH_TITLE: no client name,
+//     amount, return or invoice ever leaves the API this way. The alert itself stays in Ops → Alerts;
+//   - the pusher takes NO argument, so nothing about the record can reach the request;
+//   - the request carries the API's own token, and without a token or a topic nothing is sent at all;
+//   - scripts/check-push-payload.mjs (root suite) fails if any of that stops being true.
 
 import type { FastifyInstance } from 'fastify';
 import type { Config } from '../config.ts';
 
+export const PUSH_TITLE = 'SAOS';
+export const PUSH_TEXT = '1 new alert in Ops';
+
 export interface Pusher {
   readonly mode: 'stub' | 'ntfy';
-  push(msg: { title: string; body: string; priority: 'default' | 'high' | 'urgent'; tags?: string[] }): Promise<void>;
+  push(): Promise<void>;
 }
 
 function stubPusher(): Pusher {
   return {
     mode: 'stub',
     async push() {
-      /* dev/test: the sweep's pushed_at stamp is the observable effect */
+      /* dev/test, or push switched off: the sweep's pushed_at stamp is the observable effect */
     },
   };
 }
 
-/**
- * HTTP header values are Latin-1; titles with em-dashes or accented Spanish
- * text would make fetch throw. ntfy understands RFC 2047, so non-ASCII
- * titles go base64-encoded (=?UTF-8?B?...?=).
- */
-export function headerSafe(value: string): string {
-  return /^[\x20-\x7E]*$/.test(value)
-    ? value
-    : `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
-}
-
-function ntfyPusher(config: Config): Pusher {
-  const url = `${config.NTFY_URL.replace(/\/$/, '')}/${config.NTFY_TOPIC}`;
+/** The ntfy sender, from plain values (the tests build it with a recording fetch; nothing leaves them). */
+export function ntfyPusherFor(target: { url: string; topic: string; token: string | undefined }, send: typeof fetch = fetch): Pusher {
   return {
     mode: 'ntfy',
-    async push(msg) {
-      const res = await fetch(url, {
+    async push() {
+      if (!target.token || !target.topic) throw new Error('push is on but NTFY_TOKEN or NTFY_TOPIC is not set: nothing was sent');
+      const res = await send(`${target.url}/${target.topic}`, {
         method: 'POST',
         headers: {
-          Title: headerSafe(msg.title),
-          Priority: msg.priority,
-          ...(msg.tags?.length ? { Tags: msg.tags.join(',') } : {}),
+          Authorization: `Bearer ${target.token}`,
+          Title: PUSH_TITLE,
+          Priority: 'high',
         },
-        body: msg.body,
+        body: PUSH_TEXT,
       });
       if (!res.ok) throw new Error(`ntfy push failed (${res.status})`);
     },
@@ -51,15 +53,14 @@ function ntfyPusher(config: Config): Pusher {
 }
 
 export function makePusher(config: Config): Pusher {
-  return config.PUSH_MODE === 'ntfy' ? ntfyPusher(config) : stubPusher();
+  if (config.PUSH_MODE !== 'ntfy') return stubPusher();
+  return ntfyPusherFor({ url: config.NTFY_URL.replace(/\/$/, ''), topic: config.NTFY_TOPIC, token: config.NTFY_TOKEN });
 }
 
-/** Sweep unpushed leadership alerts to ntfy. Runs every minute; idempotent. */
+/** Sweep unpushed leadership alerts: one fixed-text push each. Runs every minute; idempotent. */
 export async function runPushSweep(app: FastifyInstance, pusher: Pusher): Promise<{ pushed: number }> {
-  const { rows } = await app.db.query<{
-    id: string; type: string; severity: string; title: string; body: string | null;
-  }>(
-    `SELECT n.id, n.type, n.severity, n.title, n.body
+  const { rows } = await app.db.query<{ id: string }>(
+    `SELECT n.id
      FROM notifications n
      JOIN staff st ON st.id = n.staff_id
      JOIN roles r ON r.id = st.role_id
@@ -72,12 +73,7 @@ export async function runPushSweep(app: FastifyInstance, pusher: Pusher): Promis
   let pushed = 0;
   for (const n of rows) {
     try {
-      await pusher.push({
-        title: n.title,
-        body: n.body ?? n.type.replace(/_/g, ' '),
-        priority: n.severity === 'critical' ? 'urgent' : 'high',
-        tags: [n.type],
-      });
+      await pusher.push();
       await app.db.query(`UPDATE notifications SET pushed_at = now() WHERE id = $1`, [n.id]);
       pushed++;
     } catch (err) {
