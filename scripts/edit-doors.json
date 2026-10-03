@@ -124,7 +124,8 @@
     "POST /efile-acks/:id/withdraw",
     "POST /efile-acks/:id/purge-identifiers",
     "POST /tax-engagements/:id/filing-corrections",
-    "POST /tax-engagements/:id/reopen"
+    "POST /tax-engagements/:id/reopen",
+    "POST /tax-engagements/:id/withdrawal-kind"
   ],
   "entities": [
     {

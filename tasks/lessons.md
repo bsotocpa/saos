@@ -2273,3 +2273,7 @@ R118's "Correct the kind…" sits inside a withdrawn return's <details>. Shut, n
 ## The anchor a walk waits for must be one the walking role can see (2026-10-02, batch 17, R119)
 The sweep first anchored the bookkeeper's role proof on her client's return row; she holds no engagements.read, so her Returns card draws no rows and the anchor never came. Her Documents card draws its count, and that is the sign now.
 **Rule:** an anchor before an absence is chosen from what that role's page draws with data, and proved by running the walk at all six projects before it is committed.
+
+## Every root check runs before a receipt starts (2026-10-02, receipt run 65)
+Run 65 went red 27 seconds in: R118's new route was not classified in scripts/edit-doors.json, which check:edit-doors (the root suite's first stage) refuses. The specs and the walks had all been run; the root checks had not.
+**Rule:** before a receipt, every root check (the check:* scripts the root `npm test` chains) runs once on the tree; a new route, page or walk path is classified where its check reads before the receipt, not after one fails.
