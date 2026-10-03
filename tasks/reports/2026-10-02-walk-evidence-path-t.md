@@ -1,6 +1,6 @@
 # walk-evidence-path-t (2026-10-02)
 
-Generated 2026-10-02T09:22:43.194Z by scripts/report-table.mjs from the log walk-t.log; 24 row(s).
+Generated 2026-10-03T02:02:17.520Z by scripts/report-table.mjs from the log walk-t.log; 24 row(s).
 
 The preparer's day (R64, 2026-09-26): ops-preparer-day.spec.ts signs in as the tax_preparer fixture at 390 and 1280; T1 the root sends her to My Queue from GET /auth/me home; T2 the navigation count and names are read from the newest tasks/reports/*-nav-items-by-role.md (scripts/nav-items-by-role.mjs) and compared with the rendered navigation; T3 a synthetic 1120S opened by the CEO with her as preparer is worked from the queue's Client packet through every door she holds to filed and acknowledged; T4 the client page's Invoices card and next-session line read the sentence and no count, the cards she can read render.
 

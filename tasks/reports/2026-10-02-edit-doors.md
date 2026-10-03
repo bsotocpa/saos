@@ -1,6 +1,6 @@
 # edit-doors (2026-10-02)
 
-Generated 2026-10-02T09:22:47.379Z by scripts/report-table.mjs from the log edit-doors.log; 38 row(s).
+Generated 2026-10-03T02:02:21.202Z by scripts/report-table.mjs from the log edit-doors.log; 38 row(s).
 
 Every entity with a create control has an edit control tapped at both viewports, or an explicit "immutable because" entry (R38); the guard scripts/check-edit-doors.mjs fails the root chain when a create route has no update route with a UI caller and the entity is not marked immutable.
 
@@ -37,8 +37,8 @@ node scripts/edit-doors.mjs  (the API route registrations under apps/api/src/mod
 | entity compliance item | POST /entity-compliance (apps/api/src/modules/entity/routes.ts:57) | — | — | — | — | immutable because a derived obligation, marked filed through its own door |
 | close cycle | POST /close-cycles (apps/api/src/modules/bookkeeping/routes.ts:60) | — | — | — | — | immutable because a ledger of steps for one period; steps are recorded, the period never changes |
 | client session | POST /client-sessions (apps/api/src/modules/bookkeeping/routes.ts:107) | — | — | — | — | immutable because a scheduled occurrence; rescheduling is a new session |
-| document request | POST /document-requests (apps/api/src/modules/tax/routes.ts:930) | — | — | — | — | immutable because a request as made; fulfilment and chasing are the record |
-| tax engagement (return) | POST /tax-engagements (apps/api/src/modules/tax/routes.ts:345) | — | — | — | — | immutable because no free-form edit by design: each field has its own audited door in return-controls.tsx (estimate, final fee, preparer, extension, transition, signatures, paper mailing) |
+| document request | POST /document-requests (apps/api/src/modules/tax/routes.ts:950) | — | — | — | — | immutable because a request as made; fulfilment and chasing are the record |
+| tax engagement (return) | POST /tax-engagements (apps/api/src/modules/tax/routes.ts:349) | — | — | — | — | immutable because no free-form edit by design: each field has its own audited door in return-controls.tsx (estimate, final fee, preparer, extension, transition, signatures, paper mailing) |
 | resolution case | POST /resolution/cases (apps/api/src/modules/tax/resolution-routes.ts:75) | — | — | — | — | immutable because a case as opened; representation and forms are its own doors |
 | signature envelope | POST /signature-envelopes (apps/api/src/modules/signatures/routes.ts:19) | — | — | — | — | immutable because an issued envelope |
 | e-file acknowledgment report | POST /efile-acks (apps/api/src/modules/tax/efile-ack-routes.ts:21) | — | create only: apps/internal/app/efile-acks/page.tsx | — | — | immutable because an uploaded report; its rows are held, unheld and released through their own doors |

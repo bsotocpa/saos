@@ -1,6 +1,6 @@
 # walk-evidence-path-b (2026-10-02)
 
-Generated 2026-10-02T09:22:40.866Z by scripts/report-table.mjs from the log walk-b.log; 192 row(s).
+Generated 2026-10-03T02:02:15.220Z by scripts/report-table.mjs from the log walk-b.log; 192 row(s).
 
 The 1040 on extension with IL filed on paper, on the migrated-client fixture; B1 is the fixture person, whose Add a client tap is cleared in ops-add-client.spec.ts; how=api rows are the two Stripe events.
 
@@ -11,22 +11,22 @@ node scripts/walk-evidence.mjs B  (reads apps/e2e/.artifacts/last-run.json from 
 | step | what | device | control (page + selector) | roles | harness test | viewport | last run | how | cleared |
 |---|---|---|---|---|---|---|---|---|---|
 | B1 | Contact created | laptop | /clients button "Add a client", form#add-client-form, duplicate warning with link, button "Add client" | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:62 | chromium-375 | passed | tap | yes |
-| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:142 | chromium-375 | passed | tap | yes |
+| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:144 | chromium-375 | passed | tap | yes |
 | B1 | Contact created | laptop | this walk's person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts; the "Add a client" tap is cleared in ops-add-client.spec.ts | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:174 | chromium-375 | passed | fixture | NO |
 | B1 | Contact created | laptop | /clients button "Add a client", form#add-client-form, duplicate warning with link, button "Add client" | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:62 | chromium-768 | passed | tap | yes |
-| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:142 | chromium-768 | passed | tap | yes |
+| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:144 | chromium-768 | passed | tap | yes |
 | B1 | Contact created | laptop | this walk's person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts; the "Add a client" tap is cleared in ops-add-client.spec.ts | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:174 | chromium-768 | passed | fixture | NO |
 | B1 | Contact created | laptop | /clients button "Add a client", form#add-client-form, duplicate warning with link, button "Add client" | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:62 | chromium-1440 | passed | tap | yes |
-| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:142 | chromium-1440 | passed | tap | yes |
+| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:144 | chromium-1440 | passed | tap | yes |
 | B1 | Contact created | laptop | this walk's person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts; the "Add a client" tap is cleared in ops-add-client.spec.ts | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:174 | chromium-1440 | passed | fixture | NO |
 | B1 | Contact created | laptop | /clients button "Add a client", form#add-client-form, duplicate warning with link, button "Add client" | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:62 | webkit-375 | passed | tap | yes |
-| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:142 | webkit-375 | passed | tap | yes |
+| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:144 | webkit-375 | passed | tap | yes |
 | B1 | Contact created | laptop | this walk's person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts; the "Add a client" tap is cleared in ops-add-client.spec.ts | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:174 | webkit-375 | passed | fixture | NO |
 | B1 | Contact created | laptop | /clients button "Add a client", form#add-client-form, duplicate warning with link, button "Add client" | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:62 | webkit-768 | passed | tap | yes |
-| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:142 | webkit-768 | passed | tap | yes |
+| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:144 | webkit-768 | passed | tap | yes |
 | B1 | Contact created | laptop | this walk's person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts; the "Add a client" tap is cleared in ops-add-client.spec.ts | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:174 | webkit-768 | passed | fixture | NO |
 | B1 | Contact created | laptop | /clients button "Add a client", form#add-client-form, duplicate warning with link, button "Add client" | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:62 | webkit-1440 | passed | tap | yes |
-| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:142 | webkit-1440 | passed | tap | yes |
+| B1 | Contact created | laptop | role proof: bookkeeper has no button, POST /contacts 403 | ceo, comms_billing (contacts.write) | apps/e2e/tests/ops-add-client.spec.ts:144 | webkit-1440 | passed | tap | yes |
 | B1 | Contact created | laptop | this walk's person is inserted by apps/api/scripts/e2e-fixtures/path-b.ts; the "Add a client" tap is cleared in ops-add-client.spec.ts | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:174 | webkit-1440 | passed | fixture | NO |
 | B2 | Quote built and sent | laptop | /pipeline button "New quote" → "Client or lead" search + the client's chip → "Filter by name, form number or group" + the price-book rows' "Add" for the base return and its schedule → button "Create and send" | ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:174 | chromium-375 | passed | tap | yes |
 | B2 | Quote built and sent | laptop | /clients/:id Returns card, button "Record extension" (modal: "Extension form" 4868, "Date filed") → the badge reads the form and the derived deadline | tax_preparer, ceo (engagements.tax.manage) | apps/e2e/tests/ops-path-b.spec.ts:174 | chromium-375 | passed | tap | yes |

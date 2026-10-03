@@ -1,6 +1,6 @@
 # walk-evidence-path-s (2026-10-02)
 
-Generated 2026-10-02T09:22:42.611Z by scripts/report-table.mjs from the log walk-s.log; 18 row(s).
+Generated 2026-10-03T02:02:16.953Z by scripts/report-table.mjs from the log walk-s.log; 18 row(s).
 
 The Returns card as a stepper (R50, behind OPS_RETURN_STEPPER, off in production): S1 and S2 read the stepper on the harness return with the switch flipped on through the harness-only /harness/return-stepper door, S3 the row with it off, at 390 and 1280; the role proof is ed_coo, who reads the steps and gets no control and no details area. The nine approval screenshots come from return-stepper-shots.spec.ts, not from these rows.
 
