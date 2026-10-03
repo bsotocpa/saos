@@ -1,6 +1,6 @@
 # walk-evidence-path-x (2026-10-03)
 
-Generated 2026-10-03T07:47:06.887Z by scripts/report-table.mjs from the log walk-x.log; 6 row(s).
+Generated 2026-10-03T09:30:48.953Z by scripts/report-table.mjs from the log walk-x.log; 6 row(s).
 
 Duplicate merges (R92, 2026-09-29): ops-batch10.spec.ts at 390 and 1280 as the CEO fixture, on a synthetic pair the batch-10 fixture enters twice with one phone, one record holding a portal sign-in; X1 merges them through POST /contacts/merge-pair, reads the survivor rule, opens the retired record by its own address and lands on the survivor, and finds the survivor alone in search.
 

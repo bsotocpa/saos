@@ -1,6 +1,6 @@
 # walk-evidence-path-r (2026-10-03)
 
-Generated 2026-10-03T07:47:05.183Z by scripts/report-table.mjs from the log walk-r.log; 24 row(s).
+Generated 2026-10-03T09:30:47.058Z by scripts/report-table.mjs from the log walk-r.log; 24 row(s).
 
 Reopen a completed return (R67, ops-reopen-return.spec.ts): a synthetic 1120S per viewport filed federal-only and accepted through the API doors; R1 the CEO's "Reopen…" with a reason on the completed row; R2 the engagement active again and the executive count up by one, read through the CEO API; R3 a forced completion refused 409 jurisdictions_awaiting, then a new acceptance completing it; the role proof is the tax preparer, who sees no Reopen control and is refused 403 (engagements.tax.reopen is explicit-only).
 
