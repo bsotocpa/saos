@@ -25,6 +25,7 @@ import { currentPriceBookVersion } from '../pricing/service.ts';
 import { formatUsd } from '../billing/service.ts';
 import { chicagoDayOf } from '../../chicago-day.ts';
 import { WITHDRAWN_ON_SQL, WITHDRAWN_REASON_SQL } from './withdrawn.ts';
+import { CORRECT_WITHDRAWAL_KIND_PERMISSION, correctWithdrawalKind } from './withdrawal-kind.ts';
 
 const CreateBody = z.object({
   contactId: z.uuid(),
@@ -105,6 +106,8 @@ const FilingCorrectionBody = z.object({
 
 /** REOPEN (R67): one standalone reason; the CEO alone holds the door (engagements.tax.reopen, explicit-only). */
 const ReopenBody = z.object({ reason: reasonText(10, 1000) });
+/** R118: a withdrawal's kind corrected, with one standalone reason; the CEO alone. */
+const WithdrawalKindBody = z.object({ kind: z.enum(['client', 'firm_record']), reason: reasonText(10, 1000) });
 
 const EstimateBody = z.object({
   minCents: z.number().int().nonnegative(),
@@ -194,6 +197,7 @@ const STEP_ACTIONS = [
   'tax_engagement.final_fee_set', 'tax_engagement.f8879_sent_recorded', 'tax_engagement.f8879_sent_declared_by_import',
   'tax_engagement.stage_changed', 'tax_engagement.filing_corrected', 'tax_engagement.paper_mailed',
   'tax_engagement.imported_at_stage', 'tax_engagement.extension_filed', 'tax_engagement.reopened',
+  'tax_engagement.withdrawal_kind_corrected',
 ];
 
 function meta(request: FastifyRequest) {
@@ -672,6 +676,22 @@ export function registerTaxRoutes(app: FastifyInstance): void {
       const id = z.uuid().parse(request.params.id);
       const b = ReopenBody.parse(request.body);
       const out = await reopenCompletedReturn(app, { ...actorOf(request), ...meta(request) }, id, b.reason);
+      return { status: 'ok', ...out };
+    }
+  );
+
+  /**
+   * CORRECT A WITHDRAWAL'S KIND (Brian, 2026-10-02, R118). The CEO alone (explicit-only permission),
+   * one standalone reason, audited with the kind before and after (withdrawal-kind.ts). To "our own
+   * record" the return leaves the client's portal; to "the client's work ended" it shows again.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/tax-engagements/:id/withdrawal-kind',
+    { preHandler: [app.authenticate, requirePermission(CORRECT_WITHDRAWAL_KIND_PERMISSION)] },
+    async (request) => {
+      const id = z.uuid().parse(request.params.id);
+      const b = WithdrawalKindBody.parse(request.body);
+      const out = await correctWithdrawalKind(app, { ...actorOf(request), ...meta(request) }, id, b.kind, b.reason);
       return { status: 'ok', ...out };
     }
   );

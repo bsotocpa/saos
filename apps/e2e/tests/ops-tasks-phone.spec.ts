@@ -54,7 +54,8 @@ test.describe('Ops → Tasks', () => {
       await signIn(page);
       await page.goto('/tasks');
       await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible();
-      await page.waitForTimeout(1500);
+      // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
+      await expect(page.locator('.tcard').or(page.locator('table tbody tr')).first(), 'the tasks drew (cards on a phone, rows at a desk)').toBeVisible();
 
       // 5a. Kanban and Timeline are not offered at a width neither survives.
       const views = (await page.locator('.viewtabs button').allTextContents()).map((t) => t.trim());
@@ -69,9 +70,9 @@ test.describe('Ops → Tasks', () => {
       expect(widths.sw, 'the page fits its viewport').toBe(widths.vw);
 
       // 5g. The migration backlog is not one of the working-view chips.
+      await expect(page.getByRole('button', { name: /Migration backlog/ }), 'the backlog chip drew, and is reachable').toHaveCount(1);
       const chipRow = await page.locator('.chipbar').innerText().catch(() => '');
-      expect(chipRow, 'the backlog is not in the row a person works from').not.toContain('Migration backlog');
-      await expect(page.getByRole('button', { name: /Migration backlog/ }), 'but it is still reachable').toHaveCount(1);
+      expect(chipRow, 'but not in the row a person works from').not.toContain('Migration backlog');
 
       if (phone) {
         // 5e. No checkbox until select mode is turned on by name.

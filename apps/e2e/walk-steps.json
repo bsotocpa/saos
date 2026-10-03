@@ -262,7 +262,9 @@
         { "id": "I4", "text": "Ops client page: a withdrawn return is one line with the recorded reason on tap, no stepper, no controls (R108)", "device": "phone + laptop" },
         { "id": "I5", "text": "Ops: \"Set final fee\" in Details on a return in Engage; outside the quoted range it needs a reason (R107)", "device": "phone + laptop" },
         { "id": "I6", "text": "Ops: a duplicate withdrawn as the firm's own record and another withdrawn as the client's decision, each by its own button; the duplicate's line says it is not on the client's portal (R117)", "device": "phone + laptop" },
-        { "id": "I7", "text": "Portal: only the client's withdrawal is listed, one line with the fixed sentence; the firm's own record is nowhere, its file not tied to a return (R117)", "device": "phone + laptop" }
+        { "id": "I7", "text": "Portal: only the client's withdrawal is listed, one line with the fixed sentence; the firm's own record is nowhere, its file not tied to a return (R117)", "device": "phone + laptop" },
+        { "id": "I8", "text": "Ops: the CEO corrects a withdrawal's kind from its line, with a reason, both ways; the \"not on the client's portal\" mark follows (R118)", "device": "phone + laptop" },
+        { "id": "I9", "text": "Portal: after the corrections the portal follows; the duplicate shows with the fixed sentence, the other is gone (R118)", "device": "phone + laptop" }
       ]
     }
   }

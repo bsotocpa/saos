@@ -121,8 +121,9 @@ test.describe('the contact email changes and the sign-in follows once the new ad
       await page.getByTestId('confirm-email-press').click();
       await expect(page.getByTestId('confirm-email-done')).toHaveText('Done. From now on, sign in with this email address.');
       await page.goto(`/clients/${contact.id}`);
-      await expect(page.getByTestId('portal-email-move-pending'), 'nothing is pending any more').toHaveCount(0);
+      // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
       await expect(page.getByText(new RegExp(`signs in as .*${newEmail.replace(/\./g, '\\.')}`)), 'the new address signs in').toBeVisible();
+      await expect(page.getByTestId('portal-email-move-pending'), 'nothing is pending any more').toHaveCount(0);
       await expect(page.getByTestId('portal-email-mismatch'), 'and it is the contact email, so no warning').toHaveCount(0);
 
       // The retired link is dead: the press on it fails in the portal's words.

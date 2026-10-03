@@ -110,7 +110,8 @@ test.describe('Ops → client page', () => {
       // Real taps here too, one summary at a time, for the same reason as step 8.
       const logs = page.locator('details summary', { hasText: /send log/i });
       for (let i = 0; i < (await logs.count()); i++) await logs.nth(i).click();
-      await page.waitForTimeout(800);
+      // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
+      await expect(page.locator('.send-log li').first(), 'the send logs drew their rows').toBeVisible();
       const overflowing = await page.evaluate(() => [...document.querySelectorAll('.send-log li')].filter((li) => li.getBoundingClientRect().right > document.documentElement.clientWidth + 1).length);
       expect(overflowing, 'send-log rows inside the viewport').toBe(0);
       /*

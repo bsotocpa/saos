@@ -2265,3 +2265,11 @@ Receipt run 62 was started as a background tool command and stopped by the tool'
 ## A fixed wait reads a page before its data on a loaded machine (2026-10-02, receipt run 63, R7)
 Run 63 was red on one walk: portal-invoices at webkit-1440 read the page's text one second after the heading and found only the heading. The machine was paging (free memory reached 0 with Chrome holding 5.6 GB), and the invoices arrived later than the second. The walk now waits for the first invoice row; the same pattern (a fixed wait, then one read of loaded content) was fixed in four more walks, and the absence checks that follow fixed waits are a flagged follow-up.
 **Rule:** a walk waits for the content it is about to read (an auto-retrying expect on a row, a file name, a word), never for a length of time; an absence check first waits for a positive sign that the page has loaded.
+
+## What a closed <details> holds is not on the page (2026-10-02, batch 17)
+R118's "Correct the kind…" sits inside a withdrawn return's <details>. Shut, nobody sees or taps it, but Chromium still gives it a layout box, and the layout check scored it as spilling 124px out of its card with a tap that reached the wrong element. The check's shown() now treats everything in a closed <details> but its summary as not shown, as Playwright's toBeVisible does.
+**Rule:** a visibility test for a layout check follows what a person can see: display, visibility, opacity, and a closed <details> or the like.
+
+## The anchor a walk waits for must be one the walking role can see (2026-10-02, batch 17, R119)
+The sweep first anchored the bookkeeper's role proof on her client's return row; she holds no engagements.read, so her Returns card draws no rows and the anchor never came. Her Documents card draws its count, and that is the sign now.
+**Rule:** an anchor before an absence is chosen from what that role's page draws with data, and proved by running the walk at all six projects before it is committed.

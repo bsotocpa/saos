@@ -91,9 +91,9 @@ test('P2: one row before signing, none of the withdrawn 1040, and only the §721
 
     // AND THE HOME: the signed letter waits nowhere; the consent (R87) is the one row, routed to /consent.
     await page.goto('/');
-    await page.waitForTimeout(800);
-    await expect(page.locator('[data-testid=unsigned-row]:not([data-kind=consent])'), 'no signed document waits').toHaveCount(0);
+    // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
     await expect(page.locator('[data-testid=unsigned-row][data-kind=consent]'), 'the consent waits, as on /sign').toHaveCount(1);
+    await expect(page.locator('[data-testid=unsigned-row]:not([data-kind=consent])'), 'no signed document waits').toHaveCount(0);
     await expect(page.getByTestId('consent-sign')).toHaveAttribute('href', '/consent');
     text = await page.evaluate(() => document.body.innerText);
     expect(text).not.toMatch(/1040 2023/);

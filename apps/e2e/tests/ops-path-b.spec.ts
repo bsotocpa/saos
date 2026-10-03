@@ -213,8 +213,9 @@ test.describe('Path B', () => {
       }, { id: invoiceId, secret: pathB!.webhookSecret, evt: `evt_harness_pathb_${tag}_${viewport}` });
       expect(status, 'the payment event').toBeLessThan(300);
       await page.reload();
-      await expect(page.getByRole('button', { name: COPY.pay }), 'the paid invoice offers no way to pay it again').toHaveCount(0);
+      // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
       await expect(page.getByText(COPY.paid, { exact: true }).first(), 'the client reads it as paid').toBeVisible();
+      await expect(page.getByRole('button', { name: COPY.pay }), 'the paid invoice offers no way to pay it again').toHaveCount(0);
     };
 
     try {

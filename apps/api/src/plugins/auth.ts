@@ -110,6 +110,9 @@ export const EXPLICIT_ONLY_PERMISSIONS: ReadonlySet<string> = new Set([
   // Merging two client records (2026-09-29, R92): the CEO alone. The retired record's rows move and
   // it leaves search; the wildcard must not hand that to every '*' holder.
   'contacts.merge',
+  // Correcting a withdrawal's kind (2026-10-02, R118): the CEO alone, with a reason. "Our own record"
+  // takes a return off the client's portal and the other kind puts it back; one person's call.
+  'engagements.tax.withdrawal_kind.correct',
   // Removing the Hilo referral discount from a quote (2026-09-27, R75): the CEO alone, with a reason.
   // Nothing widens the discount; this is the one door that changes it, and only downward to none.
   'quotes.referral_discount.remove',

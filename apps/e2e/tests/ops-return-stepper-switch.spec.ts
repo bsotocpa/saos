@@ -159,7 +159,7 @@ test('off renders the row with its control grid; on renders the rail of five pha
     await page.goto(clientPage);
     await expect(card.getByTestId('return-stepper'), 'ed_coo reads the phases').toBeVisible();
     await expect(card.locator('li.phase')).toHaveCount(5);
-    await page.waitForTimeout(800);
+    // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read. (the stepper and its five phases above)
     await expect(card.getByTestId('current-step-control'), 'and gets no control').toHaveCount(0);
     await expect(card.getByTestId('return-details'), 'and no details area').toHaveCount(0);
     for (const id of ['upload-engagement-letter', 'assign-preparer', 'record-extension', 'record-8879-sent', 'upload-signed-8879']) {

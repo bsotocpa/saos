@@ -333,6 +333,8 @@ test.describe('The 1120S dry run', () => {
        */
       const afterSignature = (await read(page, `/tax-engagements/${te}`)).taxEngagement as Record<string, unknown>;
       expect(afterSignature.engagement_letter_signed_at, "the client's portal signature stamped the letter on the return").toBeTruthy();
+      // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
+      await expect(card.getByTestId(`return-amount-${te}`), "the return's row drew").toBeVisible();
       await expect(card.getByTestId('upload-engagement-letter'), 'the paper door leaves the row once the letter is on the return').toHaveCount(0);
 
       /*
@@ -411,7 +413,7 @@ test.describe('The 1120S dry run', () => {
       await page.goto(clientPage);
       await expect(page.getByRole('heading', { name: 'Returns' })).toBeVisible();
       await expect(page.getByText(/1120S/).first(), 'the return row is on her page').toBeVisible();
-      await page.waitForTimeout(800);
+      // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read. (the return row above)
       for (const name of ['Set final fee', 'Lock estimate', 'Ready to file', 'Mark filed', 'Assign preparer']) {
         await expect(page.getByRole('button', { name }), `${name} is not on Jaqueline's page`).toHaveCount(0);
       }
@@ -632,6 +634,8 @@ test.describe('The 1120S dry run', () => {
       await expect(page.getByTestId('money-outside-the-door')).toContainText('Money moved outside the door today:');
       await expect(page.getByTestId('completed-unpaid')).toBeVisible();
       await page.goto(clientPage);
+      // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
+      await expect(page.getByTestId('engagement-status').first(), 'the engagement row drew').toBeVisible();
       await expect(page.getByTestId('engagement-open-balance'), 'the open balance is gone once paid').toHaveCount(0);
       steps.push('A11|/ (executive view) money line, outside-the-door line, completed-unpaid tile; /clients/:id engagement row without an open balance|ceo|tap');
       passed = true;

@@ -288,7 +288,7 @@ export default function BusinessPage() {
           ) : (
             data.returns.rows.map((t) => t.stage === 'withdrawn' ? (
               // R108: a withdrawn return is one line, its reason on tap; nothing else to read or do.
-              <WithdrawnReturnLine kind={t.withdrawal_kind ?? null} key={t.id} id={t.id} taxYear={t.tax_year} returnType={t.return_type} withdrawnOn={t.withdrawn_on ?? null} reason={t.withdrawn_reason ?? null} extra={`${t.first_name} ${t.last_name}`} />
+              <WithdrawnReturnLine kind={t.withdrawal_kind ?? null} onChanged={load} key={t.id} id={t.id} taxYear={t.tax_year} returnType={t.return_type} withdrawnOn={t.withdrawn_on ?? null} reason={t.withdrawn_reason ?? null} extra={`${t.first_name} ${t.last_name}`} />
             ) : (
               <div className="quote-line" key={t.id}>
                 <span className="name">

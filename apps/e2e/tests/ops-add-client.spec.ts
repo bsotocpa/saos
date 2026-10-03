@@ -106,6 +106,8 @@ test.describe('Add a client from the directory', () => {
 
       // ── The same person again: the warning, with a link to the record she already has.
       await page.goto('/clients');
+      // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
+      await expect(page.getByText(/\d+ records? match/).first()).toBeVisible();
       // Receipt run 54: the directory's own list load landed mid-typing and the form lost the names typed
       // before it. The list first, then the form; every field is read back before the next step.
       await expect(page.getByText('Loading…'), 'the directory has loaded').toHaveCount(0);

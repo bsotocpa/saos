@@ -332,8 +332,9 @@ test.describe('Ops → Filed on, and the filing corrected', () => {
 
     await signIn(page, fixtures.wall.bookkeeper);
     await page.goto(`/clients/${contactId}`);
-    await expect(page.getByRole('heading', { name: 'Returns' })).toBeVisible();
-    await page.waitForTimeout(800);
+    // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
+    // (She holds no engagements.read, so her Returns card draws no rows; her Documents card draws its count.)
+    await expect(page.getByRole('heading', { name: /^Documents \(\d+\)$/ }), 'her page drew the documents she may read').toBeVisible();
     await expect(page.getByTestId('correct-filing'), 'no Correct the filing control anywhere on her page').toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Correct the filing' })).toHaveCount(0);
 

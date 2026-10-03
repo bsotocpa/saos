@@ -27,7 +27,9 @@ export const roles = [
     // 'quotes.referral_discount.remove' (2026-09-27, R75): removing the Hilo referral discount from a quote
     // is the CEO's alone, with a reason; nothing widens it.
     // 'contacts.merge' (2026-09-29, R92): merging two client records is the CEO's alone.
-    permissions: ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset', 'engagements.billing_hold.lift', 'engagements.tax.reopen', 'quotes.referral_discount.remove', 'contacts.merge'], // '*' includes referrals.approve (Jackson too)
+    // 'engagements.tax.withdrawal_kind.correct' (2026-10-02, R118): correcting a withdrawal's kind (our own
+    // record, off the client's portal; the client's work ended, back on it) is the CEO's alone, with a reason.
+    permissions: ['*', 'deposits.override', 'pricing.packages.save', 'staff.mfa.reset', 'engagements.billing_hold.lift', 'engagements.tax.reopen', 'quotes.referral_discount.remove', 'contacts.merge', 'engagements.tax.withdrawal_kind.correct'], // '*' includes referrals.approve (Jackson too)
   },
   {
     key: 'ed_coo',

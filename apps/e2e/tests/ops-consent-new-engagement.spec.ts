@@ -112,11 +112,12 @@ test.describe('the §7216 consent for a new engagement (R87, R79)', () => {
       await page.getByRole('button', { name: 'Yes, you have my permission' }).click();
       await expect(page.getByRole('heading', { name: 'Permission given. You can withdraw it any time.' })).toBeVisible();
       await page.goto(`${PORTAL}/sign`);
-      await page.waitForLoadState('networkidle');
+      // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
+      await expect(page.getByTestId('envelope-row').or(page.getByText('Nothing waiting for your signature.')).first(), '/sign drew its list').toBeVisible();
       await expect(page.locator('[data-testid=envelope-row][data-status=consent-waiting]'), 'nothing waits once answered').toHaveCount(0);
       await expect(page.getByTestId('envelope-row').filter({ hasText: /§7216/ }), 'and no consent row reads "Being prepared"').toHaveCount(0);
       await page.goto(`${PORTAL}/`);
-      await page.waitForLoadState('networkidle');
+      await expect(page.getByTestId('service-phases').first(), 'Home drew the new engagement').toBeVisible();
       await expect(page.locator('[data-testid=unsigned-row][data-kind=consent]'), 'Home stops asking').toHaveCount(0);
       await page.screenshot({ path: shot, fullPage: true });
       steps.push(`B3d|portal / (right after acceptance): row [data-testid=unsigned-row][data-kind=consent] "Tax information consent (§7216) · <year> Form 1040" → its "Sign" (data-testid consent-sign) opens /consent → "Yes, you have my permission" → "Permission given…"; /sign then has no consent row waiting and none reading "Being prepared"; Home stops asking|the client|tap`);

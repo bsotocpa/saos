@@ -95,8 +95,11 @@ test('B7e and W1–W2: the checklist backfill on a pre-checklist return; a past 
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId(`return-overdue-${who.overdue.taxEngagementId}`), 'the row clears').toHaveCount(0);
   await page.goto('/queue');
+  // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
+  await expect(page.locator('section.card', { has: page.getByText(who.overdue.fullName, { exact: true }) }).first(), "the person's card is in the queue").toBeVisible();
   await expect(page.locator('section.card', { has: page.getByText(who.overdue.fullName, { exact: true }) }).first().getByTestId('queue-overdue'), 'the queue clears').toHaveCount(0);
   await portal.goto(`${PORTAL}/`);
+  await expect(portal.locator('section#services').getByTestId('service-phases').first(), 'the return is on the portal, live').toBeVisible();
   await expect(portal.locator('section#services').getByTestId('service-overdue'), 'the portal card clears').toHaveCount(0);
   testInfo.annotations.push({ type: 'walk-step', description: `W2|/clients/:id Returns card, button "Record extension" (modal: "Date filed" today) → the row, the /queue row and the portal card no longer read "Overdue since"|${ROLES}|tap` });
 });

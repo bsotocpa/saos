@@ -213,8 +213,8 @@ test.describe('Ops → Reopen a completed return', () => {
 
     await signIn(page, fixtures.wall.anamaria);
     await page.goto(`/clients/${contactId}`);
-    await expect(page.getByRole('heading', { name: 'Returns' })).toBeVisible();
-    await page.waitForTimeout(800);
+    // R119 (2026-10-02): a positive sign the page drew its data, before any absence is read.
+    await expect(page.getByTestId(`return-amount-${te}`), "the completed return's row is on her page").toBeVisible();
     await expect(page.getByTestId('reopen-return'), 'no Reopen control anywhere on her page').toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Reopen…' })).toHaveCount(0);
 

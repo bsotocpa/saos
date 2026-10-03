@@ -1772,7 +1772,7 @@ export default function ClientPacketPage() {
           returns.map((t) => t.stage === 'withdrawn' ? (
             // R108 (2026-09-30): a withdrawn return is one line — the day, and the reason on tap — with no
             // stepper and no controls: there is nothing left to do on it.
-            <WithdrawnReturnLine kind={t.withdrawal_kind ?? null} key={t.id} id={t.id} taxYear={t.tax_year} returnType={t.return_type} withdrawnOn={t.withdrawn_on ?? null} reason={t.withdrawn_reason ?? null} />
+            <WithdrawnReturnLine kind={t.withdrawal_kind ?? null} onChanged={load} key={t.id} id={t.id} taxYear={t.tax_year} returnType={t.return_type} withdrawnOn={t.withdrawn_on ?? null} reason={t.withdrawn_reason ?? null} />
           ) : (
             <div className="quote-line" key={t.id}>
               <span className="name">

@@ -133,11 +133,13 @@ test('I1–I5: the Documents page by return, a withdrawn return in one line, the
     const line = page.getByTestId(`withdrawn-return-${who.withdrawnId}`);
     await expect(line.locator('summary')).toContainText(`${who.taxYear - 1} 1040`);
     await expect(line.locator('summary')).toContainText('Withdrawn on');
-    await expect(line.locator('button'), 'no controls').toHaveCount(0);
+    // R118 (2026-10-02): the one control on a withdrawn line is the CEO's kind correction, inside it.
+    await expect(line.locator('button'), "no controls but the CEO's kind correction").toHaveCount(1);
+    await expect(line.getByTestId(`withdrawal-kind-correct-${who.withdrawnId}`)).toHaveCount(1);
     await expect(line.locator('[data-testid=return-stepper]'), 'no stepper').toHaveCount(0);
     await line.locator('summary').click();
     await expect(page.getByTestId(`withdrawn-reason-${who.withdrawnId}`)).toHaveText(who.withdrawnReason);
-    steps.push(`I4|Ops /clients/:id Returns card: data-testid withdrawn-return-<id> — one line "<year> 1040 · Withdrawn on <date>", no stepper, no buttons; tapped open, the recorded reason|${ROLES}|tap`);
+    steps.push(`I4|Ops /clients/:id Returns card: data-testid withdrawn-return-<id> — one line "<year> 1040 · Withdrawn on <date>", no stepper, no buttons but the CEO's "Correct the kind…" inside it (R118); tapped open, the recorded reason|${ROLES}|tap`);
 
     // ── I5. SET FINAL FEE IN DETAILS, IN ENGAGE ───────────────────────────────────────────
     const row1040 = page.locator('.quote-line', { hasText: `${who.taxYear} 1040` }).first();

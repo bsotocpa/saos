@@ -33,6 +33,10 @@ export async function checkLayout(page: Page): Promise<LayoutFailure[]> {
       for (let e: Element | null = el; e; e = e.parentElement) {
         const cs = getComputedStyle(e);
         if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
+        // Batch 17 (R118): what a closed <details> holds, beyond its summary, is neither seen nor tapped,
+        // though Chromium still gives it a layout box (the CEO's "Correct the kind…" in a shut line).
+        const det = e.parentElement;
+        if (det instanceof HTMLDetailsElement && !det.open && !(e instanceof HTMLElement && e.tagName === 'SUMMARY' && e.parentElement === det)) return false;
       }
       return true;
     };

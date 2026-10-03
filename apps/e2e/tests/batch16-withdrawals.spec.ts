@@ -8,6 +8,10 @@
  *   I7  the portal: only the client's withdrawal is there, one line with the fixed sentence on tap; the
  *       firm's own record is nowhere (Home, Documents), and the client's file that sat on it is listed as
  *       not tied to a return.
+ *   I8  R118, Ops: the CEO corrects each withdrawal's kind from its line ("Correct the kind…", a reason
+ *       required): the client's one to our own record, the duplicate to the client's work ended; the
+ *       "not on the client's portal" mark follows the kind;
+ *   I9  R118, the portal follows: the duplicate's line is there with the fixed sentence, the other is gone.
  */
 import { expect, test, type Page } from '@playwright/test';
 import * as OTPAuth from 'otpauth';
@@ -29,7 +33,7 @@ const fixtures = JSON.parse(readFileSync(resolve(here, '..', process.env.E2E_ART
 };
 const OPS = `http://localhost:${fixtures.opsPort ?? 3105}`;
 const PORTAL = `http://localhost:${fixtures.portalPort ?? 3106}`;
-const ROLES = 'ceo (engagements.write) for I6; client (portal sign-in link) for I7';
+const ROLES = 'ceo (engagements.write) for I6; client (portal sign-in link) for I7 and I9; ceo (engagements.tax.withdrawal_kind.correct, explicit-only) for I8';
 const chicagoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
 
 async function opsSignIn(page: Page): Promise<void> {
@@ -49,6 +53,18 @@ function keepScreenshot(name: string, passed: boolean, file: string): string {
   const target = resolve(dir, `${name}.png`);
   if (existsSync(file)) copyFileSync(file, target);
   return target;
+}
+
+/** R118: correct one withdrawn return's kind from its line, a reason first. */
+async function correctKind(page: Page, side: Side, button: string, reason: string): Promise<void> {
+  const line = page.getByTestId(`withdrawn-return-${side.returnId}`);
+  await line.locator('summary').click();
+  await line.getByTestId(`withdrawal-kind-correct-${side.returnId}`).click();
+  const modal = page.locator('[role=dialog]');
+  await expect(modal.getByRole('button', { name: button }), 'no correction without a reason').toBeDisabled();
+  await modal.locator('textarea').fill(reason);
+  await modal.getByRole('button', { name: button }).click();
+  await expect(modal).toHaveCount(0);
 }
 
 /** Withdraw one engagement from the client page, by the kind's own button in the modal. */
@@ -106,6 +122,36 @@ test('I6–I7: a withdrawal of the firm\'s own record is hidden from the portal;
     await expect(page.getByTestId('document-group').filter({ has: page.getByRole('heading', { name: new RegExp(`${who.dup.year} Form 1040`) }) }), 'no group for the duplicate').toHaveCount(0);
     expect(await checkLayout(page), 'Documents passes the layout check').toEqual([]);
     steps.push(`I7|portal / (Home) service-withdrawn: one line, the client's withdrawal, tapped open "Closed by Soto Accounting. Ask us if you have any questions."; the duplicate's year nowhere; portal /documents: the duplicate's file under "Not tied to a return", no group for the duplicate; checkLayout() empty on both at ${project}|${ROLES}|tap`);
+
+    // ── I8. OPS: THE CEO CORRECTS EACH KIND (R118) ────────────────────────────────────────
+    await opsSignIn(page);
+    await page.goto(`${OPS}/clients/${who.contactId}`);
+    await expect(page.getByTestId(`withdrawn-return-${who.kept.returnId}`)).toBeVisible();
+    await correctKind(page, who.kept, 'Correct to: our own record', 'Synthetic: on a second look this one was a duplicate too.');
+    await expect(page.getByTestId(`withdrawn-hidden-${who.kept.returnId}`), 'now our own record: marked').toBeVisible();
+    await correctKind(page, who.dup, "Correct to: the client's work ended", 'Synthetic: the client did end this one; the wrong button was pressed.');
+    // R119: an absence is read only after a positive sign: the record says the new kind, and the
+    // reloaded page shows the line, before the mark's absence counts.
+    await expect.poll(async () => page.evaluate(async ({ cid, id }) => {
+      const r = await (await fetch(`/api/tax-engagements?contactId=${cid}`)).json();
+      return (r.taxEngagements as Array<{ id: string; withdrawal_kind: string | null }>).find((t) => t.id === id)?.withdrawal_kind ?? null;
+    }, { cid: who.contactId, id: who.dup.returnId }), { message: "the record reads the client's kind" }).toBe('client');
+    await page.reload();
+    await expect(page.getByTestId(`withdrawn-return-${who.dup.returnId}`).locator('summary')).toContainText(`${who.dup.year} 1040`);
+    await expect(page.getByTestId(`withdrawn-hidden-${who.dup.returnId}`), "now the client's: not marked").toHaveCount(0);
+    expect(await checkLayout(page), 'the client page passes the layout check').toEqual([]);
+    steps.push(`I8|Ops /clients/:id withdrawn-return-<id> opened → withdrawal-kind-correct-<id> "Correct the kind…" → modal "Correct to: our own record" / "Correct to: the client's work ended", disabled until a reason is typed; the line's withdrawn-hidden-<id> mark follows the kind; checkLayout() empty at ${project}|${ROLES}|tap`);
+
+    // ── I9. THE PORTAL FOLLOWS (R118) ─────────────────────────────────────────────────────
+    // The client's portal session from I7 is still in this browser (its sign-in link is spent).
+    await page.goto(`${PORTAL}/`);
+    const after = page.getByTestId('service-withdrawn');
+    await expect(after, 'one withdrawn line: the corrected duplicate').toHaveCount(1);
+    await expect(after.locator('summary')).toContainText(`${who.dup.year}`);
+    await expect(after.locator('summary'), 'the other is gone').not.toContainText(`${who.kept.year}`);
+    await after.locator('summary').click();
+    await expect(after.getByTestId('service-withdrawn-reason')).toHaveText('Closed by Soto Accounting. Ask us if you have any questions.');
+    steps.push(`I9|portal / (Home) service-withdrawn: after the corrections, one line, the duplicate's year, tapped open "Closed by Soto Accounting. Ask us if you have any questions."; the other year gone|${ROLES}|tap`);
 
     await page.screenshot({ path: shot, fullPage: true });
     passed = true;
